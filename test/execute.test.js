@@ -368,6 +368,84 @@ test("max_age_heures mal typé : rejeté au chargement", () => {
   );
 });
 
+// ---------- la boîte des décisions en attente ----------
+
+const lireBoite = (dir) => {
+  const p = path.join(dir, "EN-ATTENTE.json");
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
+};
+
+const planifier = (opts = {}) =>
+  createHarness({
+    pipeline: loadPipeline("ajustement-prix"),
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    ...opts,
+  });
+
+// Un arrêt qui ne s'écrit que dans un terminal est invisible quand le run vient d'un cron
+// sur un NAS : le pipeline s'arrêterait et l'attente durerait indéfiniment.
+test("l'arrêt sur approbation dépose la demande dans la boîte", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+
+  const boite = lireBoite(h.approvalsDir);
+  assert.strictEqual(boite.en_attente.length, 1);
+  const demande = boite.en_attente[0];
+  assert.strictEqual(demande.dossier, "ajustement-prix");
+  assert.strictEqual(demande.actions, 2);
+  assert.strictEqual(demande.empreinte, approval.fingerprint(PLAN));
+  assert.ok(demande.depuis, "l'attente doit être datée, sinon impossible de dire depuis quand");
+});
+
+test("la demande nomme le registre à remplir et le pipeline à lancer ensuite", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx));
+
+  const demande = lireBoite(h.approvalsDir).en_attente[0];
+  assert.match(demande.registre, /ajustement-prix\.decisions\.json$/);
+  assert.match(demande.plan_gele, /ajustement-prix\.plan\.json$/);
+  assert.strictEqual(demande.appliquer_avec, "ajustement-prix-appliquer");
+});
+
+// Replanifier remplace la demande. L'empiler laisserait dans la boîte des demandes
+// portant sur des plans qui n'existent plus, et une boîte pleine de faux se fait ignorer.
+test("replanifier remplace la demande au lieu de l'empiler", async () => {
+  const premier = planifier();
+  await assert.rejects(() => runPipeline(premier.ctx));
+
+  const second = planifier();
+  second.ctx.approvalsDir = premier.approvalsDir;
+  await assert.rejects(() => runPipeline(second.ctx));
+
+  assert.strictEqual(lireBoite(premier.approvalsDir).en_attente.length, 1);
+});
+
+// La demande est créée par la planification et consommée par l'application : deux
+// pipelines différents, d'où la clé par dossier et non par pipeline.
+test("une fois tout décidé et appliqué, la demande sort de la boîte", async () => {
+  const p = planifier();
+  await assert.rejects(() => runPipeline(p.ctx));
+  assert.strictEqual(lireBoite(p.approvalsDir).en_attente.length, 1);
+
+  approuverTout(p.approvalsDir);
+
+  const a = appliquer({ executeurs: { changement_prix: async () => {} } });
+  a.ctx.approvalsDir = p.approvalsDir;
+  await runPipeline(a.ctx);
+
+  assert.deepStrictEqual(lireBoite(p.approvalsDir).en_attente, []);
+});
+
+test("sans dossier déclaré, aucune boîte n'est touchée", async () => {
+  const pipeline = loadPipeline("ajustement-prix");
+  delete pipeline.stages[3].dossier;
+  const h = createHarness({ pipeline, spec: SPEC, script: { "price-planner": planCorrect } });
+
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+  assert.strictEqual(lireBoite(h.approvalsDir), null, "la boîte est optionnelle");
+});
+
 // ---------- le stage execute, dans le pipeline ----------
 
 test("un stage execute avec un gate est rejeté au chargement", () => {

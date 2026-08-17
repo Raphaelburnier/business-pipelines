@@ -140,6 +140,36 @@ function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
 
+// Boîte durable des décisions en attente. Un pipeline qui s'arrête sur une approbation
+// l'écrit dans un terminal, ce que personne ne lit quand le run est déclenché par un cron
+// sur un NAS : il s'arrêterait, et l'attente durerait indéfiniment sans que rien ne le
+// signale.
+//
+// Cette boîte est délibérément un simple fichier, sans transport. Prévenir par Telegram,
+// par mail ou via un cockpit sont alors trois LECTEURS du même état, et choisir l'un
+// n'interdit pas les autres. Coupler l'arrêt à un transport figerait ce choix dans le
+// code qui garde l'argent.
+const INBOX = "EN-ATTENTE.json";
+
+function lireInbox(approvalsDir) {
+  const p = path.join(approvalsDir, INBOX);
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : { en_attente: [] };
+}
+
+// La clé est le DOSSIER, pas le pipeline : la demande est créée par la planification et
+// consommée par l'application, deux pipelines différents. Keyer par pipeline laisserait
+// l'entrée pour toujours, puisque le pipeline qui l'a créée n'est pas celui qui la résout.
+//
+// Une entrée par dossier : replanifier remplace la demande au lieu de l'empiler, sinon la
+// boîte se remplirait de demandes portant sur des plans qui n'existent plus.
+function majInbox(approvalsDir, dossier, entree) {
+  const boite = lireInbox(approvalsDir);
+  boite.en_attente = boite.en_attente.filter((e) => e.dossier !== dossier);
+  if (entree) boite.en_attente.push({ dossier, ...entree });
+  fs.writeFileSync(path.join(approvalsDir, INBOX), JSON.stringify(boite, null, 2));
+  return boite;
+}
+
 // Contrôle déterministe d'un plan d'actions, AVANT qu'il parte à l'approbation.
 // Approuver un plan qui vise des annonces inexistantes ne protège de rien : l'humain
 // lirait une ligne plausible pour une cible qui n'existe pas. Celui-ci porte un gate,
@@ -259,6 +289,17 @@ handlers.approval = async (stage, ctx) => {
       ctx.reporter.event("approval:gel", { stage: stage.id, empreinte: etat.empreinte });
     }
 
+    if (stage.dossier) {
+      majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, {
+        empreinte: etat.empreinte,
+        depuis: new Date(maintenant(ctx)).toISOString(),
+        actions: etat.en_attente.length,
+        registre: registrePath,
+        plan_gele: gele,
+        appliquer_avec: stage.appliquer_avec || null,
+      });
+    }
+
     const liste = etat.en_attente
       .map((a) => `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
       .join("\n");
@@ -273,6 +314,11 @@ handlers.approval = async (stage, ctx) => {
           : "\nPuis relancer.")
     );
   }
+
+  // Tout est décidé : la demande sort de la boîte. Sans ça, une attente résolue y
+  // resterait, et un cockpit finirait par afficher des demandes déjà traitées, ce qui est
+  // la façon la plus sûre de faire ignorer les vraies.
+  if (stage.dossier) majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
 };
 
 // Ressuscite le plan gelé dans le workspace du run d'application. Aucun agent n'est

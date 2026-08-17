@@ -107,6 +107,33 @@ Les forcer dans un même run est ce qui créait le problème.
 **Le gel** rend l'approbation honnête : tu approuves un texte figé, et c'est exactement
 celui qui s'exécute. La liaison TOCTOU passe de vérifiée à garantie par construction.
 
+### Savoir qu'une décision attend
+
+Un arrêt qui s'écrit dans un terminal est invisible quand le run vient d'un cron sur un
+NAS : le pipeline s'arrêterait et l'attente durerait indéfiniment sans que rien ne le
+signale.
+
+L'approbation dépose donc sa demande dans `approvals/EN-ATTENTE.json`, avec le dossier,
+l'empreinte, le nombre d'actions, depuis quand, le registre à remplir et le pipeline à
+lancer ensuite.
+
+```bash
+npm run en-attente
+```
+
+Sortie 0 si rien n'attend, **1 s'il y a des décisions à prendre**, donc utilisable tel
+quel dans un cron sans parser la sortie.
+
+**Cette boîte n'est couplée à aucun transport, délibérément.** Prévenir par Telegram, par
+mail ou via un cockpit sont trois lecteurs du même fichier, et choisir l'un n'interdit pas
+les autres. Coupler l'arrêt à un transport figerait ce choix dans le code qui garde
+l'argent.
+
+La clé est le **dossier**, pas le pipeline : la demande est créée par la planification et
+consommée par l'application, deux pipelines différents. Replanifier remplace la demande au
+lieu de l'empiler, sinon la boîte se remplirait de demandes portant sur des plans qui
+n'existent plus, et une boîte pleine de faux se fait ignorer.
+
 ### La péremption
 
 Un plan bâti sur le marché de lundi n'a plus de sens jeudi : les montants approuvés

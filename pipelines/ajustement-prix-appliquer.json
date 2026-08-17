@@ -24,7 +24,8 @@
       "actions": "actions.json",
       "decisions": "ajustement-prix.decisions.json",
       "auto": [],
-      "output": "approbation.json"
+      "output": "approbation.json",
+      "dossier": "ajustement-prix"
     },
     {
       "id": "execution",

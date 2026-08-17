@@ -2,7 +2,11 @@
   "name": "ajustement-prix",
   "description": "Propose des ajustements de prix à partir du marché observé, contrôle le plan de façon déterministe, puis exige une approbation humaine action par action. N'exécute rien : le pipeline s'arrête sur la liste approuvée.",
   "slicing": {
-    "price-planner": ["marche", "strategie", "mes_annonces"]
+    "price-planner": [
+      "marche",
+      "strategie",
+      "mes_annonces"
+    ]
   },
   "budget": {
     "max_usd": 3,
@@ -26,8 +30,12 @@
       "agents": [
         {
           "name": "price-planner",
-          "inputs": ["listings.json"],
-          "outputs": ["actions.json"],
+          "inputs": [
+            "listings.json"
+          ],
+          "outputs": [
+            "actions.json"
+          ],
           "output_schema": {
             "actions.json": {
               "actions": "array",
@@ -46,10 +54,19 @@
       "output": "controle.json",
       "gate": {
         "report": "controle.json",
-        "pass_when": { "field": "verdict", "equals": "VALIDE" },
-        "fail_when": { "equals": ["INVALIDE"] },
+        "pass_when": {
+          "field": "verdict",
+          "equals": "VALIDE"
+        },
+        "fail_when": {
+          "equals": [
+            "INVALIDE"
+          ]
+        },
         "items": "manques",
-        "targets": { "plan": "price-planner" },
+        "targets": {
+          "plan": "price-planner"
+        },
         "rerun_from": "controle"
       }
     },
@@ -61,7 +78,9 @@
       "plan_gele": "ajustement-prix.plan.json",
       "collecte": "listings.json",
       "auto": [],
-      "output": "approbation.json"
+      "output": "approbation.json",
+      "dossier": "ajustement-prix",
+      "appliquer_avec": "ajustement-prix-appliquer"
     }
   ]
 }

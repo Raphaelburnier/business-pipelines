@@ -2,6 +2,10 @@ node_modules/
 runs/
 *.log
 
+# État runtime, dérivé : la boîte se reconstruit à chaque arrêt sur approbation.
+# Les décisions et le ledger, eux, restent versionnés : ce sont des traces d'audit.
+approvals/EN-ATTENTE.json
+
 # Secrets : jamais commités.
 # Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
 .env
