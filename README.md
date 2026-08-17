@@ -58,6 +58,45 @@ Sur gate rouge, les manques repartent vers l'analyste avec leur raison exacte, p
 vérification est rejouée. La collecte, elle, n'est jamais relancée : `rerun_from` pointe
 sur `verification`.
 
+## Le stage `approval`
+
+Écrit **avant** qu'une seule action d'écriture existe dans ce dépôt, délibérément.
+
+Il ne porte pas de gate, et le chargeur refuse qu'on lui en mette un. Un gate route son
+échec vers l'agent responsable pour qu'il le corrige ; une approbation humaine absente
+n'est pas un défaut réparable par un agent, et lui router l'échec lui donnerait un moyen
+de la contourner. Ce stage s'arrête donc net.
+
+**Fail-closed.** Une action demande une approbation sauf si son type figure dans la liste
+`auto` du pipeline. Lister l'inverse obligerait à penser à tout d'avance, et la première
+omission serait celle qui coûte cher. Même logique que le backend facturé par défaut du
+moteur.
+
+**L'approbation porte sur l'empreinte du plan, pas sur le stage.** C'est ce qui ferme le
+TOCTOU : si le plan change entre la décision et l'exécution, l'approbation meurt avec lui
+et le run s'arrête en nommant les deux empreintes. Approuver une baisse à 79 EUR ne peut
+pas couvrir une baisse à 40 EUR.
+
+**Le registre vit hors du workspace.** Le workspace est jetable, réécrit à chaque run, et
+surtout les agents y écrivent. Une approbation rangée là serait falsifiable par ce qu'elle
+est censée contrôler. Elle vit dans `approvals/`, ou dans `APPROVALS_DIR`.
+
+Un refus est une décision, pas un échec : l'action est écartée et le run aboutit.
+
+### Le cycle
+
+```
+run 1   plan → contrôle déterministe → approbation
+        arrêt : "2 actions attendent ton approbation" + l'empreinte à recopier
+
+        tu écris approvals/ajustement-prix.decisions.json
+
+run 2   approbation passe, approbation.json porte les actions exécutables
+```
+
+Le pipeline `ajustement-prix` s'arrête là : rien n'exécute encore les actions approuvées.
+C'était le but, avoir la barrière avant d'avoir la porte.
+
 ## Utilisation
 
 ```bash

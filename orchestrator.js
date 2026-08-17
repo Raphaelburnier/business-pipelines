@@ -59,10 +59,16 @@ async function main() {
     workspace: workspaceDir,
   });
 
+  // Le registre des décisions humaines vit HORS du workspace, délibérément : le
+  // workspace est jetable et réécrit à chaque run, et surtout les agents y écrivent.
+  // Une approbation rangée là serait falsifiable par ce qu'elle est censée contrôler.
+  const approvalsDir = process.env.APPROVALS_DIR || path.join(__dirname, "approvals");
+
   const ctx = {
     pipeline,
     spec,
     workspaceDir,
+    approvalsDir,
     agentDefinitions,
     runAgent: agentRunner.run,
     stageHandlers: stageHandlers.handlers,

@@ -5,7 +5,7 @@ const path = require("path");
 const { BudgetTracker, Reporter, loader } = require("agent-orchestrator");
 const stageHandlers = require("../src/stage-handlers");
 
-const PIPELINE = path.join(__dirname, "..", "pipelines", "veille-ebay.json");
+const pipelinePath = (name) => path.join(__dirname, "..", "pipelines", `${name}.json`);
 
 class SilentReporter extends Reporter {
   event(type, data = {}) {
@@ -16,8 +16,8 @@ class SilentReporter extends Reporter {
 // Charge le VRAI pipeline avec les VRAIS validateurs. Un pipeline qui ne se charge pas
 // fait donc échouer tous les tests, ce qui est le comportement voulu : la validité du
 // pipeline livré n'est pas une hypothèse de test, c'est la première chose testée.
-function loadPipeline() {
-  return loader.loadPipeline(PIPELINE, {
+function loadPipeline(name = "veille-ebay") {
+  return loader.loadPipeline(pipelinePath(name), {
     stageValidators: stageHandlers.validators,
     backends: { anthropic: {} },
   });
@@ -66,10 +66,15 @@ function createHarness({ pipeline, spec, script, items = [1, 2, 3, 4].map((i) =>
 
   const reporter = new SilentReporter(workspaceDir);
 
+  // Le registre de décisions vit hors du workspace, comme en production : un dossier
+  // séparé, que les agents ne voient pas.
+  const approvalsDir = fs.mkdtempSync(path.join(os.tmpdir(), "approbations-"));
+
   const ctx = {
     pipeline,
     spec,
     workspaceDir,
+    approvalsDir,
     agentDefinitions: Object.fromEntries(
       Object.keys(pipeline.slicing).map((name) => [name, { name }])
     ),
@@ -82,7 +87,13 @@ function createHarness({ pipeline, spec, script, items = [1, 2, 3, 4].map((i) =>
     reporter,
   };
 
-  return { ctx, calls, prompts, reporter, workspaceDir };
+  return { ctx, calls, prompts, reporter, workspaceDir, approvalsDir };
+}
+
+// Écrit un registre de décisions là où le stage `approval` va le chercher, c'est-à-dire
+// hors du workspace.
+function writeDecisions(approvalsDir, file, content) {
+  fs.writeFileSync(path.join(approvalsDir, file), JSON.stringify(content, null, 2));
 }
 
 function writeJson(workspaceDir, file, content) {
@@ -93,4 +104,13 @@ function readJson(workspaceDir, file) {
   return JSON.parse(fs.readFileSync(path.join(workspaceDir, file), "utf-8"));
 }
 
-module.exports = { createHarness, loadPipeline, fakeEbay, annonce, writeJson, readJson };
+module.exports = {
+  createHarness,
+  loadPipeline,
+  pipelinePath,
+  fakeEbay,
+  annonce,
+  writeJson,
+  readJson,
+  writeDecisions,
+};
