@@ -1,0 +1,14 @@
+{
+  "name": "business-pipelines",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pipelines business sur agent-orchestrator. Spike : prouver que le moteur tient quand le travail est un appel d'API et non la génération de fichiers.",
+  "main": "orchestrator.js",
+  "scripts": {
+    "veille": "node orchestrator.js veille-ebay ./specs/veille.example.json",
+    "test": "node test/veille.test.js && node test/ebay.test.js"
+  },
+  "dependencies": {
+    "agent-orchestrator": "file:../agent-orchestrator"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+runs/
+*.log
+
+# Secrets : jamais commités.
+# Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
+.env
+*.env
+!*.env.example
