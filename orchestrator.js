@@ -72,6 +72,11 @@ async function main() {
     agentDefinitions,
     runAgent: agentRunner.run,
     stageHandlers: stageHandlers.handlers,
+    // Registre des exécuteurs d'actions, VIDE délibérément. La garde d'exécution est
+    // écrite et testée, le geste qui touche une plateforme marchande ne l'est pas : il
+    // sera écrit contre la vraie API, après le premier run réel, jamais contre une forme
+    // devinée. Un type sans exécuteur s'arrête en le nommant, il ne se saute pas.
+    executeurs: {},
     backends,
     env,
     specPath,

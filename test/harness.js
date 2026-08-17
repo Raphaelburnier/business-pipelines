@@ -48,7 +48,14 @@ function annonce(i, overrides = {}) {
 
 // Le seul mock est runAgent (et le transport HTTP). Le moteur, le stage-executor, le
 // gate-evaluator, le routeur, le budget et le handler `fetch` sont le vrai code.
-function createHarness({ pipeline, spec, script, items = [1, 2, 3, 4].map((i) => annonce(i)), transport }) {
+function createHarness({
+  pipeline,
+  spec,
+  script,
+  items = [1, 2, 3, 4].map((i) => annonce(i)),
+  transport,
+  executeurs,
+}) {
   const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "veille-"));
   const calls = {};
   const prompts = [];
@@ -80,6 +87,8 @@ function createHarness({ pipeline, spec, script, items = [1, 2, 3, 4].map((i) =>
     ),
     runAgent,
     stageHandlers: stageHandlers.handlers,
+    // Vide par défaut, comme en production : c'est le test qui choisit d'en injecter un.
+    executeurs: executeurs || {},
     transports: { ebay: transport || fakeEbay(items) },
     backends: {},
     env: { EBAY_OAUTH_TOKEN: "jeton-de-test" },

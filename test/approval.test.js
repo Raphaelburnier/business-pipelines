@@ -162,7 +162,15 @@ test("sans décision : le run s'arrête en nommant chaque action en attente", as
 
 test("décisions complètes : le run aboutit et n'expose que les actions approuvées", async () => {
   const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({ pipeline, spec: SPEC, script: { "price-planner": planCorrect } });
+  // Un exécuteur muet : ce test porte sur ce que l'approbation expose, pas sur ce que
+  // l'exécution en fait. Sans lui le run s'arrêterait faute d'exécuteur, ce qui est le
+  // comportement voulu mais pas le sujet ici.
+  const h = createHarness({
+    pipeline,
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    executeurs: { changement_prix: async () => {} },
+  });
 
   // On rejoue le plan pour connaître l'empreinte, comme le ferait l'opérateur en lisant
   // le message d'arrêt du premier run.

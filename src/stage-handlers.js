@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const ebay = require("./ebay");
 const approval = require("./approval");
+const execute = require("./execute");
 
 // Les sources sont un registre, pas une suite de `if` : ajouter Amazon ou TikTok plus tard
 // se fait ici, sans toucher au handler ni au moteur.
@@ -236,6 +237,80 @@ handlers.approval = async (stage, ctx) => {
   }
 };
 
+// Exécution des actions approuvées. Comme `approval`, ce stage ne porte pas de gate :
+// un échec d'API n'est pas un défaut qu'un agent peut corriger, et l'y router
+// déclencherait une replanification, laquelle invaliderait l'approbation et réclamerait
+// une nouvelle décision humaine. Boucle sans fin garantie. Le stage s'arrête.
+//
+// Le ledger vit hors du workspace, pour la même raison que le registre de décisions :
+// le workspace est réécrit à chaque run, donc un ledger rangé là ne garantirait aucune
+// idempotence d'un run à l'autre, c'est-à-dire aucune.
+handlers.execute = async (stage, ctx) => {
+  const approbation = readJson(ctx.workspaceDir, stage.approval);
+  const { actions } = readJson(ctx.workspaceDir, stage.actions);
+
+  const ledgerPath = path.resolve(ctx.approvalsDir || ".", stage.ledger);
+  const ledger = fs.existsSync(ledgerPath)
+    ? JSON.parse(fs.readFileSync(ledgerPath, "utf-8"))
+    : { executees: [] };
+
+  const plan = execute.preparer({ approbation, actions, ledger });
+
+  const rapport = (etat) => {
+    fs.writeFileSync(path.join(ctx.workspaceDir, stage.output), JSON.stringify(etat, null, 2));
+    return etat;
+  };
+
+  if (plan.bloquant) {
+    rapport({ verdict: "REFUSE", raison: plan.bloquant, reussies: [], deja: [] });
+    throw new Error(`Stage "${stage.id}" : ${plan.bloquant}`);
+  }
+
+  ctx.reporter.event("execute:plan", {
+    stage: stage.id,
+    a_faire: plan.aFaire.length,
+    deja: plan.deja.length,
+    ecartees: plan.ecartees.length,
+  });
+
+  // Consigné action par action, immédiatement : un processus tué au milieu du lot doit
+  // laisser une trace exacte de ce qui a eu lieu.
+  const consigner = async (trace) => {
+    ledger.executees = [...(ledger.executees || []), { ...trace, empreinte: plan.empreinte }];
+    fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+  };
+
+  const { reussies, echec } = await execute.executer({
+    aFaire: plan.aFaire,
+    executeurs: ctx.executeurs || {},
+    empreinte: plan.empreinte,
+    contexte: { env: ctx.env, workspaceDir: ctx.workspaceDir },
+    consigner,
+  });
+
+  const etat = {
+    verdict: echec ? "PARTIEL" : "EXECUTE",
+    empreinte: plan.empreinte,
+    reussies,
+    deja: plan.deja.map((a) => a.id),
+    ecartees: plan.ecartees.map((a) => a.id),
+    echec: echec ? { action: echec.action.id, raison: echec.raison } : null,
+  };
+  rapport(etat);
+  ctx.reporter.event("execute:done", {
+    stage: stage.id,
+    reussies: reussies.length,
+    echec: echec ? echec.action.id : null,
+  });
+
+  if (echec) {
+    throw new Error(
+      `Stage "${stage.id}" : arrêt sur "${echec.action.id}" — ${echec.raison}\n` +
+        `${reussies.length} action(s) déjà passée(s) et consignée(s) : une relance les sautera.`
+    );
+  }
+};
+
 // La validation descend avec le handler : le chargeur du moteur ne connaît ni "source"
 // ni "output". Une faute de frappe doit exploser au chargement, pas après la collecte.
 const validators = {
@@ -257,6 +332,19 @@ const validators = {
         'un stage "approval" ne porte pas de gate : une approbation absente n\'est pas ' +
           "un défaut qu'un agent peut corriger, et lui router l'échec lui donnerait " +
           "un moyen de la contourner"
+      );
+    }
+  },
+
+  execute: (stage, fail) => {
+    for (const champ of ["approval", "actions", "ledger", "output"]) {
+      if (!stage[champ]) fail(`type "execute" sans "${champ}"`);
+    }
+    if (stage.gate) {
+      fail(
+        'un stage "execute" ne porte pas de gate : un échec d\'API n\'est pas un défaut ' +
+          "qu'un agent peut corriger, et l'y router ferait replanifier, ce qui " +
+          "invaliderait l'approbation et réclamerait une nouvelle décision humaine"
       );
     }
   },

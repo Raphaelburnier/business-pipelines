@@ -94,8 +94,36 @@ run 1   plan → contrôle déterministe → approbation
 run 2   approbation passe, approbation.json porte les actions exécutables
 ```
 
-Le pipeline `ajustement-prix` s'arrête là : rien n'exécute encore les actions approuvées.
-C'était le but, avoir la barrière avant d'avoir la porte.
+## Le stage `execute`, moitié gardienne
+
+La garde est écrite et testée. Le geste qui touche une plateforme marchande, non : il
+sera écrit contre la vraie API, après le premier run réel, jamais contre une forme
+devinée. Le registre d'exécuteurs est donc **vide**, et un type sans exécuteur arrête le
+run en le nommant plutôt que de se sauter en silence.
+
+Quatre propriétés, toutes vérifiées avant qu'une seule action ne parte :
+
+1. **Le plan n'a pas bougé depuis l'approbation.** Second tour de clé sur le TOCTOU,
+   au moment où le geste part et plus seulement au moment où il est autorisé.
+2. **Rien ne s'exécute qui ne figure pas dans `executables`.** La liste de travail se lit
+   dans l'approbation, jamais dans le plan complet : c'est la liste courte, celle qu'un
+   humain a validée. Partir du plan et filtrer laisserait une erreur de filtre possible.
+3. **Une action déjà faite n'est jamais refaite.** Ledger hors du workspace, sinon
+   l'idempotence ne survivrait pas au run suivant. La clé porte l'empreinte du plan ET
+   l'id : un id comme `prix-001` revient d'un plan à l'autre en désignant autre chose, et
+   sans l'empreinte un ajustement légitime serait sauté au motif qu'un homonyme a eu lieu.
+4. **Chaque succès est consigné immédiatement**, pas à la fin du lot. Un processus tué au
+   milieu doit laisser la trace exacte de ce qui a eu lieu.
+
+Comme `approval`, ce stage ne porte pas de gate, et le chargeur en refuse un : un échec
+d'API n'est pas un défaut qu'un agent peut corriger, et l'y router ferait replanifier,
+ce qui invaliderait l'approbation et réclamerait une nouvelle décision humaine. Boucle
+sans fin garantie.
+
+**Arrêt à la première casse**, pas de poursuite du lot. Un échec est plus souvent
+systémique (identifiants expirés, quota, API indisponible) qu'isolé : continuer
+enchaînerait quarante échecs, ce qui sur une plateforme marchande se paie en suspension
+de compte. Le ledger rend la reprise indolore.
 
 ## Utilisation
 
@@ -141,8 +169,7 @@ l'API. Le compte du programme développeur eBay demande au moins un jour d'accep
 Tout est testé sauf le contact avec la vraie API, donc rien d'autre n'attend après ça.
 Reprendre par `cp specs/veille.env.example specs/veille.env` puis `npm run veille`.
 
-**Ensuite** : le stage `execute`, qui lira `approbation.json` et n'aura le droit de
-toucher qu'aux entrées de `executables`. Sa moitié gardienne (refuser tout ce qui n'a pas
-été approuvé, consigner ce qui s'est réellement passé) ne dépend d'aucune API et peut
-s'écrire avant. Sa moitié eBay attend le premier run, sinon elle serait écrite contre une
-forme d'API devinée.
+**Ensuite** : la moitié eBay du stage `execute`, un exécuteur pour `changement_prix`
+contre la Sell Inventory API. La moitié gardienne est faite et testée, il ne manque que
+le geste. Une ligne à ajouter au registre d'exécuteurs, écrite contre l'API réelle une
+fois le premier run passé.

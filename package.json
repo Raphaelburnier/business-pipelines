@@ -6,7 +6,7 @@
   "main": "orchestrator.js",
   "scripts": {
     "veille": "node orchestrator.js veille-ebay ./specs/veille.json",
-    "test": "node test/veille.test.js && node test/ebay.test.js && node test/approval.test.js"
+    "test": "node test/veille.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js"
   },
   "dependencies": {
     "agent-orchestrator": "file:../agent-orchestrator"

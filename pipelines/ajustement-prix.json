@@ -60,6 +60,14 @@
       "decisions": "ajustement-prix.decisions.json",
       "auto": [],
       "output": "approbation.json"
+    },
+    {
+      "id": "execution",
+      "type": "execute",
+      "approval": "approbation.json",
+      "actions": "actions.json",
+      "ledger": "ajustement-prix.ledger.json",
+      "output": "execution.json"
     }
   ]
 }
