@@ -1,0 +1,6 @@
+{
+  "project_name": "ajustement-prix-cartes",
+  "marche": "pokemon booster box scellee",
+  "strategie": "aligner sur la médiane des annonces neuves comparables, sans jamais descendre sous 70 EUR",
+  "mes_annonces": []
+}

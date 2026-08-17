@@ -104,16 +104,29 @@ npm install
 npm test                 # 20 vérifications, sans réseau ni credentials
 ```
 
-Pour un vrai run, il faut un token applicatif du sandbox eBay dans le `.env` du spec
-(`specs/veille.example.env` à créer, jamais commité) :
-
-```
-EBAY_OAUTH_TOKEN=...
-```
+Pour un vrai run, il faut des identifiants sandbox eBay :
 
 ```bash
+cp specs/veille.env.example specs/veille.env   # puis remplir
 npm run veille
 ```
+
+Le fichier rempli est gitignoré, le gabarit ne l'est pas. Convention du moteur :
+`specs/veille.json` attend `specs/veille.env`.
+
+### Ce qu'il faut y mettre, et pourquoi pas un token
+
+`EBAY_CLIENT_ID` et `EBAY_CLIENT_SECRET`, l'App ID et le Cert ID de la console
+développeur eBay, section Sandbox. Ce sont des identifiants **permanents**.
+
+Un token applicatif eBay expire en environ 2 heures. En ranger un dans un `.env`
+condamne tout run planifié à échouer sur un token périmé sans que rien ne l'explique.
+Le code fabrique donc le token à la demande, à partir des identifiants, et le garde en
+cache jusqu'à son expiration moins une minute de marge. Deux collectes dans le même
+processus ne déclenchent qu'un seul appel OAuth.
+
+`EBAY_OAUTH_TOKEN` reste accepté et court-circuite la fabrication : pratique pour un
+essai à la main, inutilisable pour de l'automatisé.
 
 ## Ajouter une source
 
