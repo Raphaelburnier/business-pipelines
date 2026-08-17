@@ -136,7 +136,13 @@ inconnue échoue au chargement, pas après la collecte.
 
 ## Ce qui reste à faire
 
-- Un token sandbox eBay et un premier run réel : tout est testé sauf le contact avec la
-  vraie API.
-- Le type de stage `approval`, gate déterministe d'approbation manuelle, à écrire **avant**
-  qu'une seule action d'écriture existe dans ce dépôt.
+**En attente, bloqué hors du code (depuis le 2026-08-17)** : premier run réel contre
+l'API. Le compte du programme développeur eBay demande au moins un jour d'acceptation.
+Tout est testé sauf le contact avec la vraie API, donc rien d'autre n'attend après ça.
+Reprendre par `cp specs/veille.env.example specs/veille.env` puis `npm run veille`.
+
+**Ensuite** : le stage `execute`, qui lira `approbation.json` et n'aura le droit de
+toucher qu'aux entrées de `executables`. Sa moitié gardienne (refuser tout ce qui n'a pas
+été approuvé, consigner ce qui s'est réellement passé) ne dépend d'aucune API et peut
+s'écrire avant. Sa moitié eBay attend le premier run, sinon elle serait écrite contre une
+forme d'API devinée.
