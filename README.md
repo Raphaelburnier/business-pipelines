@@ -83,16 +83,43 @@ est censée contrôler. Elle vit dans `approvals/`, ou dans `APPROVALS_DIR`.
 
 Un refus est une décision, pas un échec : l'action est écartée et le run aboutit.
 
-### Le cycle
+### Le cycle, en deux pipelines
 
 ```
-run 1   plan → contrôle déterministe → approbation
-        arrêt : "2 actions attendent ton approbation" + l'empreinte à recopier
+npm run plan:prix        collecte → plan → contrôle → approbation
+                         arrêt : les actions en attente, l'empreinte à recopier,
+                         et le plan GELÉ dans approvals/
 
-        tu écris approvals/ajustement-prix.decisions.json
+                         tu écris approvals/ajustement-prix.decisions.json
 
-run 2   approbation passe, approbation.json porte les actions exécutables
+npm run appliquer:prix   chargement du plan gelé → approbation → exécution
+                         aucun agent, budget déclaré à zéro
 ```
+
+**Pourquoi deux pipelines et pas un.** Le moteur repart toujours du premier stage, donc un
+run unique replanifierait après ta décision. Or un planificateur est un modèle : il ne
+redonne pas deux fois le même plan. Nouvelle empreinte, approbation caduque, nouvel arrêt,
+sans fin. Le cycle ne pouvait jamais aboutir, et chaque tour repayait le planificateur.
+
+Planifier et appliquer sont séparés par une décision humaine qui peut prendre des heures.
+Les forcer dans un même run est ce qui créait le problème.
+
+**Le gel** rend l'approbation honnête : tu approuves un texte figé, et c'est exactement
+celui qui s'exécute. La liaison TOCTOU passe de vérifiée à garantie par construction.
+
+### La péremption
+
+Un plan bâti sur le marché de lundi n'a plus de sens jeudi : les montants approuvés
+portent sur des données mortes. Le plan gelé emporte donc l'heure de **collecte**, et le
+chargement refuse au-delà de `max_age_heures` (12 h dans le pipeline livré) en disant de
+combien il est en retard.
+
+C'est l'heure de collecte qui fait foi, pas celle du gel ni celle de l'exécution : c'est
+la donnée de marché qui vieillit, pas la décision. Un plan sans aucune date est refusé
+plutôt qu'appliqué à l'aveugle.
+
+Ce risque existait déjà, toute boucle avec un humain dedans l'a. Il était simplement
+masqué par un défaut plus grave.
 
 ## Le stage `execute`, moitié gardienne
 

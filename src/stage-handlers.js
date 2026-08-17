@@ -8,6 +8,11 @@ const execute = require("./execute");
 // se fait ici, sans toucher au handler ni au moteur.
 const SOURCES = { ebay: ebay.search };
 
+// Horloge injectable. Une péremption qui se teste en attendant vraiment trois heures ne
+// se teste pas : le test la ferait avancer, ou ne la couvrirait jamais.
+const maintenant = (ctx) => (ctx.maintenant ? ctx.maintenant() : Date.now());
+const HEURE = 3600 * 1000;
+
 // Le type de stage `fetch` : collecte déterministe depuis une API officielle, écrite dans
 // le workspace pour que les stages d'agents la lisent comme n'importe quel artefact.
 //
@@ -44,9 +49,11 @@ const handlers = {
       transport: (ctx.transports || {})[stage.source],
     });
 
+    // L'heure de collecte suit la donnée partout : c'est elle, et non le moment du gel
+    // ni celui de l'exécution, qui dit si un plan bâti dessus est encore valable.
     fs.writeFileSync(
       path.join(ctx.workspaceDir, stage.output),
-      JSON.stringify(data, null, 2)
+      JSON.stringify({ ...data, collecte_le: new Date(maintenant(ctx)).toISOString() }, null, 2)
     );
     ctx.reporter.event("fetch:done", {
       stage: stage.id,
@@ -225,6 +232,33 @@ handlers.approval = async (stage, ctx) => {
   }
 
   if (etat.en_attente.length > 0) {
+    // GEL. Sans lui, le run suivant replanifierait, produirait une autre empreinte, et
+    // l'approbation qu'on est en train de demander ne couvrirait déjà plus rien. Un
+    // modèle ne redonne pas deux fois le même plan : le cycle ne pourrait jamais
+    // aboutir. On fige donc le texte exact qui sera soumis, et c'est lui qui
+    // s'exécutera.
+    let gele = null;
+    if (stage.plan_gele) {
+      const collecte = stage.collecte
+        ? readJson(ctx.workspaceDir, stage.collecte).collecte_le || null
+        : null;
+      gele = path.resolve(ctx.approvalsDir || ".", stage.plan_gele);
+      fs.writeFileSync(
+        gele,
+        JSON.stringify(
+          {
+            empreinte: etat.empreinte,
+            gele_le: new Date(maintenant(ctx)).toISOString(),
+            collecte_le: collecte,
+            actions,
+          },
+          null,
+          2
+        )
+      );
+      ctx.reporter.event("approval:gel", { stage: stage.id, empreinte: etat.empreinte });
+    }
+
     const liste = etat.en_attente
       .map((a) => `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
       .join("\n");
@@ -232,9 +266,67 @@ handlers.approval = async (stage, ctx) => {
       `Stage "${stage.id}" : ${etat.en_attente.length} action(s) attendent ton approbation.\n` +
         `${liste}\n` +
         `Décider dans ${registrePath}, avec "plan": "${etat.empreinte}" et une entrée ` +
-        `{ "action_id", "decision": "approuve" | "refuse" } par action, puis relancer.`
+        `{ "action_id", "decision": "approuve" | "refuse" } par action.` +
+        (gele
+          ? `\nLe plan est gelé dans ${gele} : c'est lui qui sera appliqué, à l'identique. ` +
+            `Lancer ensuite le pipeline d'application, pas celui-ci.`
+          : "\nPuis relancer.")
     );
   }
+};
+
+// Ressuscite le plan gelé dans le workspace du run d'application. Aucun agent n'est
+// impliqué : le plan a déjà été produit et vérifié, le rejouer coûterait des tokens pour
+// obtenir un texte différent, donc non approuvé.
+//
+// C'est aussi ici que se juge la PÉREMPTION. Un plan bâti sur un marché observé lundi
+// n'a plus de sens jeudi : les prix approuvés portent sur des données mortes. Le gel
+// rend ce risque visible, ce stage le rend refusable. La référence est l'heure de
+// COLLECTE, pas celle du gel : c'est la donnée qui vieillit, pas la décision.
+handlers.charger = async (stage, ctx) => {
+  const gele = path.resolve(ctx.approvalsDir || ".", stage.plan_gele);
+  if (!fs.existsSync(gele)) {
+    throw new Error(
+      `Stage "${stage.id}" : aucun plan gelé dans ${gele}. ` +
+        `Lancer d'abord le pipeline de planification, qui le produira.`
+    );
+  }
+
+  const plan = JSON.parse(fs.readFileSync(gele, "utf-8"));
+  const reference = plan.collecte_le || plan.gele_le;
+
+  if (stage.max_age_heures !== undefined) {
+    if (!reference) {
+      throw new Error(
+        `Stage "${stage.id}" : le plan gelé ne porte aucune date, sa fraîcheur est ` +
+          `invérifiable. Refusé plutôt qu'appliqué à l'aveugle.`
+      );
+    }
+    const age = (maintenant(ctx) - Date.parse(reference)) / HEURE;
+    if (age > stage.max_age_heures) {
+      throw new Error(
+        `Stage "${stage.id}" : plan périmé. Données collectées il y a ${age.toFixed(1)} h, ` +
+          `le maximum déclaré est ${stage.max_age_heures} h. ` +
+          `Relancer la planification : le marché a bougé depuis, et les montants approuvés ` +
+          `portent sur des données mortes.`
+      );
+    }
+    ctx.reporter.event("charger:fraicheur", {
+      stage: stage.id,
+      age_heures: Number(age.toFixed(2)),
+      max: stage.max_age_heures,
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(ctx.workspaceDir, stage.output),
+    JSON.stringify({ actions: plan.actions }, null, 2)
+  );
+  ctx.reporter.event("charger:done", {
+    stage: stage.id,
+    empreinte: plan.empreinte,
+    actions: plan.actions.length,
+  });
 };
 
 // Exécution des actions approuvées. Comme `approval`, ce stage ne porte pas de gate :
@@ -352,6 +444,19 @@ const validators = {
           "un défaut qu'un agent peut corriger, et lui router l'échec lui donnerait " +
           "un moyen de la contourner"
       );
+    }
+  },
+
+  charger: (stage, fail) => {
+    for (const champ of ["plan_gele", "output"]) {
+      if (!stage[champ]) fail(`type "charger" sans "${champ}"`);
+    }
+    // Une péremption absente est un choix, une péremption mal typée est un piège : une
+    // chaîne passerait la comparaison numérique de façon imprévisible.
+    if (stage.max_age_heures !== undefined) {
+      if (typeof stage.max_age_heures !== "number" || stage.max_age_heures <= 0) {
+        fail('"max_age_heures" doit être un nombre positif');
+      }
     }
   },
 

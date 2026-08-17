@@ -55,6 +55,7 @@ function createHarness({
   items = [1, 2, 3, 4].map((i) => annonce(i)),
   transport,
   executeurs,
+  maintenant,
 }) {
   const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "veille-"));
   const calls = {};
@@ -89,6 +90,8 @@ function createHarness({
     stageHandlers: stageHandlers.handlers,
     // Vide par défaut, comme en production : c'est le test qui choisit d'en injecter un.
     executeurs: executeurs || {},
+    // Horloge injectable : une péremption ne se teste pas en attendant douze heures.
+    maintenant,
     transports: { ebay: transport || fakeEbay(items) },
     backends: {},
     env: { EBAY_OAUTH_TOKEN: "jeton-de-test" },

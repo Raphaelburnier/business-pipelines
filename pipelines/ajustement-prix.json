@@ -58,16 +58,10 @@
       "type": "approval",
       "actions": "actions.json",
       "decisions": "ajustement-prix.decisions.json",
+      "plan_gele": "ajustement-prix.plan.json",
+      "collecte": "listings.json",
       "auto": [],
       "output": "approbation.json"
-    },
-    {
-      "id": "execution",
-      "type": "execute",
-      "approval": "approbation.json",
-      "actions": "actions.json",
-      "ledger": "ajustement-prix.ledger.json",
-      "output": "execution.json"
     }
   ]
 }

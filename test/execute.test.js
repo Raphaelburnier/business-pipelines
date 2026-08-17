@@ -246,16 +246,138 @@ test("chaque succès est consigné immédiatement, pas à la fin du lot", async 
   assert.deepStrictEqual(ordre, ["exec:prix-001", "ledger:prix-001", "exec:prix-002"]);
 });
 
-// ---------- le stage, dans le pipeline ----------
+// ---------- le gel et la péremption ----------
+
+const PLAN_GELE = "ajustement-prix.plan.json";
+
+// Écrit un plan gelé comme le ferait le pipeline de planification, avec une collecte
+// datée de `ilYaHeures` heures.
+function gelerPlan(approvalsDir, { actions = PLAN, ilYaHeures = 0, sansDate = false } = {}) {
+  const plan = { empreinte: approval.fingerprint(actions), actions };
+  // `sansDate` retire les DEUX dates : sans collecte_le, le chargement se rabat sur
+  // gele_le, qui approche l'heure de collecte puisque le gel suit immédiatement.
+  if (!sansDate) {
+    plan.gele_le = new Date().toISOString();
+    plan.collecte_le = new Date(Date.now() - ilYaHeures * 3600 * 1000).toISOString();
+  }
+  fs.writeFileSync(path.join(approvalsDir, PLAN_GELE), JSON.stringify(plan, null, 2));
+}
+
+const appliquer = (opts = {}) =>
+  createHarness({ pipeline: loadPipeline("ajustement-prix-appliquer"), spec: SPEC, script: {}, ...opts });
+
+// LA régression. Le cycle ne pouvait pas aboutir : le second run replanifiait, un modèle
+// ne redonne pas deux fois le même plan, donc l'empreinte approuvée ne couvrait plus rien
+// et l'arrêt se répétait sans fin. Le gel casse la boucle.
+test("cycle complet : un planificateur non déterministe n'empêche plus d'aboutir", async () => {
+  const planifier = createHarness({
+    pipeline: loadPipeline("ajustement-prix"),
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+  });
+  await assert.rejects(() => runPipeline(planifier.ctx), /attendent ton approbation/);
+
+  const gele = JSON.parse(fs.readFileSync(path.join(planifier.approvalsDir, PLAN_GELE), "utf-8"));
+  writeDecisions(planifier.approvalsDir, REGISTRE, {
+    plan: gele.empreinte,
+    decisions: PLAN.map((a) => ({ action_id: a.id, decision: "approuve" })),
+  });
+
+  // Le run d'application ne rejoue AUCUN agent : le planificateur pourrait proposer tout
+  // autre chose, ça ne changerait rien.
+  const faites = [];
+  const application = appliquer({
+    executeurs: { changement_prix: async (a) => faites.push(a.id) },
+  });
+  application.ctx.approvalsDir = planifier.approvalsDir;
+
+  await runPipeline(application.ctx);
+
+  assert.deepStrictEqual(faites, ["prix-001", "prix-002"]);
+  assert.strictEqual(readJson(application.workspaceDir, "execution.json").verdict, "EXECUTE");
+});
+
+test("le gel porte l'empreinte, l'heure de collecte, et le texte exact des actions", async () => {
+  const h = createHarness({
+    pipeline: loadPipeline("ajustement-prix"),
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+  });
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /Le plan est gelé dans/);
+    assert.match(err.message, /pipeline d'application, pas celui-ci/);
+    return true;
+  });
+
+  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, PLAN_GELE), "utf-8"));
+  assert.strictEqual(gele.empreinte, approval.fingerprint(PLAN));
+  assert.deepStrictEqual(gele.actions.map((a) => a.id), ["prix-001", "prix-002"]);
+  assert.ok(gele.collecte_le, "l'heure de collecte doit suivre le plan");
+});
+
+// La péremption se juge sur l'heure de COLLECTE : c'est la donnée de marché qui vieillit,
+// pas la décision.
+test("plan périmé : refusé, en disant depuis combien de temps", async () => {
+  const h = appliquer();
+  gelerPlan(h.approvalsDir, { ilYaHeures: 20 });
+  approuverTout(h.approvalsDir);
+
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /plan périmé/);
+    assert.match(err.message, /il y a 20\.0 h/);
+    assert.match(err.message, /maximum déclaré est 12 h/);
+    return true;
+  });
+});
+
+test("plan encore frais : chargé, et sa fraîcheur est tracée", async () => {
+  const h = appliquer({ executeurs: { changement_prix: async () => {} } });
+  gelerPlan(h.approvalsDir, { ilYaHeures: 2 });
+  approuverTout(h.approvalsDir);
+
+  await runPipeline(h.ctx);
+  const trace = h.reporter.events.find((e) => e.type === "charger:fraicheur");
+  assert.ok(trace.age_heures >= 2 && trace.age_heures < 2.1);
+});
+
+// Sans date, la fraîcheur est invérifiable. Refuser vaut mieux qu'appliquer à l'aveugle.
+test("plan sans date : refusé plutôt qu'appliqué à l'aveugle", async () => {
+  const h = appliquer();
+  gelerPlan(h.approvalsDir, { sansDate: true });
+  approuverTout(h.approvalsDir);
+
+  await assert.rejects(() => runPipeline(h.ctx), /aucune date, sa fraîcheur est invérifiable/);
+});
+
+test("aucun plan gelé : le message dit quoi lancer", async () => {
+  const h = appliquer();
+  await assert.rejects(() => runPipeline(h.ctx), /Lancer d'abord le pipeline de planification/);
+});
+
+test("max_age_heures mal typé : rejeté au chargement", () => {
+  const raw = loadPipeline("ajustement-prix-appliquer");
+  raw.stages[0].max_age_heures = "12";
+  assert.throws(
+    () =>
+      loader.loadPipeline(pipelinePath("ajustement-prix-appliquer"), {
+        raw,
+        stageValidators: stageHandlers.validators,
+        backends: {},
+      }),
+    /"max_age_heures" doit être un nombre positif/
+  );
+});
+
+// ---------- le stage execute, dans le pipeline ----------
 
 test("un stage execute avec un gate est rejeté au chargement", () => {
-  const raw = loadPipeline("ajustement-prix");
-  raw.stages[4].gate = {
-    report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "plan",
+  const raw = loadPipeline("ajustement-prix-appliquer");
+  raw.stages[2].gate = {
+    report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "chargement",
   };
   assert.throws(
     () =>
-      loader.loadPipeline(pipelinePath("ajustement-prix"), {
+      loader.loadPipeline(pipelinePath("ajustement-prix-appliquer"), {
         raw,
         stageValidators: stageHandlers.validators,
         backends: {},
@@ -266,11 +388,8 @@ test("un stage execute avec un gate est rejeté au chargement", () => {
 
 // L'état livré : la garde est en place, le geste n'existe pas. Le run doit le dire.
 test("aucun exécuteur enregistré : le run s'arrête en nommant le type manquant", async () => {
-  const h = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-  });
+  const h = appliquer();
+  gelerPlan(h.approvalsDir);
   approuverTout(h.approvalsDir);
 
   await assert.rejects(() => runPipeline(h.ctx), /aucun exécuteur pour le type "changement_prix"/);
@@ -280,10 +399,7 @@ test("aucun exécuteur enregistré : le run s'arrête en nommant le type manquan
 // Un système sain qui rencontre la réalité ne doit pas produire un "run raté" : ça
 // apprend à ignorer les échecs. Le run aboutit, le verdict le dit, le rapport le nomme.
 test("une cible perdue ne fait pas échouer le run, elle le rend PARTIEL", async () => {
-  const h = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
+  const h = appliquer({
     executeurs: {
       changement_prix: async (a) => {
         if (a.id === "prix-001") {
@@ -294,6 +410,7 @@ test("une cible perdue ne fait pas échouer le run, elle le rend PARTIEL", async
       },
     },
   });
+  gelerPlan(h.approvalsDir);
   approuverTout(h.approvalsDir);
 
   await runPipeline(h.ctx);
@@ -309,16 +426,14 @@ test("une cible perdue ne fait pas échouer le run, elle le rend PARTIEL", async
 // Ce qui reste approuvé mais non tenté est la seule chose que l'opérateur doit
 // reprendre : le rapport doit le nommer, pas le laisser déduire.
 test("lot interrompu : les actions approuvées non tentées sont nommées", async () => {
-  const h = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
+  const h = appliquer({
     executeurs: {
       changement_prix: async (a) => {
         if (a.id === "prix-001") throw new Error("401 identifiants expirés");
       },
     },
   });
+  gelerPlan(h.approvalsDir);
   approuverTout(h.approvalsDir);
 
   await assert.rejects(() => runPipeline(h.ctx), /lot interrompu \(systemique\)/);
@@ -331,12 +446,10 @@ test("lot interrompu : les actions approuvées non tentées sont nommées", asyn
 
 test("avec un exécuteur : les approuvées passent, les refusées jamais", async () => {
   const faites = [];
-  const h = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
+  const h = appliquer({
     executeurs: { changement_prix: async (a) => { faites.push(a.id); return { applique: a.valeur.vers }; } },
   });
+  gelerPlan(h.approvalsDir);
   approuverTout(h.approvalsDir, ["prix-002"]);
 
   await runPipeline(h.ctx);
@@ -352,23 +465,15 @@ test("relance après un run complet : rien n'est refait", async () => {
   const faites = [];
   const executeurs = { changement_prix: async (a) => { faites.push(a.id); } };
 
-  const premier = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-    executeurs,
-  });
+  const premier = appliquer({ executeurs });
+  gelerPlan(premier.approvalsDir);
   approuverTout(premier.approvalsDir);
   await runPipeline(premier.ctx);
   assert.deepStrictEqual(faites, ["prix-001", "prix-002"]);
 
-  // Second run, même registre et même ledger : le workspace est neuf, pas eux.
-  const second = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-    executeurs,
-  });
+  // Second run, même registre, même plan gelé et même ledger : le workspace est neuf,
+  // pas eux.
+  const second = appliquer({ executeurs });
   second.ctx.approvalsDir = premier.approvalsDir;
   await runPipeline(second.ctx);
 
@@ -379,12 +484,8 @@ test("relance après un run complet : rien n'est refait", async () => {
 });
 
 test("le ledger vit hors du workspace, hors de portée des agents", async () => {
-  const h = createHarness({
-    pipeline: loadPipeline("ajustement-prix"),
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-    executeurs: { changement_prix: async () => {} },
-  });
+  const h = appliquer({ executeurs: { changement_prix: async () => {} } });
+  gelerPlan(h.approvalsDir);
   approuverTout(h.approvalsDir);
   await runPipeline(h.ctx);
 

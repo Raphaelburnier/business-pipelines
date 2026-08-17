@@ -6,6 +6,8 @@
   "main": "orchestrator.js",
   "scripts": {
     "veille": "node orchestrator.js veille-ebay ./specs/veille.json",
+    "plan:prix": "node orchestrator.js ajustement-prix ./specs/ajustement-prix.json",
+    "appliquer:prix": "node orchestrator.js ajustement-prix-appliquer ./specs/ajustement-prix.json",
     "test": "node test/veille.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js"
   },
   "dependencies": {

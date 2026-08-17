@@ -1,0 +1,38 @@
+{
+  "name": "ajustement-prix-appliquer",
+  "description": "Applique un plan d'ajustement de prix déjà planifié, gelé et approuvé. Aucun agent : le plan a été produit et vérifié par le pipeline de planification, le rejouer coûterait des tokens pour obtenir un texte différent, donc non approuvé. Budget à zéro, ce qui rend la propriété exécutoire.",
+  "slicing": {},
+  "budget": {
+    "max_usd": 0,
+    "max_total_turns": 0,
+    "max_turns_per_agent": 0
+  },
+  "retry": {
+    "max_fix_cycles": 1
+  },
+  "stages": [
+    {
+      "id": "chargement",
+      "type": "charger",
+      "plan_gele": "ajustement-prix.plan.json",
+      "max_age_heures": 12,
+      "output": "actions.json"
+    },
+    {
+      "id": "approbation",
+      "type": "approval",
+      "actions": "actions.json",
+      "decisions": "ajustement-prix.decisions.json",
+      "auto": [],
+      "output": "approbation.json"
+    },
+    {
+      "id": "execution",
+      "type": "execute",
+      "approval": "approbation.json",
+      "actions": "actions.json",
+      "ledger": "ajustement-prix.ledger.json",
+      "output": "execution.json"
+    }
+  ]
+}
