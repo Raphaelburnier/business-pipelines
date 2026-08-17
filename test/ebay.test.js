@@ -108,7 +108,7 @@ test("identifiants refusés : le message ne renvoie pas chercher un bug de code"
   const { transport } = transportComplet({ oauthOk: false, status: 400 });
   await assert.rejects(
     () => ebay.search({ query: "q", env: IDENTIFIANTS, transport, cache: new Map() }),
-    /identifiants refusés, ou App ID de production/
+    /identifiants refusés ou App ID de production/
   );
 });
 

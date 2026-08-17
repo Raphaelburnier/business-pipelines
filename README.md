@@ -120,10 +120,38 @@ d'API n'est pas un défaut qu'un agent peut corriger, et l'y router ferait repla
 ce qui invaliderait l'approbation et réclamerait une nouvelle décision humaine. Boucle
 sans fin garantie.
 
-**Arrêt à la première casse**, pas de poursuite du lot. Un échec est plus souvent
-systémique (identifiants expirés, quota, API indisponible) qu'isolé : continuer
-enchaînerait quarante échecs, ce qui sur une plateforme marchande se paie en suspension
-de compte. Le ledger rend la reprise indolore.
+### Deux natures d'échec
+
+| Nature | Exemple | Comportement |
+|---|---|---|
+| **Cible perdue** | annonce supprimée, 404 ou 403 sur un objet précis | consigner, continuer le lot |
+| **Panne** | 401 identifiants expirés, 429 quota, 5xx, réseau | arrêt immédiat |
+
+C'est la même distinction que `isTransientSdkCrash` côté moteur, et pour la même raison :
+confondre « ce cas-là est perdu » et « le système est en panne » fait prendre la mauvaise
+décision dans les deux sens.
+
+**Fail-closed.** Seul un exécuteur peut déclarer une perte de cible, en posant
+`err.cible = true`. Tout le reste vaut panne. Ne jamais deviner dans le sens permissif :
+un 500 pris pour une cible morte enchaînerait quarante appels sur une API déjà en
+difficulté.
+
+**Bornage des séries.** Trois échecs de cible consécutifs arrêtent le lot malgré tout. Une
+API qui renvoie 404 sur tout parce qu'un identifiant a changé de périmètre ressemble à
+quarante mauvaises cibles, et ce motif doit couper. Une réussite remet le compteur à zéro.
+
+Pourquoi ne pas simplement tout arrêter à la première casse : parce qu'une annonce
+supprimée bloquerait alors les trente-neuf autres actions déjà approuvées, sans issue.
+Relancer échouerait à l'identique, et retirer l'action fautive du plan changerait son
+empreinte, donc invaliderait l'approbation et obligerait à réapprouver tout le reste à la
+main. Le remède était pire que le mal.
+
+### Trois verdicts
+
+`EXECUTE` tout est passé. `PARTIEL` des cibles étaient perdues, le reste est fait, et le
+run **aboutit** : un système sain qui rencontre la réalité ne doit pas produire un « run
+raté », ça apprend à ignorer les échecs. `INTERROMPU` le lot a été coupé, des actions
+approuvées n'ont pas été tentées, et celles-là sont nommées dans le rapport.
 
 ## Utilisation
 

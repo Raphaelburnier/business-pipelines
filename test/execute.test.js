@@ -124,34 +124,108 @@ test("un id réutilisé dans un AUTRE plan est bien exécuté", () => {
   assert.deepStrictEqual(plan.deja, []);
 });
 
-test("type sans exécuteur : arrêt en le nommant, jamais de saut silencieux", async () => {
-  const { reussies, echec } = await execute.executer({
+test("type sans exécuteur : arrêt systémique, jamais de saut silencieux", async () => {
+  const { reussies, arret } = await execute.executer({
     aFaire: [PLAN[0]],
     executeurs: {},
     empreinte: "x",
   });
   assert.deepStrictEqual(reussies, []);
-  assert.match(echec.raison, /aucun exécuteur pour le type "changement_prix"/);
+  assert.strictEqual(arret.nature, "systemique", "un défaut de configuration n'est pas une cible perdue");
+  assert.match(arret.raison, /aucun exécuteur pour le type "changement_prix"/);
 });
 
-test("échec en cours de lot : arrêt, les précédentes restent acquises", async () => {
+// Fail-closed : seul un exécuteur peut déclarer une perte de cible. Une erreur nue vaut
+// panne, parce que deviner dans le sens permissif enchaînerait les appels sur une API
+// déjà en difficulté.
+test("une erreur non classée vaut panne et arrête le lot", async () => {
   let vues = 0;
-  const { reussies, echec } = await execute.executer({
+  const { reussies, arret } = await execute.executer({
     aFaire: PLAN,
     executeurs: {
       changement_prix: async (a) => {
         vues += 1;
         if (a.id === "prix-002") throw new Error("API indisponible");
-        return { ok: true };
       },
     },
     empreinte: "x",
   });
 
-  assert.strictEqual(vues, 2, "on s'arrête à la casse, on ne tente pas la suite");
+  assert.strictEqual(vues, 2, "on ne tente pas la suite après une panne");
   assert.deepStrictEqual(reussies.map((r) => r.id), ["prix-001"]);
-  assert.strictEqual(echec.action.id, "prix-002");
-  assert.match(echec.raison, /API indisponible/);
+  assert.strictEqual(arret.nature, "systemique");
+  assert.strictEqual(execute.natureDe(new Error("nue")), "systemique");
+});
+
+// Le cas qui a motivé le changement : une annonce supprimée ne doit pas bloquer les
+// autres. Le blocage coûterait une réapprobation complète, puisque retirer l'action du
+// plan changerait son empreinte.
+test("échec de cible : le lot continue, l'échec est consigné", async () => {
+  const faites = [];
+  const { reussies, echecs, arret } = await execute.executer({
+    aFaire: PLAN,
+    executeurs: {
+      changement_prix: async (a) => {
+        if (a.id === "prix-001") {
+          const err = new Error("annonce supprimée");
+          err.cible = true;
+          throw err;
+        }
+        faites.push(a.id);
+      },
+    },
+    empreinte: "x",
+  });
+
+  assert.deepStrictEqual(faites, ["prix-002"], "l'action suivante doit avoir été tentée");
+  assert.deepStrictEqual(reussies.map((r) => r.id), ["prix-002"]);
+  assert.strictEqual(echecs.length, 1);
+  assert.strictEqual(echecs[0].nature, "cible");
+  assert.strictEqual(arret, null, "une cible perdue n'interrompt pas le lot");
+});
+
+// Une API qui renvoie 404 sur tout parce qu'un identifiant a changé de périmètre
+// ressemble à quarante mauvaises cibles. Ce motif doit couper.
+test("trois échecs de cible consécutifs : le motif ressemble à une panne, arrêt", async () => {
+  const perdue = () => {
+    const err = new Error("introuvable");
+    err.cible = true;
+    throw err;
+  };
+  const quatre = ["a", "b", "c", "d"].map((id) => ({ ...PLAN[0], id }));
+
+  const { echecs, arret } = await execute.executer({
+    aFaire: quatre,
+    executeurs: { changement_prix: async () => perdue() },
+    empreinte: "x",
+  });
+
+  assert.strictEqual(echecs.length, 3, "on coupe au troisième, la quatrième n'est pas tentée");
+  assert.strictEqual(arret.nature, "serie");
+  assert.match(arret.raison, /3 échecs de cible consécutifs/);
+});
+
+test("une réussite remet le compteur de série à zéro", async () => {
+  const perdues = new Set(["a", "b", "d", "e"]);
+  const cinq = ["a", "b", "c", "d", "e"].map((id) => ({ ...PLAN[0], id }));
+
+  const { reussies, echecs, arret } = await execute.executer({
+    aFaire: cinq,
+    executeurs: {
+      changement_prix: async (action) => {
+        if (perdues.has(action.id)) {
+          const err = new Error("introuvable");
+          err.cible = true;
+          throw err;
+        }
+      },
+    },
+    empreinte: "x",
+  });
+
+  assert.deepStrictEqual(reussies.map((r) => r.id), ["c"]);
+  assert.strictEqual(echecs.length, 4, "deux séries de deux ne valent pas une série de trois");
+  assert.strictEqual(arret, null);
 });
 
 // Consigner en bloc à la fin ferait rejouer, au run suivant, des actions déjà passées.
@@ -200,7 +274,59 @@ test("aucun exécuteur enregistré : le run s'arrête en nommant le type manquan
   approuverTout(h.approvalsDir);
 
   await assert.rejects(() => runPipeline(h.ctx), /aucun exécuteur pour le type "changement_prix"/);
-  assert.strictEqual(readJson(h.workspaceDir, "execution.json").verdict, "PARTIEL");
+  assert.strictEqual(readJson(h.workspaceDir, "execution.json").verdict, "INTERROMPU");
+});
+
+// Un système sain qui rencontre la réalité ne doit pas produire un "run raté" : ça
+// apprend à ignorer les échecs. Le run aboutit, le verdict le dit, le rapport le nomme.
+test("une cible perdue ne fait pas échouer le run, elle le rend PARTIEL", async () => {
+  const h = createHarness({
+    pipeline: loadPipeline("ajustement-prix"),
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    executeurs: {
+      changement_prix: async (a) => {
+        if (a.id === "prix-001") {
+          const err = new Error("annonce supprimée par le vendeur");
+          err.cible = true;
+          throw err;
+        }
+      },
+    },
+  });
+  approuverTout(h.approvalsDir);
+
+  await runPipeline(h.ctx);
+
+  const etat = readJson(h.workspaceDir, "execution.json");
+  assert.strictEqual(etat.verdict, "PARTIEL");
+  assert.deepStrictEqual(etat.reussies.map((r) => r.id), ["prix-002"], "l'autre action est passée");
+  assert.strictEqual(etat.echecs[0].nature, "cible");
+  assert.match(etat.echecs[0].raison, /annonce supprimée/);
+  assert.strictEqual(etat.arret, null);
+});
+
+// Ce qui reste approuvé mais non tenté est la seule chose que l'opérateur doit
+// reprendre : le rapport doit le nommer, pas le laisser déduire.
+test("lot interrompu : les actions approuvées non tentées sont nommées", async () => {
+  const h = createHarness({
+    pipeline: loadPipeline("ajustement-prix"),
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    executeurs: {
+      changement_prix: async (a) => {
+        if (a.id === "prix-001") throw new Error("401 identifiants expirés");
+      },
+    },
+  });
+  approuverTout(h.approvalsDir);
+
+  await assert.rejects(() => runPipeline(h.ctx), /lot interrompu \(systemique\)/);
+
+  const etat = readJson(h.workspaceDir, "execution.json");
+  assert.strictEqual(etat.verdict, "INTERROMPU");
+  assert.deepStrictEqual(etat.non_tentees, ["prix-002"], "l'action jamais tentée doit être nommée");
+  assert.deepStrictEqual(etat.reussies, []);
 });
 
 test("avec un exécuteur : les approuvées passent, les refusées jamais", async () => {

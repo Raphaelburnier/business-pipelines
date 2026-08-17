@@ -149,7 +149,7 @@ test("sans décision : le run s'arrête en nommant chaque action en attente", as
 
   await assert.rejects(() => runPipeline(h.ctx), (err) => {
     assert.match(err.message, /2 action\(s\) attendent ton approbation/);
-    assert.match(err.message, /prix-001 — changement_prix sur v1\|101\|0/);
+    assert.match(err.message, /prix-001 : changement_prix sur v1\|101\|0/);
     assert.match(err.message, /"plan": "[0-9a-f]{16}"/, "l'empreinte à recopier doit être donnée");
     return true;
   });

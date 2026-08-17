@@ -61,29 +61,57 @@ function preparer({ approbation, actions, ledger }) {
   return { empreinte, bloquant: null, aFaire, deja, ecartees };
 }
 
-// Exécute, en s'arrêtant à la première casse. Un échec est plus souvent systémique
-// (identifiants expirés, quota, API indisponible) qu'isolé : continuer enchaînerait
-// alors quarante échecs, ce qui sur une plateforme marchande se paie en suspension de
-// compte. Le ledger rend la reprise indolore, les actions déjà passées étant sautées.
+// Deux natures d'échec, qui ne se traitent pas pareil. Même distinction que
+// `isTransientSdkCrash` côté moteur, et pour la même raison : confondre "ce cas-là est
+// perdu" et "le système est en panne" fait prendre la mauvaise décision dans les deux
+// sens.
+//
+// FAIL-CLOSED : seul un exécuteur peut déclarer une perte de cible, en posant
+// `err.cible = true`. Tout le reste vaut panne et arrête. Ne jamais deviner dans le sens
+// permissif : un 500 pris pour une cible morte enchaînerait quarante appels sur une API
+// déjà en difficulté.
+function natureDe(err) {
+  return err && err.cible === true ? "cible" : "systemique";
+}
+
+// Un échec de cible (annonce supprimée, 404, 403 sur un objet précis) ne doit pas bloquer
+// les trente-neuf autres actions déjà approuvées. Le blocage serait pire que le mal :
+// retirer l'action fautive du plan changerait son empreinte, invaliderait l'approbation,
+// et obligerait à réapprouver tout le reste à la main.
+//
+// Une panne, elle, arrête tout de suite. Et une SÉRIE d'échecs de cible arrête aussi :
+// une API qui renvoie 404 sur tout parce qu'un identifiant a changé de périmètre
+// ressemble à quarante mauvaises cibles, et ce motif-là doit couper.
+//
 // `consigner` est appelé APRÈS chaque succès, pas à la fin du lot. Un processus tué au
 // milieu doit laisser derrière lui la trace exacte de ce qui a eu lieu : consigner en
 // bloc ferait rejouer au run suivant des actions déjà passées, ce qui sur un changement
 // de prix ou un remboursement est le pire des résultats.
-async function executer({ aFaire, executeurs, empreinte, contexte, consigner }) {
+async function executer({
+  aFaire,
+  executeurs,
+  empreinte,
+  contexte,
+  consigner,
+  maxEchecsConsecutifs = 3,
+}) {
   const reussies = [];
+  const echecs = [];
+  let consecutifs = 0;
+  let arret = null;
 
   for (const action of aFaire) {
     const executeur = executeurs[action.type];
-    // Fail-closed : un type sans exécuteur s'arrête. Le sauter en silence laisserait
-    // croire qu'une action approuvée a eu lieu.
+    // Un type sans exécuteur est un défaut de configuration, pas une cible perdue :
+    // c'est systémique, et le sauter en silence laisserait croire qu'une action
+    // approuvée a eu lieu.
     if (!executeur) {
-      return {
-        reussies,
-        echec: {
-          action,
-          raison: `aucun exécuteur pour le type "${action.type}" (déclarés : ${Object.keys(executeurs).join(", ") || "aucun"})`,
-        },
+      arret = {
+        action: action.id,
+        nature: "systemique",
+        raison: `aucun exécuteur pour le type "${action.type}" (déclarés : ${Object.keys(executeurs).join(", ") || "aucun"})`,
       };
+      break;
     }
 
     try {
@@ -96,12 +124,30 @@ async function executer({ aFaire, executeurs, empreinte, contexte, consigner }) 
       };
       reussies.push(trace);
       if (consigner) await consigner(trace);
+      consecutifs = 0;
     } catch (err) {
-      return { reussies, echec: { action, raison: err.message } };
+      const nature = natureDe(err);
+      const echec = { action: action.id, nature, raison: err.message };
+      echecs.push(echec);
+
+      if (nature === "systemique") {
+        arret = echec;
+        break;
+      }
+
+      consecutifs += 1;
+      if (consecutifs >= maxEchecsConsecutifs) {
+        arret = {
+          action: action.id,
+          nature: "serie",
+          raison: `${consecutifs} échecs de cible consécutifs : le motif ressemble à une panne, pas à des cibles isolées`,
+        };
+        break;
+      }
     }
   }
 
-  return { reussies, echec: null };
+  return { reussies, echecs, arret };
 }
 
-module.exports = { preparer, executer, cle };
+module.exports = { preparer, executer, cle, natureDe };

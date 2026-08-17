@@ -20,7 +20,7 @@ const handlers = {
     const source = SOURCES[stage.source];
     if (!source) {
       throw new Error(
-        `Stage "${stage.id}" : source inconnue "${stage.source}" — ` +
+        `Stage "${stage.id}" : source inconnue "${stage.source}", ` +
           `déclarées : ${Object.keys(SOURCES).join(", ")}`
       );
     }
@@ -62,8 +62,8 @@ const handlers = {
 // noter sa copie, et un rapport auto-déclaré "COMPLETE" ne prouve rien.
 //
 // Deux contrôles, tous deux impossibles à contourner par de la prose :
-//   couverture — chaque question du spec est traitée, dans un tableau ou dans l'autre
-//   traçabilité — chaque source citée existe vraiment dans la collecte
+//   couverture : chaque question du spec est traitée, dans un tableau ou dans l'autre
+//   traçabilité : chaque source citée existe vraiment dans la collecte
 function verifier(stage, ctx) {
   const rapport = readJson(ctx.workspaceDir, stage.report);
   const listings = readJson(ctx.workspaceDir, stage.against);
@@ -133,14 +133,6 @@ function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
 
-// Approbation humaine des actions sensibles. Ce stage NE PORTE PAS de gate, et c'est
-// délibéré : un gate route son échec vers l'agent responsable pour qu'il le corrige, or
-// aucun agent ne doit pouvoir faire apparaître une approbation. Une décision humaine
-// absente n'est pas un défaut réparable, c'est un arrêt.
-//
-// Le stage s'interrompt donc, en écrivant l'état complet pour que la reprise soit
-// possible et auditable. Le registre de décisions vit hors du workspace : il survit à la
-// destruction du dossier de travail, et aucun agent n'y a accès.
 // Contrôle déterministe d'un plan d'actions, AVANT qu'il parte à l'approbation.
 // Approuver un plan qui vise des annonces inexistantes ne protège de rien : l'humain
 // lirait une ligne plausible pour une cible qui n'existe pas. Celui-ci porte un gate,
@@ -192,6 +184,14 @@ handlers["verify-actions"] = async (stage, ctx) => {
   });
 };
 
+// Approbation humaine des actions sensibles. Ce stage NE PORTE PAS de gate, et c'est
+// délibéré : un gate route son échec vers l'agent responsable pour qu'il le corrige, or
+// aucun agent ne doit pouvoir faire apparaître une approbation. Une décision humaine
+// absente n'est pas un défaut réparable, c'est un arrêt.
+//
+// Le stage s'interrompt donc, en écrivant l'état complet pour que la reprise soit
+// possible et auditable. Le registre de décisions vit hors du workspace : il survit à la
+// destruction du dossier de travail, et aucun agent n'y a accès.
 handlers.approval = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
   const registrePath = path.resolve(ctx.approvalsDir || ".", stage.decisions);
@@ -218,7 +218,7 @@ handlers.approval = async (stage, ctx) => {
 
   if (etat.perimee) {
     throw new Error(
-      `Stage "${stage.id}" : le plan a changé depuis la décision — ` +
+      `Stage "${stage.id}" : le plan a changé depuis la décision : ` +
         `approuvé pour "${etat.perimee.trouve}", proposé maintenant "${etat.perimee.attendu}". ` +
         `Aucune action n'est exécutable. Relire le nouveau plan et redécider dans ${registrePath}.`
     );
@@ -226,7 +226,7 @@ handlers.approval = async (stage, ctx) => {
 
   if (etat.en_attente.length > 0) {
     const liste = etat.en_attente
-      .map((a) => `  ${a.id} — ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
+      .map((a) => `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
       .join("\n");
     throw new Error(
       `Stage "${stage.id}" : ${etat.en_attente.length} action(s) attendent ton approbation.\n` +
@@ -280,33 +280,52 @@ handlers.execute = async (stage, ctx) => {
     fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
   };
 
-  const { reussies, echec } = await execute.executer({
+  const { reussies, echecs, arret } = await execute.executer({
     aFaire: plan.aFaire,
     executeurs: ctx.executeurs || {},
     empreinte: plan.empreinte,
     contexte: { env: ctx.env, workspaceDir: ctx.workspaceDir },
     consigner,
+    maxEchecsConsecutifs: stage.max_echecs_consecutifs,
   });
 
+  // Trois issues distinctes, et elles ne se lisent pas pareil au réveil :
+  //   EXECUTE    tout est passé
+  //   PARTIEL    des cibles étaient perdues, le reste est fait. Pas une panne.
+  //   INTERROMPU le lot a été coupé, il reste des actions approuvées non tentées.
+  const verdict = arret ? "INTERROMPU" : echecs.length > 0 ? "PARTIEL" : "EXECUTE";
   const etat = {
-    verdict: echec ? "PARTIEL" : "EXECUTE",
+    verdict,
     empreinte: plan.empreinte,
     reussies,
     deja: plan.deja.map((a) => a.id),
     ecartees: plan.ecartees.map((a) => a.id),
-    echec: echec ? { action: echec.action.id, raison: echec.raison } : null,
+    echecs,
+    arret,
+    non_tentees: arret
+      ? plan.aFaire
+          .map((a) => a.id)
+          .filter((id) => !reussies.some((r) => r.id === id) && !echecs.some((e) => e.action === id))
+      : [],
   };
   rapport(etat);
   ctx.reporter.event("execute:done", {
     stage: stage.id,
+    verdict,
     reussies: reussies.length,
-    echec: echec ? echec.action.id : null,
+    echecs: echecs.length,
+    arret: arret ? arret.nature : null,
   });
 
-  if (echec) {
+  // Une cible perdue n'est pas un run raté : c'est un système sain qui rencontre la
+  // réalité. Faire échouer le run pour ça apprendrait à ignorer les échecs. Seul un
+  // arrêt, qui laisse des actions approuvées non tentées, mérite de tout stopper.
+  if (arret) {
     throw new Error(
-      `Stage "${stage.id}" : arrêt sur "${echec.action.id}" — ${echec.raison}\n` +
-        `${reussies.length} action(s) déjà passée(s) et consignée(s) : une relance les sautera.`
+      `Stage "${stage.id}" : lot interrompu (${arret.nature}) sur "${arret.action}".\n` +
+        `${arret.raison}\n` +
+        `${reussies.length} action(s) passée(s) et consignée(s), ${etat.non_tentees.length} non tentée(s). ` +
+        `Une relance sautera les premières.`
     );
   }
 };
@@ -364,7 +383,7 @@ const validators = {
   fetch: (stage, fail) => {
     if (!stage.source) fail('type "fetch" sans "source"');
     if (stage.source && !SOURCES[stage.source]) {
-      fail(`source inconnue "${stage.source}" — déclarées : ${Object.keys(SOURCES).join(", ")}`);
+      fail(`source inconnue "${stage.source}", déclarées : ${Object.keys(SOURCES).join(", ")}`);
     }
     if (!stage.query_from) fail('type "fetch" sans "query_from" (champ du spec à lire)');
     if (!stage.output) fail('type "fetch" sans "output" (fichier à écrire)');

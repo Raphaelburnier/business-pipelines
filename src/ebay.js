@@ -32,7 +32,7 @@ async function token({ env, transport = globalThis.fetch, cache = memoire, now =
   const secret = env.EBAY_CLIENT_SECRET;
   if (!id || !secret) {
     throw new Error(
-      "Identifiants eBay manquants — poser EBAY_CLIENT_ID et EBAY_CLIENT_SECRET dans le " +
+      "Identifiants eBay manquants : poser EBAY_CLIENT_ID et EBAY_CLIENT_SECRET dans le " +
         ".env du spec (App ID et Cert ID de la console développeur eBay). " +
         "EBAY_OAUTH_TOKEN est accepté à la place, mais il expire en ~2 h et ne convient " +
         "qu'à un essai manuel."
@@ -56,7 +56,7 @@ async function token({ env, transport = globalThis.fetch, cache = memoire, now =
   // évite de chercher une erreur de code là où il y a une erreur de clé.
   if (!res.ok) {
     throw new Error(
-      `eBay OAuth : HTTP ${res.status} — identifiants refusés, ou App ID de production ` +
+      `eBay OAuth : HTTP ${res.status}, identifiants refusés ou App ID de production ` +
         `utilisé contre le sandbox (base actuelle : ${baseUrl(env)}).`
     );
   }
