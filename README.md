@@ -238,6 +238,20 @@ processus ne déclenchent qu'un seul appel OAuth.
 `EBAY_OAUTH_TOKEN` reste accepté et court-circuite la fabrication : pratique pour un
 essai à la main, inutilisable pour de l'automatisé.
 
+### La place de marché, parce qu'eBay en choisit une à ta place
+
+`EBAY_MARKETPLACE_ID` par défaut `EBAY_US`. Sans en-tête `X-EBAY-C-MARKETPLACE-ID`,
+eBay ne refuse pas la requête : il retient EBAY_US et renvoie des prix en dollars sans
+rien signaler. Un spec qui demandait des euros recevait donc des dollars, et la réponse
+ne portait aucune trace de l'écart.
+
+Le défaut est donc déclaré, pas hérité. Dans le sandbox, EBAY_US est le seul marché
+peuplé : EBAY_FR répond 200 avec zéro annonce. Viser EBAY_FR n'a de sens qu'en prod.
+
+La collecte porte maintenant `marketplace` et `devises`, les devises réellement
+observées. Une analyse ne peut plus additionner des dollars et des euros en croyant
+faire une médiane sans que le fichier le montre.
+
 ## Ajouter une source
 
 `SOURCES` dans `src/stage-handlers.js` est un registre. Ajouter Amazon ou TikTok s'y fait

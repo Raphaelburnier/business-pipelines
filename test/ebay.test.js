@@ -26,6 +26,35 @@ test("normalize ne garde que les champs utiles à l'analyse", () => {
   assert.strictEqual(n.livraison_gratuite, true);
 });
 
+test("la place de marché part explicitement : sans elle eBay en choisit une en silence", async () => {
+  const vus = [];
+  const transport = async (url, opts) => {
+    vus.push(opts.headers["X-EBAY-C-MARKETPLACE-ID"]);
+    return { ok: true, json: async () => ({ total: 0, itemSummaries: [] }) };
+  };
+  await ebay.search({ query: "q", env: ENV, transport });
+  assert.strictEqual(vus[0], "EBAY_US", "défaut explicite, pas celui d'eBay");
+
+  await ebay.search({ query: "q", env: { ...ENV, EBAY_MARKETPLACE_ID: "EBAY_FR" }, transport });
+  assert.strictEqual(vus[1], "EBAY_FR", "le .env doit pouvoir viser un autre marché");
+});
+
+test("la collecte porte ses devises : une médiane ne peut pas mélanger deux monnaies sans qu'on le voie", async () => {
+  const transport = async () => ({
+    ok: true,
+    json: async () => ({
+      total: 2,
+      itemSummaries: [
+        { itemId: "a", title: "a", price: { value: "10", currency: "USD" } },
+        { itemId: "b", title: "b", price: { value: "20", currency: "EUR" } },
+      ],
+    }),
+  });
+  const r = await ebay.search({ query: "q", env: ENV, transport });
+  assert.deepStrictEqual(r.devises.sort(), ["EUR", "USD"]);
+  assert.strictEqual(r.marketplace, "EBAY_US");
+});
+
 test("un prix absent devient null plutôt que NaN", () => {
   const n = ebay.normalize({ itemId: "x", title: "sans prix" });
   assert.strictEqual(n.prix, null);

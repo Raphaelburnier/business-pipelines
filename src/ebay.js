@@ -12,6 +12,18 @@ function baseUrl(env) {
   return env.EBAY_BASE_URL || DEFAULT_BASE_URL;
 }
 
+// eBay ne refuse pas une requête sans place de marché : il en choisit une, EBAY_US, et
+// renvoie des prix en dollars sans jamais le dire. Un spec qui demande des euros recevait
+// donc des dollars, et rien dans la réponse ne signalait l'écart. On la déclare.
+//
+// Le défaut reste EBAY_US : c'est le seul marché peuplé dans le sandbox, et basculer sur
+// EBAY_FR doit être une décision, pas un héritage silencieux.
+const DEFAULT_MARKETPLACE = "EBAY_US";
+
+function marketplace(env) {
+  return env.EBAY_MARKETPLACE_ID || DEFAULT_MARKETPLACE;
+}
+
 // Un token applicatif eBay vit environ 2 heures. Le stocker dans un .env condamne tout
 // run planifié à échouer sur un token périmé, sans que rien n'explique pourquoi. Ce sont
 // donc les identifiants permanents qu'on range, et le token se fabrique à la demande.
@@ -98,7 +110,11 @@ async function search({ query, limit = 50, env = {}, transport = globalThis.fetc
     `?q=${encodeURIComponent(query)}&limit=${limit}`;
 
   const res = await transport(url, {
-    headers: { Authorization: `Bearer ${jeton}`, Accept: "application/json" },
+    headers: {
+      Authorization: `Bearer ${jeton}`,
+      Accept: "application/json",
+      "X-EBAY-C-MARKETPLACE-ID": marketplace(env),
+    },
   });
 
   // Un 401 sur un token expiré et un 500 côté eBay ne se corrigent pas pareil : le code
@@ -109,7 +125,14 @@ async function search({ query, limit = 50, env = {}, transport = globalThis.fetc
 
   const body = await res.json();
   const items = Array.isArray(body.itemSummaries) ? body.itemSummaries : [];
-  return { query, total: body.total ?? items.length, collecte: items.map(normalize) };
+  const collecte = items.map(normalize);
+
+  // Les devises voyagent avec la collecte pour qu'une analyse ne puisse pas additionner
+  // des dollars et des euros en croyant faire une médiane. Le champ est un fait observé,
+  // pas une promesse : plusieurs devises dans une même collecte est un état possible.
+  const devises = [...new Set(collecte.map((a) => a.devise).filter(Boolean))];
+
+  return { query, marketplace: marketplace(env), devises, total: body.total ?? items.length, collecte };
 }
 
 module.exports = { search, normalize, token };

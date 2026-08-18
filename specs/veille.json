@@ -1,8 +1,8 @@
 {
   "project_name": "veille-cartes-pokemon",
-  "marche": "pokemon booster box scellee",
+  "marche": "pokemon booster",
   "questions": [
-    "Quelle est la médiane des prix affichés, en euros ?",
+    "Quelle est la médiane des prix affichés, dans la devise de la collecte ?",
     "Combien d'annonces proposent la livraison gratuite, et à quel prix médian ?",
     "Quels sont les trois vendeurs les plus présents, et quelle est leur note ?",
     "Quel écart de prix sépare les articles neufs des articles d'occasion ?"
