@@ -18,10 +18,12 @@ const PIPELINE_PATH = path.join(__dirname, "..", "pipelines", "veille-ebay.json"
 // annonce réellement collectée.
 function analysteComplet(_call, ws) {
   const listings = readJson(ws, "listings.json");
+  const stats = readJson(ws, "stats.json");
   writeJson(ws, "veille-report.json", {
     reponses: SPEC.questions.map((q) => ({
       question: q,
-      reponse: `calculé sur ${listings.collecte.length} annonces`,
+      reponse: `calculé sur ${stats.n} annonces`,
+      valeurs: [{ cle: "n", valeur: stats.n }],
       sources: [listings.collecte[0].id],
     })),
     questions_sans_reponse: [],
@@ -36,8 +38,10 @@ function test(name, fn) {
 test("le pipeline livré est valide (chargé avec les vrais validateurs)", () => {
   const pipeline = loadPipeline();
   assert.strictEqual(pipeline.stages[0].type, "fetch");
-  assert.strictEqual(pipeline.stages[2].type, "verify");
-  assert.ok(pipeline.stages[2].gate, "le gate est porté par le stage déterministe");
+  assert.strictEqual(pipeline.stages[1].type, "stats");
+  assert.strictEqual(pipeline.stages[3].type, "verify");
+  assert.ok(pipeline.stages[3].gate, "le gate est porté par le stage déterministe");
+  assert.ok(!pipeline.stages[1].gate, "le calcul déterministe ne rend pas de verdict");
 });
 
 test("chemin heureux : collecte, analyse, vérification déterministe, gate vert", async () => {
@@ -89,7 +93,7 @@ test("une question purement omise est rattrapée par le vérificateur", async ()
         const listings = readJson(ws, "listings.json");
         writeJson(ws, "veille-report.json", {
           reponses: [
-            { question: SPEC.questions[0], reponse: "82 EUR", sources: [listings.collecte[0].id] },
+            { question: SPEC.questions[0], reponse: "sous la médiane", sources: [listings.collecte[0].id] },
           ],
           questions_sans_reponse: [],
         });
@@ -163,7 +167,7 @@ test("une question déclarée sans réponse passe le gate", async () => {
       const listings = readJson(ws, "listings.json");
       writeJson(ws, "veille-report.json", {
         reponses: [
-          { question: SPEC.questions[0], reponse: "82 EUR", sources: [listings.collecte[0].id] },
+          { question: SPEC.questions[0], reponse: "sous la médiane", sources: [listings.collecte[0].id] },
         ],
         questions_sans_reponse: [
           {
@@ -224,7 +228,7 @@ test("source inconnue : rejetée au chargement, pas après la collecte", () => {
 
 test("stage verify amputé d'un champ : rejeté au chargement", () => {
   const raw = loadPipeline();
-  delete raw.stages[2].against;
+  delete raw.stages[3].against;
   assert.throws(
     () => loader.loadPipeline(PIPELINE_PATH, { raw, stageValidators: stageHandlers.validators, backends: {} }),
     /type "verify" sans "against"/

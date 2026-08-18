@@ -8,6 +8,7 @@ const approval = require("../src/approval");
 const execute = require("../src/execute");
 const stageHandlers = require("../src/stage-handlers");
 const {
+  stageParId,
   createHarness,
   loadPipeline,
   pipelinePath,
@@ -439,7 +440,7 @@ test("une fois tout décidé et appliqué, la demande sort de la boîte", async 
 
 test("sans dossier déclaré, aucune boîte n'est touchée", async () => {
   const pipeline = loadPipeline("ajustement-prix");
-  delete pipeline.stages[3].dossier;
+  delete stageParId(pipeline, "approbation").dossier;
   const h = createHarness({ pipeline, spec: SPEC, script: { "price-planner": planCorrect } });
 
   await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);

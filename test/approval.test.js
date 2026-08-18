@@ -5,6 +5,7 @@ const { runPipeline } = require("agent-orchestrator").engine;
 const approval = require("../src/approval");
 const stageHandlers = require("../src/stage-handlers");
 const {
+  stageParId,
   createHarness,
   loadPipeline,
   pipelinePath,
@@ -125,13 +126,13 @@ test("\"auto\" dispense un type, et lui seul", () => {
 
 test("le pipeline ajustement-prix est valide", () => {
   const pipeline = loadPipeline("ajustement-prix");
-  assert.strictEqual(pipeline.stages[3].type, "approval");
-  assert.ok(!pipeline.stages[3].gate, "l'approbation ne porte pas de gate");
+  assert.strictEqual(stageParId(pipeline, "approbation").type, "approval");
+  assert.ok(!stageParId(pipeline, "approbation").gate, "l'approbation ne porte pas de gate");
 });
 
 test("un stage approval avec un gate est rejeté au chargement", () => {
   const raw = loadPipeline("ajustement-prix");
-  raw.stages[3].gate = { report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "plan" };
+  stageParId(raw, "approbation").gate = { report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "plan" };
   assert.throws(
     () =>
       loader.loadPipeline(pipelinePath("ajustement-prix"), {

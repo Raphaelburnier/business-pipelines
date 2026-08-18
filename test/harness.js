@@ -48,6 +48,14 @@ function annonce(i, overrides = {}) {
 
 // Le seul mock est runAgent (et le transport HTTP). Le moteur, le stage-executor, le
 // gate-evaluator, le routeur, le budget et le handler `fetch` sont le vrai code.
+// Un stage se désigne par son id, jamais par sa position : insérer une étape en amont
+// ne doit pas casser un test qui parle d'une étape en aval.
+function stageParId(pipeline, id) {
+  const s = pipeline.stages.find((x) => x.id === id);
+  if (!s) throw new Error(`aucun stage "${id}" dans le pipeline (ids : ${pipeline.stages.map((x) => x.id).join(", ")})`);
+  return s;
+}
+
 function createHarness({
   pipeline,
   spec,
@@ -117,6 +125,7 @@ function readJson(workspaceDir, file) {
 }
 
 module.exports = {
+  stageParId,
   createHarness,
   loadPipeline,
   pipelinePath,

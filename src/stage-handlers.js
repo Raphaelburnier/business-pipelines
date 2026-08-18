@@ -3,6 +3,7 @@ const path = require("path");
 const ebay = require("./ebay");
 const approval = require("./approval");
 const execute = require("./execute");
+const stats = require("./stats");
 
 // Les sources sont un registre, pas une suite de `if` : ajouter Amazon ou TikTok plus tard
 // se fait ici, sans toucher au handler ni au moteur.
@@ -95,6 +96,49 @@ function verifier(stage, ctx) {
     }
   }
 
+  // Contrôle arithmétique. Sortir le calcul de l'agent ne suffit pas : rien ne l'empêche
+  // de recalculer dans son coin et de citer son propre résultat. Chaque affirmation
+  // chiffrée doit donc nommer la clé de `stats.json` dont elle vient, et la valeur citée
+  // est recomparée à la valeur calculée.
+  //
+  // Le contrôle ne s'active que si le stage déclare `stats` : un pipeline qui n'a rien à
+  // chiffrer n'a pas à porter cette contrainte.
+  if (stage.stats) {
+    const calcul = readJson(ctx.workspaceDir, stage.stats);
+
+    for (const reponse of reponses) {
+      const citees = reponse.valeurs || [];
+
+      // Une réponse qui contient un chiffre sans rien citer est exactement le cas qui a
+      // laissé passer une médiane fausse : plausible, sourcée, invérifiable.
+      if (citees.length === 0 && /\d/.test(String(reponse.reponse || ""))) {
+        manques.push({
+          component: stage.owner,
+          question: reponse.question,
+          raison: "affirmation chiffrée sans valeur citée : renseigne `valeurs` avec les clés de stats.json",
+        });
+        continue;
+      }
+
+      for (const citee of citees) {
+        const attendue = stats.valeurAu(calcul, citee.cle);
+        if (attendue === undefined) {
+          manques.push({
+            component: stage.owner,
+            question: reponse.question,
+            raison: `clé "${citee.cle}" absente de stats.json`,
+          });
+        } else if (JSON.stringify(attendue) !== JSON.stringify(citee.valeur)) {
+          manques.push({
+            component: stage.owner,
+            question: reponse.question,
+            raison: `valeur citée pour "${citee.cle}" : ${JSON.stringify(citee.valeur)}, calculée : ${JSON.stringify(attendue)}`,
+          });
+        }
+      }
+    }
+  }
+
   // Une source inventée est la faute qui rend tout le rapport inutilisable, puisque le
   // pipeline n'existe que pour produire des réponses vérifiables.
   for (const reponse of reponses) {
@@ -122,6 +166,26 @@ function verifier(stage, ctx) {
     manques,
   };
 }
+
+// Le type de stage `stats` : tout ce qui se calcule, calculé avant l'agent.
+//
+// Un modèle qui trie 35 prix et prend la 19e valeur au lieu de la 18e produit une médiane
+// fausse d'un dollar, parfaitement sourcée et parfaitement plausible. C'est arrivé au
+// premier run réel. Le remède n'est pas un meilleur prompt : l'arithmétique sort de
+// l'agent, qui reçoit des nombres déjà justes et se limite à les interpréter.
+handlers.stats = async (stage, ctx) => {
+  const listings = readJson(ctx.workspaceDir, stage.against);
+  const calcul = stats.statistiques(listings);
+  fs.writeFileSync(
+    path.join(ctx.workspaceDir, stage.output),
+    JSON.stringify(calcul, null, 2)
+  );
+  ctx.reporter.event("stats:done", {
+    stage: stage.id,
+    annonces: calcul.n,
+    devise: calcul.devise_unique,
+  });
+};
 
 handlers.verify = async (stage, ctx) => {
   const verdict = verifier(stage, ctx);
@@ -515,6 +579,19 @@ const validators = {
         'un stage "execute" ne porte pas de gate : un échec d\'API n\'est pas un défaut ' +
           "qu'un agent peut corriger, et l'y router ferait replanifier, ce qui " +
           "invaliderait l'approbation et réclamerait une nouvelle décision humaine"
+      );
+    }
+  },
+
+  stats: (stage, fail) => {
+    for (const champ of ["against", "output"]) {
+      if (!stage[champ]) fail(`type "stats" sans "${champ}"`);
+    }
+    if (stage.gate) {
+      fail(
+        'un stage "stats" ne porte pas de gate : un calcul déterministe sur une collecte ' +
+          "donnée n'a pas de verdict à rendre, et router son résultat à un agent lui " +
+          "redonnerait la main sur des nombres qu'on lui a précisément retirés"
       );
     }
   },

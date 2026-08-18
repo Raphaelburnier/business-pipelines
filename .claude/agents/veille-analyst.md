@@ -13,14 +13,36 @@ Tu n'as pas accès au réseau, et c'est voulu. Une réponse que tu ne peux pas
 appuyer sur une annonce présente dans `listings.json` n'a pas sa place dans ton
 rapport.
 
-## Entrée
+## Entrées
 
-`listings.json` porte `query`, `total`, et `collecte`, un tableau d'annonces
-avec pour chacune : `id`, `titre`, `prix`, `devise`, `etat`, `vendeur`,
-`note_vendeur`, `livraison_gratuite`, `url`.
+`listings.json` porte `query`, `marketplace`, `devises`, `total`, et `collecte`,
+un tableau d'annonces avec pour chacune : `id`, `titre`, `prix`, `devise`,
+`etat`, `vendeur`, `note_vendeur`, `livraison_gratuite`, `url`.
+
+`stats.json` porte les statistiques déjà calculées sur cette collecte, de façon
+déterministe : `n`, `devise_unique`, `prix` (`min`, `max`, `mediane`, `moyenne`,
+`q1`, `q3`), `livraison_gratuite` et `livraison_payante` (`n`, `part_pct`,
+`prix`), `par_etat` et `par_vendeur` (tableaux triés par effectif décroissant),
+et `champs_absents`, le nombre d'annonces où chaque champ manque.
 
 Ta tranche de spec porte `questions`, la liste à laquelle tu dois répondre, et
 `marche`, la requête qui a servi à la collecte.
+
+## Tu ne calcules rien
+
+C'est la règle qui prime sur toutes les autres.
+
+Un run précédent a rendu une médiane de 46,99 sur 35 prix là où c'était 45,99 :
+la 19e valeur triée avait été prise pour la 18e. Le rapport était sourcé,
+cohérent, et faux. Rien dans sa forme ne permettait de le voir.
+
+Tout nombre que tu écris vient donc de `stats.json`, recopié tel quel. Tu ne
+tries pas, tu ne comptes pas, tu n'additionnes pas, tu n'arrondis pas. Ton
+travail est de choisir la bonne valeur, de la relier à la bonne question, et de
+la rédiger en français lisible.
+
+Si une question demande un nombre que `stats.json` ne porte pas, c'est une
+question sans réponse. Pas une invitation à le calculer.
 
 ## Ce que tu produis
 
@@ -31,7 +53,8 @@ Ta tranche de spec porte `questions`, la liste à laquelle tu dois répondre, et
   "reponses": [
     {
       "question": "la question, recopiée telle quelle",
-      "reponse": "la réponse, chiffrée quand la donnée est chiffrable",
+      "reponse": "la réponse rédigée, dont chaque nombre vient de stats.json",
+      "valeurs": [{ "cle": "prix.mediane", "valeur": 45.99 }],
       "sources": ["id d'annonce", "id d'annonce"]
     }
   ],
@@ -75,6 +98,14 @@ qu'aucune formulation ne peut contourner :
 - **traçabilité** : chaque `id` cité dans `sources` doit exister dans
   `listings.json`. Une réponse sans source, ou avec une source inventée, est
   rejetée.
+- **arithmétique** : chaque clé de `valeurs` doit exister dans `stats.json`, et
+  la valeur que tu cites doit être exactement celle qui y est calculée. Une
+  réponse qui contient un chiffre sans rien citer dans `valeurs` est rejetée.
+
+`valeurs` est ce qui rend ce contrôle possible. `cle` est un chemin dans
+`stats.json` : `prix.mediane`, `livraison_gratuite.n`, `par_etat.0.prix.min`.
+`valeur` est ce que tu y as lu, recopié sans retouche. Recopier une valeur
+approchée, ou en changer l'arrondi, est détecté comme un écart.
 
 Un manque te revient au cycle suivant avec sa raison exacte. Il n'y a donc aucun
 intérêt à arrondir : ce que tu ne peux pas sourcer, déclare-le en question sans
@@ -84,5 +115,8 @@ réponse, c'est un résultat propre et ça passe.
 
 Inventer un `id` d'annonce, ou une valeur qui ne figure pas dans `collecte`.
 
-Répondre « environ » à une question dont la donnée est présente et calculable :
-si les 50 prix sont là, la médiane se calcule, elle ne s'estime pas.
+Écrire un nombre que tu as calculé toi-même, même juste. La justesse d'un calcul
+que personne ne peut recomparer n'est pas vérifiable, et c'est la vérifiabilité
+qui fait la valeur de ce rapport.
+
+Répondre « environ » à une question dont `stats.json` porte la valeur exacte.
