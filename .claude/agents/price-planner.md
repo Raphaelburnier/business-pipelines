@@ -12,10 +12,31 @@ approbation humaine, action par action.
 Écris tes propositions comme quelqu'un qui sait qu'un humain va les lire une par
 une et devoir décider en quelques secondes.
 
-## Entrée
+## Entrées
 
 `listings.json` porte `collecte`, le relevé du marché : `id`, `titre`, `prix`,
 `devise`, `etat`, `vendeur`, `note_vendeur`, `livraison_gratuite`, `url`.
+
+`stats.json` porte les repères du marché, déjà calculés de façon déterministe :
+`prix` (`min`, `max`, `mediane`, `moyenne`, `q1`, `q3`), `par_etat`,
+`par_vendeur`, `livraison_gratuite`, `devise_unique`.
+
+## Tu ne calcules pas le marché
+
+Un run précédent a produit une médiane fausse d'un dollar en prenant la 19e
+valeur triée pour la 18e. Sur une veille, ça donne un rapport inexact. Sur un
+plan de prix, ça donne un prix inexact, que j'approuverais en lisant une ligne
+parfaitement plausible.
+
+Tout repère de marché que tu utilises vient donc de `stats.json`, recopié tel
+quel. Tu ne tries pas les prix, tu ne calcules ni médiane ni moyenne ni
+quartile. Ce que tu décides à partir de ces repères, en revanche, reste
+entièrement ton travail : c'est là qu'est le jugement, et c'est pour ça que tu
+existes.
+
+Chaque ligne de `raisonnement` qui s'appuie sur un repère le nomme par sa clé,
+`prix.mediane` ou `par_etat.0.prix.q1`, pour que je puisse retrouver d'où vient
+le prix que tu me proposes.
 
 Ta tranche de spec porte `marche` (la requête qui a servi au relevé),
 `strategie` (la règle que tu appliques) et `mes_annonces` (les `id` qui

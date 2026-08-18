@@ -51,12 +51,62 @@ production demande de poser `EBAY_BASE_URL` explicitement.
 | Stage | Type | Ce qu'il fait |
 |---|---|---|
 | `collecte` | `fetch` | appelle la Browse API, normalise, écrit `listings.json`. Zéro token. |
-| `analyse` | agents | `veille-analyst` répond aux questions du spec en sourçant chaque réponse |
-| `verification` | `verify` | contrôle couverture et traçabilité, porte le gate |
+| `statistiques` | `stats` | calcule médianes, comptes et groupes, écrit `stats.json`. Zéro token. |
+| `analyse` | agents | `veille-analyst` interprète et rédige, en citant les valeurs calculées |
+| `verification` | `verify` | contrôle couverture, traçabilité et arithmétique, porte le gate |
 
 Sur gate rouge, les manques repartent vers l'analyste avec leur raison exacte, puis la
 vérification est rejouée. La collecte, elle, n'est jamais relancée : `rerun_from` pointe
 sur `verification`.
+
+## Le stage `stats`, et pourquoi il existe
+
+Le premier run réel contre eBay a produit un rapport intégralement sourcé, cohérent, et
+faux. L'agent annonçait 46,99 comme médiane de 35 prix là où c'était 45,99 : il avait
+pris la 19e valeur triée pour la 18e. Le gate a dit COMPLETE, parce qu'il contrôlait la
+couverture et l'existence des sources, jamais les nombres.
+
+Ce n'est pas un problème de formulation de prompt. Un nombre calculable ne se demande pas
+à un modèle. `stats.json` est donc produit avant l'agent, de façon déterministe et
+gratuite, et porte médiane, moyenne, quartiles, min et max, globalement puis par état, par
+vendeur et par mode de livraison, plus `champs_absents`, le nombre d'annonces où chaque
+champ manque.
+
+L'agent ne trie plus, ne compte plus, n'arrondit plus. Il choisit la bonne valeur, la
+relie à la bonne question, et la rédige. C'est là qu'est son travail.
+
+### Le contrôle qui rend la correction réelle
+
+Retirer le calcul à l'agent ne suffit pas : rien ne l'empêche de recalculer dans son coin
+et de citer son propre résultat. Chaque réponse porte donc `valeurs`, la liste des clés de
+`stats.json` dont ses nombres viennent :
+
+```json
+{
+  "question": "Quelle est la médiane des prix affichés ?",
+  "reponse": "La médiane est de 45.99 USD sur les 35 annonces collectées.",
+  "valeurs": [
+    { "cle": "prix.mediane", "valeur": 45.99 },
+    { "cle": "devise_unique", "valeur": "USD" }
+  ],
+  "sources": ["v1|110590106561|0"]
+}
+```
+
+La vérification résout chaque `cle` dans `stats.json` et recompare. Une clé inconnue, une
+valeur qui diverge, ou un chiffre écrit sans rien citer : gate rouge, avec les deux
+nombres nommés dans la raison. Le run qui avait produit 46,99 serait rejeté aujourd'hui.
+
+`champs_absents` sert la même honnêteté du côté des questions sans réponse : « le champ
+vendeur est absent sur 34 des 35 annonces » est une raison chiffrée et vérifiable, là où
+« données insuffisantes » n'en est pas une.
+
+Le stage `stats` ne porte jamais de gate, et le chargeur le refuse. Router son résultat à
+un agent lui rendrait la main sur les nombres qu'on vient précisément de lui retirer.
+
+Le pipeline `ajustement-prix` reçoit le même traitement, et l'enjeu y est plus direct :
+une médiane fausse d'un dollar y produit un prix faux, qu'on approuverait en lisant une
+ligne parfaitement plausible.
 
 ## Le stage `approval`
 
@@ -260,10 +310,11 @@ inconnue échoue au chargement, pas après la collecte.
 
 ## Ce qui reste à faire
 
-**En attente, bloqué hors du code (depuis le 2026-08-17)** : premier run réel contre
-l'API. Le compte du programme développeur eBay demande au moins un jour d'acceptation.
-Tout est testé sauf le contact avec la vraie API, donc rien d'autre n'attend après ça.
-Reprendre par `cp specs/veille.env.example specs/veille.env` puis `npm run veille`.
+**Fait le 2026-08-18** : premier run réel contre l'API eBay sandbox. Le pipeline passe de
+bout en bout, 35 annonces collectées pour 0,28 $ et 4 tours. Ce run a révélé trois choses
+qu'aucun test sur fixture ne pouvait montrer : la place de marché non déclarée qui faisait
+renvoyer des dollars pour un spec en euros, une requête insatisfiable qui renvoyait zéro
+annonce, et la médiane fausse qui a donné le stage `stats`.
 
 **Ensuite** : la moitié eBay du stage `execute`, un exécuteur pour `changement_prix`
 contre la Sell Inventory API. La moitié gardienne est faite et testée, il ne manque que

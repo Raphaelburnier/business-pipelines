@@ -26,12 +26,19 @@
       "output": "listings.json"
     },
     {
+      "id": "statistiques",
+      "type": "stats",
+      "against": "listings.json",
+      "output": "stats.json"
+    },
+    {
       "id": "plan",
       "agents": [
         {
           "name": "price-planner",
           "inputs": [
-            "listings.json"
+            "listings.json",
+            "stats.json"
           ],
           "outputs": [
             "actions.json"

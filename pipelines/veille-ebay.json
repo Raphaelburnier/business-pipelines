@@ -1,8 +1,11 @@
 {
   "name": "veille-ebay",
-  "description": "Veille concurrentielle en lecture seule sur eBay. Collecte déterministe via l'API officielle, analyse par agent, vérification déterministe de la couverture et des sources. Aucune action d'écriture n'existe dans ce pipeline.",
+  "description": "Veille concurrentielle en lecture seule sur eBay. Collecte et statistiques déterministes, analyse par agent limitée à l'interprétation, vérification déterministe de la couverture, des sources et des chiffres cités. Aucune action d'écriture n'existe dans ce pipeline.",
   "slicing": {
-    "veille-analyst": ["questions", "marche"]
+    "veille-analyst": [
+      "questions",
+      "marche"
+    ]
   },
   "budget": {
     "max_usd": 2,
@@ -22,12 +25,23 @@
       "output": "listings.json"
     },
     {
+      "id": "statistiques",
+      "type": "stats",
+      "against": "listings.json",
+      "output": "stats.json"
+    },
+    {
       "id": "analyse",
       "agents": [
         {
           "name": "veille-analyst",
-          "inputs": ["listings.json"],
-          "outputs": ["veille-report.json"],
+          "inputs": [
+            "listings.json",
+            "stats.json"
+          ],
+          "outputs": [
+            "veille-report.json"
+          ],
           "output_schema": {
             "veille-report.json": {
               "reponses": "array",
@@ -47,12 +61,22 @@
       "output": "verification.json",
       "gate": {
         "report": "verification.json",
-        "pass_when": { "field": "verdict", "equals": "COMPLETE" },
-        "fail_when": { "equals": ["INCOMPLETE"] },
+        "pass_when": {
+          "field": "verdict",
+          "equals": "COMPLETE"
+        },
+        "fail_when": {
+          "equals": [
+            "INCOMPLETE"
+          ]
+        },
         "items": "manques",
-        "targets": { "analyse": "veille-analyst" },
+        "targets": {
+          "analyse": "veille-analyst"
+        },
         "rerun_from": "verification"
-      }
+      },
+      "stats": "stats.json"
     }
   ]
 }
