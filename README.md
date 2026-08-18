@@ -302,6 +302,55 @@ La collecte porte maintenant `marketplace` et `devises`, les devises réellement
 observées. Une analyse ne peut plus additionner des dollars et des euros en croyant
 faire une médiane sans que le fichier le montre.
 
+## Écrire sur eBay demande un autre jeton
+
+Lire et écrire ne se paient pas de la même monnaie, et ça se vérifie contre le vrai eBay
+plutôt que ça ne se suppose :
+
+| Ce qu'on demande | Ce qu'eBay répond |
+|---|---|
+| `client_credentials` + scope de base | 200, jeton applicatif |
+| `client_credentials` + `sell.inventory` | 400 `invalid_scope` |
+| `GET /sell/inventory/v1/inventory_item` avec un jeton applicatif | 403 `Insufficient permissions` |
+
+Un jeton applicatif s'obtient sans humain et ne peut que lire. Écrire exige un jeton
+**utilisateur**, donné une fois par consentement dans un navigateur, sur le compte vendeur
+concerné. Le consentement rend un refresh token qui vaut environ 18 mois, à partir duquel
+tous les jetons d'écriture suivants se fabriquent sans interaction.
+
+C'est l'unique geste manuel de toute la chaîne, et il n'est pas contournable : c'est eBay
+qui exige qu'un humain autorise une application à toucher à ses annonces.
+
+### Le faire
+
+D'abord, dans la console développeur eBay, section **User Tokens**, « Get a Token from
+eBay via Your Application » : créer un **RuName** et le poser dans `EBAY_RUNAME`. C'est un
+identifiant eBay, pas une URL.
+
+Ensuite, une seule fois :
+
+```
+node bin/ebay-consentement.js specs/ajustement-prix.env
+```
+
+Le script imprime l'URL à ouvrir. Se connecter avec le compte **vendeur** (dans le
+sandbox, un utilisateur de test, pas le compte développeur), accepter, puis coller l'URL
+de retour ou le code seul. `EBAY_REFRESH_TOKEN` est écrit dans le `.env`, qui est
+gitignoré.
+
+Le code de consentement expire en quelques minutes et ne sert qu'une fois : un
+`invalid_grant` veut dire « refais l'étape 1 », pas « mauvaise clé ».
+
+### Ce que le code refuse de faire
+
+`jetonUtilisateur()` ne retombe jamais sur le jeton de lecture quand le refresh token
+manque. Ce repli silencieux produirait un 403 au moment d'exécuter une action qu'un humain
+vient d'approuver, c'est à dire au pire moment possible, et le message parlerait de
+permissions plutôt que de configuration.
+
+Les deux jetons ont aussi des espaces de cache distincts. Partager la clé servirait un
+jeton de lecture à un appel d'écriture, et le refus n'arriverait que chez eBay.
+
 ## Ajouter une source
 
 `SOURCES` dans `src/stage-handlers.js` est un registre. Ajouter Amazon ou TikTok s'y fait
@@ -316,7 +365,14 @@ qu'aucun test sur fixture ne pouvait montrer : la place de marché non déclaré
 renvoyer des dollars pour un spec en euros, une requête insatisfiable qui renvoyait zéro
 annonce, et la médiane fausse qui a donné le stage `stats`.
 
-**Ensuite** : la moitié eBay du stage `execute`, un exécuteur pour `changement_prix`
-contre la Sell Inventory API. La moitié gardienne est faite et testée, il ne manque que
-le geste. Une ligne à ajouter au registre d'exécuteurs, écrite contre l'API réelle une
-fois le premier run passé.
+**Bloqué hors du code** : l'exécuteur `changement_prix` contre la Sell Inventory API.
+Le blocage n'est pas la forme de l'appel, c'est le droit de l'émettre : il faut un jeton
+utilisateur, donc un RuName et un consentement dans un navigateur, que seul le
+propriétaire du compte peut donner. Tout le reste est en place, testé, et attend ce jeton.
+
+**Ensuite, une fois le consentement donné** : l'exécuteur lui-même, écrit contre l'API
+réelle et pas contre une forme supposée. Le premier run réel de la veille a montré ce que
+vaut cette discipline : il a révélé trois défauts qu'aucun test sur fixture ne montrait.
+Une entrée à ajouter au registre d'exécuteurs de `orchestrator.js`. Un type sans exécuteur
+est déjà traité comme un défaut systémique qui arrête le lot, jamais comme une action
+silencieusement sautée.

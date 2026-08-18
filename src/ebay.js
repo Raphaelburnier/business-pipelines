@@ -32,6 +32,118 @@ function marketplace(env) {
 // avec un token collé depuis la console développeur, inutilisable pour de l'automatisé.
 const SCOPE = "https://api.ebay.com/oauth/api_scope";
 
+// Lire et écrire sur eBay ne demandent pas le même jeton, et c'est vérifié : avec les
+// identifiants applicatifs, demander le scope sell.inventory rend un 400 invalid_scope,
+// et appeler l'API Sell avec un jeton applicatif rend un 403 « Insufficient permissions ».
+//
+// Écrire exige un jeton UTILISATEUR, obtenu une fois par consentement dans un navigateur,
+// puis renouvelé sans interaction depuis un refresh token qui vit environ 18 mois.
+const SCOPE_VENTE = "https://api.ebay.com/oauth/api_scope/sell.inventory";
+
+// Le consentement ne se donne pas sur le même hôte que les appels d'API.
+function authBase(env) {
+  if (env.EBAY_AUTH_URL) return env.EBAY_AUTH_URL;
+  return baseUrl(env).includes("sandbox")
+    ? "https://auth.sandbox.ebay.com"
+    : "https://auth.ebay.com";
+}
+
+// L'URL à ouvrir dans un navigateur, une seule fois. eBay attend le RuName de la console
+// développeur comme `redirect_uri`, pas une URL littérale.
+function urlConsentement({ env, scopes = [SCOPE, SCOPE_VENTE] }) {
+  const runame = env.EBAY_RUNAME;
+  if (!env.EBAY_CLIENT_ID || !runame) {
+    throw new Error(
+      "Consentement impossible : EBAY_CLIENT_ID et EBAY_RUNAME sont requis. " +
+        "Le RuName se crée dans la console développeur eBay, section User Tokens, " +
+        "« Get a Token from eBay via Your Application »."
+    );
+  }
+  const q = new URLSearchParams({
+    client_id: env.EBAY_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: runame,
+    scope: scopes.join(" "),
+  });
+  return `${authBase(env)}/oauth2/authorize?${q}`;
+}
+
+function identifiants(env) {
+  const id = env.EBAY_CLIENT_ID;
+  const secret = env.EBAY_CLIENT_SECRET;
+  if (!id || !secret) {
+    throw new Error(
+      "Identifiants eBay manquants : poser EBAY_CLIENT_ID et EBAY_CLIENT_SECRET dans le " +
+        ".env du spec (App ID et Cert ID de la console développeur eBay)."
+    );
+  }
+  return `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`;
+}
+
+async function demanderJeton({ env, corps, transport = globalThis.fetch, quoi }) {
+  const res = await transport(`${baseUrl(env)}/identity/v1/oauth2/token`, {
+    method: "POST",
+    headers: { Authorization: identifiants(env), "Content-Type": "application/x-www-form-urlencoded" },
+    body: corps,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // eBay distingue « identifiants refusés » de « ce code ne vaut plus rien », et les
+    // deux se corrigent très différemment : l'un par une clé, l'autre par un nouveau
+    // consentement. Le message porte donc la distinction telle qu'eBay la rend.
+    throw new Error(
+      `eBay OAuth (${quoi}) : HTTP ${res.status} ${body.error || ""} ${body.error_description || ""}`.trim()
+    );
+  }
+  return body;
+}
+
+// Échange unique du code de consentement contre un refresh token. Le code expire en
+// quelques minutes et ne sert qu'une fois.
+async function echangerCode({ env, code, transport }) {
+  if (!env.EBAY_RUNAME) throw new Error("Échange impossible : EBAY_RUNAME absent du .env");
+  const body = await demanderJeton({
+    env,
+    transport,
+    quoi: "échange du code",
+    corps: `grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(env.EBAY_RUNAME)}`,
+  });
+  if (!body.refresh_token) throw new Error("eBay OAuth : réponse sans refresh_token");
+  return body;
+}
+
+// Jeton d'écriture. Il ne retombe JAMAIS sur le jeton applicatif : ce silence est
+// exactement ce qui produirait un 403 incompréhensible au moment d'exécuter une action
+// déjà approuvée par un humain.
+async function jetonUtilisateur({ env, transport, cache = memoire, now = Date.now }) {
+  const refresh = env.EBAY_REFRESH_TOKEN;
+  if (!refresh) {
+    throw new Error(
+      "Écriture eBay impossible : EBAY_REFRESH_TOKEN absent. Un jeton applicatif ne " +
+        "peut pas écrire (eBay rend 403). Lancer `node bin/ebay-consentement.js <spec.env>` " +
+        "une fois pour l'obtenir."
+    );
+  }
+  // Espace de cache distinct de celui des jetons de lecture : un jeton applicatif servi
+  // à un appel d'écriture serait refusé côté eBay, après coup.
+  const cle = `utilisateur|${baseUrl(env)}|${env.EBAY_CLIENT_ID}`;
+  const connu = cache.get(cle);
+  if (connu && connu.expire > now()) return connu.valeur;
+
+  const body = await demanderJeton({
+    env,
+    transport,
+    quoi: "renouvellement utilisateur",
+    corps: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}&scope=${encodeURIComponent(SCOPE_VENTE)}`,
+  });
+  if (!body.access_token) throw new Error("eBay OAuth : réponse sans access_token");
+  cache.set(cle, {
+    valeur: body.access_token,
+    expire: now() + Math.max(0, (body.expires_in || 0) * 1000 - 60_000),
+  });
+  return body.access_token;
+}
+
 // Cache de processus. Sans lui, un orchestrateur toujours actif redemanderait un token à
 // chaque collecte, ce qui est du gaspillage et finit par se faire limiter. La marge de
 // 60 s évite d'utiliser un token qui expire pendant l'appel qu'il autorise.
@@ -135,4 +247,13 @@ async function search({ query, limit = 50, env = {}, transport = globalThis.fetc
   return { query, marketplace: marketplace(env), devises, total: body.total ?? items.length, collecte };
 }
 
-module.exports = { search, normalize, token };
+module.exports = {
+  search,
+  normalize,
+  token,
+  jetonUtilisateur,
+  urlConsentement,
+  echangerCode,
+  SCOPE,
+  SCOPE_VENTE,
+};
