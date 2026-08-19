@@ -55,6 +55,102 @@ test("la collecte porte ses devises : une médiane ne peut pas mélanger deux mo
   assert.strictEqual(r.marketplace, "EBAY_US");
 });
 
+// ---------- le chemin d'écriture : jeton utilisateur ----------
+//
+// Vérifié contre le vrai eBay avant d'être codé : avec les identifiants applicatifs,
+// demander sell.inventory rend 400 invalid_scope, et l'API Sell rend 403.
+
+const VENTE = { EBAY_CLIENT_ID: "app-id", EBAY_CLIENT_SECRET: "cert-id", EBAY_RUNAME: "Mon-RuName-abcd" };
+
+test("l'URL de consentement vise l'hôte d'auth du sandbox et demande le scope de vente", () => {
+  const u = new URL(ebay.urlConsentement({ env: VENTE }));
+  assert.strictEqual(u.origin, "https://auth.sandbox.ebay.com", "l'auth n'est pas sur l'hôte d'API");
+  assert.strictEqual(u.pathname, "/oauth2/authorize");
+  assert.strictEqual(u.searchParams.get("response_type"), "code");
+  assert.strictEqual(u.searchParams.get("redirect_uri"), "Mon-RuName-abcd", "eBay attend le RuName ici");
+  assert.ok(u.searchParams.get("scope").includes(ebay.SCOPE_VENTE), "sans ce scope, l'écriture reste refusée");
+});
+
+test("viser la prod change aussi l'hôte de consentement", () => {
+  const u = new URL(ebay.urlConsentement({ env: { ...VENTE, EBAY_BASE_URL: "https://api.ebay.com" } }));
+  assert.strictEqual(u.origin, "https://auth.ebay.com");
+});
+
+test("sans RuName : erreur qui dit où le créer", () => {
+  assert.throws(() => ebay.urlConsentement({ env: { EBAY_CLIENT_ID: "x" } }), /EBAY_RUNAME/);
+});
+
+// Retomber en silence sur le jeton de lecture donnerait un 403 incompréhensible au moment
+// d'exécuter une action qu'un humain vient d'approuver.
+test("écrire sans refresh token : refus net, aucun repli sur le jeton applicatif", async () => {
+  let appele = false;
+  const transport = async () => { appele = true; };
+  await assert.rejects(
+    () => ebay.jetonUtilisateur({ env: { ...VENTE, EBAY_OAUTH_TOKEN: "jeton-de-lecture" }, transport }),
+    /EBAY_REFRESH_TOKEN/
+  );
+  assert.strictEqual(appele, false, "rien ne part sans jeton d'écriture");
+});
+
+test("le jeton d'écriture se renouvelle depuis le refresh token, avec le scope de vente", async () => {
+  const vus = [];
+  const transport = async (url, opts) => {
+    vus.push({ url, body: opts.body });
+    return { ok: true, json: async () => ({ access_token: "jeton-ecriture", expires_in: 7200 }) };
+  };
+  const t = await ebay.jetonUtilisateur({
+    env: { ...VENTE, EBAY_REFRESH_TOKEN: "rt-123" },
+    transport,
+    cache: new Map(),
+  });
+  assert.strictEqual(t, "jeton-ecriture");
+  assert.match(vus[0].body, /grant_type=refresh_token/);
+  assert.match(vus[0].body, /refresh_token=rt-123/);
+  assert.ok(vus[0].body.includes(encodeURIComponent(ebay.SCOPE_VENTE)));
+});
+
+// Deux jetons différents pour deux droits différents. Partager la clé de cache servirait
+// un jeton de lecture à un appel d'écriture, et le refus n'arriverait que chez eBay.
+test("les jetons de lecture et d'écriture ne partagent pas leur cache", async () => {
+  const cache = new Map();
+  const env = { ...VENTE, EBAY_REFRESH_TOKEN: "rt-123" };
+  const transport = async (_u, opts) => ({
+    ok: true,
+    json: async () => ({
+      access_token: /refresh_token/.test(opts.body) ? "ecriture" : "lecture",
+      expires_in: 7200,
+    }),
+  });
+  assert.strictEqual(await ebay.token({ env, transport, cache }), "lecture");
+  assert.strictEqual(await ebay.jetonUtilisateur({ env, transport, cache }), "ecriture");
+  assert.strictEqual(cache.size, 2, "deux entrées distinctes, pas une écrasée par l'autre");
+});
+
+test("l'échange du code envoie le RuName, sans quoi eBay refuse le grant", async () => {
+  let corps = null;
+  const transport = async (_u, opts) => {
+    corps = opts.body;
+    return { ok: true, json: async () => ({ refresh_token: "rt", access_token: "at", expires_in: 7200 }) };
+  };
+  const r = await ebay.echangerCode({ env: VENTE, code: "le-code", transport });
+  assert.strictEqual(r.refresh_token, "rt");
+  assert.match(corps, /grant_type=authorization_code/);
+  assert.match(corps, /code=le-code/);
+  assert.match(corps, /redirect_uri=Mon-RuName-abcd/);
+});
+
+test("un code périmé remonte le motif d'eBay, pas un HTTP nu", async () => {
+  const transport = async () => ({
+    ok: false,
+    status: 400,
+    json: async () => ({ error: "invalid_grant", error_description: "the provided authorization grant code is invalid" }),
+  });
+  await assert.rejects(
+    () => ebay.echangerCode({ env: VENTE, code: "perime", transport }),
+    /invalid_grant/
+  );
+});
+
 test("un prix absent devient null plutôt que NaN", () => {
   const n = ebay.normalize({ itemId: "x", title: "sans prix" });
   assert.strictEqual(n.prix, null);

@@ -302,6 +302,55 @@ La collecte porte maintenant `marketplace` et `devises`, les devises réellement
 observées. Une analyse ne peut plus additionner des dollars et des euros en croyant
 faire une médiane sans que le fichier le montre.
 
+## Écrire sur eBay demande un autre jeton
+
+Lire et écrire ne se paient pas de la même monnaie, et ça se vérifie contre le vrai eBay
+plutôt que ça ne se suppose :
+
+| Ce qu'on demande | Ce qu'eBay répond |
+|---|---|
+| `client_credentials` + scope de base | 200, jeton applicatif |
+| `client_credentials` + `sell.inventory` | 400 `invalid_scope` |
+| `GET /sell/inventory/v1/inventory_item` avec un jeton applicatif | 403 `Insufficient permissions` |
+
+Un jeton applicatif s'obtient sans humain et ne peut que lire. Écrire exige un jeton
+**utilisateur**, donné une fois par consentement dans un navigateur, sur le compte vendeur
+concerné. Le consentement rend un refresh token qui vaut environ 18 mois, à partir duquel
+tous les jetons d'écriture suivants se fabriquent sans interaction.
+
+C'est l'unique geste manuel de toute la chaîne, et il n'est pas contournable : c'est eBay
+qui exige qu'un humain autorise une application à toucher à ses annonces.
+
+### Le faire
+
+D'abord, dans la console développeur eBay, section **User Tokens**, « Get a Token from
+eBay via Your Application » : créer un **RuName** et le poser dans `EBAY_RUNAME`. C'est un
+identifiant eBay, pas une URL.
+
+Ensuite, une seule fois :
+
+```
+node bin/ebay-consentement.js specs/ajustement-prix.env
+```
+
+Le script imprime l'URL à ouvrir. Se connecter avec le compte **vendeur** (dans le
+sandbox, un utilisateur de test, pas le compte développeur), accepter, puis coller l'URL
+de retour ou le code seul. `EBAY_REFRESH_TOKEN` est écrit dans le `.env`, qui est
+gitignoré.
+
+Le code de consentement expire en quelques minutes et ne sert qu'une fois : un
+`invalid_grant` veut dire « refais l'étape 1 », pas « mauvaise clé ».
+
+### Ce que le code refuse de faire
+
+`jetonUtilisateur()` ne retombe jamais sur le jeton de lecture quand le refresh token
+manque. Ce repli silencieux produirait un 403 au moment d'exécuter une action qu'un humain
+vient d'approuver, c'est à dire au pire moment possible, et le message parlerait de
+permissions plutôt que de configuration.
+
+Les deux jetons ont aussi des espaces de cache distincts. Partager la clé servirait un
+jeton de lecture à un appel d'écriture, et le refus n'arriverait que chez eBay.
+
 ## Ajouter une source
 
 `SOURCES` dans `src/stage-handlers.js` est un registre. Ajouter Amazon ou TikTok s'y fait
@@ -316,7 +365,49 @@ qu'aucun test sur fixture ne pouvait montrer : la place de marché non déclaré
 renvoyer des dollars pour un spec en euros, une requête insatisfiable qui renvoyait zéro
 annonce, et la médiane fausse qui a donné le stage `stats`.
 
-**Ensuite** : la moitié eBay du stage `execute`, un exécuteur pour `changement_prix`
-contre la Sell Inventory API. La moitié gardienne est faite et testée, il ne manque que
-le geste. Une ligne à ajouter au registre d'exécuteurs, écrite contre l'API réelle une
-fois le premier run passé.
+**Fait le 2026-08-19** : consentement obtenu, et l'exécuteur `changement_prix` écrit
+contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
+129,99 $ par le chemin complet. Voir la section suivante.
+
+**Reste ouvert** : publier une annonce demande des politiques de livraison, qui vivent
+dans la Sell Account API et exigent le scope `sell.account`. L'exécuteur n'en a pas
+besoin pour changer un prix, et le scope par défaut du consentement reste donc au
+minimum. Élargir se fait en passant `scopes` à `urlConsentement`, délibérément, pas par
+défaut.
+
+## L'exécuteur de prix, et ce que la vraie API a appris
+
+`src/executeur-prix.js` applique une action `changement_prix` approuvée. Trois choses
+qu'aucune documentation accessible ne disait et que seul l'appel réel a montrées.
+
+**eBay rend 400 sur tout appel Sell sans `Accept-Language`**, avec un message qui parle
+d'en-tête. Reçu après un 403 de permissions, il envoie chercher au mauvais endroit.
+
+**Un jeton applicatif rend 403 là où un jeton utilisateur rend 200.** Le type de jeton se
+lit donc au code retour, ce qui est la seule vérification qui vaille.
+
+**`PUT /offer/{id}` remplace l'offre au lieu de la modifier.** Construire le corps de zéro
+effacerait la quantité, la catégorie et l'entrepôt en changeant le prix. L'exécuteur relit
+l'offre et ne touche qu'au prix.
+
+### Les trois refus
+
+**Le prix de départ doit encore correspondre.** Une approbation humaine porte sur un écart
+précis, « de 82 à 79 ». Si le marché a bougé depuis, appliquer 79 exécute une décision que
+personne n'a prise sur le marché d'aujourd'hui. La cible est refusée, le lot continue.
+
+**La devise doit correspondre.** Un plan en euros appliqué à une offre en dollars passerait
+pour un succès en changeant le prix de vingt pour cent. C'est systémique : le plan a été
+calculé sur un autre marché que celui visé, et le lot s'arrête.
+
+**Le prix est relu après écriture.** eBay peut accepter un PUT sans appliquer la valeur
+attendue. Sans relecture, le registre consignerait un changement qui n'a pas eu lieu, et
+c'est précisément la trace sur laquelle un humain s'appuie ensuite.
+
+### Ce que le relevé et l'écriture ne partagent pas
+
+Le relevé vient de la Browse API et nomme ses annonces `v1|123|0`. L'écriture passe par la
+Sell API, qui ne connaît que des `offerId` et des SKU. L'exécuteur accepte les trois
+formes plutôt que d'imposer au planificateur une contrainte qu'il n'a pas les moyens de
+tenir. Une cible au format du relevé se résout en balayant le catalogue du vendeur, borné
+par son propre nombre d'articles.
