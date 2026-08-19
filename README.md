@@ -369,26 +369,50 @@ annonce, et la médiane fausse qui a donné le stage `stats`.
 contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
 129,99 $ par le chemin complet. Voir la section suivante.
 
-**Reste ouvert** : la boucle `ajustement-prix` de bout en bout. Le contrôle exige qu'une
-cible figure dans la collecte, et la collecte vient de la Browse API, qui n'indexe que
-les annonces publiées. Or publier demande des politiques de livraison, qui vivent dans
-la Sell Account API et exigent le scope `sell.account`.
+**Fait le 2026-08-19** : la boucle complète, contre le vrai eBay. Relevé de marché,
+statistiques, plan, contrôle, gel, approbation, exécution, registre. Le prix d'une vraie
+annonce publiée est passé de 499,99 à 240,99 $, eBay le confirme, et un second passage du
+pipeline d'application n'a rien réexécuté (`a_faire: 0, deja: 1`).
 
-Mesuré : un refresh token ne peut pas dépasser ce qui a été consenti. Demander
-`sell.account` avec le jeton actuel rend 400 `invalid_scope`, « exceeds the scope granted
-to the client ». Il faut donc un second consentement, et il est volontairement opt-in :
+**Reste ouvert** : choisir le transport de notification pour la boîte de réception, qui
+reste agnostique en attendant.
 
-```
-node bin/ebay-consentement.js specs/ajustement-prix.env --publier
-```
+## Ce que la boucle réelle a appris
 
-Le scope de publication ne part jamais par défaut. Un consentement est ce que le vendeur
-voit et accorde : y glisser un droit dont le programme n'a pas l'usage lui fait signer
-plus qu'il ne croit. Changer un prix n'a besoin que de `sell.inventory`.
+Quatre runs, quatre refus du planificateur avant la première action. Aucun n'était un bug
+de sa part, et chacun a désigné un défaut réel.
 
-Les jetons sont mis en cache par jeu de scopes, pas seulement par compte. Sans ça, un
-jeton obtenu pour la seule écriture serait resservi à un appel de publication et
-rendrait un 403 que rien n'expliquerait.
+**La requête mélangeait des formats incomparables.** `pokemon booster` agrège des packs
+simples, des lots et des boîtes de 36. La médiane à 45,99 $ n'existait sur aucun marché
+réel, et s'y aligner aurait fait chuter une annonce de 124,99 à 45,99 $.
+
+**Une valeur aberrante faussait le repère.** Une caisse complète à 18 999 $ tirait la
+médiane à 336,99 $. Le planificateur a écrit noir sur blanc : « je ne peux pas recalculer
+de médiane filtrée ». En lui retirant l'arithmétique, ce qui était juste, on lui avait
+aussi retiré le moyen d'écarter un point. Lui rendre le calcul aurait rouvert le défaut
+d'origine, alors `stats.json` porte désormais un second repère, `prix_hors_aberrants`,
+calculé par la règle de l'écart interquartile. Les deux mesures sont publiées côte à
+côte : écarter des points est un choix, pas une correction.
+
+**Les comparables portaient sur d'autres extensions.** Refus encore, et encore justifié.
+
+**Et le quatrième refus a trouvé un bug dans mon code.** Le planificateur a écrit que sa
+cible figurait dans `mes_annonces` mais était rejetée comme absente de la collecte. Il
+avait raison : l'élargissement du contrôle avait atterri sur le contrôle du rapport de
+veille au lieu de celui des actions. Corrigé, avec le test qui l'aurait attrapé, et la
+mutation qui remet l'ancien comportement fait bien tomber ce test.
+
+### Les annonces du vendeur ne se cherchent pas, elles se demandent
+
+Une recherche rend les annonces les plus pertinentes pour une requête, pas les siennes.
+Le sandbox l'a montré sans ambiguïté : une annonce fraîchement publiée que le lookup
+direct rend en 200 est absente de la recherche. En production le problème est le même en
+plus discret, l'annonce se trouvant simplement au-delà de la page lue.
+
+La collecte récupère donc les annonces du vendeur une par une, par `mine_from`, et les
+range hors de `collecte`. Les mêler au marché ferait calculer une médiane qui contient
+déjà son propre prix, donc un alignement sur soi-même. Une annonce vendue ou retirée
+ressort dans `mes_annonces_introuvables` : c'est une information, pas une panne.
 
 ## L'exécuteur de prix, et ce que la vraie API a appris
 

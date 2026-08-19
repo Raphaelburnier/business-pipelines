@@ -25,12 +25,25 @@ function loadPipeline(name = "veille-ebay") {
 
 // Une réponse HTTP factice, à la forme de celle d'eBay. C'est ce qui permet d'exercer
 // le vrai handler `fetch` et la vraie normalisation sans réseau ni credentials.
-function fakeEbay(items, { ok = true, status = 200, total } = {}) {
-  return async () => ({
-    ok,
-    status,
-    json: async () => ({ total: total ?? items.length, itemSummaries: items }),
-  });
+// Le faux eBay distingue la recherche du lookup direct, parce que le vrai les distingue :
+// une annonce publiée peut être rendue par le second et ignorée par le premier, et c'est
+// exactement le cas qui a motivé la récupération des annonces du vendeur une par une.
+// Un transport indifférent à l'URL rendait ce chemin invisible aux tests.
+function fakeEbay(items, { ok = true, status = 200, total, miennes = [] } = {}) {
+  const parId = new Map([...items, ...miennes].map((a) => [a.itemId, a]));
+  return async (url) => {
+    const lookup = String(url).match(/\/buy\/browse\/v1\/item\/(.+)$/);
+    if (lookup) {
+      const item = parId.get(decodeURIComponent(lookup[1]));
+      if (!item) return { ok: false, status: 404, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => item };
+    }
+    return {
+      ok,
+      status,
+      json: async () => ({ total: total ?? items.length, itemSummaries: items }),
+    };
+  };
 }
 
 function annonce(i, overrides = {}) {

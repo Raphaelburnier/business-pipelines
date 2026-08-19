@@ -262,6 +262,72 @@ test("cible absente du relevé : routée au planificateur, puis corrigée", asyn
   assert.match(fix.userMessage, /absente de la collecte/);
 });
 
+test("une annonce à moi absente de la recherche reste une cible légitime", async () => {
+  // Le cas réel : une annonce fraîchement publiée que le lookup direct rend en 200 et
+  // que la recherche de marché ignore. Sans cette distinction, le plan ne peut cibler
+  // aucune annonce du vendeur, et la boucle entière est inutilisable.
+  const { fakeEbay, annonce } = require("./harness");
+  const pipeline = loadPipeline("ajustement-prix");
+  const marche = [annonce(3), annonce(4), annonce(5)];
+  const mienne = annonce(9, { itemId: "v1|909|0", title: "la mienne, hors recherche" });
+
+  const h = createHarness({
+    pipeline,
+    spec: { ...SPEC, mes_annonces: ["v1|909|0"] },
+    items: marche,
+    transport: fakeEbay(marche, { miennes: [mienne] }),
+    script: {
+      "price-planner": (_call, ws) => {
+        writeJson(ws, "actions.json", {
+          actions: [action("prix-001", "v1|909|0", 79)],
+          raisonnement: ["ma seule annonce, absente du relevé de marché"],
+        });
+      },
+    },
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+  assert.strictEqual(h.calls["price-planner"], 1, "aucun cycle de correction ne doit se déclencher");
+
+  const listings = readJson(h.ctx.workspaceDir, "listings.json");
+  assert.strictEqual(listings.mes_annonces.length, 1, "elle doit être récupérée à part");
+  assert.ok(
+    !listings.collecte.some((a) => a.id === "v1|909|0"),
+    "et rester hors du marché, sinon la médiane s'aligne sur elle-même"
+  );
+
+  const controle = readJson(h.ctx.workspaceDir, "controle.json");
+  assert.strictEqual(controle.verdict, "VALIDE");
+  assert.deepStrictEqual(controle.manques, [], "la cible ne doit pas être vue comme inventée");
+});
+
+test("une annonce à moi introuvable chez eBay est signalée, pas devinée", async () => {
+  const { fakeEbay, annonce } = require("./harness");
+  const pipeline = loadPipeline("ajustement-prix");
+  const marche = [annonce(3), annonce(4), annonce(5)];
+
+  const h = createHarness({
+    pipeline,
+    spec: { ...SPEC, mes_annonces: ["v1|disparue|0"] },
+    items: marche,
+    transport: fakeEbay(marche),
+    script: {
+      "price-planner": (_call, ws) => {
+        writeJson(ws, "actions.json", { actions: [], raisonnement: ["plus rien à moi"] });
+      },
+    },
+  });
+
+  await runPipeline(h.ctx).catch(() => {});
+  const listings = readJson(h.ctx.workspaceDir, "listings.json");
+  assert.deepStrictEqual(listings.mes_annonces, [], "rien d'inventé");
+  assert.deepStrictEqual(
+    listings.mes_annonces_introuvables,
+    ["v1|disparue|0"],
+    "une annonce vendue ou retirée est une information, pas une panne"
+  );
+});
+
 test("id dupliqué : rejeté, une décision ne doit jamais être ambiguë", async () => {
   const pipeline = loadPipeline("ajustement-prix");
   const h = createHarness({

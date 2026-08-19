@@ -1,0 +1,23 @@
+{
+  "empreinte": "3994bb788dcc5d31",
+  "gele_le": "2026-08-19T12:58:53.074Z",
+  "collecte_le": "2026-08-19T12:58:15.994Z",
+  "actions": [
+    {
+      "id": "prix-001",
+      "type": "changement_prix",
+      "cible": "v1|110590223642|0",
+      "valeur": {
+        "de": 499.99,
+        "vers": 240.99,
+        "devise": "USD"
+      },
+      "justification": "Ton annonce Surging Sparks à 499.99 USD est hors marché : un concurrent direct vend le même produit à 144.99 USD avec livraison gratuite (v1|110590106532|0), et tu n'offres pas la livraison gratuite. L'alignement sur prix_hors_aberrants.prix.mediane (240.99 USD) te place entre ce concurrent et les boîtes premium (Chaos Rising à 466.99 USD, Stellar Crown à 336.99 USD).",
+      "sources": [
+        "v1|110590106532|0",
+        "v1|110590106479|0",
+        "v1|110590106550|0"
+      ]
+    }
+  ]
+}

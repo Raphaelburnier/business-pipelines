@@ -262,8 +262,46 @@ async function search({ query, limit = 50, env = {}, transport = globalThis.fetc
   return { query, marketplace: marketplace(env), devises, total: body.total ?? items.length, collecte };
 }
 
+// Récupération directe, annonce par annonce. La recherche de marché ne garantit pas de
+// rendre les annonces du vendeur : elle rend les plus pertinentes pour une requête, et
+// les siennes peuvent se trouver au-delà de la page lue. Le sandbox l'a montré en clair
+// en publiant une annonce que le lookup direct rend en 200 et que la recherche ignore.
+//
+// Or le plan n'a le droit de cibler que les annonces du vendeur. Les obtenir par un
+// chemin déterministe, et non par un effet de bord du classement d'eBay, est ce qui rend
+// ce droit exerçable.
+//
+// Une annonce absente n'interrompt rien : elle a pu être vendue ou retirée entre deux
+// runs, et c'est une information, pas une panne. Elle ressort dans `introuvables`.
+async function parIds({ ids = [], env, transport = globalThis.fetch }) {
+  if (ids.length === 0) return { annonces: [], introuvables: [] };
+  const jeton = await token({ env, transport });
+  const annonces = [];
+  const introuvables = [];
+
+  for (const id of ids) {
+    const res = await transport(`${baseUrl(env)}/buy/browse/v1/item/${encodeURIComponent(id)}`, {
+      headers: {
+        Authorization: `Bearer ${jeton}`,
+        Accept: "application/json",
+        "X-EBAY-C-MARKETPLACE-ID": marketplace(env),
+      },
+    });
+    if (res.status === 404) {
+      introuvables.push(id);
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`eBay lookup ${id} : HTTP ${res.status}`);
+    }
+    annonces.push(normalize(await res.json()));
+  }
+  return { annonces, introuvables };
+}
+
 module.exports = {
   search,
+  parIds,
   normalize,
   token,
   jetonUtilisateur,

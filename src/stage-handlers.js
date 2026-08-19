@@ -50,11 +50,44 @@ const handlers = {
       transport: (ctx.transports || {})[stage.source],
     });
 
+    // Les annonces du vendeur sont récupérées à part, une par une, jamais espérées dans
+    // le résultat de la recherche. Une recherche rend les annonces les plus pertinentes
+    // pour une requête, pas les siennes : elles peuvent se trouver au-delà de la page
+    // lue, et un sandbox fraîchement publié ne les indexe pas du tout. Comme le plan n'a
+    // le droit de cibler que ces annonces-là, les obtenir par hasard n'est pas tenable.
+    //
+    // Elles restent hors de `collecte` : les mêler au marché ferait calculer une médiane
+    // qui contient déjà son propre prix, donc un alignement sur soi-même.
+    let miennes = { annonces: [], introuvables: [] };
+    if (stage.mine_from) {
+      const ids = ctx.spec[stage.mine_from] || [];
+      miennes = await ebay.parIds({
+        ids,
+        env: ctx.env,
+        transport: (ctx.transports || {})[stage.source],
+      });
+      if (miennes.introuvables.length) {
+        ctx.reporter.event("fetch:introuvables", {
+          stage: stage.id,
+          ids: miennes.introuvables,
+        });
+      }
+    }
+
     // L'heure de collecte suit la donnée partout : c'est elle, et non le moment du gel
     // ni celui de l'exécution, qui dit si un plan bâti dessus est encore valable.
     fs.writeFileSync(
       path.join(ctx.workspaceDir, stage.output),
-      JSON.stringify({ ...data, collecte_le: new Date(maintenant(ctx)).toISOString() }, null, 2)
+      JSON.stringify(
+        {
+          ...data,
+          mes_annonces: miennes.annonces,
+          mes_annonces_introuvables: miennes.introuvables,
+          collecte_le: new Date(maintenant(ctx)).toISOString(),
+        },
+        null,
+        2
+      )
     );
     ctx.reporter.event("fetch:done", {
       stage: stage.id,
@@ -242,7 +275,12 @@ function majInbox(approvalsDir, dossier, entree) {
 handlers["verify-actions"] = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
   const listings = readJson(ctx.workspaceDir, stage.against);
-  const connus = new Set(listings.collecte.map((a) => a.id));
+  // Le marché ET les annonces du vendeur : une cible légitime vit dans le second
+  // ensemble, qui n'est jamais dans le premier par construction.
+  const connus = new Set([
+    ...listings.collecte.map((a) => a.id),
+    ...(listings.mes_annonces || []).map((a) => a.id),
+  ]);
 
   const manques = [];
   const vus = new Set();
@@ -617,6 +655,9 @@ const validators = {
     if (!stage.output) fail('type "fetch" sans "output" (fichier à écrire)');
     if (stage.limit !== undefined && (!Number.isInteger(stage.limit) || stage.limit <= 0)) {
       fail('"limit" doit être un entier positif');
+    }
+    if (stage.mine_from !== undefined && typeof stage.mine_from !== "string") {
+      fail('"mine_from" doit nommer un champ du spec, sous forme de chaîne');
     }
   },
 };
