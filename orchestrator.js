@@ -13,6 +13,7 @@ const {
 } = require("agent-orchestrator");
 
 const stageHandlers = require("./src/stage-handlers");
+const executeurPrix = require("./src/executeur-prix");
 
 async function main() {
   const [, , pipelineName, specPath] = process.argv;
@@ -72,11 +73,11 @@ async function main() {
     agentDefinitions,
     runAgent: agentRunner.run,
     stageHandlers: stageHandlers.handlers,
-    // Registre des exécuteurs d'actions, VIDE délibérément. La garde d'exécution est
-    // écrite et testée, le geste qui touche une plateforme marchande ne l'est pas : il
-    // sera écrit contre la vraie API, après le premier run réel, jamais contre une forme
-    // devinée. Un type sans exécuteur s'arrête en le nommant, il ne se saute pas.
-    executeurs: {},
+    // Registre des exécuteurs d'actions. Il n'accueille que des gestes écrits contre
+    // l'API vivante : `changement_prix` l'a été après avoir vu eBay refuser un jeton
+    // applicatif en 403 et exiger un en-tête de langue qu'aucune documentation accessible ne mentionnait.
+    // Un type sans exécuteur s'arrête en le nommant, il ne se saute pas.
+    executeurs: { changement_prix: executeurPrix.changerPrix },
     backends,
     env,
     specPath,

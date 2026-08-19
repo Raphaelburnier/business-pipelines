@@ -365,14 +365,49 @@ qu'aucun test sur fixture ne pouvait montrer : la place de marché non déclaré
 renvoyer des dollars pour un spec en euros, une requête insatisfiable qui renvoyait zéro
 annonce, et la médiane fausse qui a donné le stage `stats`.
 
-**Bloqué hors du code** : l'exécuteur `changement_prix` contre la Sell Inventory API.
-Le blocage n'est pas la forme de l'appel, c'est le droit de l'émettre : il faut un jeton
-utilisateur, donc un RuName et un consentement dans un navigateur, que seul le
-propriétaire du compte peut donner. Tout le reste est en place, testé, et attend ce jeton.
+**Fait le 2026-08-19** : consentement obtenu, et l'exécuteur `changement_prix` écrit
+contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
+129,99 $ par le chemin complet. Voir la section suivante.
 
-**Ensuite, une fois le consentement donné** : l'exécuteur lui-même, écrit contre l'API
-réelle et pas contre une forme supposée. Le premier run réel de la veille a montré ce que
-vaut cette discipline : il a révélé trois défauts qu'aucun test sur fixture ne montrait.
-Une entrée à ajouter au registre d'exécuteurs de `orchestrator.js`. Un type sans exécuteur
-est déjà traité comme un défaut systémique qui arrête le lot, jamais comme une action
-silencieusement sautée.
+**Reste ouvert** : publier une annonce demande des politiques de livraison, qui vivent
+dans la Sell Account API et exigent le scope `sell.account`. L'exécuteur n'en a pas
+besoin pour changer un prix, et le scope par défaut du consentement reste donc au
+minimum. Élargir se fait en passant `scopes` à `urlConsentement`, délibérément, pas par
+défaut.
+
+## L'exécuteur de prix, et ce que la vraie API a appris
+
+`src/executeur-prix.js` applique une action `changement_prix` approuvée. Trois choses
+qu'aucune documentation accessible ne disait et que seul l'appel réel a montrées.
+
+**eBay rend 400 sur tout appel Sell sans `Accept-Language`**, avec un message qui parle
+d'en-tête. Reçu après un 403 de permissions, il envoie chercher au mauvais endroit.
+
+**Un jeton applicatif rend 403 là où un jeton utilisateur rend 200.** Le type de jeton se
+lit donc au code retour, ce qui est la seule vérification qui vaille.
+
+**`PUT /offer/{id}` remplace l'offre au lieu de la modifier.** Construire le corps de zéro
+effacerait la quantité, la catégorie et l'entrepôt en changeant le prix. L'exécuteur relit
+l'offre et ne touche qu'au prix.
+
+### Les trois refus
+
+**Le prix de départ doit encore correspondre.** Une approbation humaine porte sur un écart
+précis, « de 82 à 79 ». Si le marché a bougé depuis, appliquer 79 exécute une décision que
+personne n'a prise sur le marché d'aujourd'hui. La cible est refusée, le lot continue.
+
+**La devise doit correspondre.** Un plan en euros appliqué à une offre en dollars passerait
+pour un succès en changeant le prix de vingt pour cent. C'est systémique : le plan a été
+calculé sur un autre marché que celui visé, et le lot s'arrête.
+
+**Le prix est relu après écriture.** eBay peut accepter un PUT sans appliquer la valeur
+attendue. Sans relecture, le registre consignerait un changement qui n'a pas eu lieu, et
+c'est précisément la trace sur laquelle un humain s'appuie ensuite.
+
+### Ce que le relevé et l'écriture ne partagent pas
+
+Le relevé vient de la Browse API et nomme ses annonces `v1|123|0`. L'écriture passe par la
+Sell API, qui ne connaît que des `offerId` et des SKU. L'exécuteur accepte les trois
+formes plutôt que d'imposer au planificateur une contrainte qu'il n'a pas les moyens de
+tenir. Une cible au format du relevé se résout en balayant le catalogue du vendeur, borné
+par son propre nombre d'articles.
