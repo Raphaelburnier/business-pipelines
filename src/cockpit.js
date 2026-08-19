@@ -90,7 +90,7 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
 
 class Refus extends Error {}
 
-function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, maintenant = Date.now() }) {
+function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, canal = null, maintenant = Date.now() }) {
   const boite = lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
   const entree = (boite.en_attente || []).find((e) => e.dossier === dossier);
 
@@ -116,6 +116,11 @@ function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, mainten
 
   // Une décision de production porte le nom d'une personne. Un registre d'audit anonyme
   // ne dit pas qui a engagé l'argent.
+  //
+  // Cette signature n'est plus saisie dans la page depuis l'ouverture au tailnet : le
+  // serveur la déduit du canal d'arrivée (voir src/acces.js). Le refus reste ici quand
+  // même, parce qu'un appelant qui oublierait de la fournir écrirait sinon un registre
+  // anonyme, et que ce module est le dernier à pouvoir dire non avant le disque.
   const signature = String(par || "").trim();
   if (!signature) {
     throw new Refus("décision non signée : indiquer qui décide");
@@ -134,6 +139,9 @@ function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, mainten
       action_id: d.action_id,
       decision: d.decision,
       par: signature,
+      // Le canal dit d'où la décision est venue. "tailnet" est prouvé par WireGuard,
+      // "local" veut dire console de la machine et n'est prouvé par rien.
+      ...(canal ? { canal: String(canal) } : {}),
       le: new Date(maintenant).toISOString(),
       ...(d.motif ? { motif: String(d.motif) } : {}),
     });

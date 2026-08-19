@@ -1,25 +1,53 @@
 #!/usr/bin/env node
 //
-// Cockpit d'approbation. Une page locale qui lit la boîte de réception, montre les plans
-// en attente et écrit les décisions.
+// Cockpit d'approbation. Une page qui lit la boîte de réception, montre les plans en
+// attente et écrit les décisions.
 //
-// Trois choix de sécurité, parce que cette page change de vrais prix :
+// Elle n'écoute toujours QUE sur 127.0.0.1, et c'est maintenant une exigence, plus
+// seulement une précaution. Le téléphone y accède par Tailscale, qui termine le TLS sur
+// un vrai nom et relaie vers localhost. Tailscale n'injecte l'identité de l'appelant que
+// si le service reste local : ouvrir l'écoute laisserait n'importe qui sur le réseau
+// fabriquer cette identité. Le détail est dans src/acces.js.
 //
-//   - elle n'écoute que sur 127.0.0.1, jamais sur 0.0.0.0. Un cockpit d'approbation
-//     joignable depuis le réseau est une porte ouverte sur le compte marchand ;
-//   - elle vérifie l'en-tête Host. Sans ça, un site visité dans le même navigateur peut
-//     faire pointer un nom vers 127.0.0.1 et parler au serveur à ta place ;
+// Les défenses, et l'incident que chacune vise :
+//
+//   - écoute loopback seule, plus le relais Tailscale au-dessus. Un cockpit d'approbation
+//     joignable sans authentification est une porte ouverte sur le compte marchand ;
+//   - liste blanche d'hôtes. Sans elle, un site visité dans le même navigateur fait
+//     pointer un nom vers 127.0.0.1 et parle au serveur à ta place ;
+//   - vérification de l'origine et du type de contenu sur les écritures. Tant que la page
+//     n'était joignable qu'en loopback, aucun site tiers ne pouvait viser une URL stable.
+//     Sous un nom de domaine réel, un formulaire hébergé ailleurs le peut, et un POST de
+//     formulaire échappe au contrôle préalable CORS ;
+//   - le corps de la requête ne fournit plus que le dossier, l'empreinte et les décisions.
+//     Il était étalé tel quel dans l'appel à enregistrer(), donc il pouvait redéfinir
+//     approvalsDir et faire écrire le registre n'importe où sur le disque. La liaison
+//     loopback était tout ce qui empêchait ça ;
+//   - la signature vient du canal, jamais du corps. Un champ texte libre laisse écrire
+//     n'importe quel nom, y compris par distraction ;
 //   - tout texte affiché est échappé. Les justifications sont écrites par un modèle, et
 //     du texte de modèle rendu tel quel dans une page est une injection en attente.
 const http = require("http");
 const path = require("path");
+const { envLoader } = require("agent-orchestrator");
 const cockpit = require("../src/cockpit");
+const acces = require("../src/acces");
 
 const RACINE = path.resolve(__dirname, "..");
-const APPROVALS = process.env.APPROVALS_DIR || path.join(RACINE, "approvals");
+
+// Le fichier d'abord, l'environnement du processus par-dessus, comme partout ailleurs
+// dans le dépôt : un réglage passé à la main pour un essai doit l'emporter sur le fichier.
+const ENV = { ...envLoader.load(RACINE, null, path.join(RACINE, "specs", "cockpit.env")), ...process.env };
+
+const APPROVALS = ENV.APPROVALS_DIR || path.join(RACINE, "approvals");
 const PIPELINES = path.join(RACINE, "pipelines");
-const PORT = Number(process.env.COCKPIT_PORT || 4600);
-const HOTES = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
+const PORT = Number(ENV.COCKPIT_PORT || 4600);
+
+// Le nom du tailnet est propre à une installation, donc il vient de l'environnement.
+// Non renseigné, le cockpit reste exactement ce qu'il était : joignable en local seul.
+const TAILNET = (ENV.COCKPIT_TAILNET || "").trim() || null;
+const OPERATEUR = (ENV.COCKPIT_OPERATEUR_LOCAL || "").trim() || null;
+const PORTEE = { port: PORT, tailnet: TAILNET };
 
 const ech = (v) =>
   String(v ?? "")
@@ -52,13 +80,15 @@ function ligneAction(dossier, a) {
   <div class="delta">${delta}</div>
   <p>${ech(a.justification || "")}</p>
   ${(a.sources || []).length ? `<div class="src">appuyé sur ${(a.sources || []).map((s) => `<span class="mono">${ech(s)}</span>`).join(", ")}</div>` : ""}
-  <label><input type="radio" name="${nom}" value="approuve"> approuver</label>
-  <label><input type="radio" name="${nom}" value="refuse"> refuser</label>
-  <label><input type="radio" name="${nom}" value="" checked> ne pas décider</label>
+  <div class="choix">
+    <label><input type="radio" name="${nom}" value="approuve"> approuver</label>
+    <label><input type="radio" name="${nom}" value="refuse"> refuser</label>
+    <label><input type="radio" name="${nom}" value="" checked> ne pas décider</label>
+  </div>
 </div>`;
 }
 
-function page(etat) {
+function page(etat, qui) {
   const corps = etat.dossiers.length
     ? etat.dossiers
         .map(
@@ -72,37 +102,45 @@ function page(etat) {
         .join("")
     : `<p class="vide">Rien n'attend de décision.</p>`;
 
-  return `<!doctype html><meta charset="utf-8"><title>Cockpit d'approbation</title>
+  const canal =
+    qui.canal === "tailnet" ? "identité établie par le tailnet" : "console de la machine, identité non prouvée";
+
+  return `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cockpit d'approbation</title>
 <style>
 :root{color-scheme:light dark}
-body{font:15px/1.55 system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem}
+*{box-sizing:border-box}
+body{font:15px/1.55 system-ui,sans-serif;max-width:52rem;margin:1.5rem auto;padding:0 1rem}
 h1{font-size:1.3rem}h2{font-size:1.05rem;margin:2rem 0 .3rem}
-.mono{font-family:ui-monospace,monospace;font-size:.9em}
+.mono{font-family:ui-monospace,monospace;font-size:.9em;word-break:break-all}
 .meta{opacity:.7;font-size:.85rem;margin-bottom:.8rem}
 .act{border:1px solid currentColor;border-radius:6px;padding:.8rem 1rem;margin:.7rem 0;opacity:.95}
 .tete{margin-bottom:.3rem}.delta{font-size:1.15rem;font-weight:600;margin:.2rem 0}
 .act p{margin:.5rem 0}.src{font-size:.85rem;opacity:.75;margin-bottom:.6rem}
-.act label{margin-right:1rem;font-size:.9rem}
-.b{font-size:.75rem;border:1px solid;border-radius:99px;padding:.05rem .5rem;vertical-align:middle}
+.choix{display:flex;flex-wrap:wrap;gap:.4rem}
+.choix label{flex:1 1 8rem;display:flex;align-items:center;gap:.4rem;border:1px solid currentColor;
+  border-radius:6px;padding:.6rem .7rem;font-size:.9rem;opacity:.7;cursor:pointer}
+.choix label:has(input:checked){opacity:1;font-weight:600}
+.choix input{width:1.1rem;height:1.1rem;margin:0;flex:none}
+.b{font-size:.75rem;border:1px solid;border-radius:99px;padding:.05rem .5rem;vertical-align:middle;white-space:nowrap}
 .vert{color:#0a7d32}.rouge{color:#b3261e}.gris{opacity:.6}
 .vide{opacity:.6;margin:3rem 0}
-form.pied{margin-top:2rem;border-top:1px solid;padding-top:1rem}
-input[type=text]{font:inherit;padding:.35rem .5rem}
-button{font:inherit;padding:.45rem 1rem;cursor:pointer}
+form.pied{position:sticky;bottom:0;background:Canvas;margin-top:2rem;border-top:1px solid;padding:.9rem 0}
+button{font:inherit;padding:.75rem 1.2rem;width:100%;max-width:22rem;cursor:pointer;border-radius:6px}
 #msg{margin-top:1rem;white-space:pre-wrap}
 </style>
 <h1>Cockpit d'approbation</h1>
-<p class="meta">Lecture de ${ech(APPROVALS)}. Cette page écrit de vraies décisions.</p>
+<p class="meta">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.<br>
+Lecture de ${ech(APPROVALS)}. Cette page écrit de vraies décisions.</p>
 ${corps}
 <form class="pied" onsubmit="return envoyer(event)">
-  <label>Qui décide <input type="text" id="par" placeholder="ton nom" required></label>
   <button>Enregistrer les décisions</button>
 </form>
 <div id="msg"></div>
 <script>
 async function envoyer(e){
   e.preventDefault();
-  const par=document.getElementById('par').value.trim();
   const msg=document.getElementById('msg');
   const lots=[];
   for(const s of document.querySelectorAll('section[data-dossier]')){
@@ -117,7 +155,7 @@ async function envoyer(e){
   const sorties=[];
   for(const lot of lots){
     const r=await fetch('/api/decider',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...lot,par})});
+      body:JSON.stringify(lot)});
     const b=await r.json();
     sorties.push((r.ok?'✓ ':'✘ ')+lot.dossier+' : '+(b.erreur||(b.decisions.length+' décision(s) écrite(s)')));
   }
@@ -137,12 +175,22 @@ function json(res, code, corps) {
 const serveur = http.createServer(async (req, res) => {
   // Défense contre le rebinding DNS : un nom d'hôte que je n'ai pas prévu ne parle pas au
   // serveur, même s'il résout vers 127.0.0.1.
-  if (!HOTES.has(String(req.headers.host || ""))) {
-    return json(res, 403, { erreur: "hôte refusé : ce cockpit ne répond qu'en local" });
+  if (!acces.hoteAutorise(req.headers, PORTEE)) {
+    return json(res, 403, { erreur: "hôte refusé : ce cockpit ne répond qu'en local ou par son tailnet" });
+  }
+
+  let qui;
+  try {
+    qui = acces.identite(req.headers, { tailnet: TAILNET, operateurLocal: OPERATEUR });
+  } catch (err) {
+    // Refus d'identité avant même de lire la boîte : si on ne sait pas à qui on parle, on
+    // ne lui montre pas non plus les prix, les marges et les annonces.
+    if (err instanceof cockpit.Refus) return json(res, 403, { erreur: err.message });
+    throw err;
   }
 
   if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
-    const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
+    const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(html);
   }
@@ -152,6 +200,16 @@ const serveur = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/api/decider") {
+    if (!acces.origineAutorisee(req.headers, PORTEE)) {
+      return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    }
+    // Un POST de formulaire cross-site ne peut pas porter ce type de contenu sans contrôle
+    // préalable CORS, et au contrôle préalable on ne répond pas. Exiger le type ferme la porte.
+    const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (type !== "application/json") {
+      return json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    }
+
     let brut = "";
     for await (const morceau of req) {
       brut += morceau;
@@ -164,7 +222,20 @@ const serveur = http.createServer(async (req, res) => {
       return json(res, 400, { erreur: "corps illisible" });
     }
     try {
-      return json(res, 200, cockpit.enregistrer({ approvalsDir: APPROVALS, ...demande }));
+      // Champs nommés un par un, jamais étalés. Le corps ne choisit ni où on écrit, ni
+      // quand, ni sous quel nom : il ne dit que ce qu'il décide.
+      return json(
+        res,
+        200,
+        cockpit.enregistrer({
+          approvalsDir: APPROVALS,
+          dossier: demande.dossier,
+          empreinte: demande.empreinte,
+          decisions: demande.decisions,
+          par: qui.par,
+          canal: qui.canal,
+        })
+      );
     } catch (err) {
       // Un refus est une réponse attendue, pas une panne : il se lit dans la page.
       if (err instanceof cockpit.Refus) return json(res, 409, { erreur: err.message });
@@ -177,6 +248,12 @@ const serveur = http.createServer(async (req, res) => {
 
 serveur.listen(PORT, "127.0.0.1", () => {
   console.log(`Cockpit sur http://127.0.0.1:${PORT}`);
+  if (TAILNET) {
+    console.log(`Depuis le téléphone : https://${TAILNET}`);
+    console.log("Ce nom ne répond que si le relais est monté : npm run cockpit:tailnet");
+  } else {
+    console.log("COCKPIT_TAILNET non renseigné : accès local seulement.");
+  }
   console.log(`Approbations lues dans ${APPROVALS}`);
   console.log("Ctrl+C pour arrêter.");
 });

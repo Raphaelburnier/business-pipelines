@@ -262,7 +262,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 149 vérifications, sans réseau ni credentials
+npm test                 # 166 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -382,17 +382,23 @@ décisions.
 **Fait le 2026-08-19** : le cycle et le canal d'alerte. Un cron réveille `bin/cycle.js`,
 qui lit l'état, choisit une action et prévient par courriel. Voir la section suivante.
 
-**Reste ouvert** : décider depuis le téléphone. Le cockpit n'écoute que sur la boucle
-locale, donc une alerte reçue ailleurs prévient sans permettre d'agir. L'échelle prévue,
-dans l'ordre : réseau privé Tailscale, jeton d'appareil qui porte la signature au lieu
-d'un champ de texte, application installable sur l'écran d'accueil, puis push web qui
-remplace le courriel comme canal principal. Le courriel restera le filet, parce qu'il
-marche encore quand le téléphone est neuf, réinitialisé ou hors réseau.
+**Fait le 2026-08-20** : décider depuis le téléphone. Le cockpit reste sur la boucle
+locale et Tailscale relaie vers lui sous un vrai nom, avec un vrai certificat. La signature
+n'est plus un champ de texte : elle vient du canal. Voir « Depuis le téléphone » plus bas.
+
+**Reste ouvert** : l'application sur l'écran d'accueil, puis le push web qui remplacera
+le courriel comme canal principal. Le courriel restera le filet, parce qu'il marche encore
+quand le téléphone est neuf, réinitialisé ou hors réseau. Reste ouvert aussi l'élargissement
+de ce que l'application pilote : historique d'exécution, dernier état du cycle, et
+déclenchement de la planification. Le principe retenu pour ce dernier point est que la page
+écrit une intention et que le cycle l'exécute, parce qu'un processus web qui lance lui-même
+un pipeline devient un moyen de dépenser sans passer par la boucle de décision.
 
 ## Le cockpit d'approbation
 
 ```
-node bin/cockpit.js          # http://127.0.0.1:4600
+npm run cockpit              # http://127.0.0.1:4600
+npm run cockpit:tailnet      # monte le relais, pour y accéder du téléphone
 ```
 
 La page montre, pour chaque dossier en attente, l'empreinte du plan, l'âge des données et
@@ -402,9 +408,26 @@ chaque action avec sa justification, ses sources et l'écart de prix en pourcent
 
 Cette page change de vrais prix, elle est donc écrite comme le reste du dépôt.
 
-**Elle n'écoute que sur 127.0.0.1** et vérifie l'en-tête `Host`. Sans cette seconde
-vérification, un site visité dans le même navigateur peut faire pointer un nom vers
-l'adresse locale et parler au serveur à ta place.
+**Elle n'écoute que sur 127.0.0.1**, y compris depuis qu'on y accède du téléphone. Ce
+n'est plus seulement une précaution, c'est une condition : Tailscale n'injecte l'identité
+de l'appelant que si le service reste local, sinon n'importe qui sur le réseau peut
+fabriquer cette identité. Élargir l'écoute ne rendrait pas le cockpit plus joignable, ça
+détruirait la seule chose qui donne du sens aux en-têtes.
+
+**Elle vérifie l'en-tête `Host`** contre une liste blanche. Sans ça, un site visité dans le
+même navigateur peut faire pointer un nom vers l'adresse locale et parler au serveur à ta
+place. Le nom du tailnet n'entre dans cette liste que s'il est configuré.
+
+**Elle vérifie l'origine et le type de contenu sur les écritures.** Tant que la page
+n'était joignable qu'en local, aucun site tiers ne pouvait viser une URL stable. Sous un
+vrai nom de domaine, un formulaire hébergé ailleurs le peut, et un POST de formulaire
+échappe au contrôle préalable CORS. Exiger `application/json` referme cette porte.
+
+**Elle ne laisse pas le corps de la requête choisir où elle écrit.** Ce corps était étalé
+tel quel dans l'appel qui enregistre, donc il pouvait redéfinir le répertoire d'écriture,
+l'horodatage et le nom du signataire. Rien ne l'exploitait, parce que la liaison locale
+rendait le chemin inatteignable. C'est précisément le genre de garde qu'un élargissement
+de portée réveille : elle ne tenait que par l'étroitesse de l'accès.
 
 **Elle échappe tout texte affiché.** Les justifications sont écrites par un modèle, et du
 texte de modèle rendu tel quel dans une page est une injection en attente.
@@ -415,12 +438,61 @@ par la requête et une page locale deviendrait une écriture de fichier arbitrai
 **Elle refuse une empreinte qui ne correspond plus.** Si la planification a tourné entre
 l'affichage et le clic, les montants ne sont plus ceux qui ont été lus.
 
-**Elle refuse une décision non signée.** Un registre d'audit anonyme ne dit pas qui a
-engagé l'argent, et c'est exactement ce qu'on lui demande de dire.
+**Elle refuse une décision non signée**, et la signature ne se tape plus. Elle vient du
+canal par lequel la requête est arrivée : le login Tailscale pour le téléphone, le compte
+système pour la console de la machine. Un registre d'audit anonyme ne dit pas qui a engagé
+l'argent, et un champ de texte libre laisse écrire n'importe quel nom.
+
+**Elle refuse une requête arrivée sous le nom du tailnet sans identité Tailscale**, et
+elle la refuse avant d'afficher quoi que ce soit. Ça veut dire que le relais n'est pas en
+place et que quelque chose d'autre répond sur ce nom : on ne sait pas à qui on parle, donc
+on ne lui montre pas non plus les prix et les marges.
 
 **Elle n'affiche aucun feu vert qu'elle ne peut pas justifier.** La fraîcheur se mesure
 depuis la collecte, comme le moteur, et sans maximum déclaré elle montre l'âge sans
 conclure. Une décision fautive dans un lot n'écrit rien du tout.
+
+### Depuis le téléphone
+
+Le montage tient en une phrase : Tailscale termine le TLS sur un vrai nom et relaie vers
+`localhost`, le cockpit ne bouge pas.
+
+```
+téléphone  --wireguard-->  tailscale (TLS, certificat réel)  --->  127.0.0.1:4600
+```
+
+Ce choix a remplacé celui que j'avais annoncé, qui était d'élargir l'écoute et d'inventer
+un jeton d'appareil pour porter la signature. Les deux moitiés du plan étaient fausses :
+le relais fournit déjà l'identité par en-têtes, donc le jeton n'avait pas lieu d'être, et
+élargir l'écoute aurait rendu ces en-têtes falsifiables par n'importe qui sur le réseau.
+
+Sous WSL, le cockpit tourne côté Linux et Tailscale côté Windows. Le pont existe déjà :
+Windows relaie son `localhost` vers les sockets en écoute dans WSL. C'est vérifié, pas
+supposé.
+
+#### La mettre en place
+
+```
+cp specs/cockpit.env.example specs/cockpit.env
+npm run cockpit:tailnet      # affiche le nom exact à recopier dans COCKPIT_TAILNET
+npm run cockpit
+```
+
+Puis, sur le téléphone déjà membre du tailnet, ouvrir `https://<nom>.<tailnet>.ts.net`.
+
+`npm run cockpit:tailnet -- --stop` démonte le relais et le cockpit redevient strictement
+local. Sans `COCKPIT_TAILNET`, il l'est aussi : la configuration absente ne dégrade rien.
+
+#### Ce que ça authentifie, et ce que ça n'authentifie pas
+
+L'identité vient du tailnet, établie par WireGuard : un appareil qui n'est pas le tien ne
+peut pas signer une décision. Un processus déjà présent sur cette machine, lui, peut
+fabriquer l'en-tête. Mais il pouvait déjà écrire le registre de décisions directement, donc
+la frontière n'a pas bougé. Ce que l'en-tête supprime, c'est l'erreur humaine, pas
+l'attaquant local, et le dire autrement serait se raconter une histoire.
+
+Le canal est consigné dans le registre à côté de la signature : `tailnet` veut dire prouvé
+par WireGuard, `local` veut dire console de la machine et prouvé par rien.
 
 ## Le cycle, et pourquoi un cron ne suffit pas
 
@@ -529,14 +601,10 @@ l'autre moitié est humaine :
 
 ### Ce que ça ne résout pas encore
 
-Le cockpit n'écoute que sur `127.0.0.1`, délibérément : c'est toute sa défense, et il n'a
-aucune authentification parce qu'il n'en a pas besoin tant qu'il faut déjà être sur la
-machine pour l'atteindre. Une alerte reçue ailleurs prévient donc sans permettre d'agir :
-il faut revenir devant la machine pour décider.
-
-C'est un progrès réel, l'attente n'est plus invisible, mais ce n'est que la moitié du
-chemin. L'autre moitié est l'accès privé au cockpit, qui demande de remplacer cette défense
-par une autre plutôt que de simplement l'ouvrir, et qui est la suite prévue.
+Le courriel prévient, il ne décide pas, et c'est délibéré : un message ne porte aucun
+bouton et aucun lien qui approuve. La décision se prend dans le cockpit, joignable depuis
+le téléphone depuis le 2026-08-20. Ce qui reste, c'est que le courriel n'arrive pas comme
+une notification d'application : il faut ouvrir sa boîte. Le push web réglera ça.
 
 ## Ce que la boucle réelle a appris
 
