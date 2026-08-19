@@ -369,11 +369,26 @@ annonce, et la médiane fausse qui a donné le stage `stats`.
 contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
 129,99 $ par le chemin complet. Voir la section suivante.
 
-**Reste ouvert** : publier une annonce demande des politiques de livraison, qui vivent
-dans la Sell Account API et exigent le scope `sell.account`. L'exécuteur n'en a pas
-besoin pour changer un prix, et le scope par défaut du consentement reste donc au
-minimum. Élargir se fait en passant `scopes` à `urlConsentement`, délibérément, pas par
-défaut.
+**Reste ouvert** : la boucle `ajustement-prix` de bout en bout. Le contrôle exige qu'une
+cible figure dans la collecte, et la collecte vient de la Browse API, qui n'indexe que
+les annonces publiées. Or publier demande des politiques de livraison, qui vivent dans
+la Sell Account API et exigent le scope `sell.account`.
+
+Mesuré : un refresh token ne peut pas dépasser ce qui a été consenti. Demander
+`sell.account` avec le jeton actuel rend 400 `invalid_scope`, « exceeds the scope granted
+to the client ». Il faut donc un second consentement, et il est volontairement opt-in :
+
+```
+node bin/ebay-consentement.js specs/ajustement-prix.env --publier
+```
+
+Le scope de publication ne part jamais par défaut. Un consentement est ce que le vendeur
+voit et accorde : y glisser un droit dont le programme n'a pas l'usage lui fait signer
+plus qu'il ne croit. Changer un prix n'a besoin que de `sell.inventory`.
+
+Les jetons sont mis en cache par jeu de scopes, pas seulement par compte. Sans ça, un
+jeton obtenu pour la seule écriture serait resservi à un appel de publication et
+rendrait un 403 que rien n'expliquerait.
 
 ## L'exécuteur de prix, et ce que la vraie API a appris
 

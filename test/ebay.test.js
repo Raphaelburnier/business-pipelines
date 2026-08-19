@@ -126,6 +126,42 @@ test("les jetons de lecture et d'écriture ne partagent pas leur cache", async (
   assert.strictEqual(cache.size, 2, "deux entrées distinctes, pas une écrasée par l'autre");
 });
 
+test("un jeton d'écriture n'est jamais resservi à une demande de publication", async () => {
+  const cache = new Map();
+  const env = { ...VENTE, EBAY_REFRESH_TOKEN: "rt-123" };
+  const demandes = [];
+  const transport = async (_u, opts) => {
+    demandes.push(decodeURIComponent(opts.body.match(/scope=([^&]*)/)[1]));
+    return { ok: true, json: async () => ({ access_token: `jeton-${demandes.length}`, expires_in: 7200 }) };
+  };
+
+  const ecriture = await ebay.jetonUtilisateur({ env, transport, cache });
+  const publication = await ebay.jetonUtilisateur({
+    env,
+    transport,
+    cache,
+    scopes: [ebay.SCOPE_VENTE, ebay.SCOPE_COMPTE],
+  });
+
+  assert.notStrictEqual(ecriture, publication, "un jeton plus étroit servi à un appel plus large rendrait 403");
+  assert.strictEqual(cache.size, 2, "les scopes doivent entrer dans la clé de cache");
+  assert.ok(!demandes[0].includes("sell.account"), "le scope de publication ne part pas sans qu'on le demande");
+  assert.ok(demandes[1].includes("sell.account"), "demandé, il doit réellement partir");
+});
+
+test("le même jeu de scopes ne redemande pas de jeton à eBay", async () => {
+  const cache = new Map();
+  const env = { ...VENTE, EBAY_REFRESH_TOKEN: "rt-123" };
+  let appels = 0;
+  const transport = async () => {
+    appels += 1;
+    return { ok: true, json: async () => ({ access_token: "jeton", expires_in: 7200 }) };
+  };
+  await ebay.jetonUtilisateur({ env, transport, cache, scopes: [ebay.SCOPE_VENTE, ebay.SCOPE_COMPTE] });
+  await ebay.jetonUtilisateur({ env, transport, cache, scopes: [ebay.SCOPE_COMPTE, ebay.SCOPE_VENTE] });
+  assert.strictEqual(appels, 1, "les mêmes scopes dans un autre ordre sont le même droit");
+});
+
 test("l'échange du code envoie le RuName, sans quoi eBay refuse le grant", async () => {
   let corps = null;
   const transport = async (_u, opts) => {
