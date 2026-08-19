@@ -374,8 +374,47 @@ statistiques, plan, contrôle, gel, approbation, exécution, registre. Le prix d
 annonce publiée est passé de 499,99 à 240,99 $, eBay le confirme, et un second passage du
 pipeline d'application n'a rien réexécuté (`a_faire: 0, deja: 1`).
 
-**Reste ouvert** : choisir le transport de notification pour la boîte de réception, qui
-reste agnostique en attendant.
+**Fait le 2026-08-19** : le cockpit d'approbation. `node bin/cockpit.js` sert une page
+locale qui lit la boîte, montre chaque plan en attente avec sa fraîcheur, et écrit les
+décisions.
+
+**Reste ouvert** : le canal d'alerte. Le cockpit règle la décision, pas la notification :
+il faut encore ouvrir la page pour savoir qu'elle a quelque chose à montrer. Comme la
+boîte reste un simple état, brancher Telegram ou un mail par-dessus n'oblige à toucher ni
+au moteur ni au cockpit.
+
+## Le cockpit d'approbation
+
+```
+node bin/cockpit.js          # http://127.0.0.1:4600
+```
+
+La page montre, pour chaque dossier en attente, l'empreinte du plan, l'âge des données et
+chaque action avec sa justification, ses sources et l'écart de prix en pourcentage.
+
+### Ce qu'il refuse de faire
+
+Cette page change de vrais prix, elle est donc écrite comme le reste du dépôt.
+
+**Elle n'écoute que sur 127.0.0.1** et vérifie l'en-tête `Host`. Sans cette seconde
+vérification, un site visité dans le même navigateur peut faire pointer un nom vers
+l'adresse locale et parler au serveur à ta place.
+
+**Elle échappe tout texte affiché.** Les justifications sont écrites par un modèle, et du
+texte de modèle rendu tel quel dans une page est une injection en attente.
+
+**Elle refuse un dossier absent de la boîte**, sinon le chemin du registre serait dicté
+par la requête et une page locale deviendrait une écriture de fichier arbitraire.
+
+**Elle refuse une empreinte qui ne correspond plus.** Si la planification a tourné entre
+l'affichage et le clic, les montants ne sont plus ceux qui ont été lus.
+
+**Elle refuse une décision non signée.** Un registre d'audit anonyme ne dit pas qui a
+engagé l'argent, et c'est exactement ce qu'on lui demande de dire.
+
+**Elle n'affiche aucun feu vert qu'elle ne peut pas justifier.** La fraîcheur se mesure
+depuis la collecte, comme le moteur, et sans maximum déclaré elle montre l'âge sans
+conclure. Une décision fautive dans un lot n'écrit rien du tout.
 
 ## Ce que la boucle réelle a appris
 
