@@ -11,3 +11,7 @@ approvals/EN-ATTENTE.json
 .env
 *.env
 !*.env.example
+
+# Journal des alertes déjà envoyées : état dérivé, comme la boîte. Le perdre coûte un
+# message en double, rien de plus.
+approvals/ALERTES.json

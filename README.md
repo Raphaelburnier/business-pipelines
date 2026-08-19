@@ -198,12 +198,13 @@ plutôt qu'appliqué à l'aveugle.
 Ce risque existait déjà, toute boucle avec un humain dedans l'a. Il était simplement
 masqué par un défaut plus grave.
 
-## Le stage `execute`, moitié gardienne
+## Le stage `execute`
 
-La garde est écrite et testée. Le geste qui touche une plateforme marchande, non : il
-sera écrit contre la vraie API, après le premier run réel, jamais contre une forme
-devinée. Le registre d'exécuteurs est donc **vide**, et un type sans exécuteur arrête le
-run en le nommant plutôt que de se sauter en silence.
+La garde a été écrite et testée d'abord, contre un registre d'exécuteurs **vide** : un
+type sans exécuteur arrête le run en le nommant plutôt que de se sauter en silence. Le
+geste qui touche une plateforme marchande est venu ensuite, écrit contre l'API vivante et
+jamais contre une forme devinée. Le registre ne porte toujours que lui, `changement_prix`,
+et la garde n'a pas bougé d'une ligne pour l'accueillir.
 
 Quatre propriétés, toutes vérifiées avant qu'une seule action ne parte :
 
@@ -261,7 +262,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 20 vérifications, sans réseau ni credentials
+npm test                 # 149 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -378,10 +379,15 @@ pipeline d'application n'a rien réexécuté (`a_faire: 0, deja: 1`).
 locale qui lit la boîte, montre chaque plan en attente avec sa fraîcheur, et écrit les
 décisions.
 
-**Reste ouvert** : le canal d'alerte. Le cockpit règle la décision, pas la notification :
-il faut encore ouvrir la page pour savoir qu'elle a quelque chose à montrer. Comme la
-boîte reste un simple état, brancher Telegram ou un mail par-dessus n'oblige à toucher ni
-au moteur ni au cockpit.
+**Fait le 2026-08-19** : le cycle et le canal d'alerte. Un cron réveille `bin/cycle.js`,
+qui lit l'état, choisit une action et prévient par courriel. Voir la section suivante.
+
+**Reste ouvert** : décider depuis le téléphone. Le cockpit n'écoute que sur la boucle
+locale, donc une alerte reçue ailleurs prévient sans permettre d'agir. L'échelle prévue,
+dans l'ordre : réseau privé Tailscale, jeton d'appareil qui porte la signature au lieu
+d'un champ de texte, application installable sur l'écran d'accueil, puis push web qui
+remplace le courriel comme canal principal. Le courriel restera le filet, parce qu'il
+marche encore quand le téléphone est neuf, réinitialisé ou hors réseau.
 
 ## Le cockpit d'approbation
 
@@ -415,6 +421,122 @@ engagé l'argent, et c'est exactement ce qu'on lui demande de dire.
 **Elle n'affiche aucun feu vert qu'elle ne peut pas justifier.** La fraîcheur se mesure
 depuis la collecte, comme le moteur, et sans maximum déclaré elle montre l'âge sans
 conclure. Une décision fautive dans un lot n'écrit rien du tout.
+
+## Le cycle, et pourquoi un cron ne suffit pas
+
+Une boucle avec un humain dedans n'avance pas d'elle-même : elle alterne entre des moments
+où la machine travaille et des moments où elle attend. Un cron qui lancerait simplement la
+planification toutes les heures détruirait la moitié attente. Replanifier change
+l'empreinte du plan, et une empreinte qui change invalide la décision en cours : l'humain
+aurait cliqué sur un montant qui n'existe plus, et le cockpit aurait eu raison de le
+refuser. Il faut donc quelque chose qui sache **ne rien faire**.
+
+```bash
+npm run cycle            # un réveil : lire l'état, choisir une action, prévenir
+npm run cycle -- --dry   # dit ce qu'il ferait, ne lance rien
+npm run alerter          # le canal seul
+npm run en-attente       # l'affichage seul
+```
+
+| État de la boîte | Action |
+|---|---|
+| rien en attente | planifier |
+| plan gelé introuvable | planifier |
+| plan frais, décision commencée ou pas | attendre |
+| périmé, **aucune** décision prise | attendre, sans rien dépenser |
+| périmé, décision commencée | replanifier |
+| tout décidé | appliquer, avec le pipeline que la demande désigne |
+
+Deux lignes portent tout le reste.
+
+**On ne replanifie jamais pendant qu'une décision fraîche est en cours.** C'est la règle
+qui rend le cron compatible avec un humain lent.
+
+**Un plan périmé que personne n'a regardé ne déclenche rien.** Replanifier appellerait le
+planificateur pour produire un plan que personne n'attend, et recommencerait toutes les
+douze heures, indéfiniment. Si une décision avait commencé, en revanche, quelqu'un s'en
+occupe et était simplement en retard : on lui redonne un plan frais à décider. La
+péremption du moteur s'applique, elle ne devient pas une exception parce qu'un cron est
+passé.
+
+**L'action à appliquer se lit dans la demande, jamais devinée.** Sans `appliquer_avec`, le
+cycle attend plutôt que de choisir un pipeline à la place de celui qui a planifié.
+
+### Un arrêt normal ressemble à une panne
+
+Un pipeline de planification se **termine en erreur quand il aboutit** : le stage
+d'approbation lève pour arrêter net, c'est sa façon de rendre la main. Lire le seul code
+de sortie ferait passer chaque planification réussie pour un incident, tous les jours,
+jusqu'à ce qu'on cesse de regarder les alertes, ce qui est la panne la plus grave.
+
+Ce qui distingue les deux est observable ailleurs : un arrêt sur approbation a déposé une
+demande dans la boîte. Le cycle compare donc la boîte avant et après. Elle a changé,
+l'arrêt est le bon ; elle n'a pas bougé, c'est un vrai échec.
+
+## Le canal d'alerte
+
+Le cockpit règle la décision, pas la notification. Ce module est ce qui va chercher
+l'humain, et c'est un lecteur de la boîte de plus, au même titre que `en-attente` et le
+cockpit. Il ne touche ni au moteur ni au cockpit.
+
+Le transport vit dans un registre, comme les sources de marché. Un transport reçoit un
+message déjà rédigé et le fait sortir : il ne décide jamais s'il faut l'envoyer. C'est ce
+qui rendra le push de l'application ajoutable sans toucher une ligne de ce qui décide.
+
+### Ce qu'il refuse de faire
+
+**Il ne consigne que ce qui est parti.** Consigner avant d'envoyer coûterait moins de code
+et perdrait l'alerte au premier réseau coupé, en laissant la demande attendre pour
+toujours. C'est exactement le défaut que la boîte durable existe pour corriger, et le
+réintroduire dans son notifieur serait une belle ironie. Un échec n'arrête pas le lot : les
+autres dossiers partent, et le raté repart au réveil suivant.
+
+**Il ne répète pas.** La clé de dédoublonnage porte le dossier, l'empreinte du plan et le
+verdict de fraîcheur. Replanifier renotifie, puisque c'est une autre demande. Périmer
+renotifie une fois, parce que l'approbation ne s'appliquera plus et qu'il faut le savoir.
+Deux messages au maximum par plan, et un cron qui se réveille toutes les quinze minutes
+n'en produit aucun de plus. Une boîte qui répète se fait taire aussi sûrement qu'une boîte
+pleine de faux se fait ignorer.
+
+**Il ne porte aucune décision.** Pas de bouton, pas de lien qui approuve. Un « approuver »
+atteignable depuis un message serait un chemin d'écriture vers l'argent contournant tous
+les refus du cockpit, l'empreinte vérifiée et la signature en tête. Le canal prévient, il
+n'engage pas.
+
+**Il ne se tait jamais faute de configuration.** Aucun transport, ou un transport inconnu,
+échouent bruyamment. Un canal muet ne se remarque que le jour où il comptait.
+
+**Il n'envoie rien en répétition à blanc, et ne consigne rien non plus.** Sinon regarder ce
+qui partirait empêcherait que ça parte, et la première alerte perdue serait celle qu'on a
+voulu vérifier.
+
+**Il dit quand la liste est tronquée.** Cinq actions affichées sur douze sans le signaler
+laissent approuver douze choses après en avoir lu cinq.
+
+### La mettre en place
+
+```bash
+cp specs/alerte.env.example specs/alerte.env   # puis remplir
+npm run alerter -- --dry                        # voir ce qui partirait
+```
+
+Puis une ligne de crontab, un quart d'heure étant largement assez fin pour une boucle dont
+l'autre moitié est humaine :
+
+```cron
+*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json >> /var/log/business-pipelines.log 2>&1
+```
+
+### Ce que ça ne résout pas encore
+
+Le cockpit n'écoute que sur `127.0.0.1`, délibérément : c'est toute sa défense, et il n'a
+aucune authentification parce qu'il n'en a pas besoin tant qu'il faut déjà être sur la
+machine pour l'atteindre. Une alerte reçue ailleurs prévient donc sans permettre d'agir :
+il faut revenir devant la machine pour décider.
+
+C'est un progrès réel, l'attente n'est plus invisible, mais ce n'est que la moitié du
+chemin. L'autre moitié est l'accès privé au cockpit, qui demande de remplacer cette défense
+par une autre plutôt que de simplement l'ouvrir, et qui est la suite prévue.
 
 ## Ce que la boucle réelle a appris
 

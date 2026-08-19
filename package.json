@@ -9,9 +9,12 @@
     "plan:prix": "node orchestrator.js ajustement-prix ./specs/ajustement-prix.json",
     "appliquer:prix": "node orchestrator.js ajustement-prix-appliquer ./specs/ajustement-prix.json",
     "en-attente": "node bin/en-attente.js",
-    "test": "node test/veille.test.js && node test/stats.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js && node test/executeur-prix.test.js && node test/cockpit.test.js"
+    "test": "node test/veille.test.js && node test/stats.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js && node test/executeur-prix.test.js && node test/cockpit.test.js && node test/alerte.test.js && node test/cycle.test.js",
+    "alerter": "node bin/alerter.js",
+    "cycle": "node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json"
   },
   "dependencies": {
-    "agent-orchestrator": "file:../agent-orchestrator"
+    "agent-orchestrator": "file:../agent-orchestrator",
+    "nodemailer": "^9.0.5"
   }
 }
