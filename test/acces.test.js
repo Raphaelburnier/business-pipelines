@@ -18,7 +18,13 @@ const PORT = 40000 + (process.pid % 20000);
 
 // Le même bac que test/cockpit.test.js : la boîte et le plan gelé tels que le moteur les
 // écrit vraiment, pour que le serveur soit exercé contre la forme de production.
-function bac({ registreDans = null } = {}) {
+function bac({
+  registreDans = null,
+  dossier = "ajustement-prix",
+  actionId = "prix-001",
+  valeur = { de: 499.99, vers: 240.99, devise: "USD" },
+  justification = "hors marché",
+} = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-"));
   const registre = path.join(registreDans || dir, "ajustement-prix.decisions.json");
   const planGele = path.join(dir, "ajustement-prix.plan.json");
@@ -28,7 +34,7 @@ function bac({ registreDans = null } = {}) {
     JSON.stringify({
       en_attente: [
         {
-          dossier: "ajustement-prix",
+          dossier,
           empreinte: "abc123",
           depuis: "2026-08-19T11:30:00.000Z",
           actions: 1,
@@ -48,11 +54,11 @@ function bac({ registreDans = null } = {}) {
       collecte_le: "2026-08-19T11:00:00.000Z",
       actions: [
         {
-          id: "prix-001",
+          id: actionId,
           type: "changement_prix",
           cible: "v1|110590223642|0",
-          valeur: { de: 499.99, vers: 240.99, devise: "USD" },
-          justification: "hors marché",
+          valeur,
+          justification,
           sources: ["v1|1|0"],
         },
       ],
@@ -132,7 +138,7 @@ function demander({ methode = "GET", chemin = "/", entetes = {}, corps = null })
       (res) => {
         let brut = "";
         res.on("data", (m) => (brut += m));
-        res.on("end", () => resolve({ code: res.statusCode, corps: brut }));
+        res.on("end", () => resolve({ code: res.statusCode, corps: brut, entetes: res.headers }));
       }
     );
     req.on("error", reject);
@@ -156,8 +162,8 @@ async function attendre(serveur) {
 let serveur = null;
 let bacCourant = null;
 
-async function monter(env = {}) {
-  bacCourant = bac();
+async function monter(env = {}, forme = {}) {
+  bacCourant = bac(forme);
   serveur = spawn(process.execPath, [path.join(__dirname, "..", "bin", "cockpit.js")], {
     env: {
       ...process.env,
@@ -296,12 +302,72 @@ test("l'empreinte lie toujours la décision au plan affiché, y compris par le t
   assert.ok(/le plan a changé/.test(r.corps));
 });
 
+test("une boîte illisible répond, nomme le fichier, et ne tue pas le cockpit", async () => {
+  // Le gestionnaire passé à createServer est `async` : une exception qui en sortait
+  // devenait une promesse rejetée que Node ne rattrape pas, et Node tuait le processus.
+  // Un seul GET sur une boîte tronquée suffisait, systemd relançait, et cinq crashs en
+  // dix secondes passaient l'unité en échec. L'accès depuis le téléphone finissait par
+  // exiger une commande tapée sur la machine, ce qu'il était censé éviter.
+  fs.writeFileSync(path.join(bacCourant.dir, "EN-ATTENTE.json"), '{"en_attente":[{"dossier":"ajus');
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 500, "un fichier corrompu est une réponse, pas un arrêt");
+  assert.ok(/EN-ATTENTE\.json/.test(r.corps), "le message doit dire quel fichier réparer");
+
+  fs.writeFileSync(path.join(bacCourant.dir, "EN-ATTENTE.json"), JSON.stringify({ en_attente: [] }));
+  const apres = await demander({ chemin: "/" });
+  assert.strictEqual(apres.code, 200, "le cockpit doit avoir survécu à la requête précédente");
+});
+
+const dossierAvecUnderscore = async () => {
+  // Le nom du groupe radio était `d_${dossier}_${id}`, et le script le redécoupait sur les
+  // underscores en supposant que le dossier tenait en un seul segment. Avec un dossier en
+  // deux segments, l'identifiant reconstruit désignait une AUTRE action du plan, ou aucune.
+  // Une décision partait alors sur un changement de prix qui n'avait pas été lu.
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(r.corps.includes('data-action="prix_001"'), "l'identifiant doit voyager entier, dans un attribut");
+
+  const noms = [...r.corps.matchAll(/<input type="radio" name="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(noms.length >= 3, "les trois choix d'une action partagent un groupe");
+  for (const n of noms) {
+    assert.match(n, /^d\d+-\d+$/, `le nom du groupe ne doit rien porter des données : "${n}"`);
+  }
+
+  // Ce que l'ancien découpage rendait, sur ce même dossier.
+  assert.strictEqual("d_ajustement_prix_prix_001".split("_").slice(2).join("_"), "prix_prix_001");
+};
+dossierAvecUnderscore.forme = { dossier: "ajustement_prix", actionId: "prix_001" };
+test("un underscore dans le nom du dossier n'envoie plus la décision à la mauvaise action", dossierAvecUnderscore);
+
+const donneesHostiles = async () => {
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  // Un prix de départ à zéro ne donne pas une remise de l'infini : sans la garde, la page
+  // affichait « Infinity % » là où on lit un pourcentage pour décider.
+  assert.ok(!/Infinity/.test(r.corps), "aucun pourcentage calculé sur un prix nul ne doit s'afficher");
+  // Les justifications sont écrites par un modèle. L'apostrophe est échappée comme le
+  // reste, pour qu'aucun attribut écrit plus tard en guillemets simples ne devienne une
+  // porte d'entrée.
+  assert.ok(r.corps.includes("&#39;"), "l'apostrophe doit être échappée");
+  assert.ok(!/l'agent/.test(r.corps), "le texte du modèle ne doit jamais atteindre la page tel quel");
+};
+donneesHostiles.forme = { valeur: { de: 0, vers: 12, devise: "USD" }, justification: "l'agent l'a dit" };
+test("un prix de départ nul et une apostrophe de modèle ne passent pas dans la page", donneesHostiles);
+
+test("la page des prix ne se met pas en cache et ne se devine pas par reniflage de type", async () => {
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.entetes["cache-control"], "no-store", "des marges et une adresse mail n'ont rien à faire dans un cache");
+  assert.strictEqual(r.entetes["x-content-type-options"], "nosniff");
+  const api = await demander({ chemin: "/api/etat" });
+  assert.strictEqual(api.entetes["cache-control"], "no-store");
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {
     const httpTest = fn.constructor.name === "AsyncFunction";
     try {
-      if (httpTest) await monter();
+      if (httpTest) await monter({}, fn.forme || {});
       await fn();
       console.log(`  ✓ ${name}`);
     } catch (err) {

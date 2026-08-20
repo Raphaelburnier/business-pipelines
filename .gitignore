@@ -15,3 +15,6 @@ approvals/EN-ATTENTE.json
 # Journal des alertes déjà envoyées : état dérivé, comme la boîte. Le perdre coûte un
 # message en double, rien de plus.
 approvals/ALERTES.json
+
+# Worktrees de travail : des checkouts, pas du contenu de dépôt.
+.claude/worktrees/

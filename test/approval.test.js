@@ -1,4 +1,6 @@
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 
 const { loader } = require("agent-orchestrator");
 const { runPipeline } = require("agent-orchestrator").engine;
@@ -216,6 +218,44 @@ test("le plan change après la décision : arrêt, aucune action n'est exécutab
 
   await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
   assert.strictEqual(readJson(h.workspaceDir, "approbation.json").executables.length, 0);
+
+  // Refuser d'exécuter est juste. Refuser de DÉPOSER ne l'était pas : le nouveau plan
+  // restait invisible, donc rien à décider dans le cockpit, aucune alerte, et un cron
+  // qui repaye le planificateur à chaque réveil sans que rien n'avance.
+  const boite = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "EN-ATTENTE.json"), "utf-8"));
+  assert.strictEqual(boite.en_attente.length, 1, "le plan neuf doit entrer dans la boîte");
+  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "ajustement-prix.plan.json"), "utf-8"));
+  assert.strictEqual(
+    gele.empreinte,
+    approval.fingerprint([action("prix-001", "v1|101|0", 40)]),
+    "c'est le plan NEUF qui est gelé, pas celui que l'ancienne décision visait"
+  );
+  assert.strictEqual(boite.en_attente[0].empreinte, gele.empreinte);
+});
+
+// Le seul cas où s'arrêter sec reste juste : plus rien à faire attendre, donc rien à
+// déposer, et un registre caduc qu'on ne veut surtout pas voir servir à exécuter.
+test("registre caduc et aucune action à attendre : arrêt net, la boîte reste vide", async () => {
+  const pipeline = loadPipeline("ajustement-prix");
+  const h = createHarness({
+    pipeline,
+    spec: SPEC,
+    script: {
+      "price-planner": (_call, ws) =>
+        writeJson(ws, "actions.json", { actions: [], raisonnement: ["rien à corriger"] }),
+    },
+  });
+
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint([action("prix-001", "v1|101|0", 79)]),
+    decisions: [{ action_id: "prix-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
+  assert.ok(
+    !fs.existsSync(path.join(h.approvalsDir, "EN-ATTENTE.json")),
+    "sans action en attente, il n'y a rien à déposer et la boîte ne doit pas être inventée"
+  );
 });
 
 test("le registre vit hors du workspace, hors de portée des agents", async () => {

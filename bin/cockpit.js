@@ -26,7 +26,14 @@
 //   - la signature vient du canal, jamais du corps. Un champ texte libre laisse écrire
 //     n'importe quel nom, y compris par distraction ;
 //   - tout texte affiché est échappé. Les justifications sont écrites par un modèle, et
-//     du texte de modèle rendu tel quel dans une page est une injection en attente.
+//     du texte de modèle rendu tel quel dans une page est une injection en attente ;
+//   - aucune exception ne sort du gestionnaire. Il est `async`, donc ce qui en sortait
+//     devenait une promesse rejetée que Node ne rattrape pas : le processus mourait. Une
+//     boîte de réception tronquée tuait le cockpit à chaque requête, et systemd finissait
+//     par renoncer à le relancer ;
+//   - l'identifiant d'une action voyage dans un attribut de données, pas dans un nom de
+//     champ à redécouper. Le découpage supposait qu'un nom de dossier tenait en un
+//     segment, et rendait un autre identifiant dès qu'il portait un underscore.
 const http = require("http");
 const path = require("path");
 const { envLoader } = require("agent-orchestrator");
@@ -49,33 +56,51 @@ const TAILNET = (ENV.COCKPIT_TAILNET || "").trim() || null;
 const OPERATEUR = (ENV.COCKPIT_OPERATEUR_LOCAL || "").trim() || null;
 const PORTEE = { port: PORT, tailnet: TAILNET };
 
+// L'apostrophe est échappée elle aussi. Aucun attribut de cette page n'est écrit en
+// guillemets simples aujourd'hui, donc rien n'en dépend : c'est le prochain attribut
+// écrit ainsi qui deviendrait une injection, et une fonction d'échappement qui ne couvre
+// que les cas actuels est un piège posé pour plus tard.
 const ech = (v) =>
   String(v ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 function badge(f) {
+  // `max_heures` est lu dans un fichier de pipelines/, pas calculé ici. Il traverse donc
+  // la page comme du contenu de fichier, et tout contenu de fichier est échappé.
   if (f.verdict === "perime") {
-    return `<span class="b rouge">périmé, ${f.age_heures} h sur ${f.max_heures} h</span>`;
+    return `<span class="b rouge">périmé, ${ech(f.age_heures)} h sur ${ech(f.max_heures)} h</span>`;
   }
   if (f.verdict === "frais") {
-    return `<span class="b vert">frais, ${f.age_heures} h sur ${f.max_heures} h</span>`;
+    return `<span class="b vert">frais, ${ech(f.age_heures)} h sur ${ech(f.max_heures)} h</span>`;
   }
   const age = f.age_heures === null ? "date absente" : `${f.age_heures} h, maximum non déclaré`;
   return `<span class="b gris">fraîcheur inconnue, ${ech(age)}</span>`;
 }
 
-function ligneAction(dossier, a) {
+// Le nom du groupe radio est un compteur, et l'identifiant d'action voyage dans un
+// attribut de données que le navigateur rend tel quel.
+//
+// Avant, le nom était `d_${dossier}_${id}` et le script le redécoupait sur les underscores
+// en supposant que le dossier tenait en un segment. Un dossier nommé `ajustement_prix`
+// renvoyait donc `prix_001` au lieu de `001`. Le cas heureux était un refus « action
+// absente du plan gelé » ; le cas malheureux, un identifiant reconstruit qui correspond à
+// une AUTRE action réelle, donc un changement de prix approuvé sans avoir été lu. Deux
+// dossiers pouvaient aussi produire le même nom de groupe, et cocher dans l'un décochait
+// dans l'autre.
+function ligneAction(a, nom) {
   const v = a.valeur || {};
   const delta =
-    typeof v.de === "number" && typeof v.vers === "number"
+    // Une remise de 100 % depuis un prix de zéro n'existe pas : sans cette garde, la page
+    // affichait « Infinity % ».
+    typeof v.de === "number" && typeof v.vers === "number" && v.de !== 0
       ? `${v.de} → ${v.vers} ${ech(v.devise || "")} (${(((v.vers - v.de) / v.de) * 100).toFixed(1)} %)`
       : ech(JSON.stringify(v));
-  const nom = `d_${ech(dossier)}_${ech(a.id)}`;
   const deja = a.decision ? `<span class="b ${a.decision === "approuve" ? "vert" : "rouge"}">déjà ${ech(a.decision)}</span>` : "";
-  return `<div class="act">
+  return `<div class="act" data-action="${ech(a.id)}">
   <div class="tete"><b>${ech(a.id)}</b> <span class="mono">${ech(a.type)}</span> sur <span class="mono">${ech(a.cible)}</span> ${deja}</div>
   <div class="delta">${delta}</div>
   <p>${ech(a.justification || "")}</p>
@@ -92,10 +117,10 @@ function page(etat, qui) {
   const corps = etat.dossiers.length
     ? etat.dossiers
         .map(
-          (d) => `<section data-dossier="${ech(d.dossier)}" data-empreinte="${ech(d.empreinte)}">
+          (d, di) => `<section data-dossier="${ech(d.dossier)}" data-empreinte="${ech(d.empreinte)}">
   <h2>${ech(d.dossier)} ${badge(d.fraicheur)}</h2>
   <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, en attente depuis ${ech(d.depuis)}</div>
-  ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a) => ligneAction(d.dossier, a)).join("")}
+  ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a, ai) => ligneAction(a, `d${di}-${ai}`)).join("")}
   ${d.fraicheur.verdict === "perime" ? `<p class="rouge">Ce plan est périmé : le pipeline d'application le refusera. Relancer la planification.</p>` : ""}
 </section>`
         )
@@ -147,7 +172,7 @@ async function envoyer(e){
     const decisions=[];
     for(const r of s.querySelectorAll('input[type=radio]:checked')){
       if(!r.value) continue;
-      decisions.push({action_id:r.name.split('_').slice(2).join('_'),decision:r.value});
+      decisions.push({action_id:r.closest('.act').dataset.action,decision:r.value});
     }
     if(decisions.length) lots.push({dossier:s.dataset.dossier,empreinte:s.dataset.empreinte,decisions});
   }
@@ -166,13 +191,21 @@ async function envoyer(e){
 </script>`;
 }
 
+// Une page qui affiche des prix d'achat, des marges et l'adresse de celui qui décide n'a
+// rien à faire dans un cache, ni à être devinée par reniflage de type.
+const DURCISSEMENT = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+
 function json(res, code, corps) {
   const t = JSON.stringify(corps);
-  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(t) });
+  res.writeHead(code, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(t),
+    ...DURCISSEMENT,
+  });
   res.end(t);
 }
 
-const serveur = http.createServer(async (req, res) => {
+async function traiter(req, res) {
   // Défense contre le rebinding DNS : un nom d'hôte que je n'ai pas prévu ne parle pas au
   // serveur, même s'il résout vers 127.0.0.1.
   if (!acces.hoteAutorise(req.headers, PORTEE)) {
@@ -191,7 +224,7 @@ const serveur = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
     const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...DURCISSEMENT });
     return res.end(html);
   }
 
@@ -244,6 +277,28 @@ const serveur = http.createServer(async (req, res) => {
   }
 
   return json(res, 404, { erreur: "route inconnue" });
+}
+
+const serveur = http.createServer(async (req, res) => {
+  try {
+    await traiter(req, res);
+  } catch (err) {
+    // Un gestionnaire `async` passé à createServer ne remonte pas ses exceptions au
+    // serveur : elles deviennent des promesses rejetées que personne ne rattrape, et le
+    // défaut de Node est alors de tuer le processus.
+    //
+    // Constaté en tronquant EN-ATTENTE.json, ce que laisse une écriture interrompue : un
+    // seul GET suffisait à faire mourir le cockpit. Le service systemd le relançait, il
+    // remourait au rechargement suivant, et après cinq démarrages en dix secondes systemd
+    // passait l'unité en échec et cessait de la relancer. L'accès depuis le téléphone
+    // finissait donc par exiger de retourner taper une commande sur la machine, ce qu'il
+    // était censé éviter.
+    //
+    // Un fichier illisible doit produire une réponse qui NOMME le fichier, pas un arrêt.
+    console.error(err);
+    if (!res.headersSent) json(res, 500, { erreur: `panne du cockpit : ${err.message}` });
+    else res.end();
+  }
 });
 
 serveur.listen(PORT, "127.0.0.1", () => {

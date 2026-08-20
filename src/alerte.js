@@ -9,9 +9,9 @@
 // La logique est séparée du transport, comme le cockpit sépare la logique du serveur :
 // ce qui décide d'envoyer se teste sans réseau, et ce qui se décide ici est si une
 // demande qui engage de l'argent est vue ou oubliée.
-const fs = require("fs");
 const path = require("path");
 const cockpit = require("./cockpit");
+const durable = require("./durable");
 
 const JOURNAL = "ALERTES.json";
 
@@ -60,7 +60,7 @@ const TRANSPORTS = {
 
 function lireJournal(approvalsDir) {
   const p = path.join(approvalsDir, JOURNAL);
-  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : { envoyees: [] };
+  return durable.lireJson(p) || { envoyees: [] };
 }
 
 // La clé porte le dossier, l'empreinte du plan ET le verdict de fraîcheur, et c'est ce
@@ -149,7 +149,7 @@ function aNotifier({ approvalsDir, pipelinesDir = null, maintenant = Date.now(),
 function consigner(approvalsDir, entree) {
   const journal = lireJournal(approvalsDir);
   journal.envoyees.push(entree);
-  fs.writeFileSync(path.join(approvalsDir, JOURNAL), JSON.stringify(journal, null, 2));
+  durable.ecrireJson(path.join(approvalsDir, JOURNAL), journal);
 }
 
 // Envoie ce qui mérite de l'être, et consigne CE QUI EST PARTI, jamais ce qui a échoué.

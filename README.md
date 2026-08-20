@@ -198,6 +198,23 @@ plutôt qu'appliqué à l'aveugle.
 Ce risque existait déjà, toute boucle avec un humain dedans l'a. Il était simplement
 masqué par un défaut plus grave.
 
+### Un registre caduc n'est pas une anomalie, c'est le deuxième tour
+
+Le registre de décisions porte l'empreinte du plan qu'il visait. Dès que le planificateur
+en produit un autre, il devient caduc. C'est le cas normal à chaque nouveau cycle, pas un
+incident.
+
+Le stage refusait alors d'exécuter, ce qui est juste, mais il refusait aussi de **déposer**,
+ce qui ne l'était pas. Le nouveau plan restait invisible : rien dans la boîte, donc rien à
+décider dans le cockpit, aucune alerte, et un cron qui repaye le planificateur à chaque
+réveil sans que rien n'avance jamais. Le message renvoyait vers un plan gelé qui n'existait
+pas. Constaté en relançant la planification après un cycle mené à son terme.
+
+Un plan neuf se dépose et s'attend maintenant comme un premier, et le message dit d'abord
+pourquoi la décision précédente ne compte plus. Les décisions périmées restent ignorées :
+toutes les actions repartent en attente. On ne s'arrête sec que dans le seul cas où il n'y
+a rien à faire attendre, parce qu'il n'y a alors rien à déposer non plus.
+
 ## Le stage `execute`
 
 La garde a été écrite et testée d'abord, contre un registre d'exécuteurs **vide** : un
@@ -262,7 +279,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 166 vérifications, sans réseau ni credentials
+npm test                 # 175 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -452,6 +469,37 @@ on ne lui montre pas non plus les prix et les marges.
 depuis la collecte, comme le moteur, et sans maximum déclaré elle montre l'âge sans
 conclure. Une décision fautive dans un lot n'écrit rien du tout.
 
+**Elle répond à un fichier illisible au lieu de mourir.** Son gestionnaire de requêtes est
+`async`, et une exception qui en sortait devenait une promesse rejetée que Node ne rattrape
+pas : le processus s'arrêtait. Une boîte de réception tronquée tuait donc le cockpit à
+chaque requête, le service systemd le relançait, il remourait au rechargement suivant, et
+après cinq démarrages en dix secondes systemd renonçait à le relancer. L'accès depuis le
+téléphone finissait par exiger une commande tapée sur la machine, ce qu'il était censé
+éviter. La réponse nomme maintenant le fichier à réparer.
+
+**Elle ne redécoupe plus un identifiant d'action.** Le nom du champ était
+`d_{dossier}_{action}` et le script le recoupait sur les underscores, en supposant qu'un
+nom de dossier tenait en un segment. Dès qu'il en portait deux, l'identifiant reconstruit
+désignait une autre action du plan : une décision pouvait partir sur un changement de prix
+qui n'avait pas été lu. L'identifiant voyage désormais entier, dans un attribut de données.
+
+### Les fichiers d'approbation s'écrivent en une fois, ou pas du tout
+
+`writeFileSync` vide le fichier de destination avant de le remplir. Un processus tué entre
+les deux laisse un JSON incomplet, et ces fichiers-là ne sont pas des brouillons : la boîte
+de réception, les plans gelés, les registres de décisions, le ledger d'exécution et le
+journal d'alertes survivent au run. Un registre tronqué perd la trace de qui a engagé
+l'argent. Un ledger tronqué fait rejouer un changement de prix déjà appliqué, puisque c'est
+lui qui porte l'idempotence, et il s'écrit action par action, donc au moment exact où une
+interruption est plausible.
+
+`src/durable.js` écrit à côté puis renomme, ce qui est atomique sur un même système de
+fichiers : le fichier est le nouveau, ou reste l'ancien. Le test le vérifie par l'inode, qui
+est la seule chose qui distingue les deux façons d'écrire. Le même module nomme le fichier
+fautif quand une lecture échoue, parce que la boîte, les plans et les registres passent tous
+par le même appel et qu'un message parlant d'une position dans une chaîne ne dit pas quoi
+réparer.
+
 ### Depuis le téléphone
 
 Le montage tient en une phrase : Tailscale termine le TLS sur un vrai nom et relaie vers
@@ -482,6 +530,27 @@ Puis, sur le téléphone déjà membre du tailnet, ouvrir `https://<nom>.<tailne
 
 `npm run cockpit:tailnet -- --stop` démonte le relais et le cockpit redevient strictement
 local. Sans `COCKPIT_TAILNET`, il l'est aussi : la configuration absente ne dégrade rien.
+
+#### Le garder debout
+
+Le relais ne fait que relayer : si le cockpit n'est pas lancé, le nom `.ts.net` répond une
+erreur de passerelle, et une alerte reçue dehors mène à une page morte. Le cockpit est donc
+un service utilisateur systemd.
+
+```
+bin/installer-service.sh                # installe, active, démarre
+bin/installer-service.sh --journal      # suit les logs
+bin/installer-service.sh --desinstaller # retire tout
+```
+
+Service utilisateur et pas service système, délibérément : le cockpit lit et écrit des
+fichiers qui appartiennent à cet utilisateur, et servir une page sur la boucle locale ne
+demande aucun droit de root. Il redémarre seul s'il tombe, ce qui est vérifié en le tuant.
+
+Deux limites à connaître. `linger` doit être actif, sinon le service meurt avec la session
+et n'est debout que quand on est déjà devant la machine, c'est-à-dire exactement quand on
+n'en a pas besoin ; le script le vérifie et donne la commande. Et sous WSL, tout ça ne
+tourne que si l'instance WSL tourne : Windows ne démarre pas WSL de lui-même.
 
 #### Ce que ça authentifie, et ce que ça n'authentifie pas
 

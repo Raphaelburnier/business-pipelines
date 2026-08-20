@@ -7,15 +7,11 @@
 //
 // Une page qui écrit des décisions d'approbation change de vrais prix. Elle est donc
 // écrite comme le reste du dépôt : elle refuse plutôt que de deviner.
-const fs = require("fs");
 const path = require("path");
+const { lireJson, ecrireJson } = require("./durable");
 
 const INBOX = "EN-ATTENTE.json";
 const HEURE = 3600 * 1000;
-
-function lireJson(p) {
-  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
-}
 
 // La fraîcheur se mesure depuis la COLLECTE, pas depuis le gel : c'est la donnée qui
 // vieillit, pas la mise en forme. Le moteur applique déjà cette règle, et un cockpit qui
@@ -152,7 +148,10 @@ function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, canal =
   }
 
   const contenu = { plan: empreinte, decisions: propres };
-  fs.writeFileSync(entree.registre, JSON.stringify(contenu, null, 2));
+  // Écriture atomique. Une écriture directe interrompue laisse un registre tronqué, et un
+  // JSON tronqué dans les approbations tuait ensuite tout ce qui le relit. Ce fichier est
+  // la trace de qui a engagé l'argent : il est complet, ou il reste le précédent.
+  ecrireJson(entree.registre, contenu);
   return contenu;
 }
 
