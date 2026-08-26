@@ -23,7 +23,8 @@
       "source": "ebay",
       "query_from": "marche",
       "limit": 50,
-      "output": "listings.json"
+      "output": "listings.json",
+      "mine_from": "mes_annonces"
     },
     {
       "id": "statistiques",

@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  cockpit:
+    build: .
+    container_name: business_cockpit
+    command: node bin/cockpit.js
+    restart: unless-stopped
+    ports:
+      # On expose le port 4600 uniquement en local (127.0.0.1)
+      # Tailscale s'occupera de faire le pont de manière sécurisée
+      - "127.0.0.1:4600:4600"
+    volumes:
+      # Montage du ledger d'approbations hors du workspace
+      - ./approvals:/app/approvals
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      # C'est ici que tu mettras ta clé Google AI Studio plus tard
+      - GEMINI_API_KEY=$GEMINI_API_KEY
+
+  cycle:
+    build: .
+    container_name: business_cycle
+    command: node bin/cycle.js
+    restart: unless-stopped
+    volumes:
+      # Le cron a aussi besoin de lire le ledger et les stats
+      - ./approvals:/app/approvals
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production

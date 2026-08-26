@@ -1,4 +1,6 @@
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 
 const { loader } = require("agent-orchestrator");
 const { runPipeline } = require("agent-orchestrator").engine;
@@ -216,6 +218,44 @@ test("le plan change après la décision : arrêt, aucune action n'est exécutab
 
   await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
   assert.strictEqual(readJson(h.workspaceDir, "approbation.json").executables.length, 0);
+
+  // Refuser d'exécuter est juste. Refuser de DÉPOSER ne l'était pas : le nouveau plan
+  // restait invisible, donc rien à décider dans le cockpit, aucune alerte, et un cron
+  // qui repaye le planificateur à chaque réveil sans que rien n'avance.
+  const boite = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "EN-ATTENTE.json"), "utf-8"));
+  assert.strictEqual(boite.en_attente.length, 1, "le plan neuf doit entrer dans la boîte");
+  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "ajustement-prix.plan.json"), "utf-8"));
+  assert.strictEqual(
+    gele.empreinte,
+    approval.fingerprint([action("prix-001", "v1|101|0", 40)]),
+    "c'est le plan NEUF qui est gelé, pas celui que l'ancienne décision visait"
+  );
+  assert.strictEqual(boite.en_attente[0].empreinte, gele.empreinte);
+});
+
+// Le seul cas où s'arrêter sec reste juste : plus rien à faire attendre, donc rien à
+// déposer, et un registre caduc qu'on ne veut surtout pas voir servir à exécuter.
+test("registre caduc et aucune action à attendre : arrêt net, la boîte reste vide", async () => {
+  const pipeline = loadPipeline("ajustement-prix");
+  const h = createHarness({
+    pipeline,
+    spec: SPEC,
+    script: {
+      "price-planner": (_call, ws) =>
+        writeJson(ws, "actions.json", { actions: [], raisonnement: ["rien à corriger"] }),
+    },
+  });
+
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint([action("prix-001", "v1|101|0", 79)]),
+    decisions: [{ action_id: "prix-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
+  assert.ok(
+    !fs.existsSync(path.join(h.approvalsDir, "EN-ATTENTE.json")),
+    "sans action en attente, il n'y a rien à déposer et la boîte ne doit pas être inventée"
+  );
 });
 
 test("le registre vit hors du workspace, hors de portée des agents", async () => {
@@ -260,6 +300,72 @@ test("cible absente du relevé : routée au planificateur, puis corrigée", asyn
   // échappés, donc on cherche l'id et le motif séparément plutôt qu'une phrase littérale.
   assert.match(fix.userMessage, /v1\|999\|0/);
   assert.match(fix.userMessage, /absente de la collecte/);
+});
+
+test("une annonce à moi absente de la recherche reste une cible légitime", async () => {
+  // Le cas réel : une annonce fraîchement publiée que le lookup direct rend en 200 et
+  // que la recherche de marché ignore. Sans cette distinction, le plan ne peut cibler
+  // aucune annonce du vendeur, et la boucle entière est inutilisable.
+  const { fakeEbay, annonce } = require("./harness");
+  const pipeline = loadPipeline("ajustement-prix");
+  const marche = [annonce(3), annonce(4), annonce(5)];
+  const mienne = annonce(9, { itemId: "v1|909|0", title: "la mienne, hors recherche" });
+
+  const h = createHarness({
+    pipeline,
+    spec: { ...SPEC, mes_annonces: ["v1|909|0"] },
+    items: marche,
+    transport: fakeEbay(marche, { miennes: [mienne] }),
+    script: {
+      "price-planner": (_call, ws) => {
+        writeJson(ws, "actions.json", {
+          actions: [action("prix-001", "v1|909|0", 79)],
+          raisonnement: ["ma seule annonce, absente du relevé de marché"],
+        });
+      },
+    },
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+  assert.strictEqual(h.calls["price-planner"], 1, "aucun cycle de correction ne doit se déclencher");
+
+  const listings = readJson(h.ctx.workspaceDir, "listings.json");
+  assert.strictEqual(listings.mes_annonces.length, 1, "elle doit être récupérée à part");
+  assert.ok(
+    !listings.collecte.some((a) => a.id === "v1|909|0"),
+    "et rester hors du marché, sinon la médiane s'aligne sur elle-même"
+  );
+
+  const controle = readJson(h.ctx.workspaceDir, "controle.json");
+  assert.strictEqual(controle.verdict, "VALIDE");
+  assert.deepStrictEqual(controle.manques, [], "la cible ne doit pas être vue comme inventée");
+});
+
+test("une annonce à moi introuvable chez eBay est signalée, pas devinée", async () => {
+  const { fakeEbay, annonce } = require("./harness");
+  const pipeline = loadPipeline("ajustement-prix");
+  const marche = [annonce(3), annonce(4), annonce(5)];
+
+  const h = createHarness({
+    pipeline,
+    spec: { ...SPEC, mes_annonces: ["v1|disparue|0"] },
+    items: marche,
+    transport: fakeEbay(marche),
+    script: {
+      "price-planner": (_call, ws) => {
+        writeJson(ws, "actions.json", { actions: [], raisonnement: ["plus rien à moi"] });
+      },
+    },
+  });
+
+  await runPipeline(h.ctx).catch(() => {});
+  const listings = readJson(h.ctx.workspaceDir, "listings.json");
+  assert.deepStrictEqual(listings.mes_annonces, [], "rien d'inventé");
+  assert.deepStrictEqual(
+    listings.mes_annonces_introuvables,
+    ["v1|disparue|0"],
+    "une annonce vendue ou retirée est une information, pas une panne"
+  );
 });
 
 test("id dupliqué : rejeté, une décision ne doit jamais être ambiguë", async () => {

@@ -202,6 +202,53 @@ test("un gate sur le stage stats est refusé au chargement", () => {
   );
 });
 
+// Les cinq prix réels du relevé "pokemon booster box" du 2026-08-19, dont l'annonce à
+// 18 999 $ qui a fait refuser le planificateur.
+const MARCHE_REEL = [144.99, 144.99, 336.99, 466.99, 18999.99];
+const lot = (prix) => prix.map((p, i) => ({ id: `v1|${i}|0`, prix: p, devise: "USD", etat: "New", livraison_gratuite: true, vendeur: "v" }));
+const releve = (prix) => ({ collecte: lot(prix), marketplace: "EBAY_US", devises: ["USD"] });
+
+test("l'aberration qui a bloqué un vrai plan est écartée, et ça change la médiane", () => {
+  const st = stats.statistiques(releve(MARCHE_REEL));
+  assert.strictEqual(st.prix.mediane, 336.99, "la médiane brute reste ce qu'elle est");
+  assert.strictEqual(st.prix_hors_aberrants.prix.mediane, 240.99, "écarter 18999 la déplace");
+  assert.deepStrictEqual(
+    st.prix_hors_aberrants.exclus.map((e) => e.prix),
+    [18999.99],
+    "une seule annonce sort, nommée, pas une coupe silencieuse"
+  );
+});
+
+test("les deux mesures sont publiées côte à côte : écarter des points est un choix", () => {
+  const st = stats.statistiques(releve(MARCHE_REEL));
+  assert.ok(st.prix, "la mesure brute reste disponible");
+  assert.ok(st.prix_hors_aberrants.prix, "la mesure filtrée aussi");
+  assert.notStrictEqual(st.prix.mediane, st.prix_hors_aberrants.prix.mediane, "l'écart doit rester visible");
+});
+
+test("un marché sans aberration ne perd aucune annonce", () => {
+  const st = stats.statistiques(releve([100, 110, 120, 130, 140]));
+  assert.deepStrictEqual(st.prix_hors_aberrants.exclus, []);
+  assert.strictEqual(st.prix_hors_aberrants.prix.n, 5);
+  assert.strictEqual(st.prix_hors_aberrants.prix.mediane, st.prix.mediane);
+});
+
+test("sous quatre annonces la règle ne s'applique pas et le dit", () => {
+  const st = stats.statistiques(releve([10, 20, 9000]));
+  assert.strictEqual(st.prix_hors_aberrants.applicable, false, "trois points ne font pas des quartiles");
+  assert.deepStrictEqual(st.prix_hors_aberrants.exclus, [], "rien ne doit être écarté au jugé");
+  assert.strictEqual(st.prix_hors_aberrants.prix.n, 3, "et rien ne doit disparaître du compte");
+});
+
+test("les seuils sont ceux de la règle, citables et vérifiables", () => {
+  const st = stats.statistiques(releve([100, 200, 300, 400]));
+  const h = st.prix_hors_aberrants;
+  assert.strictEqual(h.regle, "iqr_1.5");
+  // q1 = 100, q3 = 300 au plus proche rang, donc écart 200, seuils -200 et 600.
+  assert.strictEqual(h.seuil_bas, -200);
+  assert.strictEqual(h.seuil_haut, 600);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

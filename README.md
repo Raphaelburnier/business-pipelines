@@ -198,12 +198,30 @@ plutôt qu'appliqué à l'aveugle.
 Ce risque existait déjà, toute boucle avec un humain dedans l'a. Il était simplement
 masqué par un défaut plus grave.
 
-## Le stage `execute`, moitié gardienne
+### Un registre caduc n'est pas une anomalie, c'est le deuxième tour
 
-La garde est écrite et testée. Le geste qui touche une plateforme marchande, non : il
-sera écrit contre la vraie API, après le premier run réel, jamais contre une forme
-devinée. Le registre d'exécuteurs est donc **vide**, et un type sans exécuteur arrête le
-run en le nommant plutôt que de se sauter en silence.
+Le registre de décisions porte l'empreinte du plan qu'il visait. Dès que le planificateur
+en produit un autre, il devient caduc. C'est le cas normal à chaque nouveau cycle, pas un
+incident.
+
+Le stage refusait alors d'exécuter, ce qui est juste, mais il refusait aussi de **déposer**,
+ce qui ne l'était pas. Le nouveau plan restait invisible : rien dans la boîte, donc rien à
+décider dans le cockpit, aucune alerte, et un cron qui repaye le planificateur à chaque
+réveil sans que rien n'avance jamais. Le message renvoyait vers un plan gelé qui n'existait
+pas. Constaté en relançant la planification après un cycle mené à son terme.
+
+Un plan neuf se dépose et s'attend maintenant comme un premier, et le message dit d'abord
+pourquoi la décision précédente ne compte plus. Les décisions périmées restent ignorées :
+toutes les actions repartent en attente. On ne s'arrête sec que dans le seul cas où il n'y
+a rien à faire attendre, parce qu'il n'y a alors rien à déposer non plus.
+
+## Le stage `execute`
+
+La garde a été écrite et testée d'abord, contre un registre d'exécuteurs **vide** : un
+type sans exécuteur arrête le run en le nommant plutôt que de se sauter en silence. Le
+geste qui touche une plateforme marchande est venu ensuite, écrit contre l'API vivante et
+jamais contre une forme devinée. Le registre ne porte toujours que lui, `changement_prix`,
+et la garde n'a pas bougé d'une ligne pour l'accueillir.
 
 Quatre propriétés, toutes vérifiées avant qu'une seule action ne parte :
 
@@ -261,7 +279,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 20 vérifications, sans réseau ni credentials
+npm test                 # 175 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -369,11 +387,330 @@ annonce, et la médiane fausse qui a donné le stage `stats`.
 contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
 129,99 $ par le chemin complet. Voir la section suivante.
 
-**Reste ouvert** : publier une annonce demande des politiques de livraison, qui vivent
-dans la Sell Account API et exigent le scope `sell.account`. L'exécuteur n'en a pas
-besoin pour changer un prix, et le scope par défaut du consentement reste donc au
-minimum. Élargir se fait en passant `scopes` à `urlConsentement`, délibérément, pas par
-défaut.
+**Fait le 2026-08-19** : la boucle complète, contre le vrai eBay. Relevé de marché,
+statistiques, plan, contrôle, gel, approbation, exécution, registre. Le prix d'une vraie
+annonce publiée est passé de 499,99 à 240,99 $, eBay le confirme, et un second passage du
+pipeline d'application n'a rien réexécuté (`a_faire: 0, deja: 1`).
+
+**Fait le 2026-08-19** : le cockpit d'approbation. `node bin/cockpit.js` sert une page
+locale qui lit la boîte, montre chaque plan en attente avec sa fraîcheur, et écrit les
+décisions.
+
+**Fait le 2026-08-19** : le cycle et le canal d'alerte. Un cron réveille `bin/cycle.js`,
+qui lit l'état, choisit une action et prévient par courriel. Voir la section suivante.
+
+**Fait le 2026-08-20** : décider depuis le téléphone. Le cockpit reste sur la boucle
+locale et Tailscale relaie vers lui sous un vrai nom, avec un vrai certificat. La signature
+n'est plus un champ de texte : elle vient du canal. Voir « Depuis le téléphone » plus bas.
+
+**Reste ouvert** : l'application sur l'écran d'accueil, puis le push web qui remplacera
+le courriel comme canal principal. Le courriel restera le filet, parce qu'il marche encore
+quand le téléphone est neuf, réinitialisé ou hors réseau. Reste ouvert aussi l'élargissement
+de ce que l'application pilote : historique d'exécution, dernier état du cycle, et
+déclenchement de la planification. Le principe retenu pour ce dernier point est que la page
+écrit une intention et que le cycle l'exécute, parce qu'un processus web qui lance lui-même
+un pipeline devient un moyen de dépenser sans passer par la boucle de décision.
+
+## Le cockpit d'approbation
+
+```
+npm run cockpit              # http://127.0.0.1:4600
+npm run cockpit:tailnet      # monte le relais, pour y accéder du téléphone
+```
+
+La page montre, pour chaque dossier en attente, l'empreinte du plan, l'âge des données et
+chaque action avec sa justification, ses sources et l'écart de prix en pourcentage.
+
+### Ce qu'il refuse de faire
+
+Cette page change de vrais prix, elle est donc écrite comme le reste du dépôt.
+
+**Elle n'écoute que sur 127.0.0.1**, y compris depuis qu'on y accède du téléphone. Ce
+n'est plus seulement une précaution, c'est une condition : Tailscale n'injecte l'identité
+de l'appelant que si le service reste local, sinon n'importe qui sur le réseau peut
+fabriquer cette identité. Élargir l'écoute ne rendrait pas le cockpit plus joignable, ça
+détruirait la seule chose qui donne du sens aux en-têtes.
+
+**Elle vérifie l'en-tête `Host`** contre une liste blanche. Sans ça, un site visité dans le
+même navigateur peut faire pointer un nom vers l'adresse locale et parler au serveur à ta
+place. Le nom du tailnet n'entre dans cette liste que s'il est configuré.
+
+**Elle vérifie l'origine et le type de contenu sur les écritures.** Tant que la page
+n'était joignable qu'en local, aucun site tiers ne pouvait viser une URL stable. Sous un
+vrai nom de domaine, un formulaire hébergé ailleurs le peut, et un POST de formulaire
+échappe au contrôle préalable CORS. Exiger `application/json` referme cette porte.
+
+**Elle ne laisse pas le corps de la requête choisir où elle écrit.** Ce corps était étalé
+tel quel dans l'appel qui enregistre, donc il pouvait redéfinir le répertoire d'écriture,
+l'horodatage et le nom du signataire. Rien ne l'exploitait, parce que la liaison locale
+rendait le chemin inatteignable. C'est précisément le genre de garde qu'un élargissement
+de portée réveille : elle ne tenait que par l'étroitesse de l'accès.
+
+**Elle échappe tout texte affiché.** Les justifications sont écrites par un modèle, et du
+texte de modèle rendu tel quel dans une page est une injection en attente.
+
+**Elle refuse un dossier absent de la boîte**, sinon le chemin du registre serait dicté
+par la requête et une page locale deviendrait une écriture de fichier arbitraire.
+
+**Elle refuse une empreinte qui ne correspond plus.** Si la planification a tourné entre
+l'affichage et le clic, les montants ne sont plus ceux qui ont été lus.
+
+**Elle refuse une décision non signée**, et la signature ne se tape plus. Elle vient du
+canal par lequel la requête est arrivée : le login Tailscale pour le téléphone, le compte
+système pour la console de la machine. Un registre d'audit anonyme ne dit pas qui a engagé
+l'argent, et un champ de texte libre laisse écrire n'importe quel nom.
+
+**Elle refuse une requête arrivée sous le nom du tailnet sans identité Tailscale**, et
+elle la refuse avant d'afficher quoi que ce soit. Ça veut dire que le relais n'est pas en
+place et que quelque chose d'autre répond sur ce nom : on ne sait pas à qui on parle, donc
+on ne lui montre pas non plus les prix et les marges.
+
+**Elle n'affiche aucun feu vert qu'elle ne peut pas justifier.** La fraîcheur se mesure
+depuis la collecte, comme le moteur, et sans maximum déclaré elle montre l'âge sans
+conclure. Une décision fautive dans un lot n'écrit rien du tout.
+
+**Elle répond à un fichier illisible au lieu de mourir.** Son gestionnaire de requêtes est
+`async`, et une exception qui en sortait devenait une promesse rejetée que Node ne rattrape
+pas : le processus s'arrêtait. Une boîte de réception tronquée tuait donc le cockpit à
+chaque requête, le service systemd le relançait, il remourait au rechargement suivant, et
+après cinq démarrages en dix secondes systemd renonçait à le relancer. L'accès depuis le
+téléphone finissait par exiger une commande tapée sur la machine, ce qu'il était censé
+éviter. La réponse nomme maintenant le fichier à réparer.
+
+**Elle ne redécoupe plus un identifiant d'action.** Le nom du champ était
+`d_{dossier}_{action}` et le script le recoupait sur les underscores, en supposant qu'un
+nom de dossier tenait en un segment. Dès qu'il en portait deux, l'identifiant reconstruit
+désignait une autre action du plan : une décision pouvait partir sur un changement de prix
+qui n'avait pas été lu. L'identifiant voyage désormais entier, dans un attribut de données.
+
+### Les fichiers d'approbation s'écrivent en une fois, ou pas du tout
+
+`writeFileSync` vide le fichier de destination avant de le remplir. Un processus tué entre
+les deux laisse un JSON incomplet, et ces fichiers-là ne sont pas des brouillons : la boîte
+de réception, les plans gelés, les registres de décisions, le ledger d'exécution et le
+journal d'alertes survivent au run. Un registre tronqué perd la trace de qui a engagé
+l'argent. Un ledger tronqué fait rejouer un changement de prix déjà appliqué, puisque c'est
+lui qui porte l'idempotence, et il s'écrit action par action, donc au moment exact où une
+interruption est plausible.
+
+`src/durable.js` écrit à côté puis renomme, ce qui est atomique sur un même système de
+fichiers : le fichier est le nouveau, ou reste l'ancien. Le test le vérifie par l'inode, qui
+est la seule chose qui distingue les deux façons d'écrire. Le même module nomme le fichier
+fautif quand une lecture échoue, parce que la boîte, les plans et les registres passent tous
+par le même appel et qu'un message parlant d'une position dans une chaîne ne dit pas quoi
+réparer.
+
+### Depuis le téléphone
+
+Le montage tient en une phrase : Tailscale termine le TLS sur un vrai nom et relaie vers
+`localhost`, le cockpit ne bouge pas.
+
+```
+téléphone  --wireguard-->  tailscale (TLS, certificat réel)  --->  127.0.0.1:4600
+```
+
+Ce choix a remplacé celui que j'avais annoncé, qui était d'élargir l'écoute et d'inventer
+un jeton d'appareil pour porter la signature. Les deux moitiés du plan étaient fausses :
+le relais fournit déjà l'identité par en-têtes, donc le jeton n'avait pas lieu d'être, et
+élargir l'écoute aurait rendu ces en-têtes falsifiables par n'importe qui sur le réseau.
+
+Sous WSL, le cockpit tourne côté Linux et Tailscale côté Windows. Le pont existe déjà :
+Windows relaie son `localhost` vers les sockets en écoute dans WSL. C'est vérifié, pas
+supposé.
+
+#### La mettre en place
+
+```
+cp specs/cockpit.env.example specs/cockpit.env
+npm run cockpit:tailnet      # affiche le nom exact à recopier dans COCKPIT_TAILNET
+npm run cockpit
+```
+
+Puis, sur le téléphone déjà membre du tailnet, ouvrir `https://<nom>.<tailnet>.ts.net`.
+
+`npm run cockpit:tailnet -- --stop` démonte le relais et le cockpit redevient strictement
+local. Sans `COCKPIT_TAILNET`, il l'est aussi : la configuration absente ne dégrade rien.
+
+#### Le garder debout
+
+Le relais ne fait que relayer : si le cockpit n'est pas lancé, le nom `.ts.net` répond une
+erreur de passerelle, et une alerte reçue dehors mène à une page morte. Le cockpit est donc
+un service utilisateur systemd.
+
+```
+bin/installer-service.sh                # installe, active, démarre
+bin/installer-service.sh --journal      # suit les logs
+bin/installer-service.sh --desinstaller # retire tout
+```
+
+Service utilisateur et pas service système, délibérément : le cockpit lit et écrit des
+fichiers qui appartiennent à cet utilisateur, et servir une page sur la boucle locale ne
+demande aucun droit de root. Il redémarre seul s'il tombe, ce qui est vérifié en le tuant.
+
+Deux limites à connaître. `linger` doit être actif, sinon le service meurt avec la session
+et n'est debout que quand on est déjà devant la machine, c'est-à-dire exactement quand on
+n'en a pas besoin ; le script le vérifie et donne la commande. Et sous WSL, tout ça ne
+tourne que si l'instance WSL tourne : Windows ne démarre pas WSL de lui-même.
+
+#### Ce que ça authentifie, et ce que ça n'authentifie pas
+
+L'identité vient du tailnet, établie par WireGuard : un appareil qui n'est pas le tien ne
+peut pas signer une décision. Un processus déjà présent sur cette machine, lui, peut
+fabriquer l'en-tête. Mais il pouvait déjà écrire le registre de décisions directement, donc
+la frontière n'a pas bougé. Ce que l'en-tête supprime, c'est l'erreur humaine, pas
+l'attaquant local, et le dire autrement serait se raconter une histoire.
+
+Le canal est consigné dans le registre à côté de la signature : `tailnet` veut dire prouvé
+par WireGuard, `local` veut dire console de la machine et prouvé par rien.
+
+## Le cycle, et pourquoi un cron ne suffit pas
+
+Une boucle avec un humain dedans n'avance pas d'elle-même : elle alterne entre des moments
+où la machine travaille et des moments où elle attend. Un cron qui lancerait simplement la
+planification toutes les heures détruirait la moitié attente. Replanifier change
+l'empreinte du plan, et une empreinte qui change invalide la décision en cours : l'humain
+aurait cliqué sur un montant qui n'existe plus, et le cockpit aurait eu raison de le
+refuser. Il faut donc quelque chose qui sache **ne rien faire**.
+
+```bash
+npm run cycle            # un réveil : lire l'état, choisir une action, prévenir
+npm run cycle -- --dry   # dit ce qu'il ferait, ne lance rien
+npm run alerter          # le canal seul
+npm run en-attente       # l'affichage seul
+```
+
+| État de la boîte | Action |
+|---|---|
+| rien en attente | planifier |
+| plan gelé introuvable | planifier |
+| plan frais, décision commencée ou pas | attendre |
+| périmé, **aucune** décision prise | attendre, sans rien dépenser |
+| périmé, décision commencée | replanifier |
+| tout décidé | appliquer, avec le pipeline que la demande désigne |
+
+Deux lignes portent tout le reste.
+
+**On ne replanifie jamais pendant qu'une décision fraîche est en cours.** C'est la règle
+qui rend le cron compatible avec un humain lent.
+
+**Un plan périmé que personne n'a regardé ne déclenche rien.** Replanifier appellerait le
+planificateur pour produire un plan que personne n'attend, et recommencerait toutes les
+douze heures, indéfiniment. Si une décision avait commencé, en revanche, quelqu'un s'en
+occupe et était simplement en retard : on lui redonne un plan frais à décider. La
+péremption du moteur s'applique, elle ne devient pas une exception parce qu'un cron est
+passé.
+
+**L'action à appliquer se lit dans la demande, jamais devinée.** Sans `appliquer_avec`, le
+cycle attend plutôt que de choisir un pipeline à la place de celui qui a planifié.
+
+### Un arrêt normal ressemble à une panne
+
+Un pipeline de planification se **termine en erreur quand il aboutit** : le stage
+d'approbation lève pour arrêter net, c'est sa façon de rendre la main. Lire le seul code
+de sortie ferait passer chaque planification réussie pour un incident, tous les jours,
+jusqu'à ce qu'on cesse de regarder les alertes, ce qui est la panne la plus grave.
+
+Ce qui distingue les deux est observable ailleurs : un arrêt sur approbation a déposé une
+demande dans la boîte. Le cycle compare donc la boîte avant et après. Elle a changé,
+l'arrêt est le bon ; elle n'a pas bougé, c'est un vrai échec.
+
+## Le canal d'alerte
+
+Le cockpit règle la décision, pas la notification. Ce module est ce qui va chercher
+l'humain, et c'est un lecteur de la boîte de plus, au même titre que `en-attente` et le
+cockpit. Il ne touche ni au moteur ni au cockpit.
+
+Le transport vit dans un registre, comme les sources de marché. Un transport reçoit un
+message déjà rédigé et le fait sortir : il ne décide jamais s'il faut l'envoyer. C'est ce
+qui rendra le push de l'application ajoutable sans toucher une ligne de ce qui décide.
+
+### Ce qu'il refuse de faire
+
+**Il ne consigne que ce qui est parti.** Consigner avant d'envoyer coûterait moins de code
+et perdrait l'alerte au premier réseau coupé, en laissant la demande attendre pour
+toujours. C'est exactement le défaut que la boîte durable existe pour corriger, et le
+réintroduire dans son notifieur serait une belle ironie. Un échec n'arrête pas le lot : les
+autres dossiers partent, et le raté repart au réveil suivant.
+
+**Il ne répète pas.** La clé de dédoublonnage porte le dossier, l'empreinte du plan et le
+verdict de fraîcheur. Replanifier renotifie, puisque c'est une autre demande. Périmer
+renotifie une fois, parce que l'approbation ne s'appliquera plus et qu'il faut le savoir.
+Deux messages au maximum par plan, et un cron qui se réveille toutes les quinze minutes
+n'en produit aucun de plus. Une boîte qui répète se fait taire aussi sûrement qu'une boîte
+pleine de faux se fait ignorer.
+
+**Il ne porte aucune décision.** Pas de bouton, pas de lien qui approuve. Un « approuver »
+atteignable depuis un message serait un chemin d'écriture vers l'argent contournant tous
+les refus du cockpit, l'empreinte vérifiée et la signature en tête. Le canal prévient, il
+n'engage pas.
+
+**Il ne se tait jamais faute de configuration.** Aucun transport, ou un transport inconnu,
+échouent bruyamment. Un canal muet ne se remarque que le jour où il comptait.
+
+**Il n'envoie rien en répétition à blanc, et ne consigne rien non plus.** Sinon regarder ce
+qui partirait empêcherait que ça parte, et la première alerte perdue serait celle qu'on a
+voulu vérifier.
+
+**Il dit quand la liste est tronquée.** Cinq actions affichées sur douze sans le signaler
+laissent approuver douze choses après en avoir lu cinq.
+
+### La mettre en place
+
+```bash
+cp specs/alerte.env.example specs/alerte.env   # puis remplir
+npm run alerter -- --dry                        # voir ce qui partirait
+```
+
+Puis une ligne de crontab, un quart d'heure étant largement assez fin pour une boucle dont
+l'autre moitié est humaine :
+
+```cron
+*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json >> /var/log/business-pipelines.log 2>&1
+```
+
+### Ce que ça ne résout pas encore
+
+Le courriel prévient, il ne décide pas, et c'est délibéré : un message ne porte aucun
+bouton et aucun lien qui approuve. La décision se prend dans le cockpit, joignable depuis
+le téléphone depuis le 2026-08-20. Ce qui reste, c'est que le courriel n'arrive pas comme
+une notification d'application : il faut ouvrir sa boîte. Le push web réglera ça.
+
+## Ce que la boucle réelle a appris
+
+Quatre runs, quatre refus du planificateur avant la première action. Aucun n'était un bug
+de sa part, et chacun a désigné un défaut réel.
+
+**La requête mélangeait des formats incomparables.** `pokemon booster` agrège des packs
+simples, des lots et des boîtes de 36. La médiane à 45,99 $ n'existait sur aucun marché
+réel, et s'y aligner aurait fait chuter une annonce de 124,99 à 45,99 $.
+
+**Une valeur aberrante faussait le repère.** Une caisse complète à 18 999 $ tirait la
+médiane à 336,99 $. Le planificateur a écrit noir sur blanc : « je ne peux pas recalculer
+de médiane filtrée ». En lui retirant l'arithmétique, ce qui était juste, on lui avait
+aussi retiré le moyen d'écarter un point. Lui rendre le calcul aurait rouvert le défaut
+d'origine, alors `stats.json` porte désormais un second repère, `prix_hors_aberrants`,
+calculé par la règle de l'écart interquartile. Les deux mesures sont publiées côte à
+côte : écarter des points est un choix, pas une correction.
+
+**Les comparables portaient sur d'autres extensions.** Refus encore, et encore justifié.
+
+**Et le quatrième refus a trouvé un bug dans mon code.** Le planificateur a écrit que sa
+cible figurait dans `mes_annonces` mais était rejetée comme absente de la collecte. Il
+avait raison : l'élargissement du contrôle avait atterri sur le contrôle du rapport de
+veille au lieu de celui des actions. Corrigé, avec le test qui l'aurait attrapé, et la
+mutation qui remet l'ancien comportement fait bien tomber ce test.
+
+### Les annonces du vendeur ne se cherchent pas, elles se demandent
+
+Une recherche rend les annonces les plus pertinentes pour une requête, pas les siennes.
+Le sandbox l'a montré sans ambiguïté : une annonce fraîchement publiée que le lookup
+direct rend en 200 est absente de la recherche. En production le problème est le même en
+plus discret, l'annonce se trouvant simplement au-delà de la page lue.
+
+La collecte récupère donc les annonces du vendeur une par une, par `mine_from`, et les
+range hors de `collecte`. Les mêler au marché ferait calculer une médiane qui contient
+déjà son propre prix, donc un alignement sur soi-même. Une annonce vendue ou retirée
+ressort dans `mes_annonces_introuvables` : c'est une information, pas une panne.
 
 ## L'exécuteur de prix, et ce que la vraie API a appris
 

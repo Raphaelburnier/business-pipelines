@@ -65,6 +65,50 @@ function part(n, total) {
 // Groupement stable : trié par effectif décroissant, puis par clé alphabétique. Sans le
 // second critère, deux états à égalité changeraient d'ordre d'un run à l'autre et une
 // réponse citant `par_etat.0` désignerait autre chose sans que rien n'ait bougé.
+// Un repère débarrassé des valeurs aberrantes, par la règle de l'écart interquartile.
+//
+// Ajouté parce qu'un run réel l'a réclamé : le planificateur a refusé d'agir en écrivant
+// « je ne peux pas recalculer de médiane filtrée ». Une seule annonce à 18 999 $ sur un
+// relevé de 5 tirait la médiane à 337 pour un marché réel autour de 145, et l'agent, à
+// qui l'arithmétique a été retirée à raison, n'avait aucun moyen de citer autre chose.
+//
+// Lui rendre le calcul aurait rouvert le défaut d'origine. On lui rend donc un second
+// repère, calculé ici, aussi vérifiable que le premier. Les deux sont publiés côte à
+// côte : écarter des points est un choix, pas une correction, et masquer l'écart entre
+// les deux mesures cacherait justement ce que ce choix change.
+function horsAberrants(annonces) {
+  const prix = annonces
+    .map((a) => a.prix)
+    .filter((p) => typeof p === "number" && Number.isFinite(p))
+    .sort((a, b) => a - b);
+
+  if (prix.length < 4) {
+    return { regle: "iqr_1.5", applicable: false, seuil_bas: null, seuil_haut: null, exclus: [], prix: resumePrix(annonces) };
+  }
+
+  const q1 = quantile(prix, 0.25);
+  const q3 = quantile(prix, 0.75);
+  const ecart = q3 - q1;
+  const bas = q1 - 1.5 * ecart;
+  const haut = q3 + 1.5 * ecart;
+
+  const retenues = [];
+  const exclus = [];
+  for (const a of annonces) {
+    if (typeof a.prix !== "number" || !Number.isFinite(a.prix)) continue;
+    (a.prix < bas || a.prix > haut ? exclus : retenues).push(a);
+  }
+
+  return {
+    regle: "iqr_1.5",
+    applicable: true,
+    seuil_bas: arrondi(bas),
+    seuil_haut: arrondi(haut),
+    exclus: exclus.map((a) => ({ id: a.id, prix: arrondi(a.prix) })),
+    prix: resumePrix(retenues),
+  };
+}
+
 function grouper(annonces, champ) {
   const paquets = new Map();
   for (const a of annonces) {
@@ -107,6 +151,7 @@ function statistiques(listings) {
     // a plusieurs, pour que l'agent le voie plutôt que d'additionner des monnaies.
     devise_unique: (listings.devises || []).length === 1 ? listings.devises[0] : null,
     prix: resumePrix(annonces),
+    prix_hors_aberrants: horsAberrants(annonces),
     livraison_gratuite: { n: gratuites.length, part_pct: part(gratuites.length, annonces.length), prix: resumePrix(gratuites) },
     livraison_payante: { n: payantes.length, part_pct: part(payantes.length, annonces.length), prix: resumePrix(payantes) },
     par_etat: grouper(annonces, "etat"),
@@ -124,4 +169,4 @@ function valeurAu(stats, chemin) {
     .reduce((noeud, segment) => (noeud === null || noeud === undefined ? undefined : noeud[segment]), stats);
 }
 
-module.exports = { statistiques, resumePrix, mediane, quantile, valeurAu, arrondi };
+module.exports = { statistiques, resumePrix, horsAberrants, mediane, quantile, valeurAu, arrondi };

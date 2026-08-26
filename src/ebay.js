@@ -40,6 +40,12 @@ const SCOPE = "https://api.ebay.com/oauth/api_scope";
 // puis renouvelé sans interaction depuis un refresh token qui vit environ 18 mois.
 const SCOPE_VENTE = "https://api.ebay.com/oauth/api_scope/sell.inventory";
 
+// Publier une annonce demande des politiques de livraison, paiement et retour, qui
+// vivent dans la Sell Account API. Changer un prix n'en a pas besoin, ce scope reste
+// donc hors du jeu par défaut : élargir un droit d'écriture pour le confort d'un cas
+// qu'on ne traite pas est un mauvais échange, et un consentement se redemande.
+const SCOPE_COMPTE = "https://api.ebay.com/oauth/api_scope/sell.account";
+
 // Le consentement ne se donne pas sur le même hôte que les appels d'API.
 function authBase(env) {
   if (env.EBAY_AUTH_URL) return env.EBAY_AUTH_URL;
@@ -115,7 +121,13 @@ async function echangerCode({ env, code, transport }) {
 // Jeton d'écriture. Il ne retombe JAMAIS sur le jeton applicatif : ce silence est
 // exactement ce qui produirait un 403 incompréhensible au moment d'exécuter une action
 // déjà approuvée par un humain.
-async function jetonUtilisateur({ env, transport, cache = memoire, now = Date.now }) {
+async function jetonUtilisateur({
+  env,
+  transport,
+  cache = memoire,
+  now = Date.now,
+  scopes = [SCOPE_VENTE],
+}) {
   const refresh = env.EBAY_REFRESH_TOKEN;
   if (!refresh) {
     throw new Error(
@@ -125,8 +137,11 @@ async function jetonUtilisateur({ env, transport, cache = memoire, now = Date.no
     );
   }
   // Espace de cache distinct de celui des jetons de lecture : un jeton applicatif servi
-  // à un appel d'écriture serait refusé côté eBay, après coup.
-  const cle = `utilisateur|${baseUrl(env)}|${env.EBAY_CLIENT_ID}`;
+  // à un appel d'écriture serait refusé côté eBay, après coup. Les scopes entrent dans
+  // la clé pour la même raison, en plus étroit : un jeton obtenu pour la seule écriture
+  // servi à un appel de publication produirait un 403 que rien n'expliquerait.
+  const demandes = [...scopes].sort().join(" ");
+  const cle = `utilisateur|${baseUrl(env)}|${env.EBAY_CLIENT_ID}|${demandes}`;
   const connu = cache.get(cle);
   if (connu && connu.expire > now()) return connu.valeur;
 
@@ -134,7 +149,7 @@ async function jetonUtilisateur({ env, transport, cache = memoire, now = Date.no
     env,
     transport,
     quoi: "renouvellement utilisateur",
-    corps: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}&scope=${encodeURIComponent(SCOPE_VENTE)}`,
+    corps: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}&scope=${encodeURIComponent(demandes)}`,
   });
   if (!body.access_token) throw new Error("eBay OAuth : réponse sans access_token");
   cache.set(cle, {
@@ -247,8 +262,46 @@ async function search({ query, limit = 50, env = {}, transport = globalThis.fetc
   return { query, marketplace: marketplace(env), devises, total: body.total ?? items.length, collecte };
 }
 
+// Récupération directe, annonce par annonce. La recherche de marché ne garantit pas de
+// rendre les annonces du vendeur : elle rend les plus pertinentes pour une requête, et
+// les siennes peuvent se trouver au-delà de la page lue. Le sandbox l'a montré en clair
+// en publiant une annonce que le lookup direct rend en 200 et que la recherche ignore.
+//
+// Or le plan n'a le droit de cibler que les annonces du vendeur. Les obtenir par un
+// chemin déterministe, et non par un effet de bord du classement d'eBay, est ce qui rend
+// ce droit exerçable.
+//
+// Une annonce absente n'interrompt rien : elle a pu être vendue ou retirée entre deux
+// runs, et c'est une information, pas une panne. Elle ressort dans `introuvables`.
+async function parIds({ ids = [], env, transport = globalThis.fetch }) {
+  if (ids.length === 0) return { annonces: [], introuvables: [] };
+  const jeton = await token({ env, transport });
+  const annonces = [];
+  const introuvables = [];
+
+  for (const id of ids) {
+    const res = await transport(`${baseUrl(env)}/buy/browse/v1/item/${encodeURIComponent(id)}`, {
+      headers: {
+        Authorization: `Bearer ${jeton}`,
+        Accept: "application/json",
+        "X-EBAY-C-MARKETPLACE-ID": marketplace(env),
+      },
+    });
+    if (res.status === 404) {
+      introuvables.push(id);
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`eBay lookup ${id} : HTTP ${res.status}`);
+    }
+    annonces.push(normalize(await res.json()));
+  }
+  return { annonces, introuvables };
+}
+
 module.exports = {
   search,
+  parIds,
   normalize,
   token,
   jetonUtilisateur,
@@ -256,4 +309,5 @@ module.exports = {
   echangerCode,
   SCOPE,
   SCOPE_VENTE,
+  SCOPE_COMPTE,
 };

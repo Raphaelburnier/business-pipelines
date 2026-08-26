@@ -1,0 +1,21 @@
+{
+  "empreinte": "97ca55975de92440",
+  "gele_le": "2026-08-20T01:50:50.068Z",
+  "collecte_le": "2026-08-20T01:50:15.474Z",
+  "actions": [
+    {
+      "id": "prix-001",
+      "type": "changement_prix",
+      "cible": "v1|110590223642|0",
+      "valeur": {
+        "de": 240.99,
+        "vers": 144.99,
+        "devise": "USD"
+      },
+      "justification": "Une annonce Surging Sparks identique (36 packs, neuve scellée) est listée à 144,99 USD avec livraison gratuite ; mon annonce à 240,99 USD sans livraison gratuite est 66% plus chère pour le même produit",
+      "sources": [
+        "v1|110590106532|0"
+      ]
+    }
+  ]
+}

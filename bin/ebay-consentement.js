@@ -18,9 +18,14 @@ const path = require("path");
 const readline = require("readline");
 const ebay = require("../src/ebay");
 
-const fichier = process.argv[2];
+const args = process.argv.slice(2);
+const publier = args.includes("--publier");
+const fichier = args.find((a) => !a.startsWith("--"));
 if (!fichier) {
-  console.error("Usage : node bin/ebay-consentement.js <chemin/vers/spec.env>");
+  console.error("Usage : node bin/ebay-consentement.js <chemin/vers/spec.env> [--publier]");
+  console.error("  --publier : demande en plus le droit de publier des annonces");
+  console.error("              (scope sell.account). Sans lui, le consentement se limite");
+  console.error("              à modifier des annonces existantes.");
   process.exit(2);
 }
 
@@ -61,7 +66,12 @@ function extraireCode(saisie) {
 
   let url;
   try {
-    url = ebay.urlConsentement({ env });
+    // Le scope de publication ne part que s'il est demandé à la main. Un consentement
+    // est ce que le vendeur voit et accorde : y glisser un droit dont le programme n'a
+    // pas l'usage lui fait signer plus qu'il ne croit.
+    const scopes = [ebay.SCOPE, ebay.SCOPE_VENTE];
+    if (publier) scopes.push(ebay.SCOPE_COMPTE);
+    url = ebay.urlConsentement({ env, scopes });
   } catch (err) {
     console.error(`\n${err.message}\n`);
     process.exit(1);

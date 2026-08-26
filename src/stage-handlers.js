@@ -4,6 +4,9 @@ const ebay = require("./ebay");
 const approval = require("./approval");
 const execute = require("./execute");
 const stats = require("./stats");
+// Les fichiers d'approbation survivent au run : ils s'écrivent atomiquement et se lisent
+// avec un message qui nomme le fichier fautif. Voir src/durable.js.
+const durable = require("./durable");
 
 // Les sources sont un registre, pas une suite de `if` : ajouter Amazon ou TikTok plus tard
 // se fait ici, sans toucher au handler ni au moteur.
@@ -50,11 +53,44 @@ const handlers = {
       transport: (ctx.transports || {})[stage.source],
     });
 
+    // Les annonces du vendeur sont récupérées à part, une par une, jamais espérées dans
+    // le résultat de la recherche. Une recherche rend les annonces les plus pertinentes
+    // pour une requête, pas les siennes : elles peuvent se trouver au-delà de la page
+    // lue, et un sandbox fraîchement publié ne les indexe pas du tout. Comme le plan n'a
+    // le droit de cibler que ces annonces-là, les obtenir par hasard n'est pas tenable.
+    //
+    // Elles restent hors de `collecte` : les mêler au marché ferait calculer une médiane
+    // qui contient déjà son propre prix, donc un alignement sur soi-même.
+    let miennes = { annonces: [], introuvables: [] };
+    if (stage.mine_from) {
+      const ids = ctx.spec[stage.mine_from] || [];
+      miennes = await ebay.parIds({
+        ids,
+        env: ctx.env,
+        transport: (ctx.transports || {})[stage.source],
+      });
+      if (miennes.introuvables.length) {
+        ctx.reporter.event("fetch:introuvables", {
+          stage: stage.id,
+          ids: miennes.introuvables,
+        });
+      }
+    }
+
     // L'heure de collecte suit la donnée partout : c'est elle, et non le moment du gel
     // ni celui de l'exécution, qui dit si un plan bâti dessus est encore valable.
     fs.writeFileSync(
       path.join(ctx.workspaceDir, stage.output),
-      JSON.stringify({ ...data, collecte_le: new Date(maintenant(ctx)).toISOString() }, null, 2)
+      JSON.stringify(
+        {
+          ...data,
+          mes_annonces: miennes.annonces,
+          mes_annonces_introuvables: miennes.introuvables,
+          collecte_le: new Date(maintenant(ctx)).toISOString(),
+        },
+        null,
+        2
+      )
     );
     ctx.reporter.event("fetch:done", {
       stage: stage.id,
@@ -216,8 +252,7 @@ function readJson(dir, file) {
 const INBOX = "EN-ATTENTE.json";
 
 function lireInbox(approvalsDir) {
-  const p = path.join(approvalsDir, INBOX);
-  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : { en_attente: [] };
+  return durable.lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
 }
 
 // La clé est le DOSSIER, pas le pipeline : la demande est créée par la planification et
@@ -230,7 +265,7 @@ function majInbox(approvalsDir, dossier, entree) {
   const boite = lireInbox(approvalsDir);
   boite.en_attente = boite.en_attente.filter((e) => e.dossier !== dossier);
   if (entree) boite.en_attente.push({ dossier, ...entree });
-  fs.writeFileSync(path.join(approvalsDir, INBOX), JSON.stringify(boite, null, 2));
+  durable.ecrireJson(path.join(approvalsDir, INBOX), boite);
   return boite;
 }
 
@@ -242,7 +277,12 @@ function majInbox(approvalsDir, dossier, entree) {
 handlers["verify-actions"] = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
   const listings = readJson(ctx.workspaceDir, stage.against);
-  const connus = new Set(listings.collecte.map((a) => a.id));
+  // Le marché ET les annonces du vendeur : une cible légitime vit dans le second
+  // ensemble, qui n'est jamais dans le premier par construction.
+  const connus = new Set([
+    ...listings.collecte.map((a) => a.id),
+    ...(listings.mes_annonces || []).map((a) => a.id),
+  ]);
 
   const manques = [];
   const vus = new Set();
@@ -296,9 +336,7 @@ handlers["verify-actions"] = async (stage, ctx) => {
 handlers.approval = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
   const registrePath = path.resolve(ctx.approvalsDir || ".", stage.decisions);
-  const decisions = fs.existsSync(registrePath)
-    ? JSON.parse(fs.readFileSync(registrePath, "utf-8"))
-    : null;
+  const decisions = durable.lireJson(registrePath);
 
   const etat = approval.evaluate({ actions, decisions, auto: stage.auto });
   fs.writeFileSync(
@@ -317,7 +355,20 @@ handlers.approval = async (stage, ctx) => {
     ctx.reporter.event("approval:orphelines", { stage: stage.id, ids: etat.orphelines });
   }
 
-  if (etat.perimee) {
+  // Le registre laissé par un cycle précédent porte l'empreinte de SON plan. Dès que le
+  // planificateur en produit un autre, ce registre est caduc, et c'est le cas NORMAL au
+  // deuxième tour, pas une anomalie.
+  //
+  // Ce stage refusait ici sans rien déposer, et ça condamnait toute la suite : boîte
+  // vide, donc rien à décider dans le cockpit, aucune alerte, et un cron qui repaye le
+  // planificateur à chaque réveil sans que rien n'avance jamais. Le message disait
+  // « redécider dans le registre » en désignant un plan gelé qui n'existait pas.
+  // Constaté en relançant la planification après un cycle complet.
+  //
+  // Le refus d'EXÉCUTER reste entier : les décisions périmées sont ignorées et toutes
+  // les actions repartent en attente. Ce qui change, c'est qu'un plan neuf se dépose et
+  // s'attend comme un premier. On ne s'arrête sec que s'il n'y a rien à faire attendre.
+  if (etat.perimee && etat.en_attente.length === 0) {
     throw new Error(
       `Stage "${stage.id}" : le plan a changé depuis la décision : ` +
         `approuvé pour "${etat.perimee.trouve}", proposé maintenant "${etat.perimee.attendu}". ` +
@@ -337,19 +388,12 @@ handlers.approval = async (stage, ctx) => {
         ? readJson(ctx.workspaceDir, stage.collecte).collecte_le || null
         : null;
       gele = path.resolve(ctx.approvalsDir || ".", stage.plan_gele);
-      fs.writeFileSync(
-        gele,
-        JSON.stringify(
-          {
-            empreinte: etat.empreinte,
-            gele_le: new Date(maintenant(ctx)).toISOString(),
-            collecte_le: collecte,
-            actions,
-          },
-          null,
-          2
-        )
-      );
+      durable.ecrireJson(gele, {
+        empreinte: etat.empreinte,
+        gele_le: new Date(maintenant(ctx)).toISOString(),
+        collecte_le: collecte,
+        actions,
+      });
       ctx.reporter.event("approval:gel", { stage: stage.id, empreinte: etat.empreinte });
     }
 
@@ -367,8 +411,17 @@ handlers.approval = async (stage, ctx) => {
     const liste = etat.en_attente
       .map((a) => `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
       .join("\n");
+    // Quand le registre est caduc, le dire AVANT la liste : sans ça, le message annonce
+    // des actions à décider sans expliquer pourquoi une décision déjà prise ne compte pas.
+    const entete = etat.perimee
+      ? `Stage "${stage.id}" : le plan a changé depuis la décision précédente : ` +
+        `approuvé pour "${etat.perimee.trouve}", proposé maintenant "${etat.perimee.attendu}". ` +
+        `L'ancienne décision ne vaut plus rien.\n` +
+        `${etat.en_attente.length} action(s) attendent ton approbation.\n`
+      : `Stage "${stage.id}" : ${etat.en_attente.length} action(s) attendent ton approbation.\n`;
+
     throw new Error(
-      `Stage "${stage.id}" : ${etat.en_attente.length} action(s) attendent ton approbation.\n` +
+      entete +
         `${liste}\n` +
         `Décider dans ${registrePath}, avec "plan": "${etat.empreinte}" et une entrée ` +
         `{ "action_id", "decision": "approuve" | "refuse" } par action.` +
@@ -452,9 +505,7 @@ handlers.execute = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
 
   const ledgerPath = path.resolve(ctx.approvalsDir || ".", stage.ledger);
-  const ledger = fs.existsSync(ledgerPath)
-    ? JSON.parse(fs.readFileSync(ledgerPath, "utf-8"))
-    : { executees: [] };
+  const ledger = durable.lireJson(ledgerPath) || { executees: [] };
 
   const plan = execute.preparer({ approbation, actions, ledger });
 
@@ -479,7 +530,10 @@ handlers.execute = async (stage, ctx) => {
   // laisser une trace exacte de ce qui a eu lieu.
   const consigner = async (trace) => {
     ledger.executees = [...(ledger.executees || []), { ...trace, empreinte: plan.empreinte }];
-    fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+    // Écrit action par action, donc interrompu au milieu du lot dans le cas normal. Une
+    // écriture directe y laisserait un ledger tronqué, et un ledger illisible fait rejouer
+    // un changement de prix déjà appliqué : c'est le fichier qui porte l'idempotence.
+    durable.ecrireJson(ledgerPath, ledger);
   };
 
   const { reussies, echecs, arret } = await execute.executer({
@@ -617,6 +671,9 @@ const validators = {
     if (!stage.output) fail('type "fetch" sans "output" (fichier à écrire)');
     if (stage.limit !== undefined && (!Number.isInteger(stage.limit) || stage.limit <= 0)) {
       fail('"limit" doit être un entier positif');
+    }
+    if (stage.mine_from !== undefined && typeof stage.mine_from !== "string") {
+      fail('"mine_from" doit nommer un champ du spec, sous forme de chaîne');
     }
   },
 };

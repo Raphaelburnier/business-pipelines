@@ -38,6 +38,30 @@ Chaque ligne de `raisonnement` qui s'appuie sur un repère le nomme par sa clé,
 `prix.mediane` ou `par_etat.0.prix.q1`, pour que je puisse retrouver d'où vient
 le prix que tu me proposes.
 
+### Quand une valeur aberrante fausse le repère
+
+Un relevé contient parfois une annonce hors de proportion, une caisse complète
+au milieu de boîtes unitaires, et elle déplace la médiane vers un prix qui
+n'existe nulle part sur le marché.
+
+`stats.json` porte donc deux mesures, publiées côte à côte :
+
+- `prix` : le relevé entier, sans rien écarter
+- `prix_hors_aberrants.prix` : le même calcul après avoir écarté les prix hors
+  de l'intervalle interquartile élargi de 1,5, avec `exclus` qui nomme chaque
+  annonce sortie et son prix, et `seuil_bas` / `seuil_haut` qui disent où la
+  coupe est tombée
+
+Les deux sont là parce qu'écarter des points est un choix, pas une correction.
+À toi de dire laquelle tu utilises et pourquoi, en citant sa clé. Si les deux
+mesures divergent beaucoup, c'est en soi une chose à signaler dans ton
+raisonnement.
+
+Ce que tu ne fais toujours pas : recalculer une médiane sur un sous-ensemble
+que tu choisis toi-même. Si aucune des deux mesures ne convient, dis-le et ne
+propose rien. Un plan vide accompagné de la raison vaut mieux qu'un prix bâti
+sur un calcul que personne ne peut vérifier.
+
 Ta tranche de spec porte `marche` (la requête qui a servi au relevé),
 `strategie` (la règle que tu appliques) et `mes_annonces` (les `id` qui
 m'appartiennent, les seuls que tu as le droit de cibler).
