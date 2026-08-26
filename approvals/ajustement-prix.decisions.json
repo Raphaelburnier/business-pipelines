@@ -1,12 +1,12 @@
 {
-  "plan": "3994bb788dcc5d31",
+  "plan": "97ca55975de92440",
   "decisions": [
     {
       "action_id": "prix-001",
-      "decision": "approuve",
-      "par": "claude",
-      "le": "2026-08-19",
-      "motif": "Échafaudage de test : approbation donnée par l'assistant, pas par un humain, pour exercer la moitié application de la boucle contre l'API réelle. L'annonce visée est une annonce de test créée dans le sandbox. Une décision de production porte le nom d'une personne."
+      "decision": "refuse",
+      "par": "destrobi28@gmail.com",
+      "canal": "tailnet",
+      "le": "2026-08-20T21:48:37.281Z"
     }
   ]
 }
