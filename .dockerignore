@@ -1,0 +1,26 @@
+# Ce fichier existe parce que .gitignore ne s'applique PAS à Docker.
+#
+# Sans lui, le `COPY . .` du Dockerfile embarquait specs/veille.env, specs/cockpit.env et
+# specs/ajustement-prix.env dans une couche d'image. EBAY_CLIENT_SECRET se lisait alors en
+# clair pour quiconque obtient l'image, et une couche ne s'efface pas : la supprimer plus
+# tard laisse le secret dans l'historique du build.
+#
+# Les fichiers de configuration arrivent par un montage en lecture seule, à l'exécution.
+node_modules
+.git
+.gitignore
+.claude
+.github
+
+# État durable : il vit sur l'hôte et se monte, il n'a rien à faire dans l'image.
+approvals
+workspace
+runs
+logs
+
+# Secrets.
+specs/*.env
+*.env
+
+*.log
+*.tmp

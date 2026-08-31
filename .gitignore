@@ -18,3 +18,6 @@ approvals/ALERTES.json
 
 # Worktrees de travail : des checkouts, pas du contenu de dépôt.
 .claude/worktrees/
+
+# Copie du moteur pour le contexte de build Docker, déposée par bin/preparer-image.sh.
+.moteur/

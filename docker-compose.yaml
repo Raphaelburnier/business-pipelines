@@ -1,32 +1,45 @@
-version: '3.8'
+# Le cockpit et le cycle sur le NAS, joints par Tailscale.
+#
+# Le cockpit n'écoute que sur la boucle locale de l'hôte, et Tailscale relaie vers lui.
+# C'est la même contrainte que sur le poste, et pour la même raison : les en-têtes
+# d'identité que Tailscale injecte ne sont fiables que si le service reste local.
 
 services:
   cockpit:
     build: .
     container_name: business_cockpit
-    command: node bin/cockpit.js
     restart: unless-stopped
     ports:
-      # On expose le port 4600 uniquement en local (127.0.0.1)
-      # Tailscale s'occupera de faire le pont de manière sécurisée
+      # Boucle locale de l'hôte uniquement. Écrire "4600:4600" publierait le cockpit sur
+      # tout le réseau, et n'importe quelle machine du LAN pourrait alors fabriquer
+      # l'en-tête Tailscale-User-Login et signer des décisions sous ton nom.
       - "127.0.0.1:4600:4600"
     volumes:
-      # Montage du ledger d'approbations hors du workspace
+      # Les approbations sont l'état durable : registres de décisions, plans gelés, journal
+      # d'exécution. Dans l'image, un rebuild les effacerait.
       - ./approvals:/app/approvals
+      # Les fichiers de configuration portent les secrets. Montés, jamais construits dans
+      # l'image, et en lecture seule : rien du conteneur n'a de raison de les réécrire.
+      - ./specs:/app/specs:ro
       - ./logs:/app/logs
     environment:
       - NODE_ENV=production
-      # C'est ici que tu mettras ta clé Google AI Studio plus tard
-      - GEMINI_API_KEY=$GEMINI_API_KEY
+      # Le nom du NAS dans le tailnet, pas celui du poste.
+      - COCKPIT_TAILNET=nas.tail8296f6.ts.net
 
   cycle:
     build: .
     container_name: business_cycle
-    command: node bin/cycle.js
     restart: unless-stopped
+    # bin/cycle.js finit sur process.exit() : c'est un passage, pas un démon. Avec la seule
+    # politique `restart: unless-stopped`, Docker le relançait à l'instant où il sortait, ce
+    # qui supprimait purement l'intervalle : chaque fois que l'état autorisait une
+    # replanification, l'agent repartait tout de suite au lieu d'attendre le quart d'heure.
+    # Une politique de redémarrage n'est pas un ordonnanceur. La boucle porte l'attente.
+    command: sh -c 'while :; do node bin/cycle.js || true; sleep 900; done'
     volumes:
-      # Le cron a aussi besoin de lire le ledger et les stats
       - ./approvals:/app/approvals
+      - ./specs:/app/specs:ro
       - ./workspace:/app/workspace
       - ./logs:/app/logs
     environment:
