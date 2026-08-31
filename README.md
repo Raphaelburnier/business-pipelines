@@ -279,7 +279,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 175 vérifications, sans réseau ni credentials
+npm test                 # 184 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -551,6 +551,60 @@ Deux limites à connaître. `linger` doit être actif, sinon le service meurt av
 et n'est debout que quand on est déjà devant la machine, c'est-à-dire exactement quand on
 n'en a pas besoin ; le script le vérifie et donne la commande. Et sous WSL, tout ça ne
 tourne que si l'instance WSL tourne : Windows ne démarre pas WSL de lui-même.
+
+#### L'installer comme application
+
+Le cockpit s'installe sur l'écran d'accueil d'un téléphone, d'une tablette ou d'un poste :
+il s'ouvre alors en plein écran, sans barre d'adresse, avec sa propre icône. Rien à faire
+côté serveur, tout est servi par le cockpit lui-même.
+
+| Appareil | Comment |
+|---|---|
+| iPhone, iPad | Safari, bouton Partager, « Sur l'écran d'accueil » |
+| Android | Chrome, menu, « Installer l'application » |
+| Windows, macOS, Linux | Chrome ou Edge, icône d'installation dans la barre d'adresse |
+
+Safari est obligatoire sur iOS : Chrome et Firefox y sont des habillages de WebKit et
+n'installent rien.
+
+Un navigateur n'accepte d'installer une page que si trois conditions tiennent : l'origine
+est en HTTPS avec un certificat que l'appareil valide, la page déclare un manifeste, et un
+service worker enregistré porte un gestionnaire de requêtes. La première venait déjà de
+Tailscale, qui termine le TLS sur un vrai nom. Les deux autres sont dans `src/pwa.js`.
+
+**Le service worker ne met rien en cache, et c'est délibéré.** La page montre des décisions
+en attente, et chaque plan gelé porte une empreinte qui lie l'approbation à un plan précis.
+Servir une copie gardée en cache montrerait des actions déjà tranchées, et ferait cocher
+contre une empreinte morte : l'écriture partirait pour se faire refuser en 409, sans que
+rien à l'écran l'ait laissé prévoir. Le cockpit envoie déjà `Cache-Control: no-store` sur
+la page et sur l'API, et un cache de service worker passerait outre puisqu'il répond avant
+que la requête parte. Le worker sert donc à deux choses seulement : rendre l'application
+installable, et remplacer la page d'erreur du navigateur par un message qui dit quoi faire
+quand la machine est éteinte ou le relais démonté.
+
+Les écritures ne passent pas par le worker : il se retire de toute requête qui n'est pas un
+GET. Un worker qui rejouerait un POST écrirait deux fois la même décision sans que personne
+l'ait recochée.
+
+Les icônes sont dans `public/`, versionnées plutôt que générées au démarrage. Elles sont
+servies depuis une table littérale d'URL, pas par un chemin construit depuis la requête :
+c'est la première fois que le cockpit sert des fichiers du disque, et le dépôt tient
+`specs/cockpit.env` deux dossiers plus haut.
+
+Le manifeste, le worker et les icônes sont derrière le même contrôle d'identité que la
+page. Un appelant que le tailnet n'a pas nommé reçoit 403 sur les quatre.
+
+#### Quand l'application ne répond plus
+
+Elle affiche une page qui nomme les trois causes, dans l'ordre où elles arrivent :
+Tailscale déconnecté sur le téléphone, machine hôte éteinte ou en veille, relais démonté.
+Aucune décision ne part tant que la connexion n'est pas revenue.
+
+Un cas échappe à cette page, et il faut le savoir : relais monté mais cockpit arrêté. La
+requête aboutit alors, avec une erreur de passerelle produite par Tailscale, donc le
+service worker la laisse passer telle quelle. Il ne remplace que ce qui n'aboutit pas du
+tout. Intercepter aussi les 502 masquerait de vraies pannes serveur derrière un message
+générique, ce qui coûte plus cher en diagnostic que ça ne rapporte en confort.
 
 #### Ce que ça authentifie, et ce que ça n'authentifie pas
 

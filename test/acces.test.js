@@ -362,6 +362,29 @@ test("la page des prix ne se met pas en cache et ne se devine pas par reniflage 
   assert.strictEqual(api.entetes["cache-control"], "no-store");
 });
 
+test("l'application s'installe par le relais : manifeste, worker et icône répondent", async () => {
+  for (const chemin of ["/manifest.webmanifest", "/sw.js", "/icone-192.png", "/apple-touch-icon.png"]) {
+    const r = await demander({ chemin, entetes: ENTETE_TAILNET });
+    assert.strictEqual(r.code, 200, `${chemin} a répondu ${r.code}`);
+    assert.strictEqual(r.entetes["cache-control"], "no-store", `${chemin} sans durcissement`);
+  }
+  const page = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(page.corps.includes('rel="manifest"'), "la page ne déclare pas son manifeste");
+  assert.ok(page.corps.includes("serviceWorker.register"), "la page n'enregistre pas le worker");
+});
+
+test("le manifeste ne s'obtient pas sans identité", async () => {
+  // Les ressources de l'application sont derrière le même contrôle que la page. Placées
+  // devant, elles diraient à un appelant anonyme le nom de l'app et l'existence du service,
+  // ce que le refus d'identité est justement là pour taire.
+  for (const chemin of ["/manifest.webmanifest", "/sw.js", "/icone-192.png"]) {
+    const anonyme = await demander({ chemin, entetes: { Host: TAILNET } });
+    assert.strictEqual(anonyme.code, 403, `${chemin} servi sans identité prouvée`);
+    const etranger = await demander({ chemin, entetes: { Host: "evil.example" } });
+    assert.strictEqual(etranger.code, 403, `${chemin} servi à un hôte non prévu`);
+  }
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

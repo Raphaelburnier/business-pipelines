@@ -39,6 +39,7 @@ const path = require("path");
 const { envLoader } = require("agent-orchestrator");
 const cockpit = require("../src/cockpit");
 const acces = require("../src/acces");
+const pwa = require("../src/pwa");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -131,12 +132,14 @@ function page(etat, qui) {
     qui.canal === "tailnet" ? "identité établie par le tailnet" : "console de la machine, identité non prouvée";
 
   return `<!doctype html><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cockpit d'approbation</title>
+${pwa.BALISES}
 <style>
 :root{color-scheme:light dark}
 *{box-sizing:border-box}
-body{font:15px/1.55 system-ui,sans-serif;max-width:52rem;margin:1.5rem auto;padding:0 1rem}
+body{font:15px/1.55 system-ui,sans-serif;max-width:52rem;margin:1.5rem auto;
+  padding:env(safe-area-inset-top) calc(1rem + env(safe-area-inset-right)) 0 calc(1rem + env(safe-area-inset-left))}
 h1{font-size:1.3rem}h2{font-size:1.05rem;margin:2rem 0 .3rem}
 .mono{font-family:ui-monospace,monospace;font-size:.9em;word-break:break-all}
 .meta{opacity:.7;font-size:.85rem;margin-bottom:.8rem}
@@ -151,7 +154,8 @@ h1{font-size:1.3rem}h2{font-size:1.05rem;margin:2rem 0 .3rem}
 .b{font-size:.75rem;border:1px solid;border-radius:99px;padding:.05rem .5rem;vertical-align:middle;white-space:nowrap}
 .vert{color:#0a7d32}.rouge{color:#b3261e}.gris{opacity:.6}
 .vide{opacity:.6;margin:3rem 0}
-form.pied{position:sticky;bottom:0;background:Canvas;margin-top:2rem;border-top:1px solid;padding:.9rem 0}
+form.pied{position:sticky;bottom:0;background:Canvas;margin-top:2rem;border-top:1px solid;
+  padding:.9rem 0 calc(.9rem + env(safe-area-inset-bottom))}
 button{font:inherit;padding:.75rem 1.2rem;width:100%;max-width:22rem;cursor:pointer;border-radius:6px}
 #msg{margin-top:1rem;white-space:pre-wrap}
 </style>
@@ -188,7 +192,8 @@ async function envoyer(e){
   if(sorties.every(s=>s.startsWith('✓'))) setTimeout(()=>location.reload(),1200);
   return false;
 }
-</script>`;
+</script>
+${pwa.ENREGISTREMENT}`;
 }
 
 // Une page qui affiche des prix d'achat, des marges et l'adresse de celui qui décide n'a
@@ -220,6 +225,20 @@ async function traiter(req, res) {
     // ne lui montre pas non plus les prix, les marges et les annonces.
     if (err instanceof cockpit.Refus) return json(res, 403, { erreur: err.message });
     throw err;
+  }
+
+  // Manifeste, service worker et icônes. Placés derrière le contrôle d'identité comme
+  // le reste : un appelant que le tailnet n'a pas nommé n'installe pas cette application.
+  if (req.method === "GET") {
+    const r = pwa.ressource(req.url);
+    if (r) {
+      res.writeHead(200, {
+        "Content-Type": r.type,
+        "Content-Length": r.corps.length,
+        ...DURCISSEMENT,
+      });
+      return res.end(r.corps);
+    }
   }
 
   if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
