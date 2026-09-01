@@ -26,6 +26,10 @@ services:
       - NODE_ENV=production
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
+    # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
+    # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
+    # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
+    # tout le reste du dépôt s'emploie à empêcher.
 
   cycle:
     build: .
@@ -36,11 +40,30 @@ services:
     # qui supprimait purement l'intervalle : chaque fois que l'état autorisait une
     # replanification, l'agent repartait tout de suite au lieu d'attendre le quart d'heure.
     # Une politique de redémarrage n'est pas un ordonnanceur. La boucle porte l'attente.
-    command: sh -c 'while :; do node bin/cycle.js || true; sleep 900; done'
+    #
+    # --plan et --spec ne sont pas facultatifs : parseArgs lève sans eux. Les omettre faisait
+    # échouer le conteneur à chaque réveil, toutes les quinze minutes, sans que rien de la
+    # boucle n'avance jamais. Le `|| true` avalait l'erreur, donc la panne était silencieuse.
+    command: >
+      sh -c 'while :; do
+        node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json || true;
+        sleep 900;
+      done'
     volumes:
       - ./approvals:/app/approvals
       - ./specs:/app/specs:ro
       - ./workspace:/app/workspace
       - ./logs:/app/logs
+      # Le workspace d'un run est jetable, mais son rapport et son journal ne le sont pas :
+      # c'est là que se lisent le coût, les tours et le raisonnement du planificateur. Sans
+      # ce montage ils vivent dans la couche du conteneur et meurent au premier redémarrage,
+      # c'est-à-dire précisément quand on veut comprendre ce qui s'est passé.
+      - ./runs:/app/runs
     environment:
       - NODE_ENV=production
+    # La clé Anthropic vit ici et nulle part ailleurs. Elle n'appartient à aucun marché, donc
+    # pas dans un .env de spec ; elle ne doit pas entrer dans l'image, donc pas dans un COPY.
+    # `env_file` est lu par Docker sur l'hôte au démarrage : le fichier reste sur le NAS.
+    # Le gabarit est specs/deploiement.env.example.
+    env_file:
+      - ./specs/deploiement.env
