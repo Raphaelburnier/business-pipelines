@@ -641,8 +641,9 @@ npm run en-attente       # l'affichage seul
 | périmé, **aucune** décision prise | attendre, sans rien dépenser |
 | périmé, décision commencée | replanifier |
 | tout décidé | appliquer, avec le pipeline que la demande désigne |
+| la planification précédente n'a rien proposé, il y a moins de 6 h | attendre, sans rien dépenser |
 
-Deux lignes portent tout le reste.
+Trois lignes portent tout le reste.
 
 **On ne replanifie jamais pendant qu'une décision fraîche est en cours.** C'est la règle
 qui rend le cron compatible avec un humain lent.
@@ -656,6 +657,25 @@ passé.
 
 **L'action à appliquer se lit dans la demande, jamais devinée.** Sans `appliquer_avec`, le
 cycle attend plutôt que de choisir un pipeline à la place de celui qui a planifié.
+
+**Une planification qui n'a rien proposé retient la suivante.** C'est la règle la plus
+récente, et elle vient d'une dépense observée, pas d'une crainte. Un planificateur qui lit
+le marché et conclut qu'aucun ajustement n'est justifié a fait son travail : le pipeline se
+termine bien, la boîte reste vide, et le réveil suivant repart donc planifier. Il repaie
+alors l'agent pour relire le même marché et rendre le même constat. Rien dans les journaux
+ne le signale, puisqu'il n'y a pas d'erreur : c'est la dépense la plus discrète de la
+boucle, environ dix dollars par jour à un quart d'heure d'intervalle.
+
+Le stage d'approbation date donc ce constat dans `<dossier>.retenue.json`, et le cycle le
+lit avant de relancer. Six heures, parce que le stock d'un marché de collection ne se
+renouvelle pas à l'heure, et parce que c'est la moitié des douze heures de péremption : une
+planification qui reprend après la retenue a encore le temps d'être décidée avant que ses
+données ne meurent. Dès qu'un plan propose quelque chose, la marque est levée.
+
+C'est la même règle que le plan périmé que personne n'a regardé, appliquée à un cas qui
+n'apparaît qu'une fois le marché devenu pauvre : en cas de doute, ne pas engager d'argent.
+Une configuration incomplète dégrade vers le comportement d'origine, jamais vers un cycle
+qui cesserait de planifier sans le dire.
 
 ### Un arrêt normal ressemble à une panne
 

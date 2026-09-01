@@ -124,6 +124,64 @@ test("une demande dont le plan gelé a disparu ne peut pas aboutir : on replanif
   assert.match(d.raison, /plan gelé introuvable/);
 });
 
+// --- La retenue après une planification stérile ---------------------------------------
+//
+// Une planification qui ne propose rien laisse la boîte vide, donc indiscernable d'une
+// boîte vide de premier tour. Sans ces tests, la règle qui les distingue n'existe que dans
+// un commentaire, et c'est celle qui décide si le cycle dépense.
+
+// Le marqueur que le stage d'approbation dépose quand le plan est vide.
+function marquerSterile(dir, dossier, quand) {
+  fs.writeFileSync(
+    path.join(dir, `${dossier}.retenue.json`),
+    JSON.stringify({ dossier, le: new Date(quand).toISOString(), collecte_le: null })
+  );
+  return dir;
+}
+
+const DOSSIER = "ajustement-prix";
+const avecDossier = (dir, maintenant = T0) =>
+  cycle.prochaine({ approvalsDir: dir, pipelinesDir: PIPELINES, dossier: DOSSIER, maintenant });
+
+test("une planification stérile récente retient le cycle au lieu de la repayer", () => {
+  const dir = marquerSterile(bac({ vide: true }), DOSSIER, T0 - 2 * 3600 * 1000);
+  const d = avecDossier(dir);
+  assert.strictEqual(d.action, "attendre", "replanifier relirait le même marché pour le même rien");
+  assert.match(d.raison, /n'a proposé aucune action/);
+});
+
+test("passé le délai, le cycle reprend : une retenue n'est pas un arrêt", () => {
+  const dir = marquerSterile(bac({ vide: true }), DOSSIER, T0 - 7 * 3600 * 1000);
+  assert.strictEqual(avecDossier(dir).action, "planifier");
+});
+
+test("une retenue ne s'applique qu'à son dossier", () => {
+  const dir = marquerSterile(bac({ vide: true }), "un-autre-marche", T0 - 1 * 3600 * 1000);
+  assert.strictEqual(avecDossier(dir).action, "planifier", "le marqueur d'un autre marché ne dit rien de celui-ci");
+});
+
+test("sans nom de dossier, le cycle planifie comme avant plutôt que de se taire", () => {
+  // Une configuration incomplète doit dégrader vers le comportement d'origine. L'inverse
+  // donnerait un cycle qui ne planifie plus jamais sans qu'aucune ligne ne le dise.
+  const dir = marquerSterile(bac({ vide: true }), DOSSIER, T0 - 1 * 3600 * 1000);
+  assert.strictEqual(prochaine(dir).action, "planifier");
+});
+
+test("un marqueur illisible ne retient rien : on ne devine pas ce qu'il disait", () => {
+  const dir = bac({ vide: true });
+  fs.writeFileSync(path.join(dir, `${DOSSIER}.retenue.json`), JSON.stringify({ dossier: DOSSIER }));
+  assert.strictEqual(avecDossier(dir).action, "planifier", "sans date, la retenue n'a pas d'origine");
+});
+
+test("une demande en attente l'emporte sur la retenue : il y a mieux à faire que planifier", () => {
+  // La retenue ne gouverne que la branche « rien n'attend ». Un dossier à décider doit
+  // continuer d'être vu, sinon un marqueur oublié gèlerait une décision en cours.
+  const dir = marquerSterile(bac({ decisions: ["prix-001"] }), DOSSIER, T0 - 1 * 3600 * 1000);
+  const d = avecDossier(dir);
+  assert.strictEqual(d.action, "attendre");
+  assert.match(d.raison, /décidée\(s\) sur 2/);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

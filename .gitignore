@@ -13,6 +13,12 @@ approvals/EN-ATTENTE.json
 # écraserait des décisions réelles par une copie plus ancienne, sans conflit et sans bruit.
 # Une trace d'audit qu'un checkout peut réécrire n'atteste de rien.
 # La sauvegarde de ces fichiers appartient au NAS, pas à git.
+# Le constat de stérilité est de l'état runtime, comme la boîte : il se reconstruit au
+# prochain réveil et le perdre coûte une planification, rien de plus.
+approvals/*.retenue.json
+# Sauvegardes horodatées d'un registre remplacé : elles appartiennent au disque, pas au dépôt.
+approvals/archive/
+
 approvals/*.decisions.json
 approvals/*.ledger.json
 approvals/*.plan.json

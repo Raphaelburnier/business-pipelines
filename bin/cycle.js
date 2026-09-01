@@ -87,7 +87,13 @@ async function alerter(dry) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const decision = cycle.prochaine({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES });
+  // Le nom du dossier est celui du pipeline de planification : c'est lui que le stage
+  // d'approbation inscrit dans la boîte et sur le marqueur de retenue.
+  const decision = cycle.prochaine({
+    approvalsDir: APPROVALS,
+    pipelinesDir: PIPELINES,
+    dossier: opts.plan,
+  });
 
   console.log(`${decision.action.toUpperCase()} : ${decision.raison}`);
 
