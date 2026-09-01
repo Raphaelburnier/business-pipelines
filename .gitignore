@@ -3,8 +3,21 @@ runs/
 *.log
 
 # État runtime, dérivé : la boîte se reconstruit à chaque arrêt sur approbation.
-# Les décisions et le ledger, eux, restent versionnés : ce sont des traces d'audit.
 approvals/EN-ATTENTE.json
+
+# Le registre des décisions humaines n'est plus versionné, et c'est un revirement.
+# Il l'était comme trace d'audit, ce qui tenait tant qu'une seule machine décidait. À
+# partir du moment où la boucle tourne sur le NAS, c'est LUI qui fait foi : les décisions
+# y sont prises et les prix y sont changés pour de vrai. Garder les mêmes fichiers dans
+# git ferait deux originaux d'une chose qui n'en a qu'un, et un `git pull` un jour
+# écraserait des décisions réelles par une copie plus ancienne, sans conflit et sans bruit.
+# Une trace d'audit qu'un checkout peut réécrire n'atteste de rien.
+# La sauvegarde de ces fichiers appartient au NAS, pas à git.
+approvals/*.decisions.json
+approvals/*.ledger.json
+approvals/*.plan.json
+# Sauf le gabarit documenté, qui ne porte aucune décision réelle.
+!approvals/EXEMPLE.decisions.json
 
 # Secrets : jamais commités.
 # Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
