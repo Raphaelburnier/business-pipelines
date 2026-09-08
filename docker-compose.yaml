@@ -14,6 +14,11 @@ services:
       # tout le réseau, et n'importe quelle machine du LAN pourrait alors fabriquer
       # l'en-tête Tailscale-User-Login et signer des décisions sous ton nom.
       - "127.0.0.1:4600:4600"
+    # Un réseau à lui. Lier toutes les interfaces DANS le conteneur le rend joignable par
+    # les autres conteneurs du même réseau, et le NAS en porte sept. Ce réseau-ci n'a que
+    # le cockpit et le cycle, qui sont déjà du même dépôt et lisent les mêmes fichiers.
+    networks:
+      - business
     volumes:
       # Les approbations sont l'état durable : registres de décisions, plans gelés, journal
       # d'exécution. Dans l'image, un rebuild les effacerait.
@@ -26,6 +31,18 @@ services:
       - NODE_ENV=production
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
+      # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
+      # la publication ci-dessus relaie vers l'adresse du conteneur sur son réseau, jamais
+      # vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du NAS a
+      # tourné dix jours dans cet état, « Up » pour Docker et muet pour tout le monde.
+      # Le confinement passe donc à la publication loopback de l'hôte, qui est ce que
+      # Tailscale exige de toute façon pour que ses en-têtes d'identité veuillent dire
+      # quelque chose. COCKPIT_CONTENEUR=1 est la reconnaissance explicite de ce
+      # déplacement : sans elle le cockpit refuse de démarrer sur autre chose que la
+      # boucle locale, pour qu'une faute de frappe dans un .env du poste ne l'ouvre pas
+      # sur le LAN.
+      - COCKPIT_HOTE=0.0.0.0
+      - COCKPIT_CONTENEUR=1
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
@@ -67,3 +84,9 @@ services:
     # Le gabarit est specs/deploiement.env.example.
     env_file:
       - ./specs/deploiement.env
+    networks:
+      - business
+
+networks:
+  business:
+    driver: bridge

@@ -385,6 +385,40 @@ test("le manifeste ne s'obtient pas sans identité", async () => {
   }
 });
 
+test("sans réglage, le cockpit écoute la boucle locale et rien d'autre", () => {
+  assert.strictEqual(acces.adresseEcoute(), "127.0.0.1");
+  assert.strictEqual(acces.adresseEcoute({}), "127.0.0.1");
+  // Une variable posée puis vidée est la façon la plus courante d'annuler un réglage.
+  // Elle doit ramener le défaut, pas une adresse vide que Node lirait comme 0.0.0.0.
+  assert.strictEqual(acces.adresseEcoute({ hote: "" }), "127.0.0.1");
+  assert.strictEqual(acces.adresseEcoute({ hote: "   " }), "127.0.0.1");
+});
+
+test("une adresse hors boucle locale est refusée tant que rien ne déclare le conteneur", () => {
+  // C'est le refus qui compte : COCKPIT_HOTE seul, dans un .env du poste, ouvrirait le
+  // cockpit sur le LAN. Or sur le LAN les en-têtes d'identité Tailscale se fabriquent,
+  // donc n'importe quelle machine du réseau signerait des décisions de prix.
+  for (const hote of ["0.0.0.0", "::", "192.168.1.18"]) {
+    assert.throws(
+      () => acces.adresseEcoute({ hote }),
+      (err) => /COCKPIT_CONTENEUR=1/.test(err.message),
+      `${hote} accepté sans reconnaissance explicite`
+    );
+  }
+  // Le conteneur déclaré sans adresse ne suffit pas non plus à bouger l'écoute : la clé
+  // reconnaît un montage, elle ne le demande pas.
+  assert.strictEqual(acces.adresseEcoute({ conteneur: true }), "127.0.0.1");
+});
+
+test("dans un conteneur déclaré, lier toutes les interfaces est le seul montage qui répond", () => {
+  // Un serveur lié à 127.0.0.1 dans un conteneur n'est joignable par personne : la
+  // publication de l'hôte relaie vers l'adresse du conteneur sur son réseau, jamais vers
+  // sa boucle locale. Le cockpit du NAS a tourné dix jours « Up » et muet pour ça.
+  assert.strictEqual(acces.adresseEcoute({ hote: "0.0.0.0", conteneur: true }), "0.0.0.0");
+  // La boucle locale reste acceptée avec la clé : elle ne force rien, elle autorise.
+  assert.strictEqual(acces.adresseEcoute({ hote: "127.0.0.1", conteneur: true }), "127.0.0.1");
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

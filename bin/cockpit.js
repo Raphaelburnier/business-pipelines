@@ -3,8 +3,10 @@
 // Cockpit d'approbation. Une page qui lit la boîte de réception, montre les plans en
 // attente et écrit les décisions.
 //
-// Elle n'écoute toujours QUE sur 127.0.0.1, et c'est maintenant une exigence, plus
-// seulement une précaution. Le téléphone y accède par Tailscale, qui termine le TLS sur
+// Elle n'écoute que sur 127.0.0.1, et c'est une exigence, plus seulement une précaution.
+// Dans un conteneur cette adresse la rendrait injoignable, et la publication loopback de
+// l'hôte reprend alors le rôle : ce déplacement se déclare par COCKPIT_CONTENEUR=1 et
+// n'arrive jamais par défaut. Le téléphone y accède par Tailscale, qui termine le TLS sur
 // un vrai nom et relaie vers localhost. Tailscale n'injecte l'identité de l'appelant que
 // si le service reste local : ouvrir l'écoute laisserait n'importe qui sur le réseau
 // fabriquer cette identité. Le détail est dans src/acces.js.
@@ -12,7 +14,10 @@
 // Les défenses, et l'incident que chacune vise :
 //
 //   - écoute loopback seule, plus le relais Tailscale au-dessus. Un cockpit d'approbation
-//     joignable sans authentification est une porte ouverte sur le compte marchand ;
+//     joignable sans authentification est une porte ouverte sur le compte marchand. La
+//     seule exception est le conteneur, où lier la boucle locale rend le service
+//     injoignable même publié, et où la publication loopback de l'hôte porte alors le
+//     confinement. Elle se déclare, elle ne se devine pas : voir adresseEcoute() ;
 //   - liste blanche d'hôtes. Sans elle, un site visité dans le même navigateur fait
 //     pointer un nom vers 127.0.0.1 et parle au serveur à ta place ;
 //   - vérification de l'origine et du type de contenu sur les écritures. Tant que la page
@@ -56,6 +61,14 @@ const PORT = Number(ENV.COCKPIT_PORT || 4600);
 const TAILNET = (ENV.COCKPIT_TAILNET || "").trim() || null;
 const OPERATEUR = (ENV.COCKPIT_OPERATEUR_LOCAL || "").trim() || null;
 const PORTEE = { port: PORT, tailnet: TAILNET };
+
+// L'adresse d'écoute est 127.0.0.1 partout sauf dans un conteneur, où lier la boucle
+// locale rend le service injoignable même publié. Le raisonnement complet, et le refus
+// qui empêche d'ouvrir le cockpit sur le LAN par mégarde, sont dans src/acces.js.
+const HOTE = acces.adresseEcoute({
+  hote: ENV.COCKPIT_HOTE,
+  conteneur: String(ENV.COCKPIT_CONTENEUR || "").trim() === "1",
+});
 
 // L'apostrophe est échappée elle aussi. Aucun attribut de cette page n'est écrit en
 // guillemets simples aujourd'hui, donc rien n'en dépend : c'est le prochain attribut
@@ -320,8 +333,14 @@ const serveur = http.createServer(async (req, res) => {
   }
 });
 
-serveur.listen(PORT, "127.0.0.1", () => {
-  console.log(`Cockpit sur http://127.0.0.1:${PORT}`);
+serveur.listen(PORT, HOTE, () => {
+  console.log(`Cockpit sur http://${HOTE}:${PORT}`);
+  if (HOTE !== "127.0.0.1") {
+    console.log(
+      "Écoute hors boucle locale, déclarée par COCKPIT_CONTENEUR=1 : " +
+        "ce qui confine le cockpit est désormais la publication loopback de l'hôte."
+    );
+  }
   if (TAILNET) {
     console.log(`Depuis le téléphone : https://${TAILNET}`);
     console.log("Ce nom ne répond que si le relais est monté : npm run cockpit:tailnet");

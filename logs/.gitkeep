@@ -1,0 +1,2 @@
+Monté dans le conteneur par docker-compose.yaml. Sans ce dossier, Docker le crée lui-même
+et il appartient à root : le conteneur, qui ne tourne pas en root, ne peut plus y écrire.

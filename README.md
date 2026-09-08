@@ -431,6 +431,21 @@ de l'appelant que si le service reste local, sinon n'importe qui sur le réseau 
 fabriquer cette identité. Élargir l'écoute ne rendrait pas le cockpit plus joignable, ça
 détruirait la seule chose qui donne du sens aux en-têtes.
 
+Dans un conteneur, cette même adresse ne confine rien : elle rend le service injoignable.
+La publication `127.0.0.1:4600:4600` relaie vers l'adresse du conteneur sur son réseau,
+jamais vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du NAS a
+tourné dix jours dans cet état, `Up` pour Docker et muet pour tout le monde, sans rien dans
+ses journaux puisqu'aucune requête ne lui parvenait. Une alerte reçue dehors menait à une
+page morte, ce que le service systemd du poste existe précisément pour empêcher.
+
+Le confinement change donc de couche à l'intérieur d'un conteneur : ce n'est plus l'adresse
+d'écoute, c'est l'espace de noms réseau plus la publication loopback de l'hôte. Tailscale
+continue de parler à `127.0.0.1` sur l'hôte, donc l'exigence qui rend ses en-têtes fiables
+tient toujours. Ce déplacement se déclare, il ne se devine pas : `COCKPIT_HOTE` seul est
+refusé au démarrage, il faut aussi `COCKPIT_CONTENEUR=1`. Une faute de frappe dans un
+`.env` du poste ouvrirait sinon le cockpit sur le LAN, c'est-à-dire exactement là où
+n'importe qui peut fabriquer un en-tête d'identité Tailscale.
+
 **Elle vérifie l'en-tête `Host`** contre une liste blanche. Sans ça, un site visité dans le
 même navigateur peut faire pointer un nom vers l'adresse locale et parler au serveur à ta
 place. Le nom du tailnet n'entre dans cette liste que s'il est configuré.
