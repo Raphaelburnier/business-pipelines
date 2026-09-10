@@ -385,6 +385,65 @@ test("le manifeste ne s'obtient pas sans identité", async () => {
   }
 });
 
+// Le panneau des applications déployées, servi par la même page et donc derrière le même
+// contrôle d'identité. Le registre est déposé dans un dossier à part que le serveur lit au
+// démarrage, comme il lit specs/cockpit.env.
+function bacApps(contenu) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-apps-"));
+  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
+  return dir;
+}
+
+test("le panneau d'apps s'affiche, et il est derrière la même identité que le reste", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      apps: [{ nom: "tcg-generator", url: "http://192.168.1.18:4700", description: "cartes" }],
+    }),
+  });
+
+  const anonyme = await demander({ chemin: "/", entetes: { Host: TAILNET } });
+  assert.strictEqual(anonyme.code, 403, "la liste des apps se lit sans identité prouvée");
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200);
+  assert.ok(r.corps.includes("tcg-generator"), "l'app déclarée n'apparaît pas");
+  assert.ok(r.corps.includes("http://192.168.1.18:4700"), "l'adresse n'apparaît pas");
+
+  // Sans noopener, la page ouverte reçoit une poignée sur l'onglet du cockpit et peut le
+  // faire naviguer ailleurs. Ces apps sortent d'un générateur, donc d'un modèle.
+  assert.ok(/rel="noopener noreferrer"/.test(r.corps), "l'onglet du cockpit est prêté à l'app");
+});
+
+test("un nom d'app hostile est échappé comme le reste du texte de la page", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      apps: [{ nom: '<script>alert(1)</script>', url: "http://192.168.1.18:4700" }],
+    }),
+  });
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200);
+  assert.ok(!r.corps.includes("<script>alert(1)</script>"), "balise rendue telle quelle");
+  assert.ok(r.corps.includes("&lt;script&gt;"), "le nom devrait apparaître échappé");
+});
+
+test("un registre fautif nomme le défaut et ne tue pas la page qui décide", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({ apps: [{ nom: "piege", url: "javascript:alert(1)" }] }),
+  });
+
+  // Le panneau est un confort, décider est la raison d'être de la page. La seconde ne doit
+  // pas tomber avec le premier, et le défaut ne doit pas se taire non plus.
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200, "un registre fautif a empêché la page de servir");
+  assert.ok(/Registre illisible/.test(r.corps), "le défaut du registre est passé sous silence");
+  assert.ok(!r.corps.includes("javascript:alert(1)"), "l'entrée refusée est quand même rendue");
+  assert.ok(r.corps.includes("Enregistrer les décisions"), "le formulaire de décision a disparu");
+});
+
 test("sans réglage, le cockpit écoute la boucle locale et rien d'autre", () => {
   assert.strictEqual(acces.adresseEcoute(), "127.0.0.1");
   assert.strictEqual(acces.adresseEcoute({}), "127.0.0.1");

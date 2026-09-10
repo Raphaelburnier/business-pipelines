@@ -498,6 +498,46 @@ nom de dossier tenait en un segment. Dès qu'il en portait deux, l'identifiant r
 désignait une autre action du plan : une décision pouvait partir sur un changement de prix
 qui n'avait pas été lu. L'identifiant voyage désormais entier, dans un attribut de données.
 
+### Le panneau des applications déployées
+
+Une fois le cockpit sur l'écran d'accueil du téléphone, il est la porte d'entrée de ce qui
+tourne sur le NAS. Il liste donc les applications sorties du générateur de SaaS, en liens
+vers elles et rien de plus. Le registre se copie depuis
+`specs/cockpit-apps.json.example`, et son absence ramène simplement la page à ce qu'elle
+était.
+
+**La liste vient d'un fichier, jamais du démon Docker.** Interroger Docker donnerait une
+liste toujours juste et coûterait le socket monté dans le conteneur, c'est-à-dire root sur
+le NAS accordé à la page joignable depuis le tailnet. Une liste qui vieillit se corrige en
+éditant un fichier ; un socket qu'on a monté ne se démonte jamais vraiment.
+
+**Une adresse se déclare, elle ne se construit pas.** Le code ne fabrique aucune URL à
+partir d'un port. La différence se voit à l'usage : une app publiée sur le LAN est
+injoignable depuis un téléphone qui n'est pas à la maison, alors que le cockpit, lui, passe
+par Tailscale. Un lien LAN dans une page qu'on ouvre dehors est un lien mort, et aucun
+module ne peut deviner lequel des deux chemins tu as monté.
+
+**Une app ne partage pas l'origine du cockpit**, et c'est le refus le moins évident. Le
+contrôle d'origine sur les écritures est ce qui empêche une page tierce d'enregistrer une
+décision. Servir une app sous le nom du cockpit lui donnerait cette origine, donc ce droit,
+et ces applications sortent d'un générateur : elles sont écrites par un modèle, ce qui est
+la définition d'une page tierce. Le chargement refuse une entrée qui atterrit sur une
+origine acceptée. Un port distinct suffit à l'en séparer.
+
+**Seuls `http` et `https` sont des liens.** Un `javascript:` dans un href s'exécute dans la
+page qui approuve des changements de prix, un `data:` sert un document sous notre propre
+origine. Le registre n'est écrit que par le propriétaire du NAS, mais une liste blanche ne
+dépend pas de ce qu'on croira se rappeler en l'éditant dans six mois.
+
+**Les liens portent `rel="noopener"`.** Sans lui, la page ouverte reçoit une poignée sur
+l'onglet du cockpit et peut le faire naviguer ailleurs, vers une copie qui redemande de
+confirmer une décision par exemple.
+
+**Un registre fautif nomme le défaut et ne tue pas la page.** Le panneau est un confort,
+décider est la raison d'être du cockpit : faire dépendre la seconde du premier échangerait
+une fonction qui garde l'argent contre une liste de liens. Se taire serait pire, on croirait
+n'avoir rien déployé.
+
 ### Les fichiers d'approbation s'écrivent en une fois, ou pas du tout
 
 `writeFileSync` vide le fichier de destination avant de le remplir. Un processus tué entre

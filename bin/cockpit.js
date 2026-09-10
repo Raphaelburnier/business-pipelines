@@ -45,6 +45,7 @@ const { envLoader } = require("agent-orchestrator");
 const cockpit = require("../src/cockpit");
 const acces = require("../src/acces");
 const pwa = require("../src/pwa");
+const apps = require("../src/apps");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -69,6 +70,26 @@ const HOTE = acces.adresseEcoute({
   hote: ENV.COCKPIT_HOTE,
   conteneur: String(ENV.COCKPIT_CONTENEUR || "").trim() === "1",
 });
+
+// Le registre des applications déployées, lu une fois au démarrage.
+//
+// Un registre fautif ne tue pas le cockpit et ne se tait pas non plus. Ce panneau est un
+// confort ; décider est la raison d'être de cette page. Faire dépendre la seconde du
+// premier échangerait une fonction qui garde l'argent contre une liste de liens. Mais un
+// registre silencieusement ignoré serait pire : on croirait n'avoir déployé aucune app.
+// La page nomme donc le défaut à la place de la liste.
+let APPS = [];
+let APPS_ERREUR = null;
+try {
+  APPS = apps.charger({
+    // Surchargeable comme APPROVALS_DIR, et pour la même raison : ce qui n'est pas
+    // déplaçable ne se teste que contre le dossier réel du dépôt.
+    specsDir: ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs"),
+    origines: acces.originesAutorisees(PORTEE),
+  });
+} catch (err) {
+  APPS_ERREUR = err.message;
+}
 
 // L'apostrophe est échappée elle aussi. Aucun attribut de cette page n'est écrit en
 // guillemets simples aujourd'hui, donc rien n'en dépend : c'est le prochain attribut
@@ -127,6 +148,26 @@ function ligneAction(a, nom) {
 </div>`;
 }
 
+// `rel="noopener"` n'est pas décoratif ici. Sans lui, la page ouverte reçoit une poignée
+// sur l'onglet du cockpit et peut le faire naviguer ailleurs, vers une copie qui demande
+// de reconfirmer une décision par exemple. Ces applications sortent d'un générateur, donc
+// d'un modèle : c'est exactement le genre de page à qui on ne prête pas son onglet.
+function panneauApps() {
+  if (APPS_ERREUR) {
+    return `<h2>Applications</h2>
+<p class="rouge">Registre illisible, la liste n'est pas affichée. ${ech(APPS_ERREUR)}</p>`;
+  }
+  if (!APPS.length) return "";
+  return `<h2>Applications</h2>
+<div class="apps">${APPS.map(
+    (a) => `<a class="app" href="${ech(a.url)}" target="_blank" rel="noopener noreferrer">
+  <b>${ech(a.nom)}</b>
+  ${a.description ? `<span class="desc">${ech(a.description)}</span>` : ""}
+  <span class="mono">${ech(a.url)}</span>
+</a>`
+  ).join("")}</div>`;
+}
+
 function page(etat, qui) {
   const corps = etat.dossiers.length
     ? etat.dossiers
@@ -167,6 +208,12 @@ h1{font-size:1.3rem}h2{font-size:1.05rem;margin:2rem 0 .3rem}
 .b{font-size:.75rem;border:1px solid;border-radius:99px;padding:.05rem .5rem;vertical-align:middle;white-space:nowrap}
 .vert{color:#0a7d32}.rouge{color:#b3261e}.gris{opacity:.6}
 .vide{opacity:.6;margin:3rem 0}
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(11rem,1fr));gap:.6rem}
+.app{display:flex;flex-direction:column;gap:.15rem;border:1px solid currentColor;border-radius:6px;
+  padding:.7rem .8rem;text-decoration:none;color:inherit;opacity:.9}
+.app:hover,.app:focus-visible{opacity:1}
+.app .desc{font-size:.85rem;opacity:.75}
+.app .mono{font-size:.75rem;opacity:.6}
 form.pied{position:sticky;bottom:0;background:Canvas;margin-top:2rem;border-top:1px solid;
   padding:.9rem 0 calc(.9rem + env(safe-area-inset-bottom))}
 button{font:inherit;padding:.75rem 1.2rem;width:100%;max-width:22rem;cursor:pointer;border-radius:6px}
@@ -176,6 +223,7 @@ button{font:inherit;padding:.75rem 1.2rem;width:100%;max-width:22rem;cursor:poin
 <p class="meta">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.<br>
 Lecture de ${ech(APPROVALS)}. Cette page écrit de vraies décisions.</p>
 ${corps}
+${panneauApps()}
 <form class="pied" onsubmit="return envoyer(event)">
   <button>Enregistrer les décisions</button>
 </form>

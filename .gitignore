@@ -25,6 +25,11 @@ approvals/*.plan.json
 # Sauf le gabarit documenté, qui ne porte aucune décision réelle.
 !approvals/EXEMPLE.decisions.json
 
+# Registre des applications affichées par le cockpit. Aucun secret, mais des adresses
+# internes : ports du NAS, nom du tailnet. Même raison que specs/cockpit.env, qui ne porte
+# rien de secret non plus et reste hors du dépôt. Le gabarit, lui, est suivi.
+specs/cockpit-apps.json
+
 # Secrets : jamais commités.
 # Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
 .env

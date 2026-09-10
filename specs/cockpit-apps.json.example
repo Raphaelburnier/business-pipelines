@@ -1,0 +1,26 @@
+{
+  "_lire_avant_de_remplir": [
+    "Copier en specs/cockpit-apps.json. Le fichier rempli est gitignoré, ce gabarit ne l'est pas.",
+    "Absent, le cockpit n'affiche simplement aucun panneau : il redevient ce qu'il était.",
+
+    "L'URL se déclare, elle ne se construit pas. Une app publiée sur le LAN (192.168.1.18)",
+    "est injoignable depuis un téléphone qui n'est pas à la maison, alors que le cockpit,",
+    "lui, passe par Tailscale. Un lien LAN dans une page qu'on ouvre dehors est un lien mort.",
+
+    "Une app ne doit PAS être servie sous le nom du cockpit. Le cockpit vérifie l'en-tête",
+    "Origin sur ses écritures, et c'est ce qui empêche une page tierce d'enregistrer une",
+    "décision. Une app servie sous la même origine aurait ce droit, et ces apps sortent d'un",
+    "générateur, donc d'un modèle. Un port distinct suffit à les séparer. Le chargement",
+    "refuse une entrée qui atterrit sur une origine que le cockpit accepte.",
+
+    "Seuls http et https sont acceptés. Le reste s'exécute dans la page qui approuve l'argent."
+  ],
+
+  "apps": [
+    {
+      "nom": "tcg-generator",
+      "url": "http://192.168.1.18:4700",
+      "description": "Générateur de cartes, première app sortie du générateur de SaaS"
+    }
+  ]
+}
