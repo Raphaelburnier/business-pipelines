@@ -17,6 +17,7 @@
 // l'en-tête. Il pouvait déjà écrire le registre de décisions directement : la frontière
 // n'a pas bougé. L'en-tête supprime l'erreur humaine, pas l'attaquant local.
 const os = require("os");
+const fs = require("fs");
 const { Refus } = require("./cockpit");
 
 const EN_TETE_LOGIN = "tailscale-user-login";
@@ -100,12 +101,48 @@ function identite(entetes, { tailnet = null, operateurLocal = null } = {}) {
   return { par: local, nom: null, canal: "local" };
 }
 
+// L'adresse d'écoute, sortie du serveur pour la raison qui vaut pour tout ce fichier :
+// ce qui décide de la surface exposée se teste sans monter de socket.
+//
+// L'incident. Le cockpit est resté injoignable dix jours après la bascule sur le NAS.
+// `listen(PORT, "127.0.0.1")` était écrit en dur. Dans un conteneur, cette adresse
+// désigne la boucle locale DU CONTENEUR, que rien n'atteint : le relais de port de Docker
+// parle à l'interface du conteneur, pas à sa boucle. Le service tournait, le port était
+// publié, et personne ne répondait jamais. Une panne muette parce que tout avait l'air
+// normal des deux côtés.
+//
+// Pourquoi élargir ne casse pas l'invariant posé en tête de ce fichier. L'exigence n'est
+// pas que le processus lise "127.0.0.1", elle est que RIEN venu du réseau n'atteigne le
+// cockpit sans passer par Tailscale, faute de quoi les en-têtes d'identité se fabriquent.
+// Sur l'hôte, c'est la liaison qui l'assure. Dans un conteneur, c'est la publication du
+// port, écrite "127.0.0.1:4600:4600" dans docker-compose.yaml : seule la boucle de l'hôte
+// atteint le relais, donc seul Tailscale, qui tourne sur l'hôte, arrive jusqu'ici. La
+// frontière change de place, pas de nature. Écrire "0.0.0.0" sans cette publication
+// rouvrirait tout : les deux lignes se lisent ensemble ou ne se lisent pas.
+//
+// Aucun réglage, délibérément. Être dans un conteneur est un fait, pas une préférence, et
+// il n'existe aucun montage où l'on voudrait l'autre valeur. Une variable d'environnement
+// ne serait qu'un moyen de plus de se tromper, et se tromper ici publie sur le réseau un
+// service qui signe des dépenses. Une détection ratée, elle, rend le cockpit muet plutôt
+// qu'ouvert : c'est le bon sens de panne.
+function adresseEcoute({ conteneur }) {
+  return conteneur ? "0.0.0.0" : "127.0.0.1";
+}
+
+// La sonde, séparée de la décision, pour que la décision se teste sans système de
+// fichiers. Docker dépose /.dockerenv à la racine, Podman /run/.containerenv.
+function dansConteneur(fsModule = fs) {
+  return fsModule.existsSync("/.dockerenv") || fsModule.existsSync("/run/.containerenv");
+}
+
 module.exports = {
   identite,
   hotesAutorises,
   hoteAutorise,
   originesAutorisees,
   origineAutorisee,
+  adresseEcoute,
+  dansConteneur,
   EN_TETE_LOGIN,
   EN_TETE_NOM,
 };

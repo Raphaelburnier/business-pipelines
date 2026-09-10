@@ -301,8 +301,17 @@ const serveur = http.createServer(async (req, res) => {
   }
 });
 
-serveur.listen(PORT, "127.0.0.1", () => {
+// Voir acces.adresseEcoute : loopback sur l'hôte, interface du conteneur sinon, parce que
+// c'est alors la publication du port qui tient l'invariant. Le journal dit laquelle des
+// deux a été retenue : la panne précédente venait de ce que rien ne le disait.
+const CONTENEUR = acces.dansConteneur();
+const ECOUTE = acces.adresseEcoute({ conteneur: CONTENEUR });
+
+serveur.listen(PORT, ECOUTE, () => {
   console.log(`Cockpit sur http://127.0.0.1:${PORT}`);
+  if (CONTENEUR) {
+    console.log(`Conteneur détecté : écoute sur ${ECOUTE}, confinement assuré par la publication du port.`);
+  }
   if (TAILNET) {
     console.log(`Depuis le téléphone : https://${TAILNET}`);
     console.log("Ce nom ne répond que si le relais est monté : npm run cockpit:tailnet");

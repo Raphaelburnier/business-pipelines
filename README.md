@@ -748,3 +748,77 @@ Sell API, qui ne connaît que des `offerId` et des SKU. L'exécuteur accepte les
 formes plutôt que d'imposer au planificateur une contrainte qu'il n'a pas les moyens de
 tenir. Une cible au format du relevé se résout en balayant le catalogue du vendeur, borné
 par son propre nombre d'articles.
+
+## Les checks de santé
+
+Le dispositif de surveillance de l'infra, poste et NAS et agents, écrit avant le premier
+check parce que c'est le seul moment où le format est encore gratuit à choisir.
+
+Les checks vivent dans trois langages sur deux machines : PowerShell sur le poste, shell
+sur le NAS, Python pour les agents. Chacun produit des objets de la même forme, décrite et
+validée dans `src/sante.js`. Le stockage viendra ensuite et ne sera qu'un lecteur de plus,
+comme le cockpit et le canal d'alerte sont déjà des lecteurs de la boîte.
+
+### La forme
+
+```json
+{
+  "check": "nas.smart",
+  "cible": "nas",
+  "statut": "OK",
+  "valeur": "healthy",
+  "seuil": null,
+  "attendue": true,
+  "le": "2026-09-10T09:00:00Z"
+}
+```
+
+`cible` vaut `pc`, `nas` ou `agents`. `statut` vaut `OK`, `ATTENTION`, `CRITIQUE` ou
+`INCONNU`. `valeur` et `seuil` ne sont pas typés : un pourcentage de disque est un nombre,
+un statut SMART est un mot, et le check a déjà fait la comparaison. Ces deux champs ne
+servent qu'à rendre l'alerte lisible sans ouvrir autre chose.
+
+`attendue` est un booléen strict. Une chaîne `"false"` venue de PowerShell est vraie en
+JavaScript, donc la validation la refuse plutôt que de la convertir : se tromper sur ce
+champ réveille quelqu'un chaque nuit.
+
+### INCONNU n'est pas CRITIQUE
+
+Un check qui n'a pas pu mesurer et un check qui a mesuré quelque chose de mauvais donnaient
+la même alerte. Un SSH qui tombe et un disque qui meurt se lisaient pareil, et on allait
+chercher un disque en bon état. La panne de l'instrument se signale comme telle.
+
+Un `INCONNU` refuse de porter une valeur. Soit la mesure a eu lieu, soit non.
+
+### Le poste qui s'éteint n'est pas une panne
+
+Même mécanique que pour l'arrêt du cycle plus haut : un arrêt normal ressemble à une panne,
+et confondre les deux fait cesser de lire les alertes, ce qui est la panne la plus grave. Le
+poste s'éteint tous les soirs. Sans `attendue`, chaque nuit produit une vague de `CRITIQUE`
+et le dispositif ne sert plus à rien au bout d'une semaine.
+
+D'où une dimension séparée plutôt qu'un cinquième statut. Le statut reste le jugement porté
+sur la mesure, `attendue` reste un fait sur la cible, et le croisement décide :
+
+| statut | attendue | ce qui se passe |
+|---|---|---|
+| `INCONNU` | `false` | silence, le poste dort et c'était prévu |
+| `INCONNU` | `true` | alerte immédiate, on aurait dû mesurer |
+| `CRITIQUE` | indifférent | alerte immédiate |
+| `ATTENTION` | indifférent | digest quotidien, jamais d'interruption |
+| `OK` | indifférent | silence |
+
+La deuxième ligne est celle qui a de la valeur. Un poste qui disparaît sans que personne ne
+l'ait éteint, sur une machine dont l'historique de BSOD `nvlddmkm.sys` est connu, c'est un
+plantage. Rien ne le distinguait d'une extinction du soir, et ça ne coûte qu'un booléen.
+
+Reste à produire le fait : le poste dépose un marqueur d'arrêt propre en s'éteignant, et le
+NAS lit ce marqueur pour renseigner `attendue`.
+
+### La déduplication
+
+Sur le modèle exact de celle du canal d'alerte : la clé est `check:statut`, donc elle change
+quand l'état change et seulement là. Un service tombé vérifié chaque minute enverrait 1440
+messages par jour. Avec le statut dans la clé, il en envoie un à la chute et un au retour. Le
+retour compte autant que la chute, c'est ce qui permet de refermer un incident sans aller
+vérifier à la main.
