@@ -71,24 +71,28 @@ const HOTE = acces.adresseEcoute({
   conteneur: String(ENV.COCKPIT_CONTENEUR || "").trim() === "1",
 });
 
-// Le registre des applications déployées, lu une fois au démarrage.
+// Surchargeable comme APPROVALS_DIR, et pour la même raison : ce qui n'est pas déplaçable
+// ne se teste que contre le dossier réel du dépôt.
+const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
+
+// Le registre des applications est relu à chaque rendu de page, pas une fois au démarrage.
 //
-// Un registre fautif ne tue pas le cockpit et ne se tait pas non plus. Ce panneau est un
-// confort ; décider est la raison d'être de cette page. Faire dépendre la seconde du
-// premier échangerait une fonction qui garde l'argent contre une liste de liens. Mais un
-// registre silencieusement ignoré serait pire : on croirait n'avoir déployé aucune app.
-// La page nomme donc le défaut à la place de la liste.
-let APPS = [];
-let APPS_ERREUR = null;
-try {
-  APPS = apps.charger({
-    // Surchargeable comme APPROVALS_DIR, et pour la même raison : ce qui n'est pas
-    // déplaçable ne se teste que contre le dossier réel du dépôt.
-    specsDir: ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs"),
-    origines: acces.originesAutorisees(PORTEE),
-  });
-} catch (err) {
-  APPS_ERREUR = err.message;
+// Lu au démarrage, ajouter une app demandait de redémarrer le conteneur. Une liste de
+// liens qui exige une commande pour se mettre à jour est une liste qu'on cesse de tenir,
+// et une liste fausse vaut moins que pas de liste.
+//
+// Ce que la relecture coûte est nul en pratique : un petit JSON, sur une page qu'un humain
+// ouvre pour décider, pas une API sollicitée en boucle. Ce qu'elle aurait pu coûter, une
+// panne de plus sur la page qui garde l'argent, est déjà écarté plus bas : un registre
+// fautif nomme son défaut à la place de la liste et laisse le reste de la page intact.
+// Décider ne dépend pas du panneau, et ne doit jamais en dépendre.
+function registreApps() {
+  try {
+    return { apps: apps.charger({ specsDir: APPS_DIR, origines: acces.originesAutorisees(PORTEE) }), erreur: null };
+  } catch (err) {
+    // Se taire serait pire que dire le défaut : on croirait n'avoir rien déployé.
+    return { apps: [], erreur: err.message };
+  }
 }
 
 // L'apostrophe est échappée elle aussi. Aucun attribut de cette page n'est écrit en
@@ -153,13 +157,14 @@ function ligneAction(a, nom) {
 // de reconfirmer une décision par exemple. Ces applications sortent d'un générateur, donc
 // d'un modèle : c'est exactement le genre de page à qui on ne prête pas son onglet.
 function panneauApps() {
-  if (APPS_ERREUR) {
+  const { apps: liste, erreur } = registreApps();
+  if (erreur) {
     return `<h2>Applications</h2>
-<p class="rouge">Registre illisible, la liste n'est pas affichée. ${ech(APPS_ERREUR)}</p>`;
+<p class="rouge">Registre illisible, la liste n'est pas affichée. ${ech(erreur)}</p>`;
   }
-  if (!APPS.length) return "";
+  if (!liste.length) return "";
   return `<h2>Applications</h2>
-<div class="apps">${APPS.map(
+<div class="apps">${liste.map(
     (a) => `<a class="app" href="${ech(a.url)}" target="_blank" rel="noopener noreferrer">
   <b>${ech(a.nom)}</b>
   ${a.description ? `<span class="desc">${ech(a.description)}</span>` : ""}

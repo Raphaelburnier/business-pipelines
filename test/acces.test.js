@@ -390,9 +390,59 @@ test("le manifeste ne s'obtient pas sans identité", async () => {
 // démarrage, comme il lit specs/cockpit.env.
 function bacApps(contenu) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-apps-"));
-  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
+  ecrireApps(dir, contenu);
   return dir;
 }
+
+function ecrireApps(dir, contenu) {
+  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
+}
+
+test("ajouter une app se voit au rafraîchissement, sans redémarrer le cockpit", async () => {
+  // Le registre était lu une fois au démarrage, donc déployer une app demandait une
+  // commande sur le NAS pour la voir apparaître. Une liste de liens qui exige une commande
+  // pour se tenir à jour est une liste qu'on cesse de tenir, et une liste fausse vaut moins
+  // que pas de liste du tout.
+  demonter();
+  const dir = bacApps({ apps: [{ nom: "premiere", url: "http://192.168.1.18:4700" }] });
+  await monter({ COCKPIT_APPS_DIR: dir });
+
+  const avant = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(avant.corps.includes("premiere"));
+  assert.ok(!avant.corps.includes("seconde"));
+
+  // Le fichier change pendant que le serveur tourne. Personne ne le redémarre.
+  ecrireApps(dir, {
+    apps: [
+      { nom: "premiere", url: "http://192.168.1.18:4700" },
+      { nom: "seconde", url: "http://192.168.1.18:4701" },
+    ],
+  });
+
+  const apres = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(apres.corps.includes("seconde"), "la nouvelle app n'apparaît qu'après redémarrage");
+
+  // Et le retrait aussi : une app supprimée doit disparaître, sinon le panneau enverrait
+  // vers une page morte en donnant l'air d'être à jour.
+  ecrireApps(dir, { apps: [{ nom: "seconde", url: "http://192.168.1.18:4701" }] });
+  const retire = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(!retire.corps.includes("premiere"), "l'app retirée est encore affichée");
+});
+
+test("un registre cassé après coup n'emporte pas la page qui décide", async () => {
+  // La relecture par requête déplace le risque : un fichier qu'on édite mal pendant que le
+  // cockpit tourne pourrait faire échouer chaque rendu. Le défaut se nomme, la page vit.
+  demonter();
+  const dir = bacApps({ apps: [{ nom: "premiere", url: "http://192.168.1.18:4700" }] });
+  await monter({ COCKPIT_APPS_DIR: dir });
+
+  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), "{ édité de travers");
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200, "un registre cassé en cours de route a fait tomber la page");
+  assert.ok(/Registre illisible/.test(r.corps), "le défaut est passé sous silence");
+  assert.ok(r.corps.includes("Enregistrer les décisions"), "le formulaire de décision a disparu");
+});
 
 test("le panneau d'apps s'affiche, et il est derrière la même identité que le reste", async () => {
   demonter();

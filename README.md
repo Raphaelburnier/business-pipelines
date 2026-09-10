@@ -506,6 +506,14 @@ vers elles et rien de plus. Le registre se copie depuis
 `specs/cockpit-apps.json.example`, et son absence ramène simplement la page à ce qu'elle
 était.
 
+**Le registre est relu à chaque rendu de page.** Lu une fois au démarrage, ajouter une app
+demandait de redémarrer le conteneur. Une liste de liens qui exige une commande pour se
+tenir à jour est une liste qu'on cesse de tenir, et une liste fausse vaut moins que pas de
+liste. Éditer le fichier suffit, le rafraîchissement montre le résultat. La relecture ne
+coûte rien en pratique, un petit JSON sur une page qu'un humain ouvre pour décider, et le
+risque qu'elle aurait pu ajouter est déjà écarté : un registre cassé en cours de route
+nomme son défaut et laisse la page intacte.
+
 **La liste vient d'un fichier, jamais du démon Docker.** Interroger Docker donnerait une
 liste toujours juste et coûterait le socket monté dans le conteneur, c'est-à-dire root sur
 le NAS accordé à la page joignable depuis le tailnet. Une liste qui vieillit se corrige en
