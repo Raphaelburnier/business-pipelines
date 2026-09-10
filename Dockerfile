@@ -1,5 +1,13 @@
 FROM node:22-alpine
 
+# Le SDK d'agents lance le CLI Claude Code en sous-processus, et ce CLI embarque un ripgrep
+# lié à la glibc. Alpine est sur musl, donc ce binaire ne s'exécute pas. USE_BUILTIN_RIPGREP=0
+# le renvoie vers celui du système, installé ici. Sans ça les outils de recherche d'un agent
+# échouent un par un, ce qui ressemble à un agent qui ne trouve rien plutôt qu'à une image
+# mal construite.
+RUN apk add --no-cache ripgrep
+ENV USE_BUILTIN_RIPGREP=0
+
 WORKDIR /app
 
 # Le moteur est déclaré `file:../agent-orchestrator` dans package.json, donc npm le cherche
@@ -8,6 +16,14 @@ WORKDIR /app
 # option : il porte 27 projets pour 6,7 Go. bin/preparer-image.sh dépose donc les 340 Ko du
 # moteur dans .moteur/ avant le build.
 COPY .moteur/ /agent-orchestrator/
+
+# Le moteur installe ses propres dépendances chez lui. npm crée bien le lien symbolique
+# pour une dépendance `file:`, mais il n'installe pas l'arbre du paquet lié : le lock de ce
+# dépôt ne décrit que les dépendances de ce dépôt. Sans cette ligne,
+# /agent-orchestrator/node_modules reste vide, `@anthropic-ai/claude-agent-sdk` est
+# introuvable, et le premier appel d'agent meurt en ERR_MODULE_NOT_FOUND. Une fois par
+# réveil, toutes les quinze minutes, sans que la boucle avance jamais.
+RUN cd /agent-orchestrator && npm install --omit=dev
 
 # Les dépendances avant le code : une modification du code ne réinstalle alors rien.
 COPY package*.json ./
