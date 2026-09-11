@@ -107,6 +107,29 @@ const ech = (v) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+// Un horodatage ISO n'est pas une information pour quelqu'un qui décide sur un téléphone :
+// il faut le lire, le convertir, et le comparer à l'heure qu'il est. Ce qu'on cherchait est
+// la durée écoulée, et la page la donne donc directement. L'instant exact reste dans
+// l'attribut title, pour qui veut le recouper avec un journal.
+//
+// Calculer une durée au rendu ne vaut que si la page n'est jamais servie depuis un cache.
+// C'est le cas et c'est voulu : la page et son API partent en Cache-Control: no-store, et
+// le service worker ne garde rien. Voir src/pwa.js.
+function depuis(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return `<span>${ech(iso)}</span>`;
+
+  const minutes = Math.max(0, Math.round((Date.now() - t) / 60000));
+  let texte;
+  if (minutes < 60) texte = `${minutes} min`;
+  else if (minutes < 48 * 60) {
+    const h = minutes / 60;
+    texte = `${h < 10 ? h.toFixed(1) : Math.round(h)} h`;
+  } else texte = `${Math.round(minutes / 1440)} j`;
+
+  return `<span title="${ech(iso)}">${ech(texte)}</span>`;
+}
+
 function badge(f) {
   // `max_heures` est lu dans un fichier de pipelines/, pas calculé ici. Il traverse donc
   // la page comme du contenu de fichier, et tout contenu de fichier est échappé.
@@ -179,7 +202,7 @@ function page(etat, qui) {
         .map(
           (d, di) => `<section data-dossier="${ech(d.dossier)}" data-empreinte="${ech(d.empreinte)}">
   <h2>${ech(d.dossier)} ${badge(d.fraicheur)}</h2>
-  <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, en attente depuis ${ech(d.depuis)}</div>
+  <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, en attente depuis ${depuis(d.depuis)}</div>
   ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a, ai) => ligneAction(a, `d${di}-${ai}`)).join("")}
   ${d.fraicheur.verdict === "perime" ? `<p class="rouge">Ce plan est périmé : le pipeline d'application le refusera. Relancer la planification.</p>` : ""}
 </section>`
@@ -190,39 +213,115 @@ function page(etat, qui) {
   const canal =
     qui.canal === "tailnet" ? "identité établie par le tailnet" : "console de la machine, identité non prouvée";
 
-  return `<!doctype html><meta charset="utf-8">
+  // `lang` compte pour une page en français lue par un lecteur d'écran ou traduite : sans
+  // lui, le navigateur devine, et prononce des montants en anglais.
+  return `<!doctype html><html lang="fr"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cockpit d'approbation</title>
 ${pwa.BALISES}
 <style>
-:root{color-scheme:light dark}
+/* Deux jeux de couleurs déclarés en clair, au lieu d'une opacité posée sur les couleurs
+   système. L'opacité rendait le contraste imprévisible : le même .7 donne un gris lisible
+   sur fond blanc et un gris illisible sur fond noir, et cette page se lit dehors, sur un
+   téléphone, pour valider un montant. Chaque valeur ci-dessous tient le 4.5:1 sur le fond
+   devant lequel elle est écrite, dans les deux thèmes ; la plus basse est à 5.69:1, et
+   c'est mesuré, pas supposé.
+
+   Le trait des cartes, lui, est à 1.8:1 et reste en dessous du 3:1 des éléments non
+   textuels. C'est assumé : ce seuil vise ce dont l'identification DÉPEND, et ici la carte
+   se détache déjà par son fond, tandis que l'état d'un choix se lit par sa couleur, son
+   fond, son cadre et sa graisse à la fois. Monter le trait à 3:1 demanderait un liseré
+   franchement sombre autour de chaque bloc, et la page deviendrait une grille de boîtes. */
+:root{
+  color-scheme:light dark;
+  --fond:#E3E9EF;--surface:#FFFFFF;--creux:#EDF1F5;
+  --encre:#111820;--encre-douce:#4B5866;--trait:#B8C4D0;
+  --ok:#12653A;--ok-fond:#E2F0E8;
+  --danger:#A0271C;--danger-fond:#FAE5E3;
+  --alerte:#7F5400;--alerte-fond:#F7EDD6;
+  --accent:#1B5C7E;--sur-accent:#FFFFFF;
+  --rayon:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --fond:#090E12;--surface:#1C262F;--creux:#141C23;
+    --encre:#E3E9ED;--encre-douce:#9CA9B4;--trait:#41505D;
+    --ok:#74C08F;--ok-fond:#16301F;
+    --danger:#F08A7B;--danger-fond:#3A1E1A;
+    --alerte:#DEA845;--alerte-fond:#332709;
+    --accent:#6CA9C9;--sur-accent:#090E12;
+  }
+}
 *{box-sizing:border-box}
-body{font:15px/1.55 system-ui,sans-serif;max-width:52rem;margin:1.5rem auto;
-  padding:env(safe-area-inset-top) calc(1rem + env(safe-area-inset-right)) 0 calc(1rem + env(safe-area-inset-left))}
-h1{font-size:1.3rem}h2{font-size:1.05rem;margin:2rem 0 .3rem}
-.mono{font-family:ui-monospace,monospace;font-size:.9em;word-break:break-all}
-.meta{opacity:.7;font-size:.85rem;margin-bottom:.8rem}
-.act{border:1px solid currentColor;border-radius:6px;padding:.8rem 1rem;margin:.7rem 0;opacity:.95}
-.tete{margin-bottom:.3rem}.delta{font-size:1.15rem;font-weight:600;margin:.2rem 0}
-.act p{margin:.5rem 0}.src{font-size:.85rem;opacity:.75;margin-bottom:.6rem}
-.choix{display:flex;flex-wrap:wrap;gap:.4rem}
-.choix label{flex:1 1 8rem;display:flex;align-items:center;gap:.4rem;border:1px solid currentColor;
-  border-radius:6px;padding:.6rem .7rem;font-size:.9rem;opacity:.7;cursor:pointer}
-.choix label:has(input:checked){opacity:1;font-weight:600}
-.choix input{width:1.1rem;height:1.1rem;margin:0;flex:none}
-.b{font-size:.75rem;border:1px solid;border-radius:99px;padding:.05rem .5rem;vertical-align:middle;white-space:nowrap}
-.vert{color:#0a7d32}.rouge{color:#b3261e}.gris{opacity:.6}
-.vide{opacity:.6;margin:3rem 0}
-.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(11rem,1fr));gap:.6rem}
-.app{display:flex;flex-direction:column;gap:.15rem;border:1px solid currentColor;border-radius:6px;
-  padding:.7rem .8rem;text-decoration:none;color:inherit;opacity:.9}
-.app:hover,.app:focus-visible{opacity:1}
-.app .desc{font-size:.85rem;opacity:.75}
-.app .mono{font-size:.75rem;opacity:.6}
-form.pied{position:sticky;bottom:0;background:Canvas;margin-top:2rem;border-top:1px solid;
-  padding:.9rem 0 calc(.9rem + env(safe-area-inset-bottom))}
-button{font:inherit;padding:.75rem 1.2rem;width:100%;max-width:22rem;cursor:pointer;border-radius:6px}
-#msg{margin-top:1rem;white-space:pre-wrap}
+/* 16px et pas 15 : c'est le plancher lisible sur mobile, et iOS zoome de lui-même sur
+   toute page dont le texte de formulaire descend en dessous. */
+body{font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  color:var(--encre);background:var(--fond);max-width:46rem;margin:0 auto;
+  padding:calc(1.25rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) 0 calc(1rem + env(safe-area-inset-left))}
+h1{font-size:1.35rem;font-weight:650;letter-spacing:-.01em;margin:0 0 .5rem}
+h2{font-size:1.05rem;font-weight:650;margin:2rem 0 .35rem;
+  display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;word-break:break-all}
+.meta{color:var(--encre-douce);font-size:.875rem;margin-bottom:.9rem}
+.act{background:var(--surface);border:1px solid var(--trait);border-radius:var(--rayon);
+  padding:1rem;margin:.75rem 0}
+.tete{color:var(--encre-douce);font-size:.9rem;margin-bottom:.1rem}
+.tete b{color:var(--encre)}
+/* Le montant est ce qu'on approuve. C'est donc ce qui doit se lire en premier, et les
+   chiffres sont tabulaires pour que deux cartes s'alignent au lieu de danser. */
+.delta{font-size:1.5rem;font-weight:650;letter-spacing:-.01em;margin:.3rem 0 .5rem;
+  font-variant-numeric:tabular-nums}
+.act p{margin:.5rem 0;max-width:62ch}
+.src{font-size:.8rem;color:var(--encre-douce)}
+.choix{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.9rem}
+/* 48px de haut au minimum. En dessous, on manque la cible, et ici manquer la cible veut
+   dire approuver un changement de prix qu'on voulait refuser. */
+.choix label{flex:1 1 8.5rem;display:flex;align-items:center;gap:.55rem;min-height:48px;
+  padding:.7rem .85rem;border:1px solid var(--trait);border-radius:var(--rayon);
+  background:var(--creux);color:var(--encre-douce);font-size:.95rem;cursor:pointer}
+/* L'état choisi se voit par la couleur, le fond, le cadre ET la graisse. Une seule de ces
+   quatre suffirait à quelqu'un qui les distingue toutes ; aucune ne suffit seule. */
+.choix label:has(input:checked){color:var(--encre);background:var(--surface);
+  border-color:var(--encre-douce);font-weight:650}
+.choix label:has(input[value="approuve"]:checked){color:var(--ok);background:var(--ok-fond);border-color:var(--ok)}
+.choix label:has(input[value="refuse"]:checked){color:var(--danger);background:var(--danger-fond);border-color:var(--danger)}
+.choix label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.choix input{width:1.15rem;height:1.15rem;margin:0;flex:none;accent-color:currentColor}
+.b{display:inline-block;font-size:.75rem;font-weight:600;border:1px solid;border-radius:99px;
+  padding:.1rem .6rem;white-space:nowrap}
+.b.vert{color:var(--ok);background:var(--ok-fond)}
+.b.rouge{color:var(--danger);background:var(--danger-fond)}
+.b.gris{color:var(--encre-douce);background:var(--creux)}
+.vert{color:var(--ok)}
+.rouge{color:var(--danger)}
+.gris{color:var(--encre-douce)}
+/* Un avertissement n'est pas une pastille : il occupe une ligne et porte un filet, pour
+   qu'on ne le prenne pas pour une étiquette de plus. */
+p.rouge{background:var(--danger-fond);border-left:3px solid var(--danger);
+  padding:.7rem .9rem;border-radius:0 var(--rayon) var(--rayon) 0;max-width:62ch}
+.vide{color:var(--encre-douce);background:var(--surface);border:1px dashed var(--trait);
+  border-radius:var(--rayon);padding:1.5rem;margin:2rem 0;text-align:center}
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:.6rem}
+.app{display:flex;flex-direction:column;gap:.2rem;min-height:48px;
+  background:var(--surface);border:1px solid var(--trait);border-radius:var(--rayon);
+  padding:.85rem .9rem;text-decoration:none;color:var(--encre)}
+.app:hover{background:var(--creux);border-color:var(--accent)}
+.app:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app .desc{font-size:.85rem;color:var(--encre-douce)}
+.app .mono{font-size:.75rem;color:var(--encre-douce)}
+form.pied{position:sticky;bottom:0;background:var(--fond);margin-top:2rem;
+  border-top:1px solid var(--trait);padding:.9rem 0 calc(.9rem + env(safe-area-inset-bottom))}
+button{font:inherit;font-weight:650;min-height:48px;padding:.8rem 1.2rem;width:100%;max-width:24rem;
+  cursor:pointer;border:1px solid var(--accent);border-radius:var(--rayon);
+  background:var(--accent);color:var(--sur-accent)}
+button:hover{filter:brightness(1.1)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#msg{margin-top:1rem;white-space:pre-wrap;color:var(--encre-douce);max-width:62ch}
+/* Les transitions ne portent que sur des couleurs, jamais sur une taille : rien ne bouge
+   sous le doigt entre le moment où on vise et celui où on touche. */
+@media (prefers-reduced-motion:no-preference){
+  .choix label,.app,button{transition:background-color .15s,border-color .15s,color .15s}
+}
 </style>
 <h1>Cockpit d'approbation</h1>
 <p class="meta">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.<br>
@@ -232,7 +331,7 @@ ${panneauApps()}
 <form class="pied" onsubmit="return envoyer(event)">
   <button>Enregistrer les décisions</button>
 </form>
-<div id="msg"></div>
+<div id="msg" role="status" aria-live="polite"></div>
 <script>
 async function envoyer(e){
   e.preventDefault();

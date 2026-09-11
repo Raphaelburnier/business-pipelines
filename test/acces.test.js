@@ -24,6 +24,7 @@ function bac({
   actionId = "prix-001",
   valeur = { de: 499.99, vers: 240.99, devise: "USD" },
   justification = "hors marché",
+  depuis = "2026-08-19T11:30:00.000Z",
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-"));
   const registre = path.join(registreDans || dir, "ajustement-prix.decisions.json");
@@ -36,7 +37,7 @@ function bac({
         {
           dossier,
           empreinte: "abc123",
-          depuis: "2026-08-19T11:30:00.000Z",
+          depuis,
           actions: 1,
           registre,
           plan_gele: planGele,
@@ -397,6 +398,30 @@ function bacApps(contenu) {
 function ecrireApps(dir, contenu) {
   fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
 }
+
+test("l'attente se lit en durée, et l'instant exact reste accessible", async () => {
+  // Un horodatage ISO demande d'être lu, converti et comparé à l'heure qu'il est. Sur un
+  // téléphone, devant une décision de prix, c'est du travail rendu à celui qui décide.
+  demonter();
+  const ilYATroisHeures = new Date(Date.now() - 3 * 3600e3).toISOString();
+  await monter({}, { depuis: ilYATroisHeures });
+
+  const r = await demander({ chemin: "/" });
+  assert.ok(/en attente depuis <span title="[^"]+">3\.0 h<\/span>/.test(r.corps), "durée non rendue");
+  assert.ok(r.corps.includes(ilYATroisHeures), "l'instant exact doit rester recoupable");
+});
+
+test("une date illisible s'affiche telle quelle plutôt que de rendre « NaN h »", async () => {
+  // Le champ vient d'un fichier que le moteur écrit. Le jour où il porte autre chose qu'une
+  // date, la page doit montrer ce qu'elle a reçu, pas un calcul fait dessus.
+  demonter();
+  await monter({}, { depuis: "pas une date" });
+
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(r.corps.includes("pas une date"), "la valeur reçue devrait être affichée");
+  assert.ok(!/NaN/.test(r.corps), "un calcul sur une non-date a fui dans la page");
+});
 
 test("ajouter une app se voit au rafraîchissement, sans redémarrer le cockpit", async () => {
   // Le registre était lu une fois au démarrage, donc déployer une app demandait une
