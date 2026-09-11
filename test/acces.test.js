@@ -399,6 +399,59 @@ function ecrireApps(dir, contenu) {
   fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
 }
 
+test("le bandeau d'accueil compte ce qui attend et mène aux décisions", async () => {
+  // Ce qu'on vient chercher en ouvrant la page, avant tout le reste : est-ce qu'une
+  // décision attend. Le compte doit être celui des actions, pas celui des dossiers.
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(/class="bandeau bandeau--attente"/.test(r.corps), "pas de bandeau d'attente");
+  assert.ok(/href="#decisions"/.test(r.corps), "le bandeau ne mène pas aux décisions");
+  assert.ok(/<span class="compte">1<\/span>/.test(r.corps), "le compte d'actions n'est pas affiché");
+  assert.ok(/id="decisions"/.test(r.corps), "la cible de l'ancre n'existe pas");
+});
+
+test("sans rien à décider, la page le dit une fois et n'offre pas d'enregistrer", async () => {
+  // Une page d'accueil calme ne doit ni répéter la même phrase deux fois, ni tendre un
+  // bouton qui n'écrirait rien. Elle doit quand même le DIRE : un bandeau absent se lit
+  // comme une page qui n'a pas fini de charger.
+  demonter();
+  const vide = fs.mkdtempSync(path.join(os.tmpdir(), "acces-vide-"));
+  fs.writeFileSync(path.join(vide, "EN-ATTENTE.json"), JSON.stringify({ en_attente: [] }));
+  await monter({ APPROVALS_DIR: vide });
+
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(/class="bandeau bandeau--calme"/.test(r.corps), "le calme doit se dire, pas se taire");
+  assert.strictEqual(
+    r.corps.split("Rien n'attend de décision").length - 1,
+    1,
+    "la même phrase est rendue deux fois"
+  );
+  assert.ok(!r.corps.includes("Enregistrer les décisions"), "un bouton sans rien à enregistrer");
+});
+
+test("un module sans adresse est une fiche, jamais un lien vers nulle part", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      modules: [
+        { nom: "tcg-generator", url: "http://192.168.1.18:4700" },
+        { nom: "Agents vocaux PME", etat: "en-cours", notes: ["choisir la voix"] },
+      ],
+    }),
+  });
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(/module module--en-ligne/.test(r.corps), "l'état en ligne n'est pas rendu");
+  assert.ok(/module module--en-cours/.test(r.corps), "l'état en cours n'est pas rendu");
+
+  // Le module sans url ne doit porter aucun href, sinon la tuile promet une visite qu'elle
+  // ne peut pas tenir, et on apprend à se méfier de toutes les autres.
+  const fiche = r.corps.slice(r.corps.indexOf("Agents vocaux PME") - 400);
+  assert.ok(!/Agents vocaux PME<\/a>/.test(r.corps), "la fiche est rendue comme un lien");
+  assert.ok(/<details class="notes">/.test(fiche), "les notes devraient être dépliables");
+});
+
 test("l'attente se lit en durée, et l'instant exact reste accessible", async () => {
   // Un horodatage ISO demande d'être lu, converti et comparé à l'heure qu'il est. Sur un
   // téléphone, devant une décision de prix, c'est du travail rendu à celui qui décide.

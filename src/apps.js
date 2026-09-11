@@ -28,6 +28,17 @@ const { lireJson } = require("./durable");
 
 const FICHIER = "cockpit-apps.json";
 
+// Le fichier garde son nom alors que le concept a grandi : il ne liste plus seulement des
+// applications en ligne mais des modules, c'est à dire tout ce qui compte comme un
+// business. Un site déployé, un site écrit mais pas encore mis en ligne, une piste qui
+// n'existe encore que sur le papier. Renommer le fichier casserait le chemin que
+// vers-nas.sh a en configuration, pour un gain de vocabulaire : la clé `modules` est donc
+// acceptée à côté de `apps`, et c'est l'interface qui parle de modules.
+//
+// L'état n'est pas décoratif : c'est lui qui décide si la tuile est un lien ou une fiche.
+// Une tuile cliquable qui ne mène nulle part apprend à se méfier de toutes les autres.
+const ETATS = new Set(["en-ligne", "en-cours", "idee", "arrete"]);
+
 // Deux schémas seulement. `javascript:` dans un href est une exécution dans la page qui
 // approuve l'argent, et `data:` un document sous notre propre origine. Le registre n'est
 // écrit que par le propriétaire du NAS, mais une liste blanche coûte une ligne et ne
@@ -46,9 +57,9 @@ function charger({ specsDir, origines = new Set() } = {}) {
   const brut = lireJson(chemin);
   if (brut === null) return [];
 
-  const liste = Array.isArray(brut) ? brut : brut && brut.apps;
+  const liste = Array.isArray(brut) ? brut : brut && (brut.modules || brut.apps);
   if (!Array.isArray(liste)) {
-    throw new RegistreInvalide(`${chemin} : attendu une liste d'applications sous "apps".`);
+    throw new RegistreInvalide(`${chemin} : attendu une liste de modules sous "modules" ou "apps".`);
   }
 
   return liste.map((entree, i) => valider(entree, i, chemin, origines));
@@ -63,8 +74,23 @@ function valider(entree, i, chemin, origines) {
   const nom = String(entree.nom || "").trim();
   if (!nom) throw new RegistreInvalide(`${ou} : "nom" manquant.`);
 
+  const notes = Array.isArray(entree.notes)
+    ? entree.notes.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+
+  // Pas d'URL, et c'est le cas normal d'un business qui n'existe pas encore. La tuile est
+  // alors une fiche, pas un lien.
   const brute = String(entree.url || "").trim();
-  if (!brute) throw new RegistreInvalide(`${ou} (${nom}) : "url" manquante.`);
+  if (!brute) {
+    const etat = etatDe(entree, ou, nom, false);
+    if (etat === "en-ligne") {
+      throw new RegistreInvalide(
+        `${ou} (${nom}) : déclaré "en-ligne" sans "url". Un module en ligne se visite, ` +
+          `sinon la tuile serait un lien qui ne mène nulle part.`
+      );
+    }
+    return { nom, url: null, etat, description: descriptionDe(entree), notes };
+  }
 
   let url;
   try {
@@ -88,7 +114,31 @@ function valider(entree, i, chemin, origines) {
     );
   }
 
-  return { nom, url: url.href, description: String(entree.description || "").trim() || null };
+  return {
+    nom,
+    url: url.href,
+    etat: etatDe(entree, ou, nom, true),
+    description: descriptionDe(entree),
+    notes,
+  };
 }
 
-module.exports = { charger, RegistreInvalide, FICHIER };
+function descriptionDe(entree) {
+  return String(entree.description || "").trim() || null;
+}
+
+// L'état se déclare, ou se déduit de la présence d'une URL. Se déduire n'est pas deviner :
+// un module qu'on peut visiter est en ligne, un module sans adresse ne l'est pas. Un état
+// écrit à la main l'emporte, parce que lui seul distingue « pas encore » de « plus ».
+function etatDe(entree, ou, nom, aUneUrl) {
+  const brut = String(entree.etat || "").trim().toLowerCase();
+  if (!brut) return aUneUrl ? "en-ligne" : "idee";
+  if (!ETATS.has(brut)) {
+    throw new RegistreInvalide(
+      `${ou} (${nom}) : état "${brut}" inconnu. Attendu : ${[...ETATS].join(", ")}.`
+    );
+  }
+  return brut;
+}
+
+module.exports = { charger, RegistreInvalide, FICHIER, ETATS };

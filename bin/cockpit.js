@@ -179,21 +179,93 @@ function ligneAction(a, nom) {
 // sur l'onglet du cockpit et peut le faire naviguer ailleurs, vers une copie qui demande
 // de reconfirmer une décision par exemple. Ces applications sortent d'un générateur, donc
 // d'un modèle : c'est exactement le genre de page à qui on ne prête pas son onglet.
-function panneauApps() {
+const LIBELLE_ETAT = {
+  "en-ligne": "en ligne",
+  "en-cours": "en cours",
+  idee: "à venir",
+  arrete: "arrêté",
+};
+
+// Une tuile par module, et le même gabarit qu'il mène quelque part ou non.
+//
+// Le lien couvre toute la tuile par un ::after plutôt que d'envelopper son contenu. Deux
+// raisons. Une cible large se touche au pouce sans viser, et c'est la moitié de l'intérêt
+// d'un écran d'accueil. Et surtout, un <details> de notes ne peut pas vivre à l'intérieur
+// d'un <a> : imbriquer deux éléments interactifs casse la navigation au clavier et rend le
+// balisage invalide. Le recouvrement garde un seul élément focusable par tuile, et les
+// notes repassent au-dessus par un z-index.
+//
+// Un module sans adresse n'est pas cliquable, et ne fait pas semblant de l'être. Une tuile
+// qui ne mène nulle part apprend à se méfier de toutes les autres.
+function tuileModule(m) {
+  const etiquette = LIBELLE_ETAT[m.etat] || m.etat;
+  const titre = m.url
+    ? `<a class="lien" href="${ech(m.url)}" target="_blank" rel="noopener noreferrer">${ech(m.nom)}</a>`
+    : `<span class="lien">${ech(m.nom)}</span>`;
+
+  const notes = m.notes.length
+    ? `<details class="notes"><summary>${m.notes.length} note${m.notes.length > 1 ? "s" : ""}</summary>
+    <ul>${m.notes.map((n) => `<li>${ech(n)}</li>`).join("")}</ul></details>`
+    : "";
+
+  return `<article class="module module--${ech(m.etat)}">
+  <div class="chef"><h3>${titre}</h3><span class="etat">${ech(etiquette)}</span></div>
+  ${m.description ? `<p class="desc">${ech(m.description)}</p>` : ""}
+  ${m.url ? `<span class="mono adresse">${ech(m.url)}</span>` : ""}
+  ${notes}
+</article>`;
+}
+
+function panneauModules() {
   const { apps: liste, erreur } = registreApps();
   if (erreur) {
-    return `<h2>Applications</h2>
-<p class="rouge">Registre illisible, la liste n'est pas affichée. ${ech(erreur)}</p>`;
+    return `<section class="bloc"><h2>Modules</h2>
+<p class="rouge">Registre illisible, la liste n'est pas affichée. ${ech(erreur)}</p></section>`;
   }
   if (!liste.length) return "";
-  return `<h2>Applications</h2>
-<div class="apps">${liste.map(
-    (a) => `<a class="app" href="${ech(a.url)}" target="_blank" rel="noopener noreferrer">
-  <b>${ech(a.nom)}</b>
-  ${a.description ? `<span class="desc">${ech(a.description)}</span>` : ""}
-  <span class="mono">${ech(a.url)}</span>
-</a>`
-  ).join("")}</div>`;
+
+  // Les modules en ligne d'abord, puis ceux qu'on construit, puis les pistes, puis ce qui
+  // s'est arrêté. L'ordre du fichier ne dit rien ; celui-ci dit ce qui tourne aujourd'hui.
+  const rang = { "en-ligne": 0, "en-cours": 1, idee: 2, arrete: 3 };
+  const triee = [...liste].sort((a, b) => (rang[a.etat] ?? 9) - (rang[b.etat] ?? 9));
+
+  return `<section class="bloc">
+  <h2>Modules <span class="compteur">${triee.length}</span></h2>
+  <div class="modules">${triee.map(tuileModule).join("")}</div>
+</section>`;
+}
+
+// Le bandeau d'accueil. Ce qu'on vient chercher en ouvrant la page, avant tout le reste :
+// est-ce qu'une décision attend, et à quel point elle presse.
+//
+// Quand rien n'attend, il le dit calmement au lieu de disparaître. Une absence de bandeau
+// se lit comme une page qui n'a pas fini de charger, pas comme une boîte vide.
+function bandeau(etat) {
+  const dossiers = etat.dossiers || [];
+  if (!dossiers.length) {
+    return `<div class="bandeau bandeau--calme">
+  <span class="pastille"></span>
+  <span class="dit">Rien n'attend de décision.</span>
+</div>`;
+  }
+
+  const actions = dossiers.reduce((n, d) => n + (d.actions ? d.actions.length : 0), 0);
+  const perimes = dossiers.filter((d) => d.fraicheur && d.fraicheur.verdict === "perime").length;
+  const sansPlan = dossiers.filter((d) => d.plan_absent).length;
+
+  const detail = [
+    `${dossiers.length} dossier${dossiers.length > 1 ? "s" : ""}`,
+    perimes ? `${perimes} périmé${perimes > 1 ? "s" : ""}` : null,
+    sansPlan ? `${sansPlan} sans plan gelé` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return `<a class="bandeau bandeau--attente${perimes ? " bandeau--perime" : ""}" href="#decisions">
+  <span class="compte">${ech(actions)}</span>
+  <span class="dit"><b>action${actions > 1 ? "s" : ""} à décider</b><br><span class="sous">${ech(detail)}</span></span>
+  <span class="fleche" aria-hidden="true">&rarr;</span>
+</a>`;
 }
 
 function page(etat, qui) {
@@ -220,117 +292,203 @@ function page(etat, qui) {
 <title>Cockpit d'approbation</title>
 ${pwa.BALISES}
 <style>
-/* Deux jeux de couleurs déclarés en clair, au lieu d'une opacité posée sur les couleurs
-   système. L'opacité rendait le contraste imprévisible : le même .7 donne un gris lisible
-   sur fond blanc et un gris illisible sur fond noir, et cette page se lit dehors, sur un
-   téléphone, pour valider un montant. Chaque valeur ci-dessous tient le 4.5:1 sur le fond
-   devant lequel elle est écrite, dans les deux thèmes ; la plus basse est à 5.69:1, et
-   c'est mesuré, pas supposé.
+/* Deux directions artistiques, une par thème, et c'est délibéré.
+   Sombre : noir, violet et bleu, des tuiles qui se lisent comme une grille de vignettes.
+   Clair : ivoire chaud et terre cuite, un registre plus tranquille, un titrage en serif.
+   Le même outil ne se regarde pas pareil à six heures du matin et en plein après-midi.
 
-   Le trait des cartes, lui, est à 1.8:1 et reste en dessous du 3:1 des éléments non
-   textuels. C'est assumé : ce seuil vise ce dont l'identification DÉPEND, et ici la carte
-   se détache déjà par son fond, tandis que l'état d'un choix se lit par sa couleur, son
-   fond, son cadre et sa graisse à la fois. Monter le trait à 3:1 demanderait un liseré
-   franchement sombre autour de chaque bloc, et la page deviendrait une grille de boîtes. */
+   Chaque paire texte / fond ci-dessous a été mesurée avant d'être écrite. La plus basse
+   est à 5.32:1 en clair et 5.70:1 en sombre, pour un seuil à 4.50:1. Rien n'est laissé à
+   l'opacité, qui donne un gris lisible sur blanc et illisible sur noir. */
 :root{
   color-scheme:light dark;
-  --fond:#E3E9EF;--surface:#FFFFFF;--creux:#EDF1F5;
-  --encre:#111820;--encre-douce:#4B5866;--trait:#B8C4D0;
-  --ok:#12653A;--ok-fond:#E2F0E8;
-  --danger:#A0271C;--danger-fond:#FAE5E3;
-  --alerte:#7F5400;--alerte-fond:#F7EDD6;
-  --accent:#1B5C7E;--sur-accent:#FFFFFF;
-  --rayon:10px;
+  --fond:#EAE4D7;--surface:#FFFDF8;--carte:#FFFFFF;
+  --encre:#1E1A14;--encre-douce:#5A5145;--trait:#DDD5C6;
+  --accent:#A5422A;--accent-fort:#A5422A;--sur-accent:#FFFFFF;
+  --bleu:#2F5C8A;
+  --ok:#2F6B3F;--ok-fond:#E4EFE3;
+  --danger:#A8362A;--danger-fond:#F8E4E0;
+  --alerte:#7D5510;--alerte-fond:#F6EBD5;
+  --police-titre:ui-serif,Georgia,"Times New Roman",serif;
+  --police-texte:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --graisse-titre:600;--serrage:0;
+  --rayon:14px;
+  --ombre:0 1px 2px rgba(30,26,20,.06),0 6px 18px rgba(30,26,20,.05);
+  --lueur:radial-gradient(1100px 420px at 12% -8%,rgba(165,66,42,.10),transparent 62%),
+          radial-gradient(900px 380px at 92% -4%,rgba(47,92,138,.09),transparent 60%);
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --fond:#090E12;--surface:#1C262F;--creux:#141C23;
-    --encre:#E3E9ED;--encre-douce:#9CA9B4;--trait:#41505D;
-    --ok:#74C08F;--ok-fond:#16301F;
-    --danger:#F08A7B;--danger-fond:#3A1E1A;
-    --alerte:#DEA845;--alerte-fond:#332709;
-    --accent:#6CA9C9;--sur-accent:#090E12;
+    --fond:#09090C;--surface:#141419;--carte:#23232E;
+    --encre:#F3F3F6;--encre-douce:#A5A5B3;--trait:#3A3A49;
+    --accent:#A78BFA;--accent-fort:#7C3AED;--sur-accent:#FFFFFF;
+    --bleu:#7DB3F5;
+    --ok:#5FD08A;--ok-fond:#12301F;
+    --danger:#F58A7C;--danger-fond:#39191A;
+    --alerte:#E0B04A;--alerte-fond:#332708;
+    /* Le titrage change de famille avec le thème : une grotesque serrée et lourde pour le
+       registre sombre, un serif pour le registre clair. C'est ce qui sépare vraiment les
+       deux ambiances, plus que les couleurs, et ça ne coûte aucune police à télécharger. */
+    --police-titre:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --graisse-titre:800;--serrage:-.02em;
+    --ombre:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45);
+    --lueur:radial-gradient(1100px 460px at 10% -10%,rgba(124,58,237,.22),transparent 62%),
+            radial-gradient(900px 400px at 95% -6%,rgba(37,99,235,.16),transparent 58%);
   }
 }
 *{box-sizing:border-box}
-/* 16px et pas 15 : c'est le plancher lisible sur mobile, et iOS zoome de lui-même sur
-   toute page dont le texte de formulaire descend en dessous. */
-body{font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
-  color:var(--encre);background:var(--fond);max-width:46rem;margin:0 auto;
+body{font:16px/1.55 var(--police-texte);color:var(--encre);background:var(--fond);
+  background-image:var(--lueur);background-repeat:no-repeat;background-attachment:fixed;
+  max-width:56rem;margin:0 auto;
   padding:calc(1.25rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) 0 calc(1rem + env(safe-area-inset-left))}
-h1{font-size:1.35rem;font-weight:650;letter-spacing:-.01em;margin:0 0 .5rem}
-h2{font-size:1.05rem;font-weight:650;margin:2rem 0 .35rem;
-  display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+
+/* ---- en-tête ---- */
+.entete{margin-bottom:1.1rem}
+.marque{font-family:var(--police-titre);font-weight:var(--graisse-titre);
+  letter-spacing:var(--serrage);font-size:1.7rem;line-height:1.1}
+.qui{color:var(--encre-douce);font-size:.875rem;margin:.3rem 0 0}
+
+/* ---- bandeau d'accueil ---- */
+.bandeau{display:flex;align-items:center;gap:1rem;min-height:76px;
+  padding:1rem 1.15rem;border-radius:var(--rayon);border:1px solid var(--trait);
+  background:var(--surface);box-shadow:var(--ombre);text-decoration:none;color:var(--encre)}
+a.bandeau{cursor:pointer}
+a.bandeau:hover{border-color:var(--accent)}
+a.bandeau:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.bandeau--attente{border-left:4px solid var(--accent)}
+.bandeau--perime{border-left-color:var(--danger)}
+.bandeau .compte{font-family:var(--police-titre);font-weight:var(--graisse-titre);
+  letter-spacing:var(--serrage);font-size:2.4rem;line-height:1;color:var(--accent);
+  font-variant-numeric:tabular-nums;flex:none}
+.bandeau--perime .compte{color:var(--danger)}
+.bandeau .dit{flex:1}
+.bandeau .sous{color:var(--encre-douce);font-size:.85rem}
+.bandeau .fleche{color:var(--encre-douce);font-size:1.3rem;flex:none}
+.bandeau--calme{color:var(--encre-douce)}
+.bandeau--calme .pastille{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);flex:none}
+
+/* ---- blocs ---- */
+.bloc{margin:2.2rem 0 0}
+h2{font-family:var(--police-titre);font-weight:var(--graisse-titre);letter-spacing:var(--serrage);
+  font-size:1.15rem;margin:0 0 .7rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.compteur{font-family:var(--police-texte);font-weight:600;font-size:.72rem;
+  color:var(--encre-douce);background:var(--carte);border:1px solid var(--trait);
+  border-radius:99px;padding:.05rem .5rem;letter-spacing:0}
+
+/* ---- tuiles de modules ---- */
+.modules{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.75rem}
+.module{position:relative;display:flex;flex-direction:column;gap:.3rem;
+  background:var(--carte);border:1px solid var(--trait);border-left:3px solid var(--trait);
+  border-radius:var(--rayon);padding:.95rem 1rem;box-shadow:var(--ombre);min-height:96px}
+.module--en-ligne{border-left-color:var(--ok)}
+.module--en-cours{border-left-color:var(--alerte)}
+.module--idee{border-left-color:var(--bleu)}
+.module--arrete{border-left-color:var(--danger)}
+.chef{display:flex;align-items:baseline;justify-content:space-between;gap:.6rem}
+.module h3{font-family:var(--police-titre);font-weight:var(--graisse-titre);
+  letter-spacing:var(--serrage);font-size:1rem;margin:0;line-height:1.25}
+.module .lien{color:var(--encre);text-decoration:none}
+/* Le lien couvre la tuile : on touche n'importe où, il n'y a qu'un élément focusable. */
+a.lien::after{content:"";position:absolute;inset:0;border-radius:var(--rayon)}
+.module:has(a.lien):hover{border-color:var(--accent);border-left-color:var(--accent)}
+.module:has(a.lien:focus-visible){outline:2px solid var(--accent);outline-offset:3px}
+.module .etat{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  border-radius:99px;padding:.12rem .55rem;white-space:nowrap;flex:none;
+  color:var(--encre-douce);background:var(--fond)}
+.module--en-ligne .etat{color:var(--ok);background:var(--ok-fond)}
+.module--en-cours .etat{color:var(--alerte);background:var(--alerte-fond)}
+.module--idee .etat{color:var(--bleu);background:var(--fond)}
+.module--arrete .etat{color:var(--danger);background:var(--danger-fond)}
+.module .desc{color:var(--encre-douce);font-size:.875rem;margin:0}
+.module .adresse{color:var(--encre-douce);font-size:.72rem;margin-top:auto}
+/* Les notes repassent au-dessus du recouvrement du lien, sinon elles ne s'ouvriraient pas. */
+.notes{position:relative;z-index:1;margin-top:.2rem}
+.notes summary{cursor:pointer;color:var(--accent);font-size:.8rem;
+  min-height:32px;display:flex;align-items:center}
+.notes summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.notes ul{margin:.2rem 0 0;padding-left:1.1rem;color:var(--encre-douce);font-size:.85rem}
+
+/* ---- décisions ---- */
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;word-break:break-all}
 .meta{color:var(--encre-douce);font-size:.875rem;margin-bottom:.9rem}
-.act{background:var(--surface);border:1px solid var(--trait);border-radius:var(--rayon);
-  padding:1rem;margin:.75rem 0}
+section[data-dossier] h2{margin-top:1.4rem}
+.act{background:var(--carte);border:1px solid var(--trait);border-radius:var(--rayon);
+  padding:1rem;margin:.75rem 0;box-shadow:var(--ombre)}
 .tete{color:var(--encre-douce);font-size:.9rem;margin-bottom:.1rem}
 .tete b{color:var(--encre)}
-/* Le montant est ce qu'on approuve. C'est donc ce qui doit se lire en premier, et les
-   chiffres sont tabulaires pour que deux cartes s'alignent au lieu de danser. */
-.delta{font-size:1.5rem;font-weight:650;letter-spacing:-.01em;margin:.3rem 0 .5rem;
-  font-variant-numeric:tabular-nums}
+.delta{font-family:var(--police-titre);font-size:1.55rem;font-weight:var(--graisse-titre);
+  letter-spacing:var(--serrage);margin:.3rem 0 .5rem;font-variant-numeric:tabular-nums}
 .act p{margin:.5rem 0;max-width:62ch}
 .src{font-size:.8rem;color:var(--encre-douce)}
 .choix{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.9rem}
-/* 48px de haut au minimum. En dessous, on manque la cible, et ici manquer la cible veut
-   dire approuver un changement de prix qu'on voulait refuser. */
 .choix label{flex:1 1 8.5rem;display:flex;align-items:center;gap:.55rem;min-height:48px;
   padding:.7rem .85rem;border:1px solid var(--trait);border-radius:var(--rayon);
-  background:var(--creux);color:var(--encre-douce);font-size:.95rem;cursor:pointer}
-/* L'état choisi se voit par la couleur, le fond, le cadre ET la graisse. Une seule de ces
-   quatre suffirait à quelqu'un qui les distingue toutes ; aucune ne suffit seule. */
-.choix label:has(input:checked){color:var(--encre);background:var(--surface);
+  background:var(--fond);color:var(--encre-douce);font-size:.95rem;cursor:pointer}
+.choix label:has(input:checked){color:var(--encre);background:var(--carte);
   border-color:var(--encre-douce);font-weight:650}
 .choix label:has(input[value="approuve"]:checked){color:var(--ok);background:var(--ok-fond);border-color:var(--ok)}
 .choix label:has(input[value="refuse"]:checked){color:var(--danger);background:var(--danger-fond);border-color:var(--danger)}
 .choix label:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .choix input{width:1.15rem;height:1.15rem;margin:0;flex:none;accent-color:currentColor}
-.b{display:inline-block;font-size:.75rem;font-weight:600;border:1px solid;border-radius:99px;
-  padding:.1rem .6rem;white-space:nowrap}
+.b{display:inline-block;font-size:.72rem;font-weight:700;border:1px solid;border-radius:99px;
+  padding:.1rem .6rem;white-space:nowrap;letter-spacing:0}
 .b.vert{color:var(--ok);background:var(--ok-fond)}
 .b.rouge{color:var(--danger);background:var(--danger-fond)}
-.b.gris{color:var(--encre-douce);background:var(--creux)}
+.b.gris{color:var(--encre-douce);background:var(--fond)}
 .vert{color:var(--ok)}
 .rouge{color:var(--danger)}
 .gris{color:var(--encre-douce)}
-/* Un avertissement n'est pas une pastille : il occupe une ligne et porte un filet, pour
-   qu'on ne le prenne pas pour une étiquette de plus. */
 p.rouge{background:var(--danger-fond);border-left:3px solid var(--danger);
   padding:.7rem .9rem;border-radius:0 var(--rayon) var(--rayon) 0;max-width:62ch}
-.vide{color:var(--encre-douce);background:var(--surface);border:1px dashed var(--trait);
-  border-radius:var(--rayon);padding:1.5rem;margin:2rem 0;text-align:center}
-.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:.6rem}
-.app{display:flex;flex-direction:column;gap:.2rem;min-height:48px;
-  background:var(--surface);border:1px solid var(--trait);border-radius:var(--rayon);
-  padding:.85rem .9rem;text-decoration:none;color:var(--encre)}
-.app:hover{background:var(--creux);border-color:var(--accent)}
-.app:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.app .desc{font-size:.85rem;color:var(--encre-douce)}
-.app .mono{font-size:.75rem;color:var(--encre-douce)}
+.vide{color:var(--encre-douce);background:var(--carte);border:1px dashed var(--trait);
+  border-radius:var(--rayon);padding:1.5rem;margin:.5rem 0;text-align:center}
+
+/* ---- pied ---- */
 form.pied{position:sticky;bottom:0;background:var(--fond);margin-top:2rem;
   border-top:1px solid var(--trait);padding:.9rem 0 calc(.9rem + env(safe-area-inset-bottom))}
-button{font:inherit;font-weight:650;min-height:48px;padding:.8rem 1.2rem;width:100%;max-width:24rem;
-  cursor:pointer;border:1px solid var(--accent);border-radius:var(--rayon);
-  background:var(--accent);color:var(--sur-accent)}
+button{font:inherit;font-family:var(--police-texte);font-weight:650;min-height:48px;
+  padding:.8rem 1.2rem;width:100%;max-width:24rem;cursor:pointer;
+  border:1px solid var(--accent-fort);border-radius:var(--rayon);
+  background:var(--accent-fort);color:var(--sur-accent)}
 button:hover{filter:brightness(1.1)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.source{color:var(--encre-douce);font-size:.78rem;margin:1.6rem 0 0}
 #msg{margin-top:1rem;white-space:pre-wrap;color:var(--encre-douce);max-width:62ch}
+
 /* Les transitions ne portent que sur des couleurs, jamais sur une taille : rien ne bouge
    sous le doigt entre le moment où on vise et celui où on touche. */
 @media (prefers-reduced-motion:no-preference){
-  .choix label,.app,button{transition:background-color .15s,border-color .15s,color .15s}
+  .module,.choix label,button,a.bandeau{transition:border-color .15s,background-color .15s,color .15s}
+}
+@media (max-width:32rem){
+  .modules{grid-template-columns:1fr}
+  .bandeau .compte{font-size:2rem}
 }
 </style>
-<h1>Cockpit d'approbation</h1>
-<p class="meta">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.<br>
-Lecture de ${ech(APPROVALS)}. Cette page écrit de vraies décisions.</p>
-${corps}
-${panneauApps()}
-<form class="pied" onsubmit="return envoyer(event)">
+<header class="entete">
+  <div class="marque">Cockpit</div>
+  <p class="qui">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.</p>
+</header>
+${bandeau(etat)}
+${panneauModules()}
+${
+  // Pas de section « Décisions » quand il n'y a rien à décider. Le bandeau le dit déjà, et
+  // le répéter deux écrans plus bas donnait deux fois la même phrase sur la même page.
+  etat.dossiers.length
+    ? `<section class="bloc" id="decisions">
+  <h2>Décisions</h2>
+  ${corps}
+</section>`
+    : ""
+}
+${
+  etat.dossiers.length
+    ? `<form class="pied" onsubmit="return envoyer(event)">
   <button>Enregistrer les décisions</button>
-</form>
+</form>`
+    : ""
+}
+<p class="source">Lecture de <span class="mono">${ech(APPROVALS)}</span>. Cette page écrit de vraies décisions.</p>
 <div id="msg" role="status" aria-live="polite"></div>
 <script>
 async function envoyer(e){

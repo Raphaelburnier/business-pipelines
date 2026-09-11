@@ -91,15 +91,66 @@ test("un autre port sur le même hôte est une autre origine, et passe", () => {
   assert.strictEqual(liste.length, 1);
 });
 
-test("un nom ou une url qui manque est nommé, avec son rang dans le fichier", () => {
+test("un nom qui manque est nommé, avec son rang dans le fichier", () => {
   assert.throws(
     () => chargerDepuis({ apps: [{ url: "http://192.168.1.18:4700" }] }),
     (err) => /entrée 1/.test(err.message) && /nom/.test(err.message)
   );
+});
+
+test("un module sans url est légitime : c'est un business qui n'existe pas encore", () => {
+  // C'était une erreur tant que le registre ne listait que des apps déployées. Le cockpit
+  // liste maintenant tout ce qui compte comme un business, et la plupart n'ont pas d'adresse.
+  const liste = chargerDepuis({ modules: [{ nom: "Agents vocaux PME", description: "piste retenue" }] });
+  assert.strictEqual(liste.length, 1);
+  assert.strictEqual(liste[0].url, null);
+  assert.strictEqual(liste[0].etat, "idee", "sans url ni état déclaré, c'est une idée");
+});
+
+test("l'état se déduit de l'url, et un état écrit à la main l'emporte", () => {
+  const [enLigne] = chargerDepuis({ modules: [{ nom: "a", url: "http://192.168.1.18:4700" }] });
+  assert.strictEqual(enLigne.etat, "en-ligne");
+
+  // Seul un état déclaré distingue « pas encore » de « plus » : une url présente ne dit pas
+  // si le module tourne, et un module arrêté garde son adresse.
+  const [arrete] = chargerDepuis({
+    modules: [{ nom: "a", url: "http://192.168.1.18:4700", etat: "arrete" }],
+  });
+  assert.strictEqual(arrete.etat, "arrete");
+
+  const [enCours] = chargerDepuis({ modules: [{ nom: "b", etat: "en-cours" }] });
+  assert.strictEqual(enCours.etat, "en-cours");
+});
+
+test("« en-ligne » sans url est refusé : la tuile serait un lien vers nulle part", () => {
   assert.throws(
-    () => chargerDepuis({ apps: [{ nom: "ok", url: "http://192.168.1.18:4700" }, { nom: "sans" }] }),
-    (err) => /entrée 2/.test(err.message) && /url/.test(err.message)
+    () => chargerDepuis({ modules: [{ nom: "fantome", etat: "en-ligne" }] }),
+    (err) => err instanceof apps.RegistreInvalide && /en ligne se visite/.test(err.message)
   );
+});
+
+test("un état inconnu est refusé, et la liste des états valides est donnée", () => {
+  // Une faute de frappe donnerait sinon une tuile sans pastille, donc un module dont on ne
+  // sait plus s'il tourne.
+  assert.throws(
+    () => chargerDepuis({ modules: [{ nom: "a", etat: "en ligne" }] }),
+    (err) => /inconnu/.test(err.message) && /en-ligne/.test(err.message)
+  );
+});
+
+test("les notes d'un module traversent, nettoyées des entrées vides", () => {
+  const [m] = chargerDepuis({
+    modules: [{ nom: "Amazon FBA", notes: ["Ouvrir un compte vendeur", "  ", "", "Lire la SP-API"] }],
+  });
+  assert.deepStrictEqual(m.notes, ["Ouvrir un compte vendeur", "Lire la SP-API"]);
+});
+
+test("la clé « modules » et la clé « apps » désignent la même chose", () => {
+  // vers-nas.sh écrit « apps » et continuera de le faire. Casser cette clé casserait le
+  // déploiement automatique pour un gain de vocabulaire.
+  const a = chargerDepuis({ apps: [{ nom: "x", url: "http://192.168.1.18:4700" }] });
+  const b = chargerDepuis({ modules: [{ nom: "x", url: "http://192.168.1.18:4700" }] });
+  assert.deepStrictEqual(a, b);
 });
 
 test("une url qui n'en est pas une est refusée au chargement, pas rendue dans la page", () => {
