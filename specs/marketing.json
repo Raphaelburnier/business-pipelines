@@ -1,0 +1,16 @@
+{
+  "project_name": "marketing-cartes",
+  "offre": "Des cartes à collectionner achetées en lots, triées et notées à la main, revendues à l'unité avec des photos réelles et l'état décrit sans indulgence.",
+  "marche": "Acheteurs de cartes sur eBay France et Allemagne, qui cherchent une carte précise pour compléter une collection plutôt qu'un lot au hasard.",
+  "questions": [
+    "Vendre sous un nom de boutique identifiable ou rester un vendeur générique parmi les autres ?",
+    "Le tri à la main et l'état décrit honnêtement justifient-ils un prix au-dessus de la médiane du marché ?",
+    "Quel volume mensuel de cartes vendues rend ce travail de tri soutenable ?",
+    "Faut-il un canal hors eBay, ou eBay suffit-il tant que le volume reste à un chiffre par jour ?"
+  ],
+  "contraintes": [
+    "Une heure par jour maximum consacrée à la mise en vente et aux réponses aux acheteurs.",
+    "Aucune publicité payante au départ.",
+    "Pas de stock immobilisé au-delà de ce qui se vend en deux mois."
+  ]
+}

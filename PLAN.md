@@ -15,7 +15,7 @@ alors le pipeline marketing au lieu de la reprise d'exécution.
 | 01 | Accès direct Anthropic | Partielle | `~/.config/agent-orchestrator/backends.json` |
 | 02 | Escalade en réponse libre dans le cockpit | Faite, non fusionnée | business-pipelines, `worktree-cockpit-reponse-libre` |
 | 03 | Reprise d'exécution | Faite, non fusionnée | agent-orchestrator, `worktree-reprise-execution` |
-| 04 | Pipeline marketing minimal | À faire | business-pipelines |
+| 04 | Pipeline marketing minimal | Construite, jamais exécutée | business-pipelines, `feat/pipeline-marketing` |
 | 05 | Pipeline développement | À faire | business-pipelines |
 | 06 | Sécurité et déploiement | À faire | business-pipelines |
 
@@ -52,12 +52,35 @@ pas dans le dépôt, par choix.
 
 ## Phase 04, pipeline marketing minimal
 
-Deux agents pour commencer, économie et image de marque, pas quatre. Un schéma de sortie
-strict par agent, c'est ce qui empêche la dérive vers la conversation. Budget serré sur la
-première exécution, relâché une fois le coût réel mesuré.
+Construite sur la branche `feat/pipeline-marketing`, qui part de celle de la phase 02 pour
+que le cockpit sache déjà orienter. Jamais exécutée : la première exécution payante reste
+à lancer, et c'est elle qui donnera le coût réel.
 
-Le plan validé sort de cette phase comme artefact. C'est lui, et rien d'autre, que la
+Quatre étapes. Deux voix analysent la même demande en parallèle, `economy-analyst` et
+`brand-analyst`, chacune produisant son artefact avec un schéma strict. `plan-synthesist`
+les confronte en un plan unique. Un contrôle déterministe rend le verdict du gate. Une
+approbation humaine tranche, question par question, dans le cockpit.
+
+Le gate est du code, pas un juge. Le type de stage `verify-couverture` vérifie trois
+propriétés qu'aucune prose ne contourne : chaque question du spec est traitée, chaque
+source citée est l'identifiant d'un constat réellement écrit, et chaque constat des deux
+voix est soit cité, soit écarté avec sa raison. La troisième est celle qui compte : elle
+interdit de lisser un désaccord en laissant tomber le constat gênant, et c'est exactement
+ce qu'un juge agentique jugerait mal, puisqu'il s'agit de comparer deux listes
+d'identifiants.
+
+Une quatrième règle a été ajoutée pour une raison que le plan d'origine ne voyait pas.
+Aucune étape ne collecte de données avant ces analyses, contrairement au pipeline de prix
+qui relève le marché et calcule ses statistiques avant de payer un agent. Un chiffre sorti
+d'un modèle sans mesure est une invention plausible, la faute qui avait produit une médiane
+inexacte d'un dollar. Tout constat qui avance un chiffre doit donc dire d'où il vient.
+
+Le plan approuvé sort de cette phase comme artefact. C'est lui, et rien d'autre, que la
 phase 05 consomme.
+
+Budget du premier tour : deux dollars, quarante tours, quinze par agent. Les trois agents
+visent le backend `opus-direct`, donc la passerelle OmniRoute doit tourner. Retirer le
+champ `backend` du pipeline les ramène sur l'abonnement.
 
 ## Phase 05, pipeline développement
 
@@ -73,6 +96,19 @@ reste le script existant, lancé par une étape déterministe, derrière une app
 humaine. Un vrai scanner plus tard, quand le reste tourne.
 
 ## Points ouverts
+
+La consigne en texte libre ne survit pas d'une exécution à l'autre. La phase 02 l'écrit
+dans le workspace, et `orchestrator.js` recrée ce workspace à chaque exécution en le
+vidant. La consigne est donc effacée avant que l'exécution suivante puisse la lire, ce qui
+coupe la boucle d'escalade au point précis où elle devait se refermer. Constaté en
+construisant la phase 04. Le remède suit ce que fait déjà le plan gelé : écrire la consigne
+dans le dossier des approbations, qui est hors du workspace et durable, puis la ramener
+dans le workspace au début de l'exécution suivante.
+
+Le drapeau `--resume` de la phase 03 est inutilisable ici pour la même raison. Ce dépôt a
+son propre lanceur, qui vide le workspace à chaque fois et n'ouvre aucun journal de
+reprise. Deux ou trois lignes à changer, mais c'est un changement de sémantique
+d'exécution, à décider plutôt qu'à glisser.
 
 La clé Anthropic hors passerelle, décrite en phase 01.
 

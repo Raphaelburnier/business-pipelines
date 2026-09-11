@@ -236,6 +236,132 @@ handlers.verify = async (stage, ctx) => {
   });
 };
 
+// Le type de stage `verify-couverture` : le gate du pipeline marketing, rendu par du code
+// plutôt que par un juge.
+//
+// Trois contrôles qu'aucune prose ne contourne :
+//   couverture    chaque question du spec est traitée, répondue ou déclarée sans réponse
+//   traçabilité   chaque source citée est l'id d'un constat qu'une des voix a vraiment écrit
+//   rien de perdu chaque constat des voix est soit cité, soit écarté avec sa raison
+//
+// Le troisième est celui qui compte. Une synthèse qui lisse le désaccord en laissant
+// tomber le constat gênant est exactement ce que ce pipeline existe pour empêcher, et
+// c'est la seule des trois propriétés qu'un juge agentique jugerait mal : il s'agit de
+// comparer deux listes d'identifiants, pas d'apprécier un texte.
+function verifierCouverture(stage, ctx) {
+  const rapport = readJson(ctx.workspaceDir, stage.report);
+
+  const constats = new Map();
+  const constatsParId = new Map();
+  for (const fichier of stage.against) {
+    for (const constat of readJson(ctx.workspaceDir, fichier).constats || []) {
+      constats.set(constat.id, fichier);
+      constatsParId.set(constat.id, constat);
+    }
+  }
+
+  const reponses = rapport.reponses || [];
+  const declarees = rapport.questions_sans_reponse || [];
+  const manques = [];
+  const manque = (raison, extra = {}) => manques.push({ component: stage.owner, raison, ...extra });
+
+  const traitees = new Set([
+    ...reponses.map((r) => r.question),
+    ...declarees.map((q) => q.question),
+  ]);
+  for (const question of ctx.spec[stage.questions_from]) {
+    if (!traitees.has(question)) {
+      manque("question non traitée : absente des réponses comme des questions sans réponse", {
+        question,
+      });
+    }
+  }
+
+  // Aucun stage ne collecte de données avant ces analyses : contrairement au plan de prix,
+  // les voix n'ont ni relevé ni statistiques, seulement la demande. Un chiffre sorti d'un
+  // modèle dans ces conditions est une invention plausible, et c'est la faute qui avait
+  // produit une médiane fausse d'un dollar sur le pipeline de prix.
+  //
+  // D'où la règle : tout constat qui avance un chiffre dit d'où il vient, dans `base`.
+  // « hypothèse à vérifier » est une base parfaitement valable ; l'absence de base ne
+  // l'est pas, parce qu'elle laisse un chiffre inventé se lire comme un chiffre mesuré.
+  for (const [id, fichier] of constats) {
+    const constat = constatsParId.get(id);
+    const texte = `${constat.constat || ""} ${constat.implication || ""}`;
+    if (/\d/.test(texte) && !String(constat.base || "").trim()) {
+      manque(`constat "${id}" de ${fichier} avance un chiffre sans dire d'où il vient (champ "base")`);
+    }
+  }
+
+  const citees = new Set();
+  for (const reponse of reponses) {
+    const sources = reponse.sources || [];
+    if (sources.length === 0) {
+      manque("réponse sans aucun constat cité", { question: reponse.question });
+    }
+    for (const id of sources) {
+      if (!constats.has(id)) {
+        manque(`constat cité "${id}" absent des analyses`, { question: reponse.question });
+      } else {
+        citees.add(id);
+      }
+    }
+  }
+
+  // Un constat écarté sans raison est un constat lissé derrière une formalité.
+  const ecartes = new Map();
+  for (const ecarte of rapport.constats_ecartes || []) {
+    if (!constats.has(ecarte.id)) {
+      manque(`constat écarté "${ecarte.id}" absent des analyses`);
+    } else if (!String(ecarte.raison || "").trim()) {
+      manque(`constat "${ecarte.id}" écarté sans raison`);
+    } else {
+      ecartes.set(ecarte.id, ecarte.raison);
+    }
+  }
+  for (const [id, fichier] of constats) {
+    if (!citees.has(id) && !ecartes.has(id)) {
+      manque(`constat "${id}" de ${fichier} ni cité ni écarté : la synthèse l'a fait disparaître`);
+    }
+  }
+
+  // Les ids d'action sont la clé du registre d'approbation. Deux actions sous le même id
+  // rendraient toute décision ambiguë, et une action sans id n'aurait pas de clé du tout.
+  const vus = new Set();
+  for (const action of rapport.actions || []) {
+    if (!action.id) {
+      manque("action sans id : le registre d'approbation n'aurait pas de clé");
+    } else if (vus.has(action.id)) {
+      manque(`deux actions sous le même id "${action.id}"`);
+    } else {
+      vus.add(action.id);
+    }
+  }
+
+  return {
+    verdict: manques.length === 0 ? "COMPLETE" : "INCOMPLETE",
+    questions_attendues: ctx.spec[stage.questions_from].length,
+    constats_disponibles: constats.size,
+    constats_cites: citees.size,
+    constats_ecartes: ecartes.size,
+    actions: (rapport.actions || []).length,
+    manques,
+  };
+}
+
+handlers["verify-couverture"] = async (stage, ctx) => {
+  const verdict = verifierCouverture(stage, ctx);
+  fs.writeFileSync(
+    path.join(ctx.workspaceDir, stage.output),
+    JSON.stringify(verdict, null, 2)
+  );
+  ctx.reporter.event("verify-couverture:done", {
+    stage: stage.id,
+    verdict: verdict.verdict,
+    manques: verdict.manques.length,
+  });
+};
+
 function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
@@ -744,6 +870,22 @@ const validators = {
   verify: (stage, fail) => {
     for (const champ of ["report", "against", "questions_from", "owner", "output"]) {
       if (!stage[champ]) fail(`type "verify" sans "${champ}"`);
+    }
+  },
+
+  "verify-couverture": (stage, fail) => {
+    for (const champ of ["report", "questions_from", "owner", "output"]) {
+      if (!stage[champ]) fail(`type "verify-couverture" sans "${champ}"`);
+    }
+    // `against` porte les analyses dont les constats forment l'univers du contrôle. Une
+    // chaîne au lieu d'un tableau serait parcourue caractère par caractère : l'univers
+    // serait vide, et le contrôle passerait au vert sans rien avoir vérifié.
+    if (
+      !Array.isArray(stage.against) ||
+      stage.against.length === 0 ||
+      stage.against.some((f) => typeof f !== "string")
+    ) {
+      fail('type "verify-couverture" : "against" doit être un tableau non vide de fichiers');
     }
   },
 

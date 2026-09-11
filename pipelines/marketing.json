@@ -1,0 +1,99 @@
+{
+  "name": "marketing",
+  "description": "Deux voix analysent la même demande, une synthèse les confronte sans lisser leurs désaccords, un contrôle déterministe vérifie la couverture et la traçabilité, puis une approbation humaine tranche question par question. Ne produit qu'un plan : rien n'est exécuté, et c'est ce plan approuvé que le pipeline de développement consommera.",
+  "slicing": {
+    "economy-analyst": ["offre", "marche", "questions", "contraintes"],
+    "brand-analyst": ["offre", "marche", "questions", "contraintes"],
+    "plan-synthesist": ["offre", "marche", "questions", "contraintes"]
+  },
+  "budget": {
+    "max_usd": 2,
+    "max_total_turns": 40,
+    "max_turns_per_agent": 15
+  },
+  "retry": {
+    "max_fix_cycles": 1
+  },
+  "stages": [
+    {
+      "id": "analyse",
+      "parallel": true,
+      "agents": [
+        {
+          "name": "economy-analyst",
+          "backend": "opus-direct",
+          "inputs": [],
+          "outputs": ["economie.json"],
+          "output_schema": {
+            "economie.json": {
+              "constats": "array",
+              "questions_sans_reponse": "array"
+            }
+          },
+          "max_turns": 12
+        },
+        {
+          "name": "brand-analyst",
+          "backend": "opus-direct",
+          "inputs": [],
+          "outputs": ["marque.json"],
+          "output_schema": {
+            "marque.json": {
+              "constats": "array",
+              "questions_sans_reponse": "array"
+            }
+          },
+          "max_turns": 12
+        }
+      ]
+    },
+    {
+      "id": "synthese",
+      "agents": [
+        {
+          "name": "plan-synthesist",
+          "backend": "opus-direct",
+          "inputs": ["economie.json", "marque.json"],
+          "outputs": ["plan-marketing.json"],
+          "output_schema": {
+            "plan-marketing.json": {
+              "reponses": "array",
+              "desaccords": "array",
+              "constats_ecartes": "array",
+              "questions_sans_reponse": "array",
+              "actions": "array"
+            }
+          },
+          "max_turns": 15
+        }
+      ]
+    },
+    {
+      "id": "couverture",
+      "type": "verify-couverture",
+      "report": "plan-marketing.json",
+      "against": ["economie.json", "marque.json"],
+      "questions_from": "questions",
+      "owner": "synthese",
+      "output": "couverture.json",
+      "gate": {
+        "report": "couverture.json",
+        "pass_when": { "field": "verdict", "equals": "COMPLETE" },
+        "fail_when": { "equals": ["INCOMPLETE"] },
+        "items": "manques",
+        "targets": { "synthese": "plan-synthesist" },
+        "rerun_from": "synthese"
+      }
+    },
+    {
+      "id": "approbation",
+      "type": "approval",
+      "actions": "plan-marketing.json",
+      "decisions": "marketing.decisions.json",
+      "plan_gele": "marketing.plan.json",
+      "auto": [],
+      "output": "approbation.json",
+      "dossier": "marketing"
+    }
+  ]
+}

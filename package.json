@@ -5,6 +5,7 @@
   "description": "Pipelines business sur agent-orchestrator. Spike : prouver que le moteur tient quand le travail est un appel d'API et non la génération de fichiers.",
   "main": "orchestrator.js",
   "scripts": {
+    "marketing": "node orchestrator.js marketing ./specs/marketing.json",
     "veille": "node orchestrator.js veille-ebay ./specs/veille.json",
     "plan:prix": "node orchestrator.js ajustement-prix ./specs/ajustement-prix.json",
     "appliquer:prix": "node orchestrator.js ajustement-prix-appliquer ./specs/ajustement-prix.json",
