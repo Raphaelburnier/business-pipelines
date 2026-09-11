@@ -407,6 +407,45 @@ test("plan vide : aucune action, aucune approbation à demander, le run aboutit"
   assert.strictEqual(readJson(h.workspaceDir, "approbation.json").verdict, "APPROUVE");
 });
 
+test("réponse libre de bout en bout : la consigne est déposée, rien n'est exécuté", async () => {
+  const pipeline = loadPipeline("ajustement-prix");
+  const h = createHarness({
+    pipeline,
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    // Un exécuteur qui crie s'il est appelé : sous orientation, rien ne doit partir.
+    executeurs: {
+      changement_prix: async () => {
+        throw new Error("aucune action ne doit s'exécuter sous orientation");
+      },
+    },
+  });
+
+  planCorrect(1, h.workspaceDir);
+  const empreinte = approval.fingerprint(readJson(h.workspaceDir, "actions.json").actions);
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: empreinte,
+    reponse: "Vise les annonces sous 80 EUR, pas les comparables du haut du panier.",
+    // Une décision déjà prise ne doit pas passer non plus : la réponse libre prime.
+    decisions: [{ action_id: "prix-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /réponse libre reçue/);
+    assert.match(err.message, /Vise les annonces sous 80 EUR/);
+    return true;
+  });
+
+  const orientation = readJson(h.workspaceDir, "orientation.json");
+  assert.strictEqual(orientation.empreinte, empreinte);
+  assert.match(orientation.consigne, /^Vise les annonces sous 80 EUR/);
+  assert.ok(orientation.recue_le, "la consigne est datée");
+
+  const etat = readJson(h.workspaceDir, "approbation.json");
+  assert.strictEqual(etat.verdict, "ORIENTE");
+  assert.deepStrictEqual(etat.executables, []);
+});
+
 test("réponse libre : le plan repart au travail, rien ne s'exécute", () => {
   const actions = [action("a", "c", 1), action("b", "c", 2)];
   const etat = approval.evaluate({

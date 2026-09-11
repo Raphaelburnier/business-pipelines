@@ -406,6 +406,43 @@ handlers.approval = async (stage, ctx) => {
     );
   }
 
+  // L'opérateur a répondu en texte libre plutôt que par oui ou non. Le plan repart au
+  // travail avec sa consigne, et rien ne s'exécute : `executables` est vide côté juge.
+  //
+  // Ce bloc doit passer AVANT celui des actions en attente. La liste `en_attente` est
+  // remplie indépendamment du verdict, donc laisser l'autre bloc parler en premier
+  // lèverait son exception et la consigne ne serait jamais déposée.
+  //
+  // La consigne n'a pas besoin d'être effacée du registre : elle porte sur CE plan-là.
+  // Dès que le planificateur en produit un autre, l'empreinte change, le registre
+  // devient périmé et le juge annule l'orientation. Elle expire donc d'elle-même, par
+  // le même mécanisme qui protège les approbations.
+  if (etat.verdict === "ORIENTE") {
+    const cible = stage.orientation || "orientation.json";
+    durable.ecrireJson(path.join(ctx.workspaceDir, cible), {
+      empreinte: etat.empreinte,
+      recue_le: new Date(maintenant(ctx)).toISOString(),
+      consigne: etat.orientation,
+    });
+    ctx.reporter.event("approval:oriente", {
+      stage: stage.id,
+      empreinte: etat.empreinte,
+      caracteres: etat.orientation.length,
+    });
+
+    // La demande sort de la boîte : quelqu'un a répondu, elle n'attend plus personne.
+    // L'y laisser ferait afficher au cockpit une décision déjà prise, et c'est la
+    // meilleure façon de faire ignorer les vraies.
+    if (stage.dossier) majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
+
+    throw new Error(
+      `Stage "${stage.id}" : réponse libre reçue, le plan "${etat.empreinte}" repart au travail.\n` +
+        `Consigne : ${etat.orientation}\n` +
+        `Déposée dans ${cible}. Aucune action n'est exécutée, y compris les automatiques. ` +
+        `Replanifier en tenant compte de cette consigne.`
+    );
+  }
+
   if (etat.en_attente.length > 0) {
     // Un plan est né : ce qui avait été constaté stérile ne l'est plus.
     if (stage.dossier) leverRetenue(path.resolve(ctx.approvalsDir || "."), stage.dossier);

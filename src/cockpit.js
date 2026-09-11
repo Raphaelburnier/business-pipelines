@@ -61,10 +61,26 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
         ? Object.fromEntries((decisions.decisions || []).map((d) => [d.action_id, d]))
         : {};
 
+    // Une réponse libre déjà déposée sur CE plan, pas encore consommée par un run. La
+    // montrer évite de répondre deux fois : entre l'écriture et le prochain réveil du
+    // cycle, le dossier est toujours dans la boîte et la page paraîtrait n'avoir rien
+    // enregistré. Même condition d'empreinte que les décisions, pour la même raison.
+    const reponsePosee =
+      decisions && decisions.plan === entree.empreinte && typeof decisions.reponse === "string"
+        ? {
+            consigne: decisions.reponse,
+            par: decisions.reponse_par || null,
+            le: decisions.reponse_le || null,
+          }
+        : null;
+
     const maxAge = maxAgeDuPipeline(pipelinesDir, entree.appliquer_avec);
 
     return {
       dossier: entree.dossier,
+      // Null tant que personne n'a répondu en texte libre. Non nul, le dossier n'attend
+      // plus une décision mais la prise en compte de la consigne au prochain réveil.
+      reponse_posee: reponsePosee,
       empreinte: entree.empreinte,
       depuis: entree.depuis,
       registre: entree.registre,
@@ -86,7 +102,19 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
 
 class Refus extends Error {}
 
-function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, canal = null, maintenant = Date.now() }) {
+function enregistrer({
+  approvalsDir,
+  dossier,
+  empreinte,
+  decisions,
+  // Réponse libre : la sortie quand ni approuver ni refuser ne convient, typiquement
+  // quand le garde-fou s'active sur un plan qui n'avance pas. Elle renvoie le plan au
+  // travail avec une consigne au lieu de le trancher action par action.
+  reponse = null,
+  par,
+  canal = null,
+  maintenant = Date.now(),
+}) {
   const boite = lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
   const entree = (boite.en_attente || []).find((e) => e.dossier === dossier);
 
@@ -143,11 +171,29 @@ function enregistrer({ approvalsDir, dossier, empreinte, decisions, par, canal =
     });
   }
 
-  if (propres.length === 0) {
-    throw new Refus("aucune décision à enregistrer");
+  // Une réponse blanche n'en est pas une : le juge l'ignorerait, et l'accepter ici
+  // laisserait croire qu'une consigne est partie alors que rien ne repartira.
+  const texte = String(reponse ?? "").trim();
+
+  if (propres.length === 0 && !texte) {
+    throw new Refus("aucune décision ni réponse à enregistrer");
   }
 
-  const contenu = { plan: empreinte, decisions: propres };
+  const contenu = {
+    plan: empreinte,
+    decisions: propres,
+    // `reponse` porte le texte seul, c'est le champ que le juge lit. Les trois champs
+    // d'audit vivent à côté plutôt que dedans : une consigne reste une chaîne, et le
+    // registre garde quand même qui l'a écrite et par où, comme pour les décisions.
+    ...(texte
+      ? {
+          reponse: texte,
+          reponse_par: signature,
+          reponse_le: new Date(maintenant).toISOString(),
+          ...(canal ? { reponse_canal: String(canal) } : {}),
+        }
+      : {}),
+  };
   // Écriture atomique. Une écriture directe interrompue laisse un registre tronqué, et un
   // JSON tronqué dans les approbations tuait ensuite tout ce qui le relit. Ce fichier est
   // la trace de qui a engagé l'argent : il est complet, ou il reste le précédent.
