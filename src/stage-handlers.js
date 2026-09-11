@@ -269,6 +269,36 @@ function majInbox(approvalsDir, dossier, entree) {
   return boite;
 }
 
+// Trace d'une planification qui n'a rien proposé.
+//
+// Une planification stérile n'est ni un succès ni une panne : le planificateur a lu le
+// marché et conclu qu'aucun ajustement n'était justifié. Le pipeline se termine bien, la
+// boîte reste vide, et le réveil suivant repart donc planifier — en repayant l'agent pour
+// obtenir le même rien. À un quart d'heure d'intervalle, un marché durablement sans repère
+// coûte une dizaine de dollars par jour sans qu'aucune ligne de journal ne signale un
+// problème, puisqu'il n'y en a pas.
+//
+// Ce fichier est ce qui permet au cycle de s'en souvenir. Il n'exprime pas un échec : il
+// date le constat, pour que la retenue ait une origine plutôt qu'une durée en l'air.
+const RETENUE = (dossier) => `${dossier}.retenue.json`;
+
+function marquerRetenue(approvalsDir, dossier, { le, collecte_le }) {
+  durable.ecrireJson(path.join(approvalsDir, RETENUE(dossier)), {
+    dossier,
+    le,
+    collecte_le: collecte_le || null,
+    raison: "la planification n'a proposé aucune action",
+  });
+}
+
+// Dès qu'une planification propose quelque chose, la retenue n'a plus lieu d'être. La
+// lever ici plutôt qu'au réveil suivant garde la décision du cycle lisible : il lit un
+// état, il ne répare pas celui qu'un run précédent aurait laissé de travers.
+function leverRetenue(approvalsDir, dossier) {
+  const chemin = path.join(approvalsDir, RETENUE(dossier));
+  if (fs.existsSync(chemin)) fs.unlinkSync(chemin);
+}
+
 // Contrôle déterministe d'un plan d'actions, AVANT qu'il parte à l'approbation.
 // Approuver un plan qui vise des annonces inexistantes ne protège de rien : l'humain
 // lirait une ligne plausible pour une cible qui n'existe pas. Celui-ci porte un gate,
@@ -377,6 +407,9 @@ handlers.approval = async (stage, ctx) => {
   }
 
   if (etat.en_attente.length > 0) {
+    // Un plan est né : ce qui avait été constaté stérile ne l'est plus.
+    if (stage.dossier) leverRetenue(path.resolve(ctx.approvalsDir || "."), stage.dossier);
+
     // GEL. Sans lui, le run suivant replanifierait, produirait une autre empreinte, et
     // l'approbation qu'on est en train de demander ne couvrirait déjà plus rien. Un
     // modèle ne redonne pas deux fois le même plan : le cycle ne pourrait jamais
@@ -432,10 +465,31 @@ handlers.approval = async (stage, ctx) => {
     );
   }
 
-  // Tout est décidé : la demande sort de la boîte. Sans ça, une attente résolue y
-  // resterait, et un cockpit finirait par afficher des demandes déjà traitées, ce qui est
-  // la façon la plus sûre de faire ignorer les vraies.
-  if (stage.dossier) majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
+  // Rien n'attend de décision, et deux situations très différentes mènent ici.
+  //
+  // Le plan portait des actions, toutes déjà tranchées : la demande a fait son travail et
+  // sort de la boîte. Sans ça, une attente résolue y resterait, et un cockpit finirait par
+  // afficher des demandes déjà traitées, ce qui est la façon la plus sûre de faire ignorer
+  // les vraies.
+  //
+  // Ou le plan était vide : le planificateur n'a rien trouvé à proposer. La boîte n'a rien
+  // à perdre, mais le cycle a quelque chose à apprendre, sans quoi il repaiera ce constat
+  // tous les quarts d'heure. On le date.
+  if (!stage.dossier) return;
+  const dir = path.resolve(ctx.approvalsDir || ".");
+  majInbox(dir, stage.dossier, null);
+  if (actions.length === 0) {
+    const collecte = stage.collecte
+      ? readJson(ctx.workspaceDir, stage.collecte).collecte_le || null
+      : null;
+    marquerRetenue(dir, stage.dossier, {
+      le: new Date(maintenant(ctx)).toISOString(),
+      collecte_le: collecte,
+    });
+    ctx.reporter.event("approval:sterile", { stage: stage.id, dossier: stage.dossier });
+  } else {
+    leverRetenue(dir, stage.dossier);
+  }
 };
 
 // Ressuscite le plan gelé dans le workspace du run d'application. Aucun agent n'est

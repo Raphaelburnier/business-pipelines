@@ -11,7 +11,7 @@
     "en-attente": "node bin/en-attente.js",
     "cockpit": "node bin/cockpit.js",
     "cockpit:tailnet": "bash bin/tailnet-relais.sh",
-    "test": "node test/veille.test.js && node test/stats.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js && node test/executeur-prix.test.js && node test/durable.test.js && node test/cockpit.test.js && node test/acces.test.js && node test/alerte.test.js && node test/cycle.test.js",
+    "test": "node test/veille.test.js && node test/stats.test.js && node test/ebay.test.js && node test/approval.test.js && node test/execute.test.js && node test/executeur-prix.test.js && node test/durable.test.js && node test/pwa.test.js && node test/cockpit.test.js && node test/apps.test.js && node test/acces.test.js && node test/alerte.test.js && node test/cycle.test.js",
     "alerter": "node bin/alerter.js",
     "cycle": "node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json"
   },

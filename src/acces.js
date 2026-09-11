@@ -22,6 +22,43 @@ const { Refus } = require("./cockpit");
 const EN_TETE_LOGIN = "tailscale-user-login";
 const EN_TETE_NOM = "tailscale-user-name";
 
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
+
+// Où le cockpit se met à écouter, et le seul cas qui justifie autre chose que la boucle
+// locale.
+//
+// Un serveur lié à 127.0.0.1 DANS un conteneur n'est joignable par personne. La
+// publication `127.0.0.1:4600:4600` relaie vers l'adresse du conteneur sur son réseau,
+// jamais vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du
+// NAS a tourné dix jours dans cet état : « Up » pour Docker, muet pour tout le monde, et
+// rien dans ses journaux ne le disait puisqu'aucune requête ne lui parvenait. Une alerte
+// reçue dehors menait à une page morte, ce que le service systemd du poste existe
+// précisément pour empêcher.
+//
+// Le confinement ne disparaît pas, il change de couche. Dans un conteneur, ce qui limite
+// l'accès n'est plus l'adresse d'écoute mais l'espace de noms réseau, plus la publication
+// loopback de l'hôte. Tailscale continue de parler à 127.0.0.1 sur l'hôte, donc
+// l'exigence qui rend ses en-têtes d'identité fiables tient toujours.
+//
+// Deux clés, pas une, et c'est délibéré. `COCKPIT_HOTE` seul suffirait à ouvrir le
+// cockpit sur le LAN par une faute de frappe dans un .env du poste, et le LAN est
+// exactement l'endroit où n'importe qui peut fabriquer un en-tête d'identité Tailscale.
+// `COCKPIT_CONTENEUR=1` est la reconnaissance explicite que la publication de l'hôte a
+// pris le relais. Fail-closed comme le reste : sans elle, le refus.
+function adresseEcoute({ hote = null, conteneur = false } = {}) {
+  const demande = String(hote == null ? "" : hote).trim() || "127.0.0.1";
+  if (LOOPBACK.has(demande)) return demande;
+  if (!conteneur) {
+    throw new Refus(
+      `COCKPIT_HOTE="${demande}" ouvre le cockpit hors de la boucle locale. ` +
+        `Sur le réseau, les en-têtes d'identité Tailscale se fabriquent, donc n'importe ` +
+        `qui signerait des décisions sous ton nom. Cette adresse n'a de sens que dans un ` +
+        `conteneur dont l'hôte publie 127.0.0.1:<port> : poser aussi COCKPIT_CONTENEUR=1.`
+    );
+  }
+  return demande;
+}
+
 function nomHote(entetes) {
   return String((entetes && entetes.host) || "")
     .toLowerCase()
@@ -102,6 +139,7 @@ function identite(entetes, { tailnet = null, operateurLocal = null } = {}) {
 
 module.exports = {
   identite,
+  adresseEcoute,
   hotesAutorises,
   hoteAutorise,
   originesAutorisees,

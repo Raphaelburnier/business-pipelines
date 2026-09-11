@@ -24,6 +24,7 @@ function bac({
   actionId = "prix-001",
   valeur = { de: 499.99, vers: 240.99, devise: "USD" },
   justification = "hors marché",
+  depuis = "2026-08-19T11:30:00.000Z",
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-"));
   const registre = path.join(registreDans || dir, "ajustement-prix.decisions.json");
@@ -36,7 +37,7 @@ function bac({
         {
           dossier,
           empreinte: "abc123",
-          depuis: "2026-08-19T11:30:00.000Z",
+          depuis,
           actions: 1,
           registre,
           plan_gele: planGele,
@@ -360,6 +361,249 @@ test("la page des prix ne se met pas en cache et ne se devine pas par reniflage 
   assert.strictEqual(r.entetes["x-content-type-options"], "nosniff");
   const api = await demander({ chemin: "/api/etat" });
   assert.strictEqual(api.entetes["cache-control"], "no-store");
+});
+
+test("l'application s'installe par le relais : manifeste, worker et icône répondent", async () => {
+  for (const chemin of ["/manifest.webmanifest", "/sw.js", "/icone-192.png", "/apple-touch-icon.png"]) {
+    const r = await demander({ chemin, entetes: ENTETE_TAILNET });
+    assert.strictEqual(r.code, 200, `${chemin} a répondu ${r.code}`);
+    assert.strictEqual(r.entetes["cache-control"], "no-store", `${chemin} sans durcissement`);
+  }
+  const page = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(page.corps.includes('rel="manifest"'), "la page ne déclare pas son manifeste");
+  assert.ok(page.corps.includes("serviceWorker.register"), "la page n'enregistre pas le worker");
+});
+
+test("le manifeste ne s'obtient pas sans identité", async () => {
+  // Les ressources de l'application sont derrière le même contrôle que la page. Placées
+  // devant, elles diraient à un appelant anonyme le nom de l'app et l'existence du service,
+  // ce que le refus d'identité est justement là pour taire.
+  for (const chemin of ["/manifest.webmanifest", "/sw.js", "/icone-192.png"]) {
+    const anonyme = await demander({ chemin, entetes: { Host: TAILNET } });
+    assert.strictEqual(anonyme.code, 403, `${chemin} servi sans identité prouvée`);
+    const etranger = await demander({ chemin, entetes: { Host: "evil.example" } });
+    assert.strictEqual(etranger.code, 403, `${chemin} servi à un hôte non prévu`);
+  }
+});
+
+// Le panneau des applications déployées, servi par la même page et donc derrière le même
+// contrôle d'identité. Le registre est déposé dans un dossier à part que le serveur lit au
+// démarrage, comme il lit specs/cockpit.env.
+function bacApps(contenu) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-apps-"));
+  ecrireApps(dir, contenu);
+  return dir;
+}
+
+function ecrireApps(dir, contenu) {
+  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), JSON.stringify(contenu, null, 2));
+}
+
+test("le bandeau d'accueil compte ce qui attend et mène aux décisions", async () => {
+  // Ce qu'on vient chercher en ouvrant la page, avant tout le reste : est-ce qu'une
+  // décision attend. Le compte doit être celui des actions, pas celui des dossiers.
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(/class="bandeau bandeau--attente"/.test(r.corps), "pas de bandeau d'attente");
+  assert.ok(/href="#decisions"/.test(r.corps), "le bandeau ne mène pas aux décisions");
+  assert.ok(/<span class="compte">1<\/span>/.test(r.corps), "le compte d'actions n'est pas affiché");
+  assert.ok(/id="decisions"/.test(r.corps), "la cible de l'ancre n'existe pas");
+});
+
+test("sans rien à décider, la page le dit une fois et n'offre pas d'enregistrer", async () => {
+  // Une page d'accueil calme ne doit ni répéter la même phrase deux fois, ni tendre un
+  // bouton qui n'écrirait rien. Elle doit quand même le DIRE : un bandeau absent se lit
+  // comme une page qui n'a pas fini de charger.
+  demonter();
+  const vide = fs.mkdtempSync(path.join(os.tmpdir(), "acces-vide-"));
+  fs.writeFileSync(path.join(vide, "EN-ATTENTE.json"), JSON.stringify({ en_attente: [] }));
+  await monter({ APPROVALS_DIR: vide });
+
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(/class="bandeau bandeau--calme"/.test(r.corps), "le calme doit se dire, pas se taire");
+  assert.strictEqual(
+    r.corps.split("Rien n'attend de décision").length - 1,
+    1,
+    "la même phrase est rendue deux fois"
+  );
+  assert.ok(!r.corps.includes("Enregistrer les décisions"), "un bouton sans rien à enregistrer");
+});
+
+test("un module sans adresse est une fiche, jamais un lien vers nulle part", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      modules: [
+        { nom: "tcg-generator", url: "http://192.168.1.18:4700" },
+        { nom: "Agents vocaux PME", etat: "en-cours", notes: ["choisir la voix"] },
+      ],
+    }),
+  });
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(/module module--en-ligne/.test(r.corps), "l'état en ligne n'est pas rendu");
+  assert.ok(/module module--en-cours/.test(r.corps), "l'état en cours n'est pas rendu");
+
+  // Le module sans url ne doit porter aucun href, sinon la tuile promet une visite qu'elle
+  // ne peut pas tenir, et on apprend à se méfier de toutes les autres.
+  const fiche = r.corps.slice(r.corps.indexOf("Agents vocaux PME") - 400);
+  assert.ok(!/Agents vocaux PME<\/a>/.test(r.corps), "la fiche est rendue comme un lien");
+  assert.ok(/<details class="notes">/.test(fiche), "les notes devraient être dépliables");
+});
+
+test("l'attente se lit en durée, et l'instant exact reste accessible", async () => {
+  // Un horodatage ISO demande d'être lu, converti et comparé à l'heure qu'il est. Sur un
+  // téléphone, devant une décision de prix, c'est du travail rendu à celui qui décide.
+  demonter();
+  const ilYATroisHeures = new Date(Date.now() - 3 * 3600e3).toISOString();
+  await monter({}, { depuis: ilYATroisHeures });
+
+  const r = await demander({ chemin: "/" });
+  assert.ok(/en attente depuis <span title="[^"]+">3\.0 h<\/span>/.test(r.corps), "durée non rendue");
+  assert.ok(r.corps.includes(ilYATroisHeures), "l'instant exact doit rester recoupable");
+});
+
+test("une date illisible s'affiche telle quelle plutôt que de rendre « NaN h »", async () => {
+  // Le champ vient d'un fichier que le moteur écrit. Le jour où il porte autre chose qu'une
+  // date, la page doit montrer ce qu'elle a reçu, pas un calcul fait dessus.
+  demonter();
+  await monter({}, { depuis: "pas une date" });
+
+  const r = await demander({ chemin: "/" });
+  assert.strictEqual(r.code, 200);
+  assert.ok(r.corps.includes("pas une date"), "la valeur reçue devrait être affichée");
+  assert.ok(!/NaN/.test(r.corps), "un calcul sur une non-date a fui dans la page");
+});
+
+test("ajouter une app se voit au rafraîchissement, sans redémarrer le cockpit", async () => {
+  // Le registre était lu une fois au démarrage, donc déployer une app demandait une
+  // commande sur le NAS pour la voir apparaître. Une liste de liens qui exige une commande
+  // pour se tenir à jour est une liste qu'on cesse de tenir, et une liste fausse vaut moins
+  // que pas de liste du tout.
+  demonter();
+  const dir = bacApps({ apps: [{ nom: "premiere", url: "http://192.168.1.18:4700" }] });
+  await monter({ COCKPIT_APPS_DIR: dir });
+
+  const avant = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(avant.corps.includes("premiere"));
+  assert.ok(!avant.corps.includes("seconde"));
+
+  // Le fichier change pendant que le serveur tourne. Personne ne le redémarre.
+  ecrireApps(dir, {
+    apps: [
+      { nom: "premiere", url: "http://192.168.1.18:4700" },
+      { nom: "seconde", url: "http://192.168.1.18:4701" },
+    ],
+  });
+
+  const apres = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(apres.corps.includes("seconde"), "la nouvelle app n'apparaît qu'après redémarrage");
+
+  // Et le retrait aussi : une app supprimée doit disparaître, sinon le panneau enverrait
+  // vers une page morte en donnant l'air d'être à jour.
+  ecrireApps(dir, { apps: [{ nom: "seconde", url: "http://192.168.1.18:4701" }] });
+  const retire = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.ok(!retire.corps.includes("premiere"), "l'app retirée est encore affichée");
+});
+
+test("un registre cassé après coup n'emporte pas la page qui décide", async () => {
+  // La relecture par requête déplace le risque : un fichier qu'on édite mal pendant que le
+  // cockpit tourne pourrait faire échouer chaque rendu. Le défaut se nomme, la page vit.
+  demonter();
+  const dir = bacApps({ apps: [{ nom: "premiere", url: "http://192.168.1.18:4700" }] });
+  await monter({ COCKPIT_APPS_DIR: dir });
+
+  fs.writeFileSync(path.join(dir, "cockpit-apps.json"), "{ édité de travers");
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200, "un registre cassé en cours de route a fait tomber la page");
+  assert.ok(/Registre illisible/.test(r.corps), "le défaut est passé sous silence");
+  assert.ok(r.corps.includes("Enregistrer les décisions"), "le formulaire de décision a disparu");
+});
+
+test("le panneau d'apps s'affiche, et il est derrière la même identité que le reste", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      apps: [{ nom: "tcg-generator", url: "http://192.168.1.18:4700", description: "cartes" }],
+    }),
+  });
+
+  const anonyme = await demander({ chemin: "/", entetes: { Host: TAILNET } });
+  assert.strictEqual(anonyme.code, 403, "la liste des apps se lit sans identité prouvée");
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200);
+  assert.ok(r.corps.includes("tcg-generator"), "l'app déclarée n'apparaît pas");
+  assert.ok(r.corps.includes("http://192.168.1.18:4700"), "l'adresse n'apparaît pas");
+
+  // Sans noopener, la page ouverte reçoit une poignée sur l'onglet du cockpit et peut le
+  // faire naviguer ailleurs. Ces apps sortent d'un générateur, donc d'un modèle.
+  assert.ok(/rel="noopener noreferrer"/.test(r.corps), "l'onglet du cockpit est prêté à l'app");
+});
+
+test("un nom d'app hostile est échappé comme le reste du texte de la page", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({
+      apps: [{ nom: '<script>alert(1)</script>', url: "http://192.168.1.18:4700" }],
+    }),
+  });
+
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200);
+  assert.ok(!r.corps.includes("<script>alert(1)</script>"), "balise rendue telle quelle");
+  assert.ok(r.corps.includes("&lt;script&gt;"), "le nom devrait apparaître échappé");
+});
+
+test("un registre fautif nomme le défaut et ne tue pas la page qui décide", async () => {
+  demonter();
+  await monter({
+    COCKPIT_APPS_DIR: bacApps({ apps: [{ nom: "piege", url: "javascript:alert(1)" }] }),
+  });
+
+  // Le panneau est un confort, décider est la raison d'être de la page. La seconde ne doit
+  // pas tomber avec le premier, et le défaut ne doit pas se taire non plus.
+  const r = await demander({ chemin: "/", entetes: ENTETE_TAILNET });
+  assert.strictEqual(r.code, 200, "un registre fautif a empêché la page de servir");
+  assert.ok(/Registre illisible/.test(r.corps), "le défaut du registre est passé sous silence");
+  assert.ok(!r.corps.includes("javascript:alert(1)"), "l'entrée refusée est quand même rendue");
+  assert.ok(r.corps.includes("Enregistrer les décisions"), "le formulaire de décision a disparu");
+});
+
+test("sans réglage, le cockpit écoute la boucle locale et rien d'autre", () => {
+  assert.strictEqual(acces.adresseEcoute(), "127.0.0.1");
+  assert.strictEqual(acces.adresseEcoute({}), "127.0.0.1");
+  // Une variable posée puis vidée est la façon la plus courante d'annuler un réglage.
+  // Elle doit ramener le défaut, pas une adresse vide que Node lirait comme 0.0.0.0.
+  assert.strictEqual(acces.adresseEcoute({ hote: "" }), "127.0.0.1");
+  assert.strictEqual(acces.adresseEcoute({ hote: "   " }), "127.0.0.1");
+});
+
+test("une adresse hors boucle locale est refusée tant que rien ne déclare le conteneur", () => {
+  // C'est le refus qui compte : COCKPIT_HOTE seul, dans un .env du poste, ouvrirait le
+  // cockpit sur le LAN. Or sur le LAN les en-têtes d'identité Tailscale se fabriquent,
+  // donc n'importe quelle machine du réseau signerait des décisions de prix.
+  for (const hote of ["0.0.0.0", "::", "192.168.1.18"]) {
+    assert.throws(
+      () => acces.adresseEcoute({ hote }),
+      (err) => /COCKPIT_CONTENEUR=1/.test(err.message),
+      `${hote} accepté sans reconnaissance explicite`
+    );
+  }
+  // Le conteneur déclaré sans adresse ne suffit pas non plus à bouger l'écoute : la clé
+  // reconnaît un montage, elle ne le demande pas.
+  assert.strictEqual(acces.adresseEcoute({ conteneur: true }), "127.0.0.1");
+});
+
+test("dans un conteneur déclaré, lier toutes les interfaces est le seul montage qui répond", () => {
+  // Un serveur lié à 127.0.0.1 dans un conteneur n'est joignable par personne : la
+  // publication de l'hôte relaie vers l'adresse du conteneur sur son réseau, jamais vers
+  // sa boucle locale. Le cockpit du NAS a tourné dix jours « Up » et muet pour ça.
+  assert.strictEqual(acces.adresseEcoute({ hote: "0.0.0.0", conteneur: true }), "0.0.0.0");
+  // La boucle locale reste acceptée avec la clé : elle ne force rien, elle autorise.
+  assert.strictEqual(acces.adresseEcoute({ hote: "127.0.0.1", conteneur: true }), "127.0.0.1");
 });
 
 (async () => {

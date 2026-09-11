@@ -3,8 +3,32 @@ runs/
 *.log
 
 # État runtime, dérivé : la boîte se reconstruit à chaque arrêt sur approbation.
-# Les décisions et le ledger, eux, restent versionnés : ce sont des traces d'audit.
 approvals/EN-ATTENTE.json
+
+# Le registre des décisions humaines n'est plus versionné, et c'est un revirement.
+# Il l'était comme trace d'audit, ce qui tenait tant qu'une seule machine décidait. À
+# partir du moment où la boucle tourne sur le NAS, c'est LUI qui fait foi : les décisions
+# y sont prises et les prix y sont changés pour de vrai. Garder les mêmes fichiers dans
+# git ferait deux originaux d'une chose qui n'en a qu'un, et un `git pull` un jour
+# écraserait des décisions réelles par une copie plus ancienne, sans conflit et sans bruit.
+# Une trace d'audit qu'un checkout peut réécrire n'atteste de rien.
+# La sauvegarde de ces fichiers appartient au NAS, pas à git.
+# Le constat de stérilité est de l'état runtime, comme la boîte : il se reconstruit au
+# prochain réveil et le perdre coûte une planification, rien de plus.
+approvals/*.retenue.json
+# Sauvegardes horodatées d'un registre remplacé : elles appartiennent au disque, pas au dépôt.
+approvals/archive/
+
+approvals/*.decisions.json
+approvals/*.ledger.json
+approvals/*.plan.json
+# Sauf le gabarit documenté, qui ne porte aucune décision réelle.
+!approvals/EXEMPLE.decisions.json
+
+# Registre des applications affichées par le cockpit. Aucun secret, mais des adresses
+# internes : ports du NAS, nom du tailnet. Même raison que specs/cockpit.env, qui ne porte
+# rien de secret non plus et reste hors du dépôt. Le gabarit, lui, est suivi.
+specs/cockpit-apps.json
 
 # Secrets : jamais commités.
 # Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
@@ -18,3 +42,6 @@ approvals/ALERTES.json
 
 # Worktrees de travail : des checkouts, pas du contenu de dépôt.
 .claude/worktrees/
+
+# Copie du moteur pour le contexte de build Docker, déposée par bin/preparer-image.sh.
+.moteur/

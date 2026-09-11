@@ -279,7 +279,7 @@ approuvées n'ont pas été tentées, et celles-là sont nommées dans le rappor
 
 ```bash
 npm install
-npm test                 # 175 vérifications, sans réseau ni credentials
+npm test                 # 184 vérifications, sans réseau ni credentials
 ```
 
 Pour un vrai run, il faut des identifiants sandbox eBay :
@@ -431,6 +431,21 @@ de l'appelant que si le service reste local, sinon n'importe qui sur le réseau 
 fabriquer cette identité. Élargir l'écoute ne rendrait pas le cockpit plus joignable, ça
 détruirait la seule chose qui donne du sens aux en-têtes.
 
+Dans un conteneur, cette même adresse ne confine rien : elle rend le service injoignable.
+La publication `127.0.0.1:4600:4600` relaie vers l'adresse du conteneur sur son réseau,
+jamais vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du NAS a
+tourné dix jours dans cet état, `Up` pour Docker et muet pour tout le monde, sans rien dans
+ses journaux puisqu'aucune requête ne lui parvenait. Une alerte reçue dehors menait à une
+page morte, ce que le service systemd du poste existe précisément pour empêcher.
+
+Le confinement change donc de couche à l'intérieur d'un conteneur : ce n'est plus l'adresse
+d'écoute, c'est l'espace de noms réseau plus la publication loopback de l'hôte. Tailscale
+continue de parler à `127.0.0.1` sur l'hôte, donc l'exigence qui rend ses en-têtes fiables
+tient toujours. Ce déplacement se déclare, il ne se devine pas : `COCKPIT_HOTE` seul est
+refusé au démarrage, il faut aussi `COCKPIT_CONTENEUR=1`. Une faute de frappe dans un
+`.env` du poste ouvrirait sinon le cockpit sur le LAN, c'est-à-dire exactement là où
+n'importe qui peut fabriquer un en-tête d'identité Tailscale.
+
 **Elle vérifie l'en-tête `Host`** contre une liste blanche. Sans ça, un site visité dans le
 même navigateur peut faire pointer un nom vers l'adresse locale et parler au serveur à ta
 place. Le nom du tailnet n'entre dans cette liste que s'il est configuré.
@@ -482,6 +497,54 @@ téléphone finissait par exiger une commande tapée sur la machine, ce qu'il é
 nom de dossier tenait en un segment. Dès qu'il en portait deux, l'identifiant reconstruit
 désignait une autre action du plan : une décision pouvait partir sur un changement de prix
 qui n'avait pas été lu. L'identifiant voyage désormais entier, dans un attribut de données.
+
+### Le panneau des applications déployées
+
+Une fois le cockpit sur l'écran d'accueil du téléphone, il est la porte d'entrée de ce qui
+tourne sur le NAS. Il liste donc les applications sorties du générateur de SaaS, en liens
+vers elles et rien de plus. Le registre se copie depuis
+`specs/cockpit-apps.json.example`, et son absence ramène simplement la page à ce qu'elle
+était.
+
+**Le registre est relu à chaque rendu de page.** Lu une fois au démarrage, ajouter une app
+demandait de redémarrer le conteneur. Une liste de liens qui exige une commande pour se
+tenir à jour est une liste qu'on cesse de tenir, et une liste fausse vaut moins que pas de
+liste. Éditer le fichier suffit, le rafraîchissement montre le résultat. La relecture ne
+coûte rien en pratique, un petit JSON sur une page qu'un humain ouvre pour décider, et le
+risque qu'elle aurait pu ajouter est déjà écarté : un registre cassé en cours de route
+nomme son défaut et laisse la page intacte.
+
+**La liste vient d'un fichier, jamais du démon Docker.** Interroger Docker donnerait une
+liste toujours juste et coûterait le socket monté dans le conteneur, c'est-à-dire root sur
+le NAS accordé à la page joignable depuis le tailnet. Une liste qui vieillit se corrige en
+éditant un fichier ; un socket qu'on a monté ne se démonte jamais vraiment.
+
+**Une adresse se déclare, elle ne se construit pas.** Le code ne fabrique aucune URL à
+partir d'un port. La différence se voit à l'usage : une app publiée sur le LAN est
+injoignable depuis un téléphone qui n'est pas à la maison, alors que le cockpit, lui, passe
+par Tailscale. Un lien LAN dans une page qu'on ouvre dehors est un lien mort, et aucun
+module ne peut deviner lequel des deux chemins tu as monté.
+
+**Une app ne partage pas l'origine du cockpit**, et c'est le refus le moins évident. Le
+contrôle d'origine sur les écritures est ce qui empêche une page tierce d'enregistrer une
+décision. Servir une app sous le nom du cockpit lui donnerait cette origine, donc ce droit,
+et ces applications sortent d'un générateur : elles sont écrites par un modèle, ce qui est
+la définition d'une page tierce. Le chargement refuse une entrée qui atterrit sur une
+origine acceptée. Un port distinct suffit à l'en séparer.
+
+**Seuls `http` et `https` sont des liens.** Un `javascript:` dans un href s'exécute dans la
+page qui approuve des changements de prix, un `data:` sert un document sous notre propre
+origine. Le registre n'est écrit que par le propriétaire du NAS, mais une liste blanche ne
+dépend pas de ce qu'on croira se rappeler en l'éditant dans six mois.
+
+**Les liens portent `rel="noopener"`.** Sans lui, la page ouverte reçoit une poignée sur
+l'onglet du cockpit et peut le faire naviguer ailleurs, vers une copie qui redemande de
+confirmer une décision par exemple.
+
+**Un registre fautif nomme le défaut et ne tue pas la page.** Le panneau est un confort,
+décider est la raison d'être du cockpit : faire dépendre la seconde du premier échangerait
+une fonction qui garde l'argent contre une liste de liens. Se taire serait pire, on croirait
+n'avoir rien déployé.
 
 ### Les fichiers d'approbation s'écrivent en une fois, ou pas du tout
 
@@ -552,6 +615,60 @@ et n'est debout que quand on est déjà devant la machine, c'est-à-dire exactem
 n'en a pas besoin ; le script le vérifie et donne la commande. Et sous WSL, tout ça ne
 tourne que si l'instance WSL tourne : Windows ne démarre pas WSL de lui-même.
 
+#### L'installer comme application
+
+Le cockpit s'installe sur l'écran d'accueil d'un téléphone, d'une tablette ou d'un poste :
+il s'ouvre alors en plein écran, sans barre d'adresse, avec sa propre icône. Rien à faire
+côté serveur, tout est servi par le cockpit lui-même.
+
+| Appareil | Comment |
+|---|---|
+| iPhone, iPad | Safari, bouton Partager, « Sur l'écran d'accueil » |
+| Android | Chrome, menu, « Installer l'application » |
+| Windows, macOS, Linux | Chrome ou Edge, icône d'installation dans la barre d'adresse |
+
+Safari est obligatoire sur iOS : Chrome et Firefox y sont des habillages de WebKit et
+n'installent rien.
+
+Un navigateur n'accepte d'installer une page que si trois conditions tiennent : l'origine
+est en HTTPS avec un certificat que l'appareil valide, la page déclare un manifeste, et un
+service worker enregistré porte un gestionnaire de requêtes. La première venait déjà de
+Tailscale, qui termine le TLS sur un vrai nom. Les deux autres sont dans `src/pwa.js`.
+
+**Le service worker ne met rien en cache, et c'est délibéré.** La page montre des décisions
+en attente, et chaque plan gelé porte une empreinte qui lie l'approbation à un plan précis.
+Servir une copie gardée en cache montrerait des actions déjà tranchées, et ferait cocher
+contre une empreinte morte : l'écriture partirait pour se faire refuser en 409, sans que
+rien à l'écran l'ait laissé prévoir. Le cockpit envoie déjà `Cache-Control: no-store` sur
+la page et sur l'API, et un cache de service worker passerait outre puisqu'il répond avant
+que la requête parte. Le worker sert donc à deux choses seulement : rendre l'application
+installable, et remplacer la page d'erreur du navigateur par un message qui dit quoi faire
+quand la machine est éteinte ou le relais démonté.
+
+Les écritures ne passent pas par le worker : il se retire de toute requête qui n'est pas un
+GET. Un worker qui rejouerait un POST écrirait deux fois la même décision sans que personne
+l'ait recochée.
+
+Les icônes sont dans `public/`, versionnées plutôt que générées au démarrage. Elles sont
+servies depuis une table littérale d'URL, pas par un chemin construit depuis la requête :
+c'est la première fois que le cockpit sert des fichiers du disque, et le dépôt tient
+`specs/cockpit.env` deux dossiers plus haut.
+
+Le manifeste, le worker et les icônes sont derrière le même contrôle d'identité que la
+page. Un appelant que le tailnet n'a pas nommé reçoit 403 sur les quatre.
+
+#### Quand l'application ne répond plus
+
+Elle affiche une page qui nomme les trois causes, dans l'ordre où elles arrivent :
+Tailscale déconnecté sur le téléphone, machine hôte éteinte ou en veille, relais démonté.
+Aucune décision ne part tant que la connexion n'est pas revenue.
+
+Un cas échappe à cette page, et il faut le savoir : relais monté mais cockpit arrêté. La
+requête aboutit alors, avec une erreur de passerelle produite par Tailscale, donc le
+service worker la laisse passer telle quelle. Il ne remplace que ce qui n'aboutit pas du
+tout. Intercepter aussi les 502 masquerait de vraies pannes serveur derrière un message
+générique, ce qui coûte plus cher en diagnostic que ça ne rapporte en confort.
+
 #### Ce que ça authentifie, et ce que ça n'authentifie pas
 
 L'identité vient du tailnet, établie par WireGuard : un appareil qui n'est pas le tien ne
@@ -587,8 +704,9 @@ npm run en-attente       # l'affichage seul
 | périmé, **aucune** décision prise | attendre, sans rien dépenser |
 | périmé, décision commencée | replanifier |
 | tout décidé | appliquer, avec le pipeline que la demande désigne |
+| la planification précédente n'a rien proposé, il y a moins de 6 h | attendre, sans rien dépenser |
 
-Deux lignes portent tout le reste.
+Trois lignes portent tout le reste.
 
 **On ne replanifie jamais pendant qu'une décision fraîche est en cours.** C'est la règle
 qui rend le cron compatible avec un humain lent.
@@ -602,6 +720,25 @@ passé.
 
 **L'action à appliquer se lit dans la demande, jamais devinée.** Sans `appliquer_avec`, le
 cycle attend plutôt que de choisir un pipeline à la place de celui qui a planifié.
+
+**Une planification qui n'a rien proposé retient la suivante.** C'est la règle la plus
+récente, et elle vient d'une dépense observée, pas d'une crainte. Un planificateur qui lit
+le marché et conclut qu'aucun ajustement n'est justifié a fait son travail : le pipeline se
+termine bien, la boîte reste vide, et le réveil suivant repart donc planifier. Il repaie
+alors l'agent pour relire le même marché et rendre le même constat. Rien dans les journaux
+ne le signale, puisqu'il n'y a pas d'erreur : c'est la dépense la plus discrète de la
+boucle, environ dix dollars par jour à un quart d'heure d'intervalle.
+
+Le stage d'approbation date donc ce constat dans `<dossier>.retenue.json`, et le cycle le
+lit avant de relancer. Six heures, parce que le stock d'un marché de collection ne se
+renouvelle pas à l'heure, et parce que c'est la moitié des douze heures de péremption : une
+planification qui reprend après la retenue a encore le temps d'être décidée avant que ses
+données ne meurent. Dès qu'un plan propose quelque chose, la marque est levée.
+
+C'est la même règle que le plan périmé que personne n'a regardé, appliquée à un cas qui
+n'apparaît qu'une fois le marché devenu pauvre : en cas de doute, ne pas engager d'argent.
+Une configuration incomplète dégrade vers le comportement d'origine, jamais vers un cycle
+qui cesserait de planifier sans le dire.
 
 ### Un arrêt normal ressemble à une panne
 
