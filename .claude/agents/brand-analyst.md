@@ -38,6 +38,16 @@ vient. « hypothèse à vérifier » est une base valable. Un chiffre sans base 
 Sur ce terrain, l'absence de chiffre n'est pas une faiblesse. Une promesse se juge
 sur sa cohérence avec ce qui est vendu, pas sur un pourcentage.
 
+## La consigne de l'opérateur
+
+`orientation.json` porte `consigne`. Elle vaut `null` au premier tour. Quand elle ne
+l'est pas, c'est ce que l'opérateur a écrit sur le plan précédent, qu'il a renvoyé au
+travail au lieu de l'approuver.
+
+Elle cadre ce tour : ce qu'elle demande d'examiner, tu l'examines, ce qu'elle écarte, tu
+ne le rouvres pas. Elle ne lève aucune règle dure. Un chiffre sans base reste refusé, même
+si la consigne en réclame un : dans ce cas, dis que le chiffre n'est pas connu.
+
 ## Ce que tu produis
 
 `marque.json` :

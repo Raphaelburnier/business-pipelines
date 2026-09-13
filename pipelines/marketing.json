@@ -16,13 +16,19 @@
   },
   "stages": [
     {
+      "id": "consigne",
+      "type": "consigne",
+      "decisions": "marketing.decisions.json",
+      "plan_gele": "marketing.plan.json",
+      "output": "orientation.json"
+    },
+    {
       "id": "analyse",
       "parallel": true,
       "agents": [
         {
           "name": "economy-analyst",
-          "backend": "opus-direct",
-          "inputs": [],
+          "inputs": ["orientation.json"],
           "outputs": ["economie.json"],
           "output_schema": {
             "economie.json": {
@@ -34,8 +40,7 @@
         },
         {
           "name": "brand-analyst",
-          "backend": "opus-direct",
-          "inputs": [],
+          "inputs": ["orientation.json"],
           "outputs": ["marque.json"],
           "output_schema": {
             "marque.json": {
@@ -52,8 +57,7 @@
       "agents": [
         {
           "name": "plan-synthesist",
-          "backend": "opus-direct",
-          "inputs": ["economie.json", "marque.json"],
+          "inputs": ["orientation.json", "economie.json", "marque.json"],
           "outputs": ["plan-marketing.json"],
           "output_schema": {
             "plan-marketing.json": {

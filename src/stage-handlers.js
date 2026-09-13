@@ -362,6 +362,83 @@ handlers["verify-couverture"] = async (stage, ctx) => {
   });
 };
 
+// Le type de stage `consigne` : ramène la réponse libre de l'opérateur dans le workspace,
+// au début du tour qui doit en tenir compte.
+//
+// La réponse vit dans le registre des décisions, hors du workspace, liée à l'empreinte du
+// plan gelé qu'elle commente. C'est là qu'il faut la lire : le workspace est vidé à chaque
+// exécution, et une consigne déposée dedans par le tour précédent était effacée avant
+// d'avoir été lue.
+//
+// Le juge est celui du stage d'approbation, `approval.evaluate`, rejoué sur le plan gelé.
+// Ses règles s'appliquent donc sans copie : une réponse blanche n'est pas une consigne, et
+// un registre qui porte sur un autre plan ne vaut rien.
+//
+// La consigne expire d'elle-même. Dès que ce tour gèle un nouveau plan, l'empreinte change,
+// le registre devient périmé, et le tour suivant ne la réinjecte plus. Si ce tour échoue
+// avant de geler quoi que ce soit, rien n'a bougé : la consigne reste valable pour la
+// relance, et ce que l'opérateur a écrit n'est pas perdu.
+handlers.consigne = async (stage, ctx) => {
+  // Un stage qui ne lit pas les fichiers qu'écrit l'approbation ne trouverait jamais rien,
+  // et chaque tour repartirait sans consigne sans que rien ne le signale. On le refuse
+  // avant de payer le moindre agent.
+  const approbations = ((ctx.pipeline && ctx.pipeline.stages) || []).filter(
+    (s) => s.type === "approval"
+  );
+  for (const a of approbations) {
+    if (a.decisions !== stage.decisions || a.plan_gele !== stage.plan_gele) {
+      throw new Error(
+        `Stage "${stage.id}" : lit ${stage.decisions} et ${stage.plan_gele}, mais le stage ` +
+          `d'approbation "${a.id}" écrit ${a.decisions} et ${a.plan_gele}. ` +
+          `La consigne ne serait jamais retrouvée.`
+      );
+    }
+  }
+
+  const dir = path.resolve(ctx.approvalsDir || ".");
+  const planGele = path.join(dir, stage.plan_gele);
+  const ecrire = (contenu) =>
+    fs.writeFileSync(path.join(ctx.workspaceDir, stage.output), JSON.stringify(contenu, null, 2));
+
+  const gele = durable.lireJson(planGele);
+  if (!gele) {
+    ecrire({ consigne: null, raison: "aucun plan gelé : premier tour" });
+    ctx.reporter.event("consigne:aucune", { stage: stage.id });
+    return;
+  }
+
+  const registre = durable.lireJson(path.join(dir, stage.decisions));
+  const etat = approval.evaluate({ actions: gele.actions || [], decisions: registre, auto: [] });
+
+  if (etat.verdict === "ORIENTE") {
+    ecrire({ consigne: etat.orientation, empreinte: etat.empreinte });
+    ctx.reporter.event("consigne:reprise", {
+      stage: stage.id,
+      empreinte: etat.empreinte,
+      caracteres: etat.orientation.length,
+    });
+    return;
+  }
+
+  // Relancer maintenant produirait un plan neuf, donc une empreinte neuve, et effacerait en
+  // silence ce qui a été tranché ou ce qui attend de l'être. C'est la règle que portait le
+  // cycle, « on ne replanifie jamais pendant qu'une décision est en cours », ramenée ici
+  // parce qu'aucun cycle ne pilote ce pipeline.
+  if (etat.verdict === "APPROUVE") {
+    throw new Error(
+      `Stage "${stage.id}" : le plan gelé ${etat.empreinte} est entièrement tranché. ` +
+        `Rien à refaire : c'est lui que la suite consomme. ` +
+        `Pour repartir de zéro malgré tout, supprimer ${planGele}.`
+    );
+  }
+  throw new Error(
+    `Stage "${stage.id}" : le plan gelé ${etat.empreinte} attend une décision` +
+      (etat.perimee ? " (le registre porte sur un plan plus ancien)" : "") +
+      `. Décider dans le cockpit, ou y écrire une consigne, avant de relancer. ` +
+      `Pour abandonner ce plan, supprimer ${planGele}.`
+  );
+};
+
 function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
@@ -870,6 +947,19 @@ const validators = {
   verify: (stage, fail) => {
     for (const champ of ["report", "against", "questions_from", "owner", "output"]) {
       if (!stage[champ]) fail(`type "verify" sans "${champ}"`);
+    }
+  },
+
+  consigne: (stage, fail) => {
+    for (const champ of ["decisions", "plan_gele", "output"]) {
+      if (!stage[champ]) fail(`type "consigne" sans "${champ}"`);
+    }
+    if (stage.gate) {
+      fail(
+        'un stage "consigne" ne porte pas de gate : il ne produit aucun travail à juger, ' +
+          "il relit une décision humaine, et router son résultat à un agent lui donnerait " +
+          "un moyen de la renégocier"
+      );
     }
   },
 

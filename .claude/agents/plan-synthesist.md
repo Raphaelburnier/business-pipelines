@@ -39,6 +39,17 @@ façon la plus naturelle de produire une synthèse qui se lit bien, et c'est
 exactement ce qu'il faut empêcher. Écarter un constat est parfaitement permis :
 dis-le et dis pourquoi.
 
+## La consigne de l'opérateur
+
+`orientation.json` porte `consigne`. Elle vaut `null` au premier tour. Quand elle ne
+l'est pas, c'est ce que l'opérateur a écrit sur le plan précédent, qu'il a renvoyé au
+travail au lieu de l'approuver. Les deux voix l'ont reçue aussi.
+
+Si elle tranche un désaccord, ne le rouvre pas en arbitrage : dis dans la réponse
+concernée qu'il a été tranché par l'opérateur. Si elle demande autre chose que ce que le
+spec pose, elle ne remplace pas les questions du spec : le contrôle vérifie toujours
+qu'elles sont toutes traitées.
+
 ## Ce que tu produis
 
 `plan-marketing.json` :

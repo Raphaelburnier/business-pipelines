@@ -56,10 +56,12 @@ Construite sur la branche `feat/pipeline-marketing`, qui part de celle de la pha
 que le cockpit sache déjà orienter. Jamais exécutée : la première exécution payante reste
 à lancer, et c'est elle qui donnera le coût réel.
 
-Quatre étapes. Deux voix analysent la même demande en parallèle, `economy-analyst` et
-`brand-analyst`, chacune produisant son artefact avec un schéma strict. `plan-synthesist`
-les confronte en un plan unique. Un contrôle déterministe rend le verdict du gate. Une
-approbation humaine tranche, question par question, dans le cockpit.
+Cinq étapes. Une étape déterministe relit d'abord la consigne que l'opérateur a pu écrire
+sur le plan précédent. Deux voix analysent ensuite la même demande en parallèle,
+`economy-analyst` et `brand-analyst`, chacune produisant son artefact avec un schéma
+strict. `plan-synthesist` les confronte en un plan unique. Un contrôle déterministe rend
+le verdict du gate. Une approbation humaine tranche, question par question, dans le
+cockpit.
 
 Le gate est du code, pas un juge. Le type de stage `verify-couverture` vérifie trois
 propriétés qu'aucune prose ne contourne : chaque question du spec est traitée, chaque
@@ -78,9 +80,19 @@ inexacte d'un dollar. Tout constat qui avance un chiffre doit donc dire d'où il
 Le plan approuvé sort de cette phase comme artefact. C'est lui, et rien d'autre, que la
 phase 05 consomme.
 
-Budget du premier tour : deux dollars, quarante tours, quinze par agent. Les trois agents
-visent le backend `opus-direct`, donc la passerelle OmniRoute doit tourner. Retirer le
-champ `backend` du pipeline les ramène sur l'abonnement.
+Budget du premier tour : deux dollars, quarante tours, quinze par agent.
+
+Aucun agent ne nomme de backend depuis le 2026-09-13. Le pipeline visait `opus-direct`,
+qui n'existe que dans la configuration d'un poste, et refusait donc de se charger sur le
+NAS. Il prend désormais le backend par défaut, comme le pipeline de prix, et tourne
+partout où une clé Anthropic est fournie.
+
+La consigne libre boucle depuis la même date. L'étape `consigne` la relit dans le registre
+des décisions, hors du workspace, en rejouant le juge d'approbation sur le plan gelé. Elle
+expire d'elle-même dès qu'un tour gèle un nouveau plan, et survit à un tour qui échoue
+avant. La même étape refuse de relancer tant que le plan gelé attend une décision ou a été
+entièrement tranché, parce qu'un tour de plus produirait une empreinte neuve et effacerait
+ces décisions en silence.
 
 ## Phase 05, pipeline développement
 
@@ -97,13 +109,11 @@ humaine. Un vrai scanner plus tard, quand le reste tourne.
 
 ## Points ouverts
 
-La consigne en texte libre ne survit pas d'une exécution à l'autre. La phase 02 l'écrit
-dans le workspace, et `orchestrator.js` recrée ce workspace à chaque exécution en le
-vidant. La consigne est donc effacée avant que l'exécution suivante puisse la lire, ce qui
-coupe la boucle d'escalade au point précis où elle devait se refermer. Constaté en
-construisant la phase 04. Le remède suit ce que fait déjà le plan gelé : écrire la consigne
-dans le dossier des approbations, qui est hors du workspace et durable, puis la ramener
-dans le workspace au début de l'exécution suivante.
+Le jeton des backends OmniRoute n'a jamais été valide. `backends.json` porte
+`omniroute-local`, que la passerelle refuse : la vérification de la phase 01 avait utilisé
+la vraie clé de la passerelle, pas le backend. Constaté le 2026-09-13. La correction écrit
+dans un fichier de secrets et reste à faire par l'opérateur. Elle ne bloque plus le
+pipeline marketing, qui ne nomme plus de backend.
 
 Le drapeau `--resume` de la phase 03 est inutilisable ici pour la même raison. Ce dépôt a
 son propre lanceur, qui vide le workspace à chaque fois et n'ouvre aucun journal de
@@ -112,11 +122,25 @@ d'exécution, à décider plutôt qu'à glisser.
 
 La clé Anthropic hors passerelle, décrite en phase 01.
 
-Le ménage des anciennes pipelines. Le plan d'origine l'estimait à trois fichiers de
-pipeline, quatre scripts npm et une entrée de compose. C'est plus profond que ça : le
-service `cycle` du compose relance le plan de prix toutes les quinze minutes, et les tests
-de la veille, d'eBay, de l'exécution et de l'exécuteur de prix tombent avec. Décision à
-prendre avant la phase 04, parce que les deux touchent le même dépôt.
+Le ménage des anciennes pipelines, en partie fait. Le cycle de prix a été retiré le
+2026-09-13 : il ne tournait nulle part, ni sur le NAS où son conteneur n'avait jamais été
+créé, ni sur le poste où son minuteur était désactivé. Son service Docker, son script npm
+et son minuteur local sont partis, la boucle générique `bin/cycle.js` reste. Les pipelines
+de veille et de prix, avec leurs tests, sont toujours en place : décision non prise.
+
+Conséquence du retrait : plus aucun service du NAS ne détient la clé Anthropic, puisque le
+cockpit n'en reçoit délibérément aucune. Faire tourner le pipeline marketing sur le NAS
+demandera son propre service.
+
+Le retrait n'est pas encore effectif sur le NAS. Le compose déployé déclare toujours le
+service `cycle`, et l'image `business-pipelines-cycle` y est toujours, avec deux vieilles
+images `buisness-piplines-*`. Leur suppression a été refusée par les permissions de la
+session du 2026-09-13. Tant que le compose n'est pas redéposé, un `docker compose up -d`
+lancé sur le NAS recréerait le cycle.
+
+L'ancien dossier NAS `buisness-piplines`, doublon du 26 août resté avec des secrets
+périmés dans un dossier ouvert à tous, a été supprimé le même jour. Une archive en droits
+restreints est gardée dans le répertoire personnel de `admindunas`.
 
 GPT-6 Astra. Introuvable au catalogue de la passerelle, et aucune trace ailleurs. Dire où
 il a été vu, ou l'écarter du plan.
