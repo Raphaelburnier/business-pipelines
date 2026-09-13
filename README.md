@@ -690,8 +690,8 @@ aurait cliqué sur un montant qui n'existe plus, et le cockpit aurait eu raison 
 refuser. Il faut donc quelque chose qui sache **ne rien faire**.
 
 ```bash
-npm run cycle            # un réveil : lire l'état, choisir une action, prévenir
-npm run cycle -- --dry   # dit ce qu'il ferait, ne lance rien
+node bin/cycle.js --plan <pipeline> --spec <spec.json>         # un réveil : lire l'état, choisir une action, prévenir
+node bin/cycle.js --plan <pipeline> --spec <spec.json> --dry   # dit ce qu'il ferait, ne lance rien
 npm run alerter          # le canal seul
 npm run en-attente       # l'affichage seul
 ```
@@ -802,8 +802,13 @@ Puis une ligne de crontab, un quart d'heure étant largement assez fin pour une 
 l'autre moitié est humaine :
 
 ```cron
-*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/cycle.js --plan ajustement-prix --spec ./specs/ajustement-prix.json >> /var/log/business-pipelines.log 2>&1
+*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/cycle.js --plan <pipeline> --spec <spec.json> >> /var/log/business-pipelines.log 2>&1
 ```
+
+Aucun cycle n'est planifié aujourd'hui. Celui du plan de prix a été retiré le 2026-09-13,
+faute d'usage : son service Docker, son script npm et son minuteur local. La boucle
+elle-même reste, `bin/cycle.js` et `src/cycle.js`, prête pour le prochain pipeline qui
+aura besoin d'alterner travail et attente humaine.
 
 ### Ce que ça ne résout pas encore
 
