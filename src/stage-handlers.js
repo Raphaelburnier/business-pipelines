@@ -236,6 +236,209 @@ handlers.verify = async (stage, ctx) => {
   });
 };
 
+// Le type de stage `verify-couverture` : le gate du pipeline marketing, rendu par du code
+// plutôt que par un juge.
+//
+// Trois contrôles qu'aucune prose ne contourne :
+//   couverture    chaque question du spec est traitée, répondue ou déclarée sans réponse
+//   traçabilité   chaque source citée est l'id d'un constat qu'une des voix a vraiment écrit
+//   rien de perdu chaque constat des voix est soit cité, soit écarté avec sa raison
+//
+// Le troisième est celui qui compte. Une synthèse qui lisse le désaccord en laissant
+// tomber le constat gênant est exactement ce que ce pipeline existe pour empêcher, et
+// c'est la seule des trois propriétés qu'un juge agentique jugerait mal : il s'agit de
+// comparer deux listes d'identifiants, pas d'apprécier un texte.
+function verifierCouverture(stage, ctx) {
+  const rapport = readJson(ctx.workspaceDir, stage.report);
+
+  const constats = new Map();
+  const constatsParId = new Map();
+  for (const fichier of stage.against) {
+    for (const constat of readJson(ctx.workspaceDir, fichier).constats || []) {
+      constats.set(constat.id, fichier);
+      constatsParId.set(constat.id, constat);
+    }
+  }
+
+  const reponses = rapport.reponses || [];
+  const declarees = rapport.questions_sans_reponse || [];
+  const manques = [];
+  const manque = (raison, extra = {}) => manques.push({ component: stage.owner, raison, ...extra });
+
+  const traitees = new Set([
+    ...reponses.map((r) => r.question),
+    ...declarees.map((q) => q.question),
+  ]);
+  for (const question of ctx.spec[stage.questions_from]) {
+    if (!traitees.has(question)) {
+      manque("question non traitée : absente des réponses comme des questions sans réponse", {
+        question,
+      });
+    }
+  }
+
+  // Aucun stage ne collecte de données avant ces analyses : contrairement au plan de prix,
+  // les voix n'ont ni relevé ni statistiques, seulement la demande. Un chiffre sorti d'un
+  // modèle dans ces conditions est une invention plausible, et c'est la faute qui avait
+  // produit une médiane fausse d'un dollar sur le pipeline de prix.
+  //
+  // D'où la règle : tout constat qui avance un chiffre dit d'où il vient, dans `base`.
+  // « hypothèse à vérifier » est une base parfaitement valable ; l'absence de base ne
+  // l'est pas, parce qu'elle laisse un chiffre inventé se lire comme un chiffre mesuré.
+  for (const [id, fichier] of constats) {
+    const constat = constatsParId.get(id);
+    const texte = `${constat.constat || ""} ${constat.implication || ""}`;
+    if (/\d/.test(texte) && !String(constat.base || "").trim()) {
+      manque(`constat "${id}" de ${fichier} avance un chiffre sans dire d'où il vient (champ "base")`);
+    }
+  }
+
+  const citees = new Set();
+  for (const reponse of reponses) {
+    const sources = reponse.sources || [];
+    if (sources.length === 0) {
+      manque("réponse sans aucun constat cité", { question: reponse.question });
+    }
+    for (const id of sources) {
+      if (!constats.has(id)) {
+        manque(`constat cité "${id}" absent des analyses`, { question: reponse.question });
+      } else {
+        citees.add(id);
+      }
+    }
+  }
+
+  // Un constat écarté sans raison est un constat lissé derrière une formalité.
+  const ecartes = new Map();
+  for (const ecarte of rapport.constats_ecartes || []) {
+    if (!constats.has(ecarte.id)) {
+      manque(`constat écarté "${ecarte.id}" absent des analyses`);
+    } else if (!String(ecarte.raison || "").trim()) {
+      manque(`constat "${ecarte.id}" écarté sans raison`);
+    } else {
+      ecartes.set(ecarte.id, ecarte.raison);
+    }
+  }
+  for (const [id, fichier] of constats) {
+    if (!citees.has(id) && !ecartes.has(id)) {
+      manque(`constat "${id}" de ${fichier} ni cité ni écarté : la synthèse l'a fait disparaître`);
+    }
+  }
+
+  // Les ids d'action sont la clé du registre d'approbation. Deux actions sous le même id
+  // rendraient toute décision ambiguë, et une action sans id n'aurait pas de clé du tout.
+  const vus = new Set();
+  for (const action of rapport.actions || []) {
+    if (!action.id) {
+      manque("action sans id : le registre d'approbation n'aurait pas de clé");
+    } else if (vus.has(action.id)) {
+      manque(`deux actions sous le même id "${action.id}"`);
+    } else {
+      vus.add(action.id);
+    }
+  }
+
+  return {
+    verdict: manques.length === 0 ? "COMPLETE" : "INCOMPLETE",
+    questions_attendues: ctx.spec[stage.questions_from].length,
+    constats_disponibles: constats.size,
+    constats_cites: citees.size,
+    constats_ecartes: ecartes.size,
+    actions: (rapport.actions || []).length,
+    manques,
+  };
+}
+
+handlers["verify-couverture"] = async (stage, ctx) => {
+  const verdict = verifierCouverture(stage, ctx);
+  fs.writeFileSync(
+    path.join(ctx.workspaceDir, stage.output),
+    JSON.stringify(verdict, null, 2)
+  );
+  ctx.reporter.event("verify-couverture:done", {
+    stage: stage.id,
+    verdict: verdict.verdict,
+    manques: verdict.manques.length,
+  });
+};
+
+// Le type de stage `consigne` : ramène la réponse libre de l'opérateur dans le workspace,
+// au début du tour qui doit en tenir compte.
+//
+// La réponse vit dans le registre des décisions, hors du workspace, liée à l'empreinte du
+// plan gelé qu'elle commente. C'est là qu'il faut la lire : le workspace est vidé à chaque
+// exécution, et une consigne déposée dedans par le tour précédent était effacée avant
+// d'avoir été lue.
+//
+// Le juge est celui du stage d'approbation, `approval.evaluate`, rejoué sur le plan gelé.
+// Ses règles s'appliquent donc sans copie : une réponse blanche n'est pas une consigne, et
+// un registre qui porte sur un autre plan ne vaut rien.
+//
+// La consigne expire d'elle-même. Dès que ce tour gèle un nouveau plan, l'empreinte change,
+// le registre devient périmé, et le tour suivant ne la réinjecte plus. Si ce tour échoue
+// avant de geler quoi que ce soit, rien n'a bougé : la consigne reste valable pour la
+// relance, et ce que l'opérateur a écrit n'est pas perdu.
+handlers.consigne = async (stage, ctx) => {
+  // Un stage qui ne lit pas les fichiers qu'écrit l'approbation ne trouverait jamais rien,
+  // et chaque tour repartirait sans consigne sans que rien ne le signale. On le refuse
+  // avant de payer le moindre agent.
+  const approbations = ((ctx.pipeline && ctx.pipeline.stages) || []).filter(
+    (s) => s.type === "approval"
+  );
+  for (const a of approbations) {
+    if (a.decisions !== stage.decisions || a.plan_gele !== stage.plan_gele) {
+      throw new Error(
+        `Stage "${stage.id}" : lit ${stage.decisions} et ${stage.plan_gele}, mais le stage ` +
+          `d'approbation "${a.id}" écrit ${a.decisions} et ${a.plan_gele}. ` +
+          `La consigne ne serait jamais retrouvée.`
+      );
+    }
+  }
+
+  const dir = path.resolve(ctx.approvalsDir || ".");
+  const planGele = path.join(dir, stage.plan_gele);
+  const ecrire = (contenu) =>
+    fs.writeFileSync(path.join(ctx.workspaceDir, stage.output), JSON.stringify(contenu, null, 2));
+
+  const gele = durable.lireJson(planGele);
+  if (!gele) {
+    ecrire({ consigne: null, raison: "aucun plan gelé : premier tour" });
+    ctx.reporter.event("consigne:aucune", { stage: stage.id });
+    return;
+  }
+
+  const registre = durable.lireJson(path.join(dir, stage.decisions));
+  const etat = approval.evaluate({ actions: gele.actions || [], decisions: registre, auto: [] });
+
+  if (etat.verdict === "ORIENTE") {
+    ecrire({ consigne: etat.orientation, empreinte: etat.empreinte });
+    ctx.reporter.event("consigne:reprise", {
+      stage: stage.id,
+      empreinte: etat.empreinte,
+      caracteres: etat.orientation.length,
+    });
+    return;
+  }
+
+  // Relancer maintenant produirait un plan neuf, donc une empreinte neuve, et effacerait en
+  // silence ce qui a été tranché ou ce qui attend de l'être. C'est la règle que portait le
+  // cycle, « on ne replanifie jamais pendant qu'une décision est en cours », ramenée ici
+  // parce qu'aucun cycle ne pilote ce pipeline.
+  if (etat.verdict === "APPROUVE") {
+    throw new Error(
+      `Stage "${stage.id}" : le plan gelé ${etat.empreinte} est entièrement tranché. ` +
+        `Rien à refaire : c'est lui que la suite consomme. ` +
+        `Pour repartir de zéro malgré tout, supprimer ${planGele}.`
+    );
+  }
+  throw new Error(
+    `Stage "${stage.id}" : le plan gelé ${etat.empreinte} attend une décision` +
+      (etat.perimee ? " (le registre porte sur un plan plus ancien)" : "") +
+      `. Décider dans le cockpit, ou y écrire une consigne, avant de relancer. ` +
+      `Pour abandonner ce plan, supprimer ${planGele}.`
+  );
+};
+
 function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
@@ -403,6 +606,43 @@ handlers.approval = async (stage, ctx) => {
       `Stage "${stage.id}" : le plan a changé depuis la décision : ` +
         `approuvé pour "${etat.perimee.trouve}", proposé maintenant "${etat.perimee.attendu}". ` +
         `Aucune action n'est exécutable. Relire le nouveau plan et redécider dans ${registrePath}.`
+    );
+  }
+
+  // L'opérateur a répondu en texte libre plutôt que par oui ou non. Le plan repart au
+  // travail avec sa consigne, et rien ne s'exécute : `executables` est vide côté juge.
+  //
+  // Ce bloc doit passer AVANT celui des actions en attente. La liste `en_attente` est
+  // remplie indépendamment du verdict, donc laisser l'autre bloc parler en premier
+  // lèverait son exception et la consigne ne serait jamais déposée.
+  //
+  // La consigne n'a pas besoin d'être effacée du registre : elle porte sur CE plan-là.
+  // Dès que le planificateur en produit un autre, l'empreinte change, le registre
+  // devient périmé et le juge annule l'orientation. Elle expire donc d'elle-même, par
+  // le même mécanisme qui protège les approbations.
+  if (etat.verdict === "ORIENTE") {
+    const cible = stage.orientation || "orientation.json";
+    durable.ecrireJson(path.join(ctx.workspaceDir, cible), {
+      empreinte: etat.empreinte,
+      recue_le: new Date(maintenant(ctx)).toISOString(),
+      consigne: etat.orientation,
+    });
+    ctx.reporter.event("approval:oriente", {
+      stage: stage.id,
+      empreinte: etat.empreinte,
+      caracteres: etat.orientation.length,
+    });
+
+    // La demande sort de la boîte : quelqu'un a répondu, elle n'attend plus personne.
+    // L'y laisser ferait afficher au cockpit une décision déjà prise, et c'est la
+    // meilleure façon de faire ignorer les vraies.
+    if (stage.dossier) majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
+
+    throw new Error(
+      `Stage "${stage.id}" : réponse libre reçue, le plan "${etat.empreinte}" repart au travail.\n` +
+        `Consigne : ${etat.orientation}\n` +
+        `Déposée dans ${cible}. Aucune action n'est exécutée, y compris les automatiques. ` +
+        `Replanifier en tenant compte de cette consigne.`
     );
   }
 
@@ -707,6 +947,35 @@ const validators = {
   verify: (stage, fail) => {
     for (const champ of ["report", "against", "questions_from", "owner", "output"]) {
       if (!stage[champ]) fail(`type "verify" sans "${champ}"`);
+    }
+  },
+
+  consigne: (stage, fail) => {
+    for (const champ of ["decisions", "plan_gele", "output"]) {
+      if (!stage[champ]) fail(`type "consigne" sans "${champ}"`);
+    }
+    if (stage.gate) {
+      fail(
+        'un stage "consigne" ne porte pas de gate : il ne produit aucun travail à juger, ' +
+          "il relit une décision humaine, et router son résultat à un agent lui donnerait " +
+          "un moyen de la renégocier"
+      );
+    }
+  },
+
+  "verify-couverture": (stage, fail) => {
+    for (const champ of ["report", "questions_from", "owner", "output"]) {
+      if (!stage[champ]) fail(`type "verify-couverture" sans "${champ}"`);
+    }
+    // `against` porte les analyses dont les constats forment l'univers du contrôle. Une
+    // chaîne au lieu d'un tableau serait parcourue caractère par caractère : l'univers
+    // serait vide, et le contrôle passerait au vert sans rien avoir vérifié.
+    if (
+      !Array.isArray(stage.against) ||
+      stage.against.length === 0 ||
+      stage.against.some((f) => typeof f !== "string")
+    ) {
+      fail('type "verify-couverture" : "against" doit être un tableau non vide de fichiers');
     }
   },
 

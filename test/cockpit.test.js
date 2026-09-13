@@ -173,6 +173,71 @@ test("le maximum de fraîcheur est lu dans le pipeline, pas recopié", () => {
   assert.strictEqual(cockpit.maxAgeDuPipeline(null, "appliquer"), null);
 });
 
+test("une réponse libre s'écrit seule, signée et datée, sans aucune décision", () => {
+  const { dir, registre } = bac();
+  const r = cockpit.enregistrer({
+    approvalsDir: dir,
+    dossier: "ajustement-prix",
+    empreinte: "abc123",
+    par: "raphael",
+    canal: "tailnet",
+    decisions: [],
+    reponse: "  Reprends l'angle prix.  ",
+    maintenant: T0,
+  });
+  assert.strictEqual(r.reponse, "Reprends l'angle prix.");
+  assert.strictEqual(r.reponse_par, "raphael");
+  assert.strictEqual(r.reponse_le, "2026-08-19T12:00:00.000Z");
+  assert.strictEqual(r.reponse_canal, "tailnet");
+  assert.deepStrictEqual(r.decisions, []);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(registre, "utf-8")), r);
+});
+
+test("une réponse blanche seule est refusée : rien ne repartirait", () => {
+  const { dir } = bac();
+  assert.throws(
+    () =>
+      cockpit.enregistrer({
+        approvalsDir: dir,
+        dossier: "ajustement-prix",
+        empreinte: "abc123",
+        par: "raphael",
+        decisions: [],
+        reponse: "   \n ",
+        maintenant: T0,
+      }),
+    cockpit.Refus
+  );
+});
+
+test("une réponse libre reste liée à son empreinte et exige une signature", () => {
+  const { dir } = bac();
+  const commun = { approvalsDir: dir, dossier: "ajustement-prix", decisions: [], reponse: "vas-y", maintenant: T0 };
+  assert.throws(() => cockpit.enregistrer({ ...commun, empreinte: "autre", par: "raphael" }), cockpit.Refus);
+  assert.throws(() => cockpit.enregistrer({ ...commun, empreinte: "abc123", par: "  " }), cockpit.Refus);
+});
+
+test("l'état montre une réponse déjà déposée pour éviter de répondre deux fois", () => {
+  const { dir } = bac({
+    decisions: {
+      plan: "abc123",
+      decisions: [],
+      reponse: "Reprends l'angle prix.",
+      reponse_par: "raphael",
+      reponse_le: "2026-08-19T12:00:00.000Z",
+    },
+  });
+  const [d] = cockpit.etat({ approvalsDir: dir, maintenant: Date.parse(T0) }).dossiers;
+  assert.strictEqual(d.reponse_posee.consigne, "Reprends l'angle prix.");
+  assert.strictEqual(d.reponse_posee.par, "raphael");
+});
+
+test("une réponse posée sur un autre plan n'est pas montrée comme posée", () => {
+  const { dir } = bac({ decisions: { plan: "un-autre-plan", decisions: [], reponse: "vas-y" } });
+  const [d] = cockpit.etat({ approvalsDir: dir, maintenant: Date.parse(T0) }).dossiers;
+  assert.strictEqual(d.reponse_posee, null);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

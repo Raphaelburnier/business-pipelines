@@ -1,0 +1,424 @@
+<title>Marketing vers Déploiement</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    --ground: #F6F7F5;
+    --surface: #FFFFFF;
+    --surface-sunk: #EDEFEB;
+    --ink: #151E1C;
+    --muted: #5D6B67;
+    --line: #D8DCD6;
+    --auto: #0F6B62;
+    --human: #9A5B0C;
+    --rail: #9C3A33;
+    --done: #4A6B3F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1513;
+      --surface: #17201D;
+      --surface-sunk: #121A18;
+      --ink: #E7EEEA;
+      --muted: #94A49E;
+      --line: #2A3632;
+      --auto: #55CFBD;
+      --human: #E2A455;
+      --rail: #E38C83;
+      --done: #9BC08A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1513;
+    --surface: #17201D;
+    --surface-sunk: #121A18;
+    --ink: #E7EEEA;
+    --muted: #94A49E;
+    --line: #2A3632;
+    --auto: #55CFBD;
+    --human: #E2A455;
+    --rail: #E38C83;
+    --done: #9BC08A;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.62;
+    padding-block: 3rem 5rem;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .wrap { max-width: 50rem; margin: 0 auto; display: flex; flex-direction: column; gap: 3rem; }
+
+  h1, h2, h3, .label {
+    font-family: "Bricolage Grotesque", "Segoe UI", sans-serif;
+    text-wrap: balance;
+  }
+  h1 { font-size: clamp(2.1rem, 6vw, 3.1rem); font-weight: 800; line-height: 1.06; letter-spacing: -0.02em; margin: 0; }
+  h2 { font-size: 1.45rem; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  h3 { font-size: 1.03rem; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+  .label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em;
+    font-weight: 600; color: var(--muted);
+  }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.86em; }
+  code { background: var(--surface-sunk); padding: 0.1em 0.36em; border-radius: 3px; }
+
+  header { display: flex; flex-direction: column; gap: 1rem; }
+  header p.lede { font-size: 1.12rem; color: var(--muted); max-width: 40rem; }
+
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+  .head { display: flex; flex-direction: column; gap: 0.3rem; border-bottom: 2px solid var(--ink); padding-bottom: 0.6rem; }
+
+  .stack { display: flex; flex-direction: column; gap: 1rem; }
+  .prose { display: flex; flex-direction: column; gap: 0.85rem; max-width: 42rem; }
+
+  .decisions { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .decision { background: var(--surface); padding: 1rem 1.15rem; display: flex; flex-direction: column; gap: 0.3rem; }
+  .decision .what { font-weight: 600; font-family: "Bricolage Grotesque", sans-serif; }
+  .decision .why { color: var(--muted); font-size: 0.94rem; }
+
+  .phases { display: flex; flex-direction: column; gap: 0; }
+  .phase {
+    display: grid; grid-template-columns: 2.6rem 1fr; gap: 0 1.1rem;
+    padding: 1.3rem 0; border-top: 1px solid var(--line);
+  }
+  .phase:last-child { border-bottom: 1px solid var(--line); }
+  .num {
+    font-family: "JetBrains Mono", monospace; font-size: 0.95rem; font-weight: 600;
+    color: var(--auto); padding-top: 0.15rem; font-variant-numeric: tabular-nums;
+  }
+  .phase .body { display: flex; flex-direction: column; gap: 0.55rem; }
+  .phase ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
+  .phase li { color: var(--muted); }
+  .phase li strong { color: var(--ink); font-weight: 600; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+  th, td { text-align: left; padding: 0.62rem 0.85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: "Bricolage Grotesque", sans-serif; font-weight: 600;
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.n { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .pill {
+    display: inline-block; font-family: "Bricolage Grotesque", sans-serif;
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 0.16em 0.5em; border-radius: 2px; white-space: nowrap;
+  }
+  .p-human { color: var(--human); border: 1px solid var(--human); }
+  .p-auto  { color: var(--auto);  border: 1px solid var(--auto); }
+  .p-agent { color: var(--ink);   border: 1px solid var(--line); background: var(--surface-sunk); }
+
+  .flow { display: flex; flex-direction: column; gap: 0.4rem; }
+  .step {
+    display: flex; gap: 0.7rem; align-items: baseline;
+    padding: 0.55rem 0.8rem; background: var(--surface); border-left: 3px solid var(--line);
+  }
+  .step.human { border-left-color: var(--human); }
+  .step.agent { border-left-color: var(--auto); }
+  .step .n2 { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--muted); }
+  .step .txt { flex: 1; }
+  .step .txt small { display: block; color: var(--muted); font-size: 0.87rem; }
+
+  .have { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .have div { background: var(--surface); padding: 0.8rem 0.95rem; display: flex; flex-direction: column; gap: 0.2rem; }
+  .have .f { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; color: var(--auto); }
+  .have .d { font-size: 0.9rem; color: var(--muted); }
+
+  .open { border: 1px solid var(--rail); background: var(--surface); padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: 0.7rem; }
+  .open h3 { color: var(--rail); }
+  .open ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.45rem; }
+
+  footer { border-top: 1px solid var(--line); padding-top: 1.1rem; color: var(--muted); font-size: 0.88rem; }
+  a { color: var(--auto); }
+  @media (max-width: 560px) {
+    .phase { grid-template-columns: 1fr; gap: 0.4rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <span class="label">Plan de construction · 11 septembre 2026</span>
+    <h1>Marketing vers déploiement</h1>
+    <p class="lede">Deux pipelines agentiques bâties sur le moteur que tu as déjà écrit. Un orchestrateur Opus 5 en accès direct, des agents qui échangent des artefacts plutôt que des conversations, et toi au bout de chaque décision qui engage.</p>
+  </header>
+
+  <section>
+    <div class="head">
+      <span class="label">Ce qui est tranché</span>
+      <h2>Les six décisions</h2>
+    </div>
+    <div class="decisions">
+      <div class="decision">
+        <span class="what">Orchestrateur sur Opus 5, clé API Anthropic directe</span>
+        <span class="why">Pas via Devin, Auggie ni Cline. Sur les cinq candidats testés, un seul répondait, et tous passaient par l'abonnement relayé d'un outil tiers. L'accès direct supprime cette catégorie de pannes. Le choix reste une valeur de configuration, changeable sans toucher au code.</span>
+      </div>
+      <div class="decision">
+        <span class="what">Cybersécurité et devops en code déterministe</span>
+        <span class="why">Des fichiers de test pour commencer, pas des agents. Un agent qui déploie est un risque que rien ne justifie, et un scanner ne hallucine pas de faille.</span>
+      </div>
+      <div class="decision">
+        <span class="what">Le garde-fou escalade, il ne tue pas l'exécution</span>
+        <span class="why">Quand le brainstorming n'avance plus, la main te revient dans le cockpit avec une réponse libre. Le travail déjà payé est conservé.</span>
+      </div>
+      <div class="decision">
+        <span class="what">Les agents échangent des artefacts, pas des transcriptions</span>
+        <span class="why">Chaque sortie est un fichier validé par schéma. Une conversation retransportée à chaque tour fait croître le coût au carré du nombre de tours.</span>
+      </div>
+      <div class="decision">
+        <span class="what">Toute boucle bidirectionnelle est bornée</span>
+        <span class="why">Code et review peuvent se renvoyer la balle indéfiniment. Le compteur de cycles de correction existe déjà dans ton moteur.</span>
+      </div>
+      <div class="decision">
+        <span class="what">Le pipeline marketing se construit en premier</span>
+        <span class="why">Deux agents, une validation humaine, aucun système touché. Il te dira si le modèle de discussion tient avant d'y brancher du code et du déploiement.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Inventaire</span>
+      <h2>Ce que ton moteur sait déjà faire</h2>
+    </div>
+    <div class="prose">
+      <p>La quasi-totalité de l'infrastructure existe dans <code>agent-orchestrator</code>. Ne la réécris pas.</p>
+    </div>
+    <div class="have">
+      <div><span class="f">stage-executor.js</span><span class="d">Étapes séquentielles ou parallèles, agents groupés par étape</span></div>
+      <div><span class="f">agent-runner.js</span><span class="d">Un processus SDK isolé par agent</span></div>
+      <div><span class="f">backends.js</span><span class="d">Backend choisi agent par agent, via variables d'environnement</span></div>
+      <div><span class="f">budget-tracker.js</span><span class="d">Plafonds en dollars, en tours totaux et en tours par agent</span></div>
+      <div><span class="f">gate-evaluator.js</span><span class="d">Verdicts déclarés, échec explicite sur verdict inconnu</span></div>
+      <div><span class="f">artifact-validator.js</span><span class="d">Validation des sorties contre leur schéma</span></div>
+      <div><span class="f">workspace.js</span><span class="d">Cloisonnement par agent, répertoire et clés interdites</span></div>
+      <div><span class="f">cockpit.js, approval.js</span><span class="d">Interface de validation humaine, côté business-pipelines</span></div>
+      <div><span class="f">cycle.js, bin/cycle.js</span><span class="d">Le pilote de boucle : un réveil cron lit l'état, choisit une seule action, la fait, rend compte</span></div>
+      <div><span class="f">backends.json</span><span class="d">Trois backends déjà déclarés, dont un pointant sur OmniRoute</span></div>
+    </div>
+    <div class="prose">
+      <p>Le pilote de boucle mérite qu'on s'y arrête. Sa logique de décision vit dans <code>src/cycle.js</code>, se teste sans rien lancer, et sait ne rien faire : elle ne planifie que lorsque rien n'attend, ne traite qu'un dossier par réveil, et impose un délai de retenue après une planification stérile. C'est la bonne forme pour une boucle continue, meilleure qu'un démon, parce qu'elle se gare d'elle-même aux portes humaines et survit à un redémarrage.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Pipeline 1</span>
+      <h2>Marketing, du cadrage au plan validé</h2>
+    </div>
+    <div class="flow">
+      <div class="step agent"><span class="n2">01</span><span class="txt"><strong>Cadrage</strong> <small>L'orchestrateur lit ta demande et produit un brief typé : marché visé, questions à trancher, budget accordé.</small></span></div>
+      <div class="step agent"><span class="n2">02</span><span class="txt"><strong>Analyse parallèle</strong> <small>Trois agents travaillent en même temps sur le même brief, chacun produisant son propre artefact : économie, finance, image de marque.</small></span></div>
+      <div class="step agent"><span class="n2">03</span><span class="txt"><strong>Synthèse</strong> <small>L'orchestrateur fusionne les trois artefacts en un plan unique et signale les contradictions au lieu de les lisser.</small></span></div>
+      <div class="step"><span class="n2">04</span><span class="txt"><strong>Garde-fou</strong> <small>Un juge rend un verdict déclaré. Si le plan est incomplet ou contradictoire, un cycle de correction, puis escalade.</small></span></div>
+      <div class="step human"><span class="n2">05</span><span class="txt"><strong>Validation dans le cockpit</strong> <small>Tu vois le plan, les contradictions relevées et la position de chaque agent. Tu approuves, tu refuses, ou tu écris une réponse libre qui devient une entrée du tour suivant.</small></span></div>
+    </div>
+    <div class="prose">
+      <p>Le plan validé est un artefact. C'est lui, et rien d'autre, que le pipeline de développement consommera.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Pipeline 2</span>
+      <h2>Développement, du plan au déploiement</h2>
+    </div>
+    <div class="flow">
+      <div class="step agent"><span class="n2">01</span><span class="txt"><strong>Découpage</strong> <small>L'orchestrateur transforme le plan validé en lots de travail, chacun avec son périmètre de fichiers et son critère de fin.</small></span></div>
+      <div class="step agent"><span class="n2">02</span><span class="txt"><strong>Code et review, deux cycles maximum</strong> <small>L'agent de code produit, l'agent de review rend un verdict déclaré. Deux allers-retours, pas plus. Au troisième, escalade.</small></span></div>
+      <div class="step"><span class="n2">03</span><span class="txt"><strong>Tests de sécurité</strong> <small>Fichiers de test déterministes. Aucun agent. Ils passent ou ils échouent.</small></span></div>
+      <div class="step human"><span class="n2">04</span><span class="txt"><strong>Approbation de déploiement</strong> <small>Rien ne part sans ton accord explicite dans le cockpit.</small></span></div>
+      <div class="step"><span class="n2">05</span><span class="txt"><strong>Déploiement</strong> <small>Ton script existant, lancé par une étape déterministe. L'orchestrateur ne touche pas aux droits de déploiement.</small></span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Affectation</span>
+      <h2>Quel modèle pour quel agent</h2>
+    </div>
+    <div class="prose">
+      <p>Le backend et l'effort de raisonnement se choisissent agent par agent, dans le frontmatter de chaque définition. Paie là où une erreur se propage, économise là où elle se rattrape au tour suivant.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Agent</th><th>Modèle visé</th><th>Effort</th><th>Pourquoi</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Orchestrateur</td><td class="n">Opus 5, puis GPT 5.6</td><td class="n">high</td><td>Ses décisions se propagent à tous les autres. La traduction vers GPT n'ajoute aucun token, seulement un risque de fidélité sur les appels d'outils. Bascule quand tu veux, mesure sur une exécution réelle.</td></tr>
+          <tr><td>Review de code</td><td class="n">Opus 5 ou 4.8</td><td class="n">xhigh</td><td>Une review qui laisse passer un défaut coûte plus cher que le tour de code qu'elle valide. C'est là que la profondeur paie le plus.</td></tr>
+          <tr><td>Juge de garde-fou</td><td class="n">Opus 5</td><td class="n">high</td><td>Il décide quand t'interrompre. Un juge peu fiable escalade trop ou pas assez.</td></tr>
+          <tr><td>Agent de code</td><td class="n">Opus 5 ou 4.8</td><td class="n">high</td><td>Chemin natif : le SDK parle la forme Anthropic, aucune traduction.</td></tr>
+          <tr><td>Marketing, voix A</td><td class="n">Sonnet 5</td><td class="n">high</td><td>Le mélange de familles est ici un atout : deux cadrages réellement différents, pas deux reformulations du même.</td></tr>
+          <tr><td>Marketing, voix B</td><td class="n">GPT 5.6</td><td class="n">high</td><td>Chaque voix produit son propre artefact. La synthèse compare, elle ne fusionne pas à l'aveugle.</td></tr>
+          <tr><td>Synthèse et résumés</td><td class="n">agentic-loop</td><td class="n">medium</td><td>Reformulation sur des artefacts déjà produits.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Raisonnement</span>
+      <h2>L'effort remplace le mot-clé</h2>
+    </div>
+    <div class="prose">
+      <p><code>ultrathink</code> est une fonction du client Claude Code, pas une instruction que les modèles comprennent. Le binaire teste le mot par expression régulière, injecte une consigne et fixe un budget de réflexion. Écrit dans un prompt envoyé à travers la passerelle, ce n'est que du texte.</p>
+      <p>Le mécanisme équivalent, et qui marche sur toutes les familles, est le suffixe d'effort dans le nom du modèle. OmniRoute le traduit ensuite vers les blocs de réflexion Anthropic, le <code>reasoning_effort</code> d'OpenAI ou le <code>thinkingConfig</code> de Gemini. Cinq valeurs : <code>none</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Appel</th><th>Tokens de raisonnement</th><th>Sortie</th><th>Durée</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">codex/gpt-5.6-luna-low</td><td class="n">0</td><td class="n">124</td><td class="n">3,7 s</td></tr>
+          <tr><td class="mono">codex/gpt-5.6-luna-xhigh</td><td class="n">136</td><td class="n">242</td><td class="n">6,4 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p>Même énigme, même modèle, même passerelle. Le suffixe est le seul levier qui change réellement quelque chose, et il se mesure. À noter : <code>agent-runner.js</code> ne transmet aujourd'hui aucune configuration de réflexion au SDK, donc le suffixe dans le nom du modèle est ta seule prise.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Repli</span>
+      <h2>Dégrader dans une bande, pas dans le vide</h2>
+    </div>
+    <div class="prose">
+      <p>Avec une clé API directe il n'y a plus de quota à épuiser, la facturation est à l'usage. Le repli ne sert donc plus contre l'épuisement mais contre les limites de débit et les pannes.</p>
+      <p>Ça change la cascade à construire. Faire retomber un agent de code d'Opus 5 vers un modèle gratuit de huit milliards de paramètres n'est pas une dégradation gracieuse : c'est produire un travail que ta review rejettera, en ayant payé les deux tours. Pour les agents techniques, la chaîne reste dans une bande utilisable, Opus puis Sonnet, et s'arrête en escaladant vers toi plutôt que de continuer à vide.</p>
+      <p>Pour les agents marketing et la synthèse, la chute vers <code>agentic-loop</code> reste acceptable. Une analyse moins fine se rattrape à la comparaison des artefacts.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Construction</span>
+      <h2>Dans quel ordre bâtir</h2>
+    </div>
+    <div class="phases">
+      <div class="phase">
+        <span class="num">01</span>
+        <div class="body">
+          <h3>Brancher l'accès direct Anthropic</h3>
+          <ul>
+            <li>Créer une clé sur la console Anthropic, puis la coller dans OmniRoute, page <code>/dashboard/providers</code>, fournisseur <code>anthropic</code>. C'est ce placement qui te donne la cascade de repli, et les journaux d'appels qui servent à diagnostiquer.</li>
+            <li>Ajouter un backend <code>opus-direct</code> dans <code>~/.config/agent-orchestrator/backends.json</code>, sur le modèle du backend <code>omniroute</code> déjà présent, en résolvant les étiquettes du SDK vers de vrais modèles via <code>ANTHROPIC_DEFAULT_OPUS_MODEL</code>. Ne pas y mettre <code>_billed: "false"</code>, celui-ci facture.</li>
+            <li>Garder un second backend qui court-circuite la passerelle, avec <code>ANTHROPIC_API_KEY</code> en direct. La passerelle devient sinon un point unique de panne sur ton chemin payant.</li>
+            <li>Vérifier par un appel réel avant d'aller plus loin. Le catalogue ment, seule une requête fait foi.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="phase">
+        <span class="num">02</span>
+        <div class="body">
+          <h3>Ouvrir l'escalade dans le cockpit</h3>
+          <ul>
+            <li>Étendre <code>approval.js</code> pour accepter une <strong>réponse libre</strong> en plus de approuver et refuser.</li>
+            <li>Écrire cette réponse comme un artefact typé, pas comme un message collé dans une conversation. Le tour suivant la lit comme une entrée normale.</li>
+            <li>Afficher dans le cockpit <strong>pourquoi ça bloque</strong> : le verdict du juge, le point de désaccord, la dernière proposition de chaque agent. Sans ça tu arbitres à l'aveugle.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="phase">
+        <span class="num">03</span>
+        <div class="body">
+          <h3>Exposer la reprise d'exécution</h3>
+          <ul>
+            <li>Le moteur commite déjà chaque étape en git au fil de l'eau, via <code>vcs.commitStage</code>. Le travail terminé est donc persisté, et le merge final ne part qu'une fois toutes les portes vertes.</li>
+            <li>Ce qui manque est un drapeau <strong><code>--resume</code></strong> sur <code>bin/orch.js</code>, qui saute les étapes déjà commitées au lieu de les rejouer.</li>
+            <li>C'est la vraie réponse à l'épuisement de quota : une exécution interrompue redémarre au retour des crédits, là où elle s'est arrêtée, sans repayer ce qui est fait. Bien meilleur que de découper les tours à l'avance.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="phase">
+        <span class="num">04</span>
+        <div class="body">
+          <h3>Le pipeline marketing, en version minimale</h3>
+          <ul>
+            <li>Deux agents seulement pour commencer, pas quatre. Économie et image de marque suffisent à valider le mécanisme.</li>
+            <li>Un schéma de sortie strict par agent. C'est ce qui empêche la dérive vers la conversation.</li>
+            <li>Budget serré sur la première exécution. Tu le relâcheras une fois le coût réel mesuré.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="phase">
+        <span class="num">05</span>
+        <div class="body">
+          <h3>Le pipeline développement</h3>
+          <ul>
+            <li>Consommer le plan validé comme entrée, jamais une demande libre.</li>
+            <li>Boucle code et review bornée à <strong>deux cycles</strong>, escalade au troisième.</li>
+            <li>Chaque agent de code confiné à son périmètre de fichiers, via le cloisonnement déjà présent dans le moteur.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="phase">
+        <span class="num">06</span>
+        <div class="body">
+          <h3>Sécurité et déploiement</h3>
+          <ul>
+            <li>Des tests déterministes d'abord. Garde en tête que des tests qui passent ne disent pas que c'est sûr, ils disent que le comportement attendu est là.</li>
+            <li>Le déploiement reste ton script, lancé par une étape déterministe, derrière ton approbation.</li>
+            <li>Brancher un vrai scanner plus tard, quand le reste tourne.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">Mesures</span>
+      <h2>Les chiffres qui contraignent le design</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Mesure</th><th>Valeur</th><th>Conséquence</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Coût d'un tour simple</td><td class="n">1 219 tokens</td><td>Une centaine de tours par exécution est un ordre de grandeur réaliste.</td></tr>
+          <tr><td>Tenue de l'étage gratuit</td><td class="n">35 appels</td><td>Gemma se dégrade ensuite. La chaîne gratuite ne porte pas un pipeline complet seule.</td></tr>
+          <tr><td>Reprise par le repli</td><td class="n">60 sur 60</td><td>Aucun tour perdu malgré 38 pannes d'étage. La cascade fait son travail.</td></tr>
+          <tr><td>Plafond Groq gratuit</td><td class="n">8 000 t/min</td><td>Inutilisable pour de gros prompts. À écarter des agents chargés.</td></tr>
+          <tr><td>Seuil de compression</td><td class="n">60 000 tokens</td><td>Ne se déclenche jamais à cette échelle. Seul Session Dedup servirait.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <span class="label">À trancher</span>
+      <h2>Ce qui reste ouvert</h2>
+    </div>
+    <div class="open">
+      <h3>Trois points bloquants ou en attente</h3>
+      <ol>
+        <li><strong>La clé API Anthropic.</strong> Je ne peux pas la créer à ta place. Donne-la-moi ou ajoute-la dans OmniRoute, et je vérifie l'accès direct dans la foulée.</li>
+        <li><strong>La portée de suppression des anciennes pipelines.</strong> Les trois fichiers seuls laissent quatre scripts npm, une entrée docker-compose et quatre fichiers de test cassés. Dis-moi si tu veux le ménage complet.</li>
+        <li><strong>GPT-6 Astra.</strong> Introuvable sur les 799 modèles de ton catalogue, et je n'en ai aucune connaissance. Dis-moi où tu l'as vu.</li>
+        <li><strong>Sonnet 5 n'est pas joignable aujourd'hui.</strong> Il n'existe au catalogue qu'à travers Kilocode, dont le compte réclame des crédits. La clé Anthropic directe le débloque en même temps qu'Opus.</li>
+        <li><strong>L'orchestrateur sous GPT reste à mesurer.</strong> Le moteur tourne sur le SDK Anthropic, donc un modèle GPT y arrive par traduction. Compare-le à Opus sur une exécution réelle avant de basculer, pas sur une intuition.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    Plan établi à partir du code de <span class="mono">agent-orchestrator</span> et <span class="mono">business-pipelines</span>, et des mesures relevées sur la passerelle OmniRoute les 10 et 11 septembre 2026.
+  </footer>
+
+</div>

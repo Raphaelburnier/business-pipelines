@@ -40,6 +40,19 @@ function evaluate({ actions, decisions, auto }) {
       ? { attendu: empreinte, trouve: registre.plan }
       : null;
 
+  // Réponse libre de l'opérateur : la sortie de secours quand le garde-fou s'active et
+  // qu'aucune des deux réponses binaires ne convient. Elle ne décide d'aucune action,
+  // elle renvoie le plan au travail avec une consigne.
+  //
+  // Une chaîne vide ou blanche n'est PAS une orientation : sans texte exploitable il n'y
+  // a rien à transmettre au tour suivant, et laisser passer produirait une relance à
+  // consigne vide, c'est-à-dire une boucle. Même raisonnement que la décision mal
+  // orthographiée : ce qui n'est pas exploitable retombe dans l'état d'attente.
+  const orientation =
+    !perimee && typeof registre.reponse === "string" && registre.reponse.trim() !== ""
+      ? registre.reponse.trim()
+      : null;
+
   const automatiques = [];
   const approuvees = [];
   const refusees = [];
@@ -71,13 +84,33 @@ function evaluate({ actions, decisions, auto }) {
     .filter((d) => !actions.some((a) => a.id === d.action_id))
     .map((d) => d.action_id);
 
+  // Ordre des cas, et c'est le fond du module :
+  //   1. un registre périmé invalide tout, y compris une réponse libre — elle portait
+  //      sur un plan que plus personne ne lit ;
+  //   2. une orientation prime sur l'attente ET sur l'approbation : l'opérateur a
+  //      répondu, donc on ne l'attend plus, et il a demandé autre chose, donc on
+  //      n'exécute pas ce qui était sur la table ;
+  //   3. le reste ne change pas.
+  const verdict = perimee
+    ? "EN_ATTENTE"
+    : orientation
+      ? "ORIENTE"
+      : en_attente.length > 0
+        ? "EN_ATTENTE"
+        : "APPROUVE";
+
   return {
     empreinte,
     perimee,
-    verdict: perimee || en_attente.length > 0 ? "EN_ATTENTE" : "APPROUVE",
+    verdict,
+    // Le texte à réinjecter comme entrée du tour suivant. Null tant qu'il n'y a rien
+    // d'exploitable : l'appelant n'a pas à distinguer "absent" de "vide".
+    orientation,
     // Ce que le stage suivant aurait le droit d'exécuter. Une action refusée n'y est
-    // pas : un refus est une décision, pas un échec.
-    executables: [...automatiques, ...approuvees],
+    // pas : un refus est une décision, pas un échec. Sous orientation la liste est
+    // vide : on ne lance rien de ce qui vient d'être renvoyé au travail, pas même les
+    // actions automatiques.
+    executables: orientation ? [] : [...automatiques, ...approuvees],
     automatiques,
     approuvees,
     refusees,

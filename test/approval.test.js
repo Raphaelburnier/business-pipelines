@@ -407,6 +407,101 @@ test("plan vide : aucune action, aucune approbation à demander, le run aboutit"
   assert.strictEqual(readJson(h.workspaceDir, "approbation.json").verdict, "APPROUVE");
 });
 
+test("réponse libre de bout en bout : la consigne est déposée, rien n'est exécuté", async () => {
+  const pipeline = loadPipeline("ajustement-prix");
+  const h = createHarness({
+    pipeline,
+    spec: SPEC,
+    script: { "price-planner": planCorrect },
+    // Un exécuteur qui crie s'il est appelé : sous orientation, rien ne doit partir.
+    executeurs: {
+      changement_prix: async () => {
+        throw new Error("aucune action ne doit s'exécuter sous orientation");
+      },
+    },
+  });
+
+  planCorrect(1, h.workspaceDir);
+  const empreinte = approval.fingerprint(readJson(h.workspaceDir, "actions.json").actions);
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: empreinte,
+    reponse: "Vise les annonces sous 80 EUR, pas les comparables du haut du panier.",
+    // Une décision déjà prise ne doit pas passer non plus : la réponse libre prime.
+    decisions: [{ action_id: "prix-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /réponse libre reçue/);
+    assert.match(err.message, /Vise les annonces sous 80 EUR/);
+    return true;
+  });
+
+  const orientation = readJson(h.workspaceDir, "orientation.json");
+  assert.strictEqual(orientation.empreinte, empreinte);
+  assert.match(orientation.consigne, /^Vise les annonces sous 80 EUR/);
+  assert.ok(orientation.recue_le, "la consigne est datée");
+
+  const etat = readJson(h.workspaceDir, "approbation.json");
+  assert.strictEqual(etat.verdict, "ORIENTE");
+  assert.deepStrictEqual(etat.executables, []);
+});
+
+test("réponse libre : le plan repart au travail, rien ne s'exécute", () => {
+  const actions = [action("a", "c", 1), action("b", "c", 2)];
+  const etat = approval.evaluate({
+    actions,
+    decisions: {
+      plan: approval.fingerprint(actions),
+      reponse: "  Reprends l'angle prix, pas l'angle image.  ",
+      decisions: [{ action_id: "a", decision: "approuve" }],
+    },
+    auto: ["changement_prix"],
+  });
+  assert.strictEqual(etat.verdict, "ORIENTE");
+  assert.strictEqual(etat.orientation, "Reprends l'angle prix, pas l'angle image.");
+  // Ni l'action approuvée ni le type automatique ne passent : l'opérateur a demandé
+  // autre chose, exécuter le plan qu'il vient de renvoyer serait lui désobéir.
+  assert.deepStrictEqual(etat.executables, []);
+});
+
+test("une réponse blanche ne vaut pas orientation et ne débloque rien", () => {
+  const actions = [action("a", "c", 1)];
+  const etat = approval.evaluate({
+    actions,
+    decisions: { plan: approval.fingerprint(actions), reponse: "   \n  ", decisions: [] },
+    auto: [],
+  });
+  assert.strictEqual(etat.verdict, "EN_ATTENTE");
+  assert.strictEqual(etat.orientation, null);
+});
+
+test("une réponse portant sur un plan périmé ne vaut rien", () => {
+  const actions = [action("a", "c", 1)];
+  const etat = approval.evaluate({
+    actions,
+    decisions: { plan: "empreinte-d-un-autre-plan", reponse: "vas-y", decisions: [] },
+    auto: ["changement_prix"],
+  });
+  assert.strictEqual(etat.verdict, "EN_ATTENTE");
+  assert.strictEqual(etat.orientation, null);
+  assert.ok(etat.perimee);
+});
+
+test("sans réponse libre, le verdict d'avant est inchangé", () => {
+  const actions = [action("a", "c", 1)];
+  const etat = approval.evaluate({
+    actions,
+    decisions: {
+      plan: approval.fingerprint(actions),
+      decisions: [{ action_id: "a", decision: "approuve" }],
+    },
+    auto: [],
+  });
+  assert.strictEqual(etat.verdict, "APPROUVE");
+  assert.strictEqual(etat.orientation, null);
+  assert.strictEqual(etat.executables.length, 1);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

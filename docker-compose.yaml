@@ -1,4 +1,4 @@
-# Le cockpit sur le NAS, joint par Tailscale.
+# Le cockpit sur le NAS, joint par Tailscale, et le pipeline marketing lancé à la demande.
 #
 # Le cockpit n'écoute que sur la boucle locale de l'hôte, et Tailscale relaie vers lui.
 # C'est la même contrainte que sur le poste, et pour la même raison : les en-têtes
@@ -47,6 +47,35 @@ services:
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
     # tout le reste du dépôt s'emploie à empêcher.
+
+  # Le pipeline marketing, lancé à la demande, jamais en continu :
+  #
+  #   sudo docker compose run --rm marketing
+  #
+  # Le profil `manuel` le tient hors de `docker compose up -d`. Un tour coûte des appels
+  # Anthropic et s'arrête de lui-même sur une décision humaine : rien là-dedans ne doit
+  # rester debout, et un redémarrage automatique repaierait un tour à chaque sortie. C'est
+  # exactement la panne qu'avait le conteneur du cycle avant qu'une boucle porte l'attente.
+  marketing:
+    build: .
+    profiles: ["manuel"]
+    command: ["node", "orchestrator.js", "marketing", "./specs/marketing.json"]
+    volumes:
+      # Le plan gelé et la boîte d'attente s'écrivent ici, là où le cockpit les lit. Sans ce
+      # montage, le tour déposerait sa demande dans le conteneur et le cockpit ne verrait rien.
+      - ./approvals:/app/approvals
+      - ./specs:/app/specs:ro
+      # Le workspace, le rapport et le coût du tour survivent au conteneur jetable.
+      - ./runs:/app/runs
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+    # La clé Anthropic vit dans ce fichier de l'hôte et n'entre jamais dans l'image. Le
+    # cockpit, lui, n'en reçoit toujours aucune.
+    env_file:
+      - ./specs/deploiement.env
+    networks:
+      - business
 
 networks:
   business:

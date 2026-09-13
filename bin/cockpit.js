@@ -277,6 +277,13 @@ function page(etat, qui) {
   <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, en attente depuis ${depuis(d.depuis)}</div>
   ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a, ai) => ligneAction(a, `d${di}-${ai}`)).join("")}
   ${d.fraicheur.verdict === "perime" ? `<p class="rouge">Ce plan est périmé : le pipeline d'application le refusera. Relancer la planification.</p>` : ""}
+  ${
+    d.reponse_posee
+      ? `<p class="posee">Réponse déjà déposée${d.reponse_posee.par ? ` par ${ech(d.reponse_posee.par)}` : ""}, en attente du prochain réveil : « ${ech(d.reponse_posee.consigne)} »</p>`
+      : ""
+  }
+  <label class="libre" for="rep-d${di}">Réponse libre, si ni approuver ni refuser ne convient</label>
+  <textarea class="libre" id="rep-d${di}" rows="3" placeholder="Le plan repart au travail avec cette consigne. Aucune action ne s'exécute."></textarea>
 </section>`
         )
         .join("")
@@ -412,6 +419,16 @@ a.lien::after{content:"";position:absolute;inset:0;border-radius:var(--rayon)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;word-break:break-all}
 .meta{color:var(--encre-douce);font-size:.875rem;margin-bottom:.9rem}
 section[data-dossier] h2{margin-top:1.4rem}
+/* Réponse libre : volontairement discrète. C'est la sortie de secours, pas le geste
+   courant, et un champ texte aussi visible que les boutons inviterait à écrire là où
+   une décision franche est attendue. */
+label.libre{display:block;margin-top:1rem;color:var(--encre-douce);font-size:.85rem}
+textarea.libre{width:100%;box-sizing:border-box;margin-top:.3rem;padding:.6rem;
+  font:inherit;font-size:.9rem;color:var(--encre);background:var(--carte);
+  border:1px solid var(--trait);border-radius:var(--rayon);resize:vertical}
+textarea.libre:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.posee{margin-top:.9rem;padding:.6rem .8rem;border-left:3px solid var(--accent);
+  background:var(--carte);color:var(--encre-douce);font-size:.9rem}
 .act{background:var(--carte);border:1px solid var(--trait);border-radius:var(--rayon);
   padding:1rem;margin:.75rem 0;box-shadow:var(--ombre)}
 .tete{color:var(--encre-douce);font-size:.9rem;margin-bottom:.1rem}
@@ -501,15 +518,18 @@ async function envoyer(e){
       if(!r.value) continue;
       decisions.push({action_id:r.closest('.act').dataset.action,decision:r.value});
     }
-    if(decisions.length) lots.push({dossier:s.dataset.dossier,empreinte:s.dataset.empreinte,decisions});
+    const ta=s.querySelector('textarea.libre');
+    const reponse=ta?ta.value.trim():'';
+    if(decisions.length||reponse) lots.push({dossier:s.dataset.dossier,empreinte:s.dataset.empreinte,decisions,reponse});
   }
-  if(!lots.length){msg.textContent='Aucune décision cochée.';return false}
+  if(!lots.length){msg.textContent='Aucune décision cochée, aucune réponse écrite.';return false}
   const sorties=[];
   for(const lot of lots){
     const r=await fetch('/api/decider',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(lot)});
     const b=await r.json();
-    sorties.push((r.ok?'✓ ':'✘ ')+lot.dossier+' : '+(b.erreur||(b.decisions.length+' décision(s) écrite(s)')));
+    const fait=b.reponse?(b.decisions.length?b.decisions.length+' décision(s) et une réponse écrites':'réponse écrite, le plan repart au travail'):b.decisions.length+' décision(s) écrite(s)';
+    sorties.push((r.ok?'✓ ':'✘ ')+lot.dossier+' : '+(b.erreur||fait));
   }
   msg.textContent=sorties.join('\\n');
   if(sorties.every(s=>s.startsWith('✓'))) setTimeout(()=>location.reload(),1200);
@@ -607,6 +627,7 @@ async function traiter(req, res) {
           dossier: demande.dossier,
           empreinte: demande.empreinte,
           decisions: demande.decisions,
+          reponse: demande.reponse,
           par: qui.par,
           canal: qui.canal,
         })

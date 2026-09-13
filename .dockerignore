@@ -9,7 +9,12 @@
 node_modules
 .git
 .gitignore
-.claude
+# Les définitions d'agents sont du code : le lanceur les lit dans .claude/agents, et sans
+# elles aucun pipeline à agents ne se charge dans le conteneur. Tout le dossier était exclu,
+# ce qui n'a jamais été vu parce qu'aucun agent n'avait encore tourné sur le NAS. Le reste
+# de .claude, réglages et worktrees, reste dehors.
+.claude/*
+!.claude/agents
 .github
 
 # État durable : il vit sur l'hôte et se monte, il n'a rien à faire dans l'image.
