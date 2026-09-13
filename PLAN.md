@@ -13,9 +13,9 @@ alors le pipeline marketing au lieu de la reprise d'exécution.
 | Phase | Objet | État | Où |
 |---|---|---|---|
 | 01 | Accès direct Anthropic | Partielle | `~/.config/agent-orchestrator/backends.json` |
-| 02 | Escalade en réponse libre dans le cockpit | Faite, non fusionnée | business-pipelines, `worktree-cockpit-reponse-libre` |
-| 03 | Reprise d'exécution | Faite, non fusionnée | agent-orchestrator, `worktree-reprise-execution` |
-| 04 | Pipeline marketing minimal | Construite, jamais exécutée | business-pipelines, `feat/pipeline-marketing` |
+| 02 | Escalade en réponse libre dans le cockpit | Faite | business-pipelines, `main` |
+| 03 | Reprise d'exécution | Faite | agent-orchestrator, `master` |
+| 04 | Pipeline marketing minimal | Faite, premier tour en attente de décision | business-pipelines, `main`, sur le NAS |
 | 05 | Pipeline développement | À faire | business-pipelines |
 | 06 | Sécurité et déploiement | À faire | business-pipelines |
 
@@ -38,7 +38,7 @@ automatique, un plan périmé invalide l'orientation, et une réponse vide retom
 plutôt que de boucler sur une instruction creuse.
 
 Le handler écrit l'orientation comme artefact typé, et le cockpit affiche de quoi arbitrer.
-Reste à fusionner la branche dans `main`.
+Fusionnée dans `main` le 2026-09-13, et en service sur le cockpit du NAS.
 
 ## Phase 03, reprise d'exécution
 
@@ -47,14 +47,20 @@ sauvées au lieu de les repayer. La progression est tenue dans `.orch-resume.jso
 du workspace, écrite après le commit de l'étape, et porte l'empreinte du pipeline et du
 spec : une reprise refuse de partir si l'un des deux a changé.
 
-Reste à fusionner la branche dans `master`. Les sept scénarios de reprise vérifiés ne sont
+Fusionnée dans `master` le 2026-09-13. Les sept scénarios de reprise vérifiés ne sont
 pas dans le dépôt, par choix.
 
 ## Phase 04, pipeline marketing minimal
 
-Construite sur la branche `feat/pipeline-marketing`, qui part de celle de la phase 02 pour
-que le cockpit sache déjà orienter. Jamais exécutée : la première exécution payante reste
-à lancer, et c'est elle qui donnera le coût réel.
+Fusionnée dans `main` le 2026-09-13 et déployée sur le NAS, où elle se lance à la demande :
+
+```bash
+sudo docker compose run --rm marketing
+```
+
+Le déploiement a révélé que l'image n'avait jamais embarqué une seule définition d'agent :
+le `.dockerignore` excluait tout le dossier `.claude`, où le lanceur les lit. Aucun agent
+n'avait encore tourné sur le NAS, donc rien ne l'avait montré. Corrigé le même jour.
 
 Cinq étapes. Une étape déterministe relit d'abord la consigne que l'opérateur a pu écrire
 sur le plan précédent. Deux voix analysent ensuite la même demande en parallèle,
@@ -81,6 +87,12 @@ Le plan approuvé sort de cette phase comme artefact. C'est lui, et rien d'autre
 phase 05 consomme.
 
 Budget du premier tour : deux dollars, quarante tours, quinze par agent.
+
+Premier tour le 2026-09-13, sur le NAS : 1,37 dollar et 21 tours, sous le plafond. Les
+deux voix ont coûté 0,20 et 0,11 dollar, en deux tours chacune. La première synthèse a
+échoué au contrôle de couverture avec neuf manques, le cycle de correction l'a remise au
+vert, et le plan gelé porte trois arbitrages qui attendent dans le cockpit : vendre sous un
+nom de boutique, vendre au-dessus de la médiane, et le volume mensuel de départ.
 
 Aucun agent ne nomme de backend depuis le 2026-09-13. Le pipeline visait `opus-direct`,
 qui n'existe que dans la configuration d'un poste, et refusait donc de se charger sur le
@@ -115,7 +127,15 @@ la vraie clé de la passerelle, pas le backend. Constaté le 2026-09-13. La corr
 dans un fichier de secrets et reste à faire par l'opérateur. Elle ne bloque plus le
 pipeline marketing, qui ne nomme plus de backend.
 
-Le drapeau `--resume` de la phase 03 est inutilisable ici pour la même raison. Ce dépôt a
+Le cycle de correction du pipeline marketing paie deux fois. Son gate renvoie à
+`synthese` : après la correction ciblée des manques, la synthèse entière est rejouée et
+réécrit le plan qui venait d'être corrigé. Au premier tour, la correction a coûté 0,25
+dollar, puis la synthèse complète 0,42 dollar pour repasser le contrôle. Le pipeline de
+prix renvoie à son étape de contrôle, et c'est ce que devrait faire celui-ci, avec
+`rerun_from: "couverture"`. Le correctif demande de reconstruire l'image du NAS, qui
+embarque les pipelines.
+
+Le drapeau `--resume` de la phase 03 est inutilisable ici. Ce dépôt a
 son propre lanceur, qui vide le workspace à chaque fois et n'ouvre aucun journal de
 reprise. Deux ou trois lignes à changer, mais c'est un changement de sémantique
 d'exécution, à décider plutôt qu'à glisser.
@@ -128,16 +148,17 @@ créé, ni sur le poste où son minuteur était désactivé. Son service Docker,
 et son minuteur local sont partis, la boucle générique `bin/cycle.js` reste. Les pipelines
 de veille et de prix, avec leurs tests, sont toujours en place : décision non prise.
 
-Conséquence du retrait : plus aucun service du NAS ne détient la clé Anthropic, puisque le
-cockpit n'en reçoit délibérément aucune. Faire tourner le pipeline marketing sur le NAS
-demandera son propre service.
+Le retrait du cycle laissait le NAS sans aucun service détenteur de la clé Anthropic. Le
+service marketing à la demande la reçoit désormais, et le cockpit n'en reçoit toujours
+aucune.
 
-Le compose sans cycle a été redéposé sur le NAS le 2026-09-13. Il ne déclare plus que le
-cockpit, qui n'a pas été redémarré. La sauvegarde `docker-compose.yaml.avant-retrait-cycle`
-contient par erreur la version sans cycle, et l'ancienne version reste celle de `main` au
-2026-09-11. Restent sur le NAS l'image `business-pipelines-cycle` et deux vieilles images
-`buisness-piplines-*`, inutilisées, dont la suppression a été refusée par les permissions
-de la session. Elles ne coûtent que de la place.
+Le NAS porte le code de `main` depuis le 2026-09-13 : le cockpit, redémarré sur sa nouvelle
+image, et le service marketing à la demande. Une archive sans secrets de l'état précédent
+est gardée dans le répertoire personnel de `admindunas`. Le fichier
+`docker-compose.yaml.avant-retrait-cycle` n'est pas une sauvegarde fiable : il a été
+réécrit plusieurs fois. Restent sur le NAS l'image `business-pipelines-cycle` et deux
+vieilles images `buisness-piplines-*`, inutilisées, dont la suppression a été refusée par
+les permissions de la session. Elles ne coûtent que de la place.
 
 L'ancien dossier NAS `buisness-piplines`, doublon du 26 août resté avec des secrets
 périmés dans un dossier ouvert à tous, a été supprimé le même jour. Une archive en droits
