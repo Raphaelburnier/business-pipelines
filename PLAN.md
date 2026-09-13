@@ -132,11 +132,12 @@ Conséquence du retrait : plus aucun service du NAS ne détient la clé Anthropi
 cockpit n'en reçoit délibérément aucune. Faire tourner le pipeline marketing sur le NAS
 demandera son propre service.
 
-Le retrait n'est pas encore effectif sur le NAS. Le compose déployé déclare toujours le
-service `cycle`, et l'image `business-pipelines-cycle` y est toujours, avec deux vieilles
-images `buisness-piplines-*`. Leur suppression a été refusée par les permissions de la
-session du 2026-09-13. Tant que le compose n'est pas redéposé, un `docker compose up -d`
-lancé sur le NAS recréerait le cycle.
+Le compose sans cycle a été redéposé sur le NAS le 2026-09-13. Il ne déclare plus que le
+cockpit, qui n'a pas été redémarré. La sauvegarde `docker-compose.yaml.avant-retrait-cycle`
+contient par erreur la version sans cycle, et l'ancienne version reste celle de `main` au
+2026-09-11. Restent sur le NAS l'image `business-pipelines-cycle` et deux vieilles images
+`buisness-piplines-*`, inutilisées, dont la suppression a été refusée par les permissions
+de la session. Elles ne coûtent que de la place.
 
 L'ancien dossier NAS `buisness-piplines`, doublon du 26 août resté avec des secrets
 périmés dans un dossier ouvert à tous, a été supprimé le même jour. Une archive en droits
