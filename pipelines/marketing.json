@@ -86,7 +86,7 @@
         "fail_when": { "equals": ["INCOMPLETE"] },
         "items": "manques",
         "targets": { "synthese": "plan-synthesist" },
-        "rerun_from": "synthese"
+        "rerun_from": "couverture"
       }
     },
     {
