@@ -336,6 +336,21 @@ function verifierCouverture(stage, ctx) {
     } else {
       vus.add(action.id);
     }
+
+    // Chaque arbitrage se lit en quelques secondes dans le cockpit : une vraie question,
+    // puis un rapport en texte simple. Une valeur structurée s'y affichait comme un
+    // dictionnaire, illisible sur un téléphone.
+    const libelle = action.id || "sans id";
+    const question = typeof action.question === "string" ? action.question.trim() : "";
+    const texte = typeof action.rapport === "string" ? action.rapport.trim() : "";
+    if (!question.endsWith("?")) {
+      manque(`action "${libelle}" : "question" doit être une vraie question, terminée par un point d'interrogation`);
+    }
+    if (!texte) {
+      manque(`action "${libelle}" : "rapport" absent ou vide, attendu en texte simple`);
+    } else if (/^[\[{]/.test(texte)) {
+      manque(`action "${libelle}" : "rapport" ressemble à du JSON, attendu en texte simple`);
+    }
   }
 
   return {
@@ -682,7 +697,7 @@ handlers.approval = async (stage, ctx) => {
     }
 
     const liste = etat.en_attente
-      .map((a) => `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`)
+      .map((a) => (a.question ? `  ${a.id} : ${a.question}` : `  ${a.id} : ${a.type} sur ${a.cible} → ${JSON.stringify(a.valeur)}`))
       .join("\n");
     // Quand le registre est caduc, le dire AVANT la liste : sans ça, le message annonce
     // des actions à décider sans expliquer pourquoi une décision déjà prise ne compte pas.

@@ -93,11 +93,28 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
       actions: ((plan && plan.actions) || []).map((a) => ({
         ...a,
         decision: dejaPrises[a.id] ? dejaPrises[a.id].decision : null,
+        // La note posée avec la décision. Le champ s'appelle `motif` dans le registre
+        // parce qu'il est né avec les refus ; il accompagne désormais toute décision.
+        note: dejaPrises[a.id] && dejaPrises[a.id].motif ? dejaPrises[a.id].motif : null,
       })),
     };
   });
 
-  return { dossiers, decidables: dossiers.filter((d) => !d.plan_absent).length };
+  // Un dossier tranché : chaque action du plan gelé porte une décision sur CE plan, et
+  // aucune consigne libre n'attend d'être reprise. Pour un pipeline qui a un tour
+  // d'application, c'est ce tour qui retire le dossier de la boîte. Le marketing n'en a
+  // pas, et son dossier restait donc affiché comme en attente, boutons compris, après avoir
+  // été entièrement décidé. Il reste listé, pour relire les décisions et leurs notes, mais
+  // il ne compte plus parmi ce qui attend.
+  for (const d of dossiers) {
+    d.tranche =
+      !d.plan_absent &&
+      d.actions.length > 0 &&
+      d.actions.every((a) => a.decision === "approuve" || a.decision === "refuse") &&
+      !d.reponse_posee;
+  }
+
+  return { dossiers, decidables: dossiers.filter((d) => !d.plan_absent && !d.tranche).length };
 }
 
 class Refus extends Error {}
@@ -151,6 +168,7 @@ function enregistrer({
   }
 
   const connues = new Set((plan.actions || []).map((a) => a.id));
+  const NOTE_MAX = 500;
   const propres = [];
   for (const d of decisions || []) {
     if (!connues.has(d.action_id)) {
@@ -158,6 +176,13 @@ function enregistrer({
     }
     if (d.decision !== "approuve" && d.decision !== "refuse") {
       throw new Refus(`décision "${d.decision}" inconnue pour ${d.action_id} : approuve ou refuse`);
+    }
+    // Une note accompagne n'importe quelle décision, approbation comprise. Trop longue,
+    // elle est refusée plutôt que tronquée : couper en silence ce que quelqu'un a écrit
+    // pour justifier une décision fausserait la trace qu'on garde.
+    const note = String(d.motif ?? "").trim();
+    if (note.length > NOTE_MAX) {
+      throw new Refus(`note trop longue pour ${d.action_id} : ${note.length} caractères, ${NOTE_MAX} au plus`);
     }
     propres.push({
       action_id: d.action_id,
@@ -167,7 +192,7 @@ function enregistrer({
       // "local" veut dire console de la machine et n'est prouvé par rien.
       ...(canal ? { canal: String(canal) } : {}),
       le: new Date(maintenant).toISOString(),
-      ...(d.motif ? { motif: String(d.motif) } : {}),
+      ...(note ? { motif: note } : {}),
     });
   }
 
@@ -179,9 +204,24 @@ function enregistrer({
     throw new Refus("aucune décision ni réponse à enregistrer");
   }
 
+  // La page n'envoie que les actions décidées dans CE formulaire. Réécrire le registre avec
+  // elles seules effaçait les décisions prises plus tôt sur le même plan : ajouter une note
+  // à une action déjà tranchée aurait effacé toutes les autres. On garde donc les décisions
+  // précédentes du même plan, et la nouvelle l'emporte action par action. Un registre qui
+  // porte sur un autre plan ne se fusionne pas : ses décisions ne valent rien ici.
+  const precedent = lireJson(entree.registre);
+  const parAction = new Map();
+  if (precedent && precedent.plan === empreinte) {
+    for (const d of precedent.decisions || []) {
+      if (connues.has(d.action_id)) parAction.set(d.action_id, d);
+    }
+  }
+  for (const d of propres) parAction.set(d.action_id, d);
+  const fusionnees = (plan.actions || []).map((a) => parAction.get(a.id)).filter(Boolean);
+
   const contenu = {
     plan: empreinte,
-    decisions: propres,
+    decisions: fusionnees,
     // `reponse` porte le texte seul, c'est le champ que le juge lit. Les trois champs
     // d'audit vivent à côté plutôt que dedans : une consigne reste une chaîne, et le
     // registre garde quand même qui l'a écrite et par où, comme pour les décisions.

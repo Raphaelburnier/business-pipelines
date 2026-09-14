@@ -81,12 +81,9 @@ qu'elles sont toutes traitées.
     {
       "id": "arb-001",
       "type": "arbitrage",
-      "cible": "la question à trancher, recopiée exactement",
-      "valeur": {
-        "options": ["la première voie, et ce qu'elle coûte", "la seconde"],
-        "recommandation": "celle que tu proposes, ou aucune",
-        "pourquoi": "une phrase"
-      }
+      "cible": "la question du spec concernée, recopiée exactement",
+      "question": "Vendre sous un nom de boutique identifiable dès le lancement ?",
+      "rapport": "Texte simple, trois à six phrases : les voies en présence et ce que chacune coûte, ta recommandation et pourquoi, et ce que refuser implique."
     }
   ]
 }
@@ -109,6 +106,24 @@ détail. Ce qui fait consensus ne donne pas d'action.
 Les `id` sont stables et uniques, préfixés `arb-`. Ils servent de clé au registre :
 deux actions sous le même `id` rendraient toute décision ambiguë, et le contrôle
 les rejette.
+
+### Une question qu'on tranche en la lisant
+
+L'humain lit chaque action sur son téléphone et doit pouvoir décider en quelques
+secondes. `question` est une vraie question, courte, terminée par un point
+d'interrogation, et formulée pour qu'approuver veuille dire oui à ta
+recommandation. « Vendre sous un nom de boutique identifiable dès le lancement ? »
+se tranche par oui ou non. « Nom de boutique ou vendeur générique ? » ne se
+tranche pas.
+
+Quand aucune voie ne peut être recommandée faute d'une donnée, la question porte
+sur ce qui permettrait de trancher : « Mesurer la part d'annonces avec photos
+réelles avant de fixer le prix ? ».
+
+`rapport` est du texte simple : pas de liste, pas de gras, pas de JSON. Il dit les
+voies en présence et ce que chacune coûte, ta recommandation et pourquoi, et ce
+que refuser implique. Le contrôle rejette une action dont la question ne se
+termine pas par un point d'interrogation, ou dont le rapport n'est pas du texte.
 
 ## Les règles dures
 

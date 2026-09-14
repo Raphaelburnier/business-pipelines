@@ -94,6 +94,18 @@ deux voix ont coûté 0,20 et 0,11 dollar, en deux tours chacune. La première s
 vert, et le plan gelé porte trois arbitrages qui attendent dans le cockpit : vendre sous un
 nom de boutique, vendre au-dessus de la médiane, et le volume mensuel de départ.
 
+Ce tour a montré que le cycle de correction se payait deux fois. Le gate renvoyait à
+`synthese`, si bien que la synthèse entière, rejouée, écrasait la correction ciblée des
+manques : 0,25 dollar de correction, puis 0,42 dollar de synthèse complète. Depuis le
+2026-09-14, le gate renvoie à son étape de contrôle, comme celui du pipeline de prix. La
+correction est recontrôlée au lieu d'être réécrite.
+
+Les arbitrages se lisent depuis le même jour comme une vraie question en gras, suivie d'un
+rapport en texte simple, au lieu d'une valeur affichée comme un dictionnaire. Chaque
+décision peut porter une note, approbation comprise, et un enregistrement partiel ne
+réécrit plus les décisions déjà prises sur le même plan. Un dossier entièrement tranché
+ne s'affiche plus comme en attente.
+
 Aucun agent ne nomme de backend depuis le 2026-09-13. Le pipeline visait `opus-direct`,
 qui n'existe que dans la configuration d'un poste, et refusait donc de se charger sur le
 NAS. Il prend désormais le backend par défaut, comme le pipeline de prix, et tourne
@@ -126,14 +138,6 @@ Le jeton des backends OmniRoute n'a jamais été valide. `backends.json` porte
 la vraie clé de la passerelle, pas le backend. Constaté le 2026-09-13. La correction écrit
 dans un fichier de secrets et reste à faire par l'opérateur. Elle ne bloque plus le
 pipeline marketing, qui ne nomme plus de backend.
-
-Le cycle de correction du pipeline marketing paie deux fois. Son gate renvoie à
-`synthese` : après la correction ciblée des manques, la synthèse entière est rejouée et
-réécrit le plan qui venait d'être corrigé. Au premier tour, la correction a coûté 0,25
-dollar, puis la synthèse complète 0,42 dollar pour repasser le contrôle. Le pipeline de
-prix renvoie à son étape de contrôle, et c'est ce que devrait faire celui-ci, avec
-`rerun_from: "couverture"`. Le correctif demande de reconstruire l'image du NAS, qui
-embarque les pipelines.
 
 Le drapeau `--resume` de la phase 03 est inutilisable ici. Ce dépôt a
 son propre lanceur, qui vide le workspace à chaque fois et n'ouvre aucun journal de
