@@ -100,6 +100,12 @@ manques : 0,25 dollar de correction, puis 0,42 dollar de synthèse complète. De
 2026-09-14, le gate renvoie à son étape de contrôle, comme celui du pipeline de prix. La
 correction est recontrôlée au lieu d'être réécrite.
 
+Les arbitrages se lisent depuis le même jour comme une vraie question en gras, suivie d'un
+rapport en texte simple, au lieu d'une valeur affichée comme un dictionnaire. Chaque
+décision peut porter une note, approbation comprise, et un enregistrement partiel ne
+réécrit plus les décisions déjà prises sur le même plan. Un dossier entièrement tranché
+ne s'affiche plus comme en attente.
+
 Aucun agent ne nomme de backend depuis le 2026-09-13. Le pipeline visait `opus-direct`,
 qui n'existe que dans la configuration d'un poste, et refusait donc de se charger sur le
 NAS. Il prend désormais le backend par défaut, comme le pipeline de prix, et tourne

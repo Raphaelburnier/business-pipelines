@@ -153,25 +153,65 @@ function badge(f) {
 // une AUTRE action réelle, donc un changement de prix approuvé sans avoir été lu. Deux
 // dossiers pouvaient aussi produire le même nom de groupe, et cocher dans l'un décochait
 // dans l'autre.
-function ligneAction(a, nom) {
+// Le texte simple d'un arbitrage produit avant que la synthèse écrive `question` et
+// `rapport`. Ces plans-là portaient une valeur structurée, que la page affichait telle quelle
+// comme un dictionnaire. On la relit en phrases plutôt que de laisser ces plans illisibles.
+function arbitrageEnTexte(a) {
   const v = a.valeur || {};
-  const delta =
-    // Une remise de 100 % depuis un prix de zéro n'existe pas : sans cette garde, la page
-    // affichait « Infinity % ».
-    typeof v.de === "number" && typeof v.vers === "number" && v.de !== 0
-      ? `${v.de} → ${v.vers} ${ech(v.devise || "")} (${(((v.vers - v.de) / v.de) * 100).toFixed(1)} %)`
-      : ech(JSON.stringify(v));
-  const deja = a.decision ? `<span class="b ${a.decision === "approuve" ? "vert" : "rouge"}">déjà ${ech(a.decision)}</span>` : "";
-  return `<div class="act" data-action="${ech(a.id)}">
-  <div class="tete"><b>${ech(a.id)}</b> <span class="mono">${ech(a.type)}</span> sur <span class="mono">${ech(a.cible)}</span> ${deja}</div>
+  const lignes = [];
+  if (Array.isArray(v.options) && v.options.length) {
+    lignes.push(...v.options.map((o, i) => `Option ${i + 1} : ${o}`));
+  }
+  if (v.recommandation) lignes.push(`Recommandation : ${v.recommandation}`);
+  if (v.pourquoi) lignes.push(`Pourquoi : ${v.pourquoi}`);
+  return { question: a.cible || a.id, rapport: lignes };
+}
+
+function ligneAction(a, nom, lectureSeule = false) {
+  const deja = a.decision ? `<span class="b ${a.decision === "approuve" ? "vert" : "rouge"}">${lectureSeule ? "" : "déjà "}${ech(a.decision === "approuve" ? "approuvé" : "refusé")}</span>` : "";
+  const notePosee = a.note ? `<p class="note-posee">Note : ${ech(a.note)}</p>` : "";
+
+  // Un arbitrage se lit comme une question qu'on tranche : la question en gras, le rapport
+  // en plus petit, en texte simple. Le reste des actions, les changements de prix, garde
+  // son rendu chiffré.
+  let corps;
+  const lisible = typeof a.question === "string" && a.question.trim()
+    ? { question: a.question, rapport: String(a.rapport || "").split(/\n+/) }
+    : a.type === "arbitrage"
+      ? arbitrageEnTexte(a)
+      : null;
+  if (lisible) {
+    corps = `<div class="tete"><span class="mono id">${ech(a.id)}</span> ${deja}</div>
+  <p class="question"><strong>${ech(lisible.question)}</strong></p>
+  ${lisible.rapport.filter((l) => l.trim()).map((l) => `<p class="rapport">${ech(l)}</p>`).join("\n  ")}`;
+  } else {
+    const v = a.valeur || {};
+    const delta =
+      // Une remise de 100 % depuis un prix de zéro n'existe pas : sans cette garde, la page
+      // affichait « Infinity % ».
+      typeof v.de === "number" && typeof v.vers === "number" && v.de !== 0
+        ? `${v.de} → ${v.vers} ${ech(v.devise || "")} (${(((v.vers - v.de) / v.de) * 100).toFixed(1)} %)`
+        : ech(JSON.stringify(v));
+    corps = `<div class="tete"><b>${ech(a.id)}</b> <span class="mono">${ech(a.type)}</span> sur <span class="mono">${ech(a.cible)}</span> ${deja}</div>
   <div class="delta">${delta}</div>
   <p>${ech(a.justification || "")}</p>
-  ${(a.sources || []).length ? `<div class="src">appuyé sur ${(a.sources || []).map((s) => `<span class="mono">${ech(s)}</span>`).join(", ")}</div>` : ""}
+  ${(a.sources || []).length ? `<div class="src">appuyé sur ${(a.sources || []).map((s) => `<span class="mono">${ech(s)}</span>`).join(", ")}</div>` : ""}`;
+  }
+
+  // Un dossier tranché se relit, il ne se redécide pas depuis cette page.
+  const choix = lectureSeule
+    ? notePosee
+    : `${notePosee}
   <div class="choix">
     <label><input type="radio" name="${nom}" value="approuve"> approuver</label>
     <label><input type="radio" name="${nom}" value="refuse"> refuser</label>
     <label><input type="radio" name="${nom}" value="" checked> ne pas décider</label>
   </div>
+  <input type="text" class="note" maxlength="500" aria-label="Note pour ${ech(a.id)}" placeholder="Note, facultative, enregistrée avec la décision">`;
+
+  return `<div class="act" data-action="${ech(a.id)}">
+  ${corps}
+  ${choix}
 </div>`;
 }
 
@@ -241,7 +281,8 @@ function panneauModules() {
 // Quand rien n'attend, il le dit calmement au lieu de disparaître. Une absence de bandeau
 // se lit comme une page qui n'a pas fini de charger, pas comme une boîte vide.
 function bandeau(etat) {
-  const dossiers = etat.dossiers || [];
+  // Un dossier tranché reste listé plus bas avec ses décisions, mais il n'attend plus rien.
+  const dossiers = (etat.dossiers || []).filter((d) => !d.tranche);
   if (!dossiers.length) {
     return `<div class="bandeau bandeau--calme">
   <span class="pastille"></span>
@@ -273,17 +314,21 @@ function page(etat, qui) {
     ? etat.dossiers
         .map(
           (d, di) => `<section data-dossier="${ech(d.dossier)}" data-empreinte="${ech(d.empreinte)}">
-  <h2>${ech(d.dossier)} ${badge(d.fraicheur)}</h2>
-  <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, en attente depuis ${depuis(d.depuis)}</div>
-  ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a, ai) => ligneAction(a, `d${di}-${ai}`)).join("")}
+  <h2>${ech(d.dossier)} ${d.tranche ? `<span class="b vert">tranché</span>` : badge(d.fraicheur)}</h2>
+  <div class="meta">empreinte <span class="mono">${ech(d.empreinte)}</span>, ${d.tranche ? "toutes les actions sont décidées" : `en attente depuis ${depuis(d.depuis)}`}</div>
+  ${d.plan_absent ? `<p class="rouge">Plan gelé introuvable. Rien ne peut être décidé sans lui.</p>` : d.actions.map((a, ai) => ligneAction(a, `d${di}-${ai}`, d.tranche)).join("")}
   ${d.fraicheur.verdict === "perime" ? `<p class="rouge">Ce plan est périmé : le pipeline d'application le refusera. Relancer la planification.</p>` : ""}
   ${
     d.reponse_posee
       ? `<p class="posee">Réponse déjà déposée${d.reponse_posee.par ? ` par ${ech(d.reponse_posee.par)}` : ""}, en attente du prochain réveil : « ${ech(d.reponse_posee.consigne)} »</p>`
       : ""
   }
-  <label class="libre" for="rep-d${di}">Réponse libre, si ni approuver ni refuser ne convient</label>
-  <textarea class="libre" id="rep-d${di}" rows="3" placeholder="Le plan repart au travail avec cette consigne. Aucune action ne s'exécute."></textarea>
+  ${
+    d.tranche
+      ? ""
+      : `<label class="libre" for="rep-d${di}">Réponse libre, si ni approuver ni refuser ne convient</label>
+  <textarea class="libre" id="rep-d${di}" rows="3" placeholder="Le plan repart au travail avec cette consigne. Aucune action ne s'exécute."></textarea>`
+  }
 </section>`
         )
         .join("")
@@ -414,6 +459,15 @@ a.lien::after{content:"";position:absolute;inset:0;border-radius:var(--rayon)}
   min-height:32px;display:flex;align-items:center}
 .notes summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .notes ul{margin:.2rem 0 0;padding-left:1.1rem;color:var(--encre-douce);font-size:.85rem}
+/* Un arbitrage : la question se lit d'abord, le rapport l'explique en plus petit. */
+.act .id{color:var(--encre-douce);font-size:.75rem}
+.question{margin:.35rem 0 .2rem;font-size:1.02rem;line-height:1.4}
+.rapport{margin:.15rem 0;color:var(--encre-douce);font-size:.85rem;line-height:1.5}
+.note{display:block;width:100%;box-sizing:border-box;margin-top:.45rem;padding:.4rem .55rem;
+  font:inherit;font-size:.85rem;color:var(--encre);background:var(--carte);
+  border:1px solid var(--trait);border-radius:6px}
+.note:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.note-posee{margin:.3rem 0 0;color:var(--encre-douce);font-size:.85rem;font-style:italic}
 
 /* ---- décisions ---- */
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;word-break:break-all}
@@ -499,7 +553,7 @@ ${
     : ""
 }
 ${
-  etat.dossiers.length
+  etat.dossiers.some((d) => !d.tranche)
     ? `<form class="pied" onsubmit="return envoyer(event)">
   <button>Enregistrer les décisions</button>
 </form>`
@@ -516,7 +570,10 @@ async function envoyer(e){
     const decisions=[];
     for(const r of s.querySelectorAll('input[type=radio]:checked')){
       if(!r.value) continue;
-      decisions.push({action_id:r.closest('.act').dataset.action,decision:r.value});
+      const act=r.closest('.act');
+      const champ=act.querySelector('input.note');
+      const motif=champ?champ.value.trim():'';
+      decisions.push(motif?{action_id:act.dataset.action,decision:r.value,motif}:{action_id:act.dataset.action,decision:r.value});
     }
     const ta=s.querySelector('textarea.libre');
     const reponse=ta?ta.value.trim():'';

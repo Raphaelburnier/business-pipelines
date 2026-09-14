@@ -119,7 +119,12 @@ function message(dossier, { maintenant, cockpitUrl }) {
 
   lignes.push("");
   for (const action of dossier.actions.slice(0, MONTREES)) {
-    lignes.push(`  ${action.id} : ${action.type} sur ${action.cible} → ${JSON.stringify(action.valeur)}`);
+    // Un arbitrage porte sa question en clair : la montrer, pas une valeur structurée.
+    lignes.push(
+      action.question
+        ? `  ${action.id} : ${action.question}`
+        : `  ${action.id} : ${action.type} sur ${action.cible} → ${JSON.stringify(action.valeur)}`
+    );
   }
   // Une liste tronquée doit le dire. Un message qui montre cinq actions sur douze sans le
   // signaler laisse approuver douze choses après en avoir lu cinq.
@@ -138,7 +143,8 @@ function message(dossier, { maintenant, cockpitUrl }) {
 // été notifié. Aucun envoi ici, aucune écriture : cette fonction est le juge, et un juge
 // se teste sans réseau.
 function aNotifier({ approvalsDir, pipelinesDir = null, maintenant = Date.now(), cockpitUrl = null }) {
-  const { dossiers } = cockpit.etat({ approvalsDir, pipelinesDir, maintenant });
+  // Un dossier tranché n'attend plus personne : prévenir à son sujet ferait ignorer les vrais.
+  const dossiers = cockpit.etat({ approvalsDir, pipelinesDir, maintenant }).dossiers.filter((d) => !d.tranche);
   const deja = new Set(lireJournal(approvalsDir).envoyees.map((e) => e.cle));
 
   return dossiers
