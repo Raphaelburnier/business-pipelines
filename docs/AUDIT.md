@@ -490,12 +490,16 @@ a été corrigé pour compter par cycle.
 
 Recommandation : **par cycle**. `maxLoops` se pose sur la boucle, pas sur chaque flèche.
 
-**Ce qu'il faut répondre** : 3a (A ou B), 3b (d'accord pour `approval` ?), 3c (par cycle ?).
+**Réponse de Raphaël, 2026-09-16** : 3a **B**, le graphe est écrit dans les fichiers et
+compilé en étapes. 3b **`approval`** pour la décision humaine, `gate` garde son sens. 3c
+**`maxLoops` par cycle**.
 
 ## 10. Plan de retrait d'eBay (décision 9)
 
-Proposé ici, pas encore appliqué. Il se fera sur une branche à part, `chore/retirer-ebay`, après
-ta validation.
+Validé le 2026-09-16, appliqué sur la branche `chore/retirer-ebay`. Les deux points à trancher
+sont retenus tels que recommandés : `charger`, `execute` et le cycle sont retirés. Les fichiers
+`specs/veille.env` et `specs/ajustement-prix.env` du checkout principal sont supprimés aussi, à
+la demande de Raphaël.
 
 ### Ce qui part sans discussion
 
