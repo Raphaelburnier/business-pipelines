@@ -10,39 +10,47 @@ const {
   stageParId,
   createHarness,
   loadPipeline,
-  pipelinePath,
+  loadFixture,
+  fixturePath,
   writeJson,
   readJson,
   writeDecisions,
 } = require("./harness");
 
-const REGISTRE = "ajustement-prix.decisions.json";
+const REGISTRE = "exemple.decisions.json";
+const PLAN_GELE = "exemple.plan.json";
 
-const SPEC = {
-  project_name: "prix-test",
-  marche: "booster box scellee",
-  strategie: "aligner sur la médiane des annonces neuves",
-  mes_annonces: ["v1|101|0", "v1|102|0"],
-};
+const SPEC = { project_name: "approbation-test", demande: "proposer deux publications" };
 
-function action(id, cible, vers) {
+function action(id, cible, texte) {
   return {
     id,
-    type: "changement_prix",
+    type: "publication",
     cible,
-    valeur: { de: 82, vers, devise: "EUR" },
-    justification: "quatre annonces comparables plus basses",
-    sources: ["v1|103|0"],
+    valeur: { texte },
+    justification: "la page ne dit pas encore ce que fait l'offre",
   };
 }
 
-// Un planificateur correct : deux actions chiffrées sur mes propres annonces.
+const PLAN = [action("pub-001", "page-accueil", "Titre A"), action("pub-002", "page-offre", "Titre B")];
+
+// Un planificateur correct : deux actions.
 function planCorrect(_call, ws) {
-  writeJson(ws, "actions.json", {
-    actions: [action("prix-001", "v1|101|0", 79), action("prix-002", "v1|102|0", 75)],
-    raisonnement: ["le marché neuf est entre 76 et 79 EUR"],
-  });
+  writeJson(ws, "actions.json", { actions: PLAN });
 }
+
+const planifier = (opts = {}) =>
+  createHarness({
+    pipeline: loadFixture("approbation"),
+    spec: SPEC,
+    script: { planificateur: planCorrect },
+    ...opts,
+  });
+
+const lireBoite = (dir) => {
+  const p = path.join(dir, "EN-ATTENTE.json");
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
+};
 
 const tests = [];
 function test(name, fn) {
@@ -51,23 +59,23 @@ function test(name, fn) {
 
 // ---------- le juge, testé seul ----------
 
-test("empreinte : stable au reformatage, changée dès qu'un montant bouge", () => {
-  const a = [action("prix-001", "v1|101|0", 79)];
-  const reformate = [{ ...a[0], justification: "autre phrase", sources: [] }];
-  const modifie = [action("prix-001", "v1|101|0", 70)];
+test("empreinte : stable au reformatage, changée dès qu'une valeur bouge", () => {
+  const a = [action("pub-001", "page-accueil", "Titre A")];
+  const reformate = [{ ...a[0], justification: "autre phrase" }];
+  const modifie = [action("pub-001", "page-accueil", "Titre C")];
 
   assert.strictEqual(approval.fingerprint(a), approval.fingerprint(reformate));
   assert.notStrictEqual(approval.fingerprint(a), approval.fingerprint(modifie));
 });
 
 test("fail-closed : sans liste \"auto\", toute action demande une approbation", () => {
-  const etat = approval.evaluate({ actions: [action("a", "c", 1)], decisions: null, auto: [] });
+  const etat = approval.evaluate({ actions: [action("a", "c", "t")], decisions: null, auto: [] });
   assert.strictEqual(etat.verdict, "EN_ATTENTE");
   assert.strictEqual(etat.executables.length, 0);
 });
 
 test("une décision mal orthographiée ne vaut pas approbation", () => {
-  const actions = [action("a", "c", 1)];
+  const actions = [action("a", "c", "t")];
   const etat = approval.evaluate({
     actions,
     decisions: {
@@ -80,25 +88,25 @@ test("une décision mal orthographiée ne vaut pas approbation", () => {
 });
 
 test("un refus est une décision, pas un blocage : le plan aboutit sans l'action", () => {
-  const actions = [action("a", "c1", 1), action("b", "c2", 2)];
+  const actions = [action("a", "c1", "t1"), action("b", "c2", "t2")];
   const etat = approval.evaluate({
     actions,
     decisions: {
       plan: approval.fingerprint(actions),
       decisions: [
         { action_id: "a", decision: "approuve" },
-        { action_id: "b", decision: "refuse", motif: "trop bas" },
+        { action_id: "b", decision: "refuse", motif: "hors ton" },
       ],
     },
     auto: [],
   });
   assert.strictEqual(etat.verdict, "APPROUVE");
   assert.deepStrictEqual(etat.executables.map((x) => x.id), ["a"]);
-  assert.strictEqual(etat.refusees[0].motif, "trop bas");
+  assert.strictEqual(etat.refusees[0].motif, "hors ton");
 });
 
 test("une décision orpheline est signalée sans bloquer", () => {
-  const actions = [action("a", "c", 1)];
+  const actions = [action("a", "c", "t")];
   const etat = approval.evaluate({
     actions,
     decisions: {
@@ -116,338 +124,16 @@ test("une décision orpheline est signalée sans bloquer", () => {
 
 test("\"auto\" dispense un type, et lui seul", () => {
   const actions = [
-    { id: "a", type: "veille", cible: "c", valeur: 1 },
-    { id: "b", type: "changement_prix", cible: "c", valeur: 2 },
+    { id: "a", type: "note", cible: "c", valeur: 1 },
+    { id: "b", type: "publication", cible: "c", valeur: 2 },
   ];
-  const etat = approval.evaluate({ actions, decisions: null, auto: ["veille"] });
+  const etat = approval.evaluate({ actions, decisions: null, auto: ["note"] });
   assert.deepStrictEqual(etat.automatiques.map((x) => x.id), ["a"]);
   assert.deepStrictEqual(etat.en_attente.map((x) => x.id), ["b"]);
 });
 
-// ---------- le pipeline complet ----------
-
-test("le pipeline ajustement-prix est valide", () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  assert.strictEqual(stageParId(pipeline, "approbation").type, "approval");
-  assert.ok(!stageParId(pipeline, "approbation").gate, "l'approbation ne porte pas de gate");
-});
-
-test("un stage approval avec un gate est rejeté au chargement", () => {
-  const raw = loadPipeline("ajustement-prix");
-  stageParId(raw, "approbation").gate = { report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "plan" };
-  assert.throws(
-    () =>
-      loader.loadPipeline(pipelinePath("ajustement-prix"), {
-        raw,
-        stageValidators: stageHandlers.validators,
-        backends: {},
-      }),
-    /ne porte pas de gate/
-  );
-});
-
-test("sans décision : le run s'arrête en nommant chaque action en attente", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({ pipeline, spec: SPEC, script: { "price-planner": planCorrect } });
-
-  await assert.rejects(() => runPipeline(h.ctx), (err) => {
-    assert.match(err.message, /2 action\(s\) attendent ton approbation/);
-    assert.match(err.message, /prix-001 : changement_prix sur v1\|101\|0/);
-    assert.match(err.message, /"plan": "[0-9a-f]{16}"/, "l'empreinte à recopier doit être donnée");
-    return true;
-  });
-
-  // L'état complet est écrit malgré l'arrêt : c'est ce qui rend la reprise possible.
-  const etat = readJson(h.workspaceDir, "approbation.json");
-  assert.strictEqual(etat.verdict, "EN_ATTENTE");
-  assert.strictEqual(etat.en_attente.length, 2);
-});
-
-test("décisions complètes : le run aboutit et n'expose que les actions approuvées", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  // Un exécuteur muet : ce test porte sur ce que l'approbation expose, pas sur ce que
-  // l'exécution en fait. Sans lui le run s'arrêterait faute d'exécuteur, ce qui est le
-  // comportement voulu mais pas le sujet ici.
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-    executeurs: { changement_prix: async () => {} },
-  });
-
-  // On rejoue le plan pour connaître l'empreinte, comme le ferait l'opérateur en lisant
-  // le message d'arrêt du premier run.
-  planCorrect(1, h.workspaceDir);
-  const empreinte = approval.fingerprint(readJson(h.workspaceDir, "actions.json").actions);
-  writeDecisions(h.approvalsDir, REGISTRE, {
-    plan: empreinte,
-    decisions: [
-      { action_id: "prix-001", decision: "approuve", par: "raphael", le: "2026-08-17" },
-      { action_id: "prix-002", decision: "refuse", motif: "marge trop faible" },
-    ],
-  });
-
-  await runPipeline(h.ctx);
-
-  const etat = readJson(h.workspaceDir, "approbation.json");
-  assert.strictEqual(etat.verdict, "APPROUVE");
-  assert.deepStrictEqual(etat.executables.map((a) => a.id), ["prix-001"]);
-  assert.deepStrictEqual(etat.refusees.map((a) => a.id), ["prix-002"]);
-});
-
-// Le TOCTOU nommé dans le glossaire du plan NAS : approuver un plan puis en exécuter un
-// autre. L'approbation porte sur l'empreinte, donc elle meurt avec le plan qu'elle visait.
-test("le plan change après la décision : arrêt, aucune action n'est exécutable", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: {
-      "price-planner": (_call, ws) =>
-        writeJson(ws, "actions.json", {
-          actions: [action("prix-001", "v1|101|0", 40)],
-          raisonnement: ["prix bien plus bas que ce qui avait été approuvé"],
-        }),
-    },
-  });
-
-  writeDecisions(h.approvalsDir, REGISTRE, {
-    plan: approval.fingerprint([action("prix-001", "v1|101|0", 79)]),
-    decisions: [{ action_id: "prix-001", decision: "approuve" }],
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
-  assert.strictEqual(readJson(h.workspaceDir, "approbation.json").executables.length, 0);
-
-  // Refuser d'exécuter est juste. Refuser de DÉPOSER ne l'était pas : le nouveau plan
-  // restait invisible, donc rien à décider dans le cockpit, aucune alerte, et un cron
-  // qui repaye le planificateur à chaque réveil sans que rien n'avance.
-  const boite = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "EN-ATTENTE.json"), "utf-8"));
-  assert.strictEqual(boite.en_attente.length, 1, "le plan neuf doit entrer dans la boîte");
-  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, "ajustement-prix.plan.json"), "utf-8"));
-  assert.strictEqual(
-    gele.empreinte,
-    approval.fingerprint([action("prix-001", "v1|101|0", 40)]),
-    "c'est le plan NEUF qui est gelé, pas celui que l'ancienne décision visait"
-  );
-  assert.strictEqual(boite.en_attente[0].empreinte, gele.empreinte);
-});
-
-// Le seul cas où s'arrêter sec reste juste : plus rien à faire attendre, donc rien à
-// déposer, et un registre caduc qu'on ne veut surtout pas voir servir à exécuter.
-test("registre caduc et aucune action à attendre : arrêt net, la boîte reste vide", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: {
-      "price-planner": (_call, ws) =>
-        writeJson(ws, "actions.json", { actions: [], raisonnement: ["rien à corriger"] }),
-    },
-  });
-
-  writeDecisions(h.approvalsDir, REGISTRE, {
-    plan: approval.fingerprint([action("prix-001", "v1|101|0", 79)]),
-    decisions: [{ action_id: "prix-001", decision: "approuve" }],
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
-  assert.ok(
-    !fs.existsSync(path.join(h.approvalsDir, "EN-ATTENTE.json")),
-    "sans action en attente, il n'y a rien à déposer et la boîte ne doit pas être inventée"
-  );
-});
-
-test("le registre vit hors du workspace, hors de portée des agents", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({ pipeline, spec: SPEC, script: { "price-planner": planCorrect } });
-  await assert.rejects(() => runPipeline(h.ctx));
-
-  assert.notStrictEqual(h.approvalsDir, h.workspaceDir);
-  assert.match(
-    require("fs").existsSync(require("path").join(h.workspaceDir, REGISTRE)).toString(),
-    /false/,
-    "le registre ne doit jamais apparaître dans le workspace"
-  );
-});
-
-// ---------- le contrôle du plan, avant l'approbation ----------
-
-test("cible absente du relevé : routée au planificateur, puis corrigée", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: {
-      "price-planner": (call, ws) => {
-        if (call === 1) {
-          writeJson(ws, "actions.json", {
-            actions: [action("prix-001", "v1|999|0", 79)],
-            raisonnement: ["cible inventée"],
-          });
-        } else {
-          planCorrect(call, ws);
-        }
-      },
-    },
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
-  assert.strictEqual(h.calls["price-planner"], 2, "le plan fautif doit revenir au planificateur");
-  const fix = h.prompts.find((p) => p.call === 2);
-  assert.match(fix.userMessage, /CYCLE DE CORRECTION/);
-  // Le finding est injecté via JSON.stringify : les guillemets autour de la cible y sont
-  // échappés, donc on cherche l'id et le motif séparément plutôt qu'une phrase littérale.
-  assert.match(fix.userMessage, /v1\|999\|0/);
-  assert.match(fix.userMessage, /absente de la collecte/);
-});
-
-test("une annonce à moi absente de la recherche reste une cible légitime", async () => {
-  // Le cas réel : une annonce fraîchement publiée que le lookup direct rend en 200 et
-  // que la recherche de marché ignore. Sans cette distinction, le plan ne peut cibler
-  // aucune annonce du vendeur, et la boucle entière est inutilisable.
-  const { fakeEbay, annonce } = require("./harness");
-  const pipeline = loadPipeline("ajustement-prix");
-  const marche = [annonce(3), annonce(4), annonce(5)];
-  const mienne = annonce(9, { itemId: "v1|909|0", title: "la mienne, hors recherche" });
-
-  const h = createHarness({
-    pipeline,
-    spec: { ...SPEC, mes_annonces: ["v1|909|0"] },
-    items: marche,
-    transport: fakeEbay(marche, { miennes: [mienne] }),
-    script: {
-      "price-planner": (_call, ws) => {
-        writeJson(ws, "actions.json", {
-          actions: [action("prix-001", "v1|909|0", 79)],
-          raisonnement: ["ma seule annonce, absente du relevé de marché"],
-        });
-      },
-    },
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
-  assert.strictEqual(h.calls["price-planner"], 1, "aucun cycle de correction ne doit se déclencher");
-
-  const listings = readJson(h.ctx.workspaceDir, "listings.json");
-  assert.strictEqual(listings.mes_annonces.length, 1, "elle doit être récupérée à part");
-  assert.ok(
-    !listings.collecte.some((a) => a.id === "v1|909|0"),
-    "et rester hors du marché, sinon la médiane s'aligne sur elle-même"
-  );
-
-  const controle = readJson(h.ctx.workspaceDir, "controle.json");
-  assert.strictEqual(controle.verdict, "VALIDE");
-  assert.deepStrictEqual(controle.manques, [], "la cible ne doit pas être vue comme inventée");
-});
-
-test("une annonce à moi introuvable chez eBay est signalée, pas devinée", async () => {
-  const { fakeEbay, annonce } = require("./harness");
-  const pipeline = loadPipeline("ajustement-prix");
-  const marche = [annonce(3), annonce(4), annonce(5)];
-
-  const h = createHarness({
-    pipeline,
-    spec: { ...SPEC, mes_annonces: ["v1|disparue|0"] },
-    items: marche,
-    transport: fakeEbay(marche),
-    script: {
-      "price-planner": (_call, ws) => {
-        writeJson(ws, "actions.json", { actions: [], raisonnement: ["plus rien à moi"] });
-      },
-    },
-  });
-
-  await runPipeline(h.ctx).catch(() => {});
-  const listings = readJson(h.ctx.workspaceDir, "listings.json");
-  assert.deepStrictEqual(listings.mes_annonces, [], "rien d'inventé");
-  assert.deepStrictEqual(
-    listings.mes_annonces_introuvables,
-    ["v1|disparue|0"],
-    "une annonce vendue ou retirée est une information, pas une panne"
-  );
-});
-
-test("id dupliqué : rejeté, une décision ne doit jamais être ambiguë", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: {
-      "price-planner": (call, ws) => {
-        if (call === 1) {
-          writeJson(ws, "actions.json", {
-            actions: [action("prix-001", "v1|101|0", 79), action("prix-001", "v1|102|0", 75)],
-            raisonnement: ["deux actions sous le même id"],
-          });
-        } else {
-          planCorrect(call, ws);
-        }
-      },
-    },
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
-  const fix = h.prompts.find((p) => p.call === 2);
-  assert.match(fix.userMessage, /id dupliqué/);
-});
-
-test("plan vide : aucune action, aucune approbation à demander, le run aboutit", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: {
-      "price-planner": (_call, ws) =>
-        writeJson(ws, "actions.json", { actions: [], raisonnement: ["rien à ajuster"] }),
-    },
-  });
-
-  await runPipeline(h.ctx);
-  assert.strictEqual(readJson(h.workspaceDir, "approbation.json").verdict, "APPROUVE");
-});
-
-test("réponse libre de bout en bout : la consigne est déposée, rien n'est exécuté", async () => {
-  const pipeline = loadPipeline("ajustement-prix");
-  const h = createHarness({
-    pipeline,
-    spec: SPEC,
-    script: { "price-planner": planCorrect },
-    // Un exécuteur qui crie s'il est appelé : sous orientation, rien ne doit partir.
-    executeurs: {
-      changement_prix: async () => {
-        throw new Error("aucune action ne doit s'exécuter sous orientation");
-      },
-    },
-  });
-
-  planCorrect(1, h.workspaceDir);
-  const empreinte = approval.fingerprint(readJson(h.workspaceDir, "actions.json").actions);
-  writeDecisions(h.approvalsDir, REGISTRE, {
-    plan: empreinte,
-    reponse: "Vise les annonces sous 80 EUR, pas les comparables du haut du panier.",
-    // Une décision déjà prise ne doit pas passer non plus : la réponse libre prime.
-    decisions: [{ action_id: "prix-001", decision: "approuve" }],
-  });
-
-  await assert.rejects(() => runPipeline(h.ctx), (err) => {
-    assert.match(err.message, /réponse libre reçue/);
-    assert.match(err.message, /Vise les annonces sous 80 EUR/);
-    return true;
-  });
-
-  const orientation = readJson(h.workspaceDir, "orientation.json");
-  assert.strictEqual(orientation.empreinte, empreinte);
-  assert.match(orientation.consigne, /^Vise les annonces sous 80 EUR/);
-  assert.ok(orientation.recue_le, "la consigne est datée");
-
-  const etat = readJson(h.workspaceDir, "approbation.json");
-  assert.strictEqual(etat.verdict, "ORIENTE");
-  assert.deepStrictEqual(etat.executables, []);
-});
-
 test("réponse libre : le plan repart au travail, rien ne s'exécute", () => {
-  const actions = [action("a", "c", 1), action("b", "c", 2)];
+  const actions = [action("a", "c", "t1"), action("b", "c", "t2")];
   const etat = approval.evaluate({
     actions,
     decisions: {
@@ -455,7 +141,7 @@ test("réponse libre : le plan repart au travail, rien ne s'exécute", () => {
       reponse: "  Reprends l'angle prix, pas l'angle image.  ",
       decisions: [{ action_id: "a", decision: "approuve" }],
     },
-    auto: ["changement_prix"],
+    auto: ["publication"],
   });
   assert.strictEqual(etat.verdict, "ORIENTE");
   assert.strictEqual(etat.orientation, "Reprends l'angle prix, pas l'angle image.");
@@ -465,7 +151,7 @@ test("réponse libre : le plan repart au travail, rien ne s'exécute", () => {
 });
 
 test("une réponse blanche ne vaut pas orientation et ne débloque rien", () => {
-  const actions = [action("a", "c", 1)];
+  const actions = [action("a", "c", "t")];
   const etat = approval.evaluate({
     actions,
     decisions: { plan: approval.fingerprint(actions), reponse: "   \n  ", decisions: [] },
@@ -476,11 +162,11 @@ test("une réponse blanche ne vaut pas orientation et ne débloque rien", () => 
 });
 
 test("une réponse portant sur un plan périmé ne vaut rien", () => {
-  const actions = [action("a", "c", 1)];
+  const actions = [action("a", "c", "t")];
   const etat = approval.evaluate({
     actions,
     decisions: { plan: "empreinte-d-un-autre-plan", reponse: "vas-y", decisions: [] },
-    auto: ["changement_prix"],
+    auto: ["publication"],
   });
   assert.strictEqual(etat.verdict, "EN_ATTENTE");
   assert.strictEqual(etat.orientation, null);
@@ -488,7 +174,7 @@ test("une réponse portant sur un plan périmé ne vaut rien", () => {
 });
 
 test("sans réponse libre, le verdict d'avant est inchangé", () => {
-  const actions = [action("a", "c", 1)];
+  const actions = [action("a", "c", "t")];
   const etat = approval.evaluate({
     actions,
     decisions: {
@@ -500,6 +186,235 @@ test("sans réponse libre, le verdict d'avant est inchangé", () => {
   assert.strictEqual(etat.verdict, "APPROUVE");
   assert.strictEqual(etat.orientation, null);
   assert.strictEqual(etat.executables.length, 1);
+});
+
+// ---------- les pipelines livrés ----------
+
+test("le pipeline marketing se charge avec les validateurs du dépôt", () => {
+  const pipeline = loadPipeline("marketing");
+  assert.strictEqual(stageParId(pipeline, "approbation").type, "approval");
+  assert.strictEqual(stageParId(pipeline, "couverture").type, "verify-couverture");
+  assert.strictEqual(stageParId(pipeline, "consigne").type, "consigne");
+  assert.ok(!stageParId(pipeline, "approbation").gate, "l'approbation ne porte pas de gate");
+});
+
+test("un stage approval avec un gate est rejeté au chargement", () => {
+  const raw = loadFixture("approbation");
+  stageParId(raw, "approbation").gate = { report: "x", pass_when: {}, fail_when: { equals: ["y"] }, items: "i", targets: {}, rerun_from: "plan" };
+  assert.throws(
+    () =>
+      loader.loadPipeline(fixturePath("approbation"), {
+        raw,
+        stageValidators: stageHandlers.validators,
+        backends: {},
+      }),
+    /ne porte pas de gate/
+  );
+});
+
+// ---------- l'approbation dans un run ----------
+
+test("sans décision : le run s'arrête en nommant chaque action en attente", async () => {
+  const h = planifier();
+
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /2 action\(s\) attendent ton approbation/);
+    assert.match(err.message, /pub-001 : publication sur page-accueil/);
+    assert.match(err.message, /"plan": "[0-9a-f]{16}"/, "l'empreinte à recopier doit être donnée");
+    return true;
+  });
+
+  // L'état complet est écrit malgré l'arrêt : c'est ce qui rend la reprise possible.
+  const etat = readJson(h.workspaceDir, "approbation.json");
+  assert.strictEqual(etat.verdict, "EN_ATTENTE");
+  assert.strictEqual(etat.en_attente.length, 2);
+});
+
+test("décisions complètes : le run aboutit et n'expose que les actions approuvées", async () => {
+  const h = planifier();
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint(PLAN),
+    decisions: [
+      { action_id: "pub-001", decision: "approuve", par: "raphael", le: "2026-08-17" },
+      { action_id: "pub-002", decision: "refuse", motif: "hors ton" },
+    ],
+  });
+
+  await runPipeline(h.ctx);
+
+  const etat = readJson(h.workspaceDir, "approbation.json");
+  assert.strictEqual(etat.verdict, "APPROUVE");
+  assert.deepStrictEqual(etat.executables.map((a) => a.id), ["pub-001"]);
+  assert.deepStrictEqual(etat.refusees.map((a) => a.id), ["pub-002"]);
+});
+
+// Le TOCTOU : approuver un plan puis en exécuter un autre. L'approbation porte sur
+// l'empreinte, donc elle meurt avec le plan qu'elle visait.
+test("le plan change après la décision : arrêt, aucune action n'est exécutable", async () => {
+  const neuf = [action("pub-001", "page-accueil", "Titre bien différent")];
+  const h = planifier({
+    script: { planificateur: (_call, ws) => writeJson(ws, "actions.json", { actions: neuf }) },
+  });
+
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint([action("pub-001", "page-accueil", "Titre A")]),
+    decisions: [{ action_id: "pub-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
+  assert.strictEqual(readJson(h.workspaceDir, "approbation.json").executables.length, 0);
+
+  // Refuser d'exécuter est juste. Refuser de DÉPOSER ne l'était pas : le nouveau plan
+  // restait invisible, donc rien à décider dans le cockpit et aucune alerte.
+  const boite = lireBoite(h.approvalsDir);
+  assert.strictEqual(boite.en_attente.length, 1, "le plan neuf doit entrer dans la boîte");
+  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, PLAN_GELE), "utf-8"));
+  assert.strictEqual(
+    gele.empreinte,
+    approval.fingerprint(neuf),
+    "c'est le plan NEUF qui est gelé, pas celui que l'ancienne décision visait"
+  );
+  assert.strictEqual(boite.en_attente[0].empreinte, gele.empreinte);
+});
+
+// Le seul cas où s'arrêter sec reste juste : plus rien à faire attendre, donc rien à
+// déposer, et un registre caduc qu'on ne veut surtout pas voir servir.
+test("registre caduc et aucune action à attendre : arrêt net, la boîte reste vide", async () => {
+  const h = planifier({
+    script: { planificateur: (_call, ws) => writeJson(ws, "actions.json", { actions: [] }) },
+  });
+
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint([action("pub-001", "page-accueil", "Titre A")]),
+    decisions: [{ action_id: "pub-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
+  assert.strictEqual(
+    lireBoite(h.approvalsDir),
+    null,
+    "sans action en attente, il n'y a rien à déposer et la boîte ne doit pas être inventée"
+  );
+});
+
+test("le registre vit hors du workspace, hors de portée des agents", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx));
+
+  assert.notStrictEqual(h.approvalsDir, h.workspaceDir);
+  assert.ok(
+    !fs.existsSync(path.join(h.workspaceDir, REGISTRE)),
+    "le registre ne doit jamais apparaître dans le workspace"
+  );
+});
+
+test("plan vide : aucune action, aucune approbation à demander, le run aboutit", async () => {
+  const h = planifier({
+    script: { planificateur: (_call, ws) => writeJson(ws, "actions.json", { actions: [] }) },
+  });
+
+  await runPipeline(h.ctx);
+  assert.strictEqual(readJson(h.workspaceDir, "approbation.json").verdict, "APPROUVE");
+});
+
+test("réponse libre de bout en bout : la consigne est déposée, rien n'est exécutable", async () => {
+  const h = planifier();
+  writeDecisions(h.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint(PLAN),
+    reponse: "Parle du prix avant de parler de l'image.",
+    // Une décision déjà prise ne doit pas passer non plus : la réponse libre prime.
+    decisions: [{ action_id: "pub-001", decision: "approuve" }],
+  });
+
+  await assert.rejects(() => runPipeline(h.ctx), (err) => {
+    assert.match(err.message, /réponse libre reçue/);
+    assert.match(err.message, /Parle du prix avant de parler de l'image/);
+    return true;
+  });
+
+  const orientation = readJson(h.workspaceDir, "orientation.json");
+  assert.strictEqual(orientation.empreinte, approval.fingerprint(PLAN));
+  assert.match(orientation.consigne, /^Parle du prix/);
+  assert.ok(orientation.recue_le, "la consigne est datée");
+
+  const etat = readJson(h.workspaceDir, "approbation.json");
+  assert.strictEqual(etat.verdict, "ORIENTE");
+  assert.deepStrictEqual(etat.executables, []);
+});
+
+// ---------- le gel et la boîte des décisions en attente ----------
+
+test("le gel porte l'empreinte, sa date, et le texte exact des actions", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx), /Le plan est gelé dans/);
+
+  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, PLAN_GELE), "utf-8"));
+  assert.strictEqual(gele.empreinte, approval.fingerprint(PLAN));
+  assert.deepStrictEqual(gele.actions, PLAN);
+  assert.ok(gele.gele_le, "le gel est daté");
+});
+
+// Un arrêt qui ne s'écrit que dans un terminal est invisible quand le run tourne sur une
+// autre machine : le pipeline s'arrêterait et l'attente durerait indéfiniment.
+test("l'arrêt sur approbation dépose la demande dans la boîte", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+
+  const boite = lireBoite(h.approvalsDir);
+  assert.strictEqual(boite.en_attente.length, 1);
+  const demande = boite.en_attente[0];
+  assert.strictEqual(demande.dossier, "exemple");
+  assert.strictEqual(demande.actions, 2);
+  assert.strictEqual(demande.empreinte, approval.fingerprint(PLAN));
+  assert.ok(demande.depuis, "l'attente doit être datée, sinon impossible de dire depuis quand");
+});
+
+test("la demande nomme le registre à remplir et le plan gelé", async () => {
+  const h = planifier();
+  await assert.rejects(() => runPipeline(h.ctx));
+
+  const demande = lireBoite(h.approvalsDir).en_attente[0];
+  assert.match(demande.registre, /exemple\.decisions\.json$/);
+  assert.match(demande.plan_gele, /exemple\.plan\.json$/);
+});
+
+// Replanifier remplace la demande. L'empiler laisserait dans la boîte des demandes
+// portant sur des plans qui n'existent plus, et une boîte pleine de faux se fait ignorer.
+test("replanifier remplace la demande au lieu de l'empiler", async () => {
+  const premier = planifier();
+  await assert.rejects(() => runPipeline(premier.ctx));
+
+  const second = planifier();
+  second.ctx.approvalsDir = premier.approvalsDir;
+  await assert.rejects(() => runPipeline(second.ctx));
+
+  assert.strictEqual(lireBoite(premier.approvalsDir).en_attente.length, 1);
+});
+
+test("une fois tout décidé, la demande sort de la boîte au passage suivant", async () => {
+  const p = planifier();
+  await assert.rejects(() => runPipeline(p.ctx));
+  assert.strictEqual(lireBoite(p.approvalsDir).en_attente.length, 1);
+
+  writeDecisions(p.approvalsDir, REGISTRE, {
+    plan: approval.fingerprint(PLAN),
+    decisions: PLAN.map((a) => ({ action_id: a.id, decision: "approuve" })),
+  });
+
+  const relecture = planifier();
+  relecture.ctx.approvalsDir = p.approvalsDir;
+  await runPipeline(relecture.ctx);
+
+  assert.deepStrictEqual(lireBoite(p.approvalsDir).en_attente, []);
+});
+
+test("sans dossier déclaré, aucune boîte n'est touchée", async () => {
+  const pipeline = loadFixture("approbation");
+  delete stageParId(pipeline, "approbation").dossier;
+  const h = createHarness({ pipeline, spec: SPEC, script: { planificateur: planCorrect } });
+
+  await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
+  assert.strictEqual(lireBoite(h.approvalsDir), null, "la boîte est optionnelle");
 });
 
 (async () => {

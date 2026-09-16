@@ -50,7 +50,7 @@ function bac({ dossiers = [{}] } = {}) {
       actions: 1,
       registre,
       plan_gele: planGele,
-      appliquer_avec: "ajustement-prix-appliquer",
+      appliquer_avec: "appliquer",
     });
   });
 
@@ -69,7 +69,13 @@ function faux({ casse = false } = {}) {
   return transport;
 }
 
-const PIPELINES = path.join(__dirname, "..", "pipelines");
+// La péremption se lit dans le pipeline qui applique le plan. Aucun pipeline livré n'en
+// déclare plus depuis le retrait des pipelines de prix : le test porte le sien.
+const PIPELINES = fs.mkdtempSync(path.join(os.tmpdir(), "alerte-pipelines-"));
+fs.writeFileSync(
+  path.join(PIPELINES, "appliquer.json"),
+  JSON.stringify({ stages: [{ id: "chargement", type: "charger", max_age_heures: 12 }] })
+);
 
 test("une demande en attente produit une alerte, qui dit ce qu'il y a à décider", async () => {
   const dir = bac();

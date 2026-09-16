@@ -13,13 +13,12 @@ const {
 } = require("agent-orchestrator");
 
 const stageHandlers = require("./src/stage-handlers");
-const executeurPrix = require("./src/executeur-prix");
 
 async function main() {
   const [, , pipelineName, specPath] = process.argv;
   if (!pipelineName || !specPath) {
     console.error("Usage : node orchestrator.js <pipeline> <spec.json>");
-    console.error("Exemple : node orchestrator.js veille-ebay ./specs/veille.example.json");
+    console.error("Exemple : node orchestrator.js marketing ./specs/marketing.json");
     process.exit(1);
   }
 
@@ -44,7 +43,7 @@ async function main() {
     }
   }
 
-  // Une veille produit un rapport, pas un projet : le workspace est un dossier de
+  // Un pipeline business produit des artefacts, pas un projet : le workspace est un dossier de
   // travail jetable, et il n'y a rien à versionner ni à déployer. D'où l'absence de
   // `vcs` dans le contexte, que le moteur traite comme optionnel.
   const outputRoot = process.env.OUTPUT_ROOT || path.join(__dirname, "runs");
@@ -73,11 +72,6 @@ async function main() {
     agentDefinitions,
     runAgent: agentRunner.run,
     stageHandlers: stageHandlers.handlers,
-    // Registre des exécuteurs d'actions. Il n'accueille que des gestes écrits contre
-    // l'API vivante : `changement_prix` l'a été après avoir vu eBay refuser un jeton
-    // applicatif en 403 et exiger un en-tête de langue qu'aucune documentation accessible ne mentionnait.
-    // Un type sans exécuteur s'arrête en le nommant, il ne se saute pas.
-    executeurs: { changement_prix: executeurPrix.changerPrix },
     backends,
     env,
     specPath,
@@ -89,7 +83,7 @@ async function main() {
     await engine.runPipeline(ctx);
     reporter.event("generation:done", {});
     reporter.finalize("success", budget);
-    console.log(`\n✓ Rapport : ${path.join(workspaceDir, "veille-report.json")}`);
+    console.log(`\n✓ Rapport : ${path.join(workspaceDir, "generation-report.json")}`);
   } catch (err) {
     reporter.event("generation:failed", { error: err.message });
     reporter.finalize("failed", budget);

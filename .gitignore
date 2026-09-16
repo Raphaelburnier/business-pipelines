@@ -31,7 +31,7 @@ approvals/*.plan.json
 specs/cockpit-apps.json
 
 # Secrets : jamais commités.
-# Un .env par spec (specs/veille.json → specs/veille.env) : un jeu de clés par périmètre.
+# Un .env par spec (specs/marketing.json → specs/marketing.env) : un jeu de clés par périmètre.
 .env
 *.env
 !*.env.example
