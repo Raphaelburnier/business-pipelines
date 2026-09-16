@@ -7,6 +7,7 @@ const { spawn } = require("child_process");
 
 const acces = require("../src/acces");
 const cockpit = require("../src/cockpit");
+const store = require("../src/store");
 
 const tests = [];
 function test(name, fn) {
@@ -16,10 +17,10 @@ function test(name, fn) {
 const TAILNET = "destrobimobile.tail8296f6.ts.net";
 const PORT = 40000 + (process.pid % 20000);
 
-// Le même bac que test/cockpit.test.js : la boîte et le plan gelé tels que le moteur les
-// écrit vraiment, pour que le serveur soit exercé contre la forme de production.
+// Le même bac que test/cockpit.test.js : la demande et le plan gelé écrits dans le store
+// comme le stage d'approbation les écrit, pour que le serveur soit exercé contre la forme
+// de production.
 function bac({
-  registreDans = null,
   dossier = "ajustement-prix",
   actionId = "prix-001",
   valeur = { de: 499.99, vers: 240.99, devise: "USD" },
@@ -27,47 +28,27 @@ function bac({
   depuis = "2026-08-19T11:30:00.000Z",
 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acces-"));
-  const registre = path.join(registreDans || dir, "ajustement-prix.decisions.json");
-  const planGele = path.join(dir, "ajustement-prix.plan.json");
 
-  fs.writeFileSync(
-    path.join(dir, "EN-ATTENTE.json"),
-    JSON.stringify({
-      en_attente: [
-        {
-          dossier,
-          empreinte: "abc123",
-          depuis,
-          actions: 1,
-          registre,
-          plan_gele: planGele,
-          appliquer_avec: null,
-        },
-      ],
-    })
-  );
+  store.deposer(dir, dossier, { empreinte: "abc123", depuis, actions: 1, appliquer_avec: null });
+  store.gelerPlan(dir, dossier, {
+    empreinte: "abc123",
+    gele_le: "2026-08-19T11:30:00.000Z",
+    collecte_le: "2026-08-19T11:00:00.000Z",
+    actions: [
+      {
+        id: actionId,
+        type: "changement_prix",
+        cible: "v1|110590223642|0",
+        valeur,
+        justification,
+        sources: ["v1|1|0"],
+      },
+    ],
+  });
 
-  fs.writeFileSync(
-    planGele,
-    JSON.stringify({
-      empreinte: "abc123",
-      gele_le: "2026-08-19T11:30:00.000Z",
-      collecte_le: "2026-08-19T11:00:00.000Z",
-      actions: [
-        {
-          id: actionId,
-          type: "changement_prix",
-          cible: "v1|110590223642|0",
-          valeur,
-          justification,
-          sources: ["v1|1|0"],
-        },
-      ],
-    })
-  );
-
-  return { dir, registre, planGele };
+  return { dir, dossier, registre: () => store.lireRegistre(dir, dossier) };
 }
+
 
 // ---------------------------------------------------------------- le module, sans socket
 
@@ -222,7 +203,7 @@ test("une décision prise depuis le téléphone est consignée avec son identit�
     corps: JSON.stringify({ dossier: "ajustement-prix", empreinte: "abc123", decisions: [{ action_id: "prix-001", decision: "approuve" }] }),
   });
   assert.strictEqual(r.code, 200, r.corps);
-  const registre = JSON.parse(fs.readFileSync(bacCourant.registre, "utf-8"));
+  const registre = bacCourant.registre();
   assert.strictEqual(registre.decisions[0].par, "destrobi28@gmail.com");
   assert.strictEqual(registre.decisions[0].canal, "tailnet");
 });
@@ -236,7 +217,7 @@ test("une écriture venue d'un autre site est refusée", async () => {
   });
   assert.strictEqual(r.code, 403);
   assert.ok(/origine refusée/.test(r.corps));
-  assert.ok(!fs.existsSync(bacCourant.registre), "rien ne doit être écrit");
+  assert.strictEqual(bacCourant.registre(), null, "rien ne doit être écrit");
 });
 
 test("un POST de formulaire, qui échappe au contrôle préalable CORS, est refusé sur le type", async () => {
@@ -247,15 +228,15 @@ test("un POST de formulaire, qui échappe au contrôle préalable CORS, est refu
     corps: JSON.stringify({ dossier: "ajustement-prix", empreinte: "abc123", decisions: [{ action_id: "prix-001", decision: "approuve" }] }),
   });
   assert.strictEqual(r.code, 415);
-  assert.ok(!fs.existsSync(bacCourant.registre), "rien ne doit être écrit");
+  assert.strictEqual(bacCourant.registre(), null, "rien ne doit être écrit");
 });
 
-test("le corps ne choisit pas où le registre s'écrit", async () => {
+test("le corps ne choisit pas dans quel store le registre s'écrit", async () => {
   // Le corps était étalé dans l'appel à enregistrer(), après approvalsDir. Il pouvait donc
   // le redéfinir, désigner une fausse boîte et faire écrire un fichier arbitraire. Tant que
   // la page n'était joignable qu'en loopback, personne ne pouvait l'atteindre ; le tailnet
   // change ça, et la garde ne doit pas dépendre de qui peut se connecter.
-  const piege = bac({ registreDans: fs.mkdtempSync(path.join(os.tmpdir(), "piege-")) });
+  const piege = bac();
   const r = await demander({
     methode: "POST",
     chemin: "/api/decider",
@@ -268,8 +249,8 @@ test("le corps ne choisit pas où le registre s'écrit", async () => {
     }),
   });
   assert.strictEqual(r.code, 200, r.corps);
-  assert.ok(!fs.existsSync(piege.registre), "le chemin dicté par la requête ne doit rien recevoir");
-  assert.ok(fs.existsSync(bacCourant.registre), "le registre réel, lui, est écrit");
+  assert.strictEqual(piege.registre(), null, "le store dicté par la requête ne doit rien recevoir");
+  assert.ok(bacCourant.registre(), "le registre réel, lui, est écrit");
 });
 
 test("le corps ne choisit ni la signature ni l'heure", async () => {
@@ -286,7 +267,7 @@ test("le corps ne choisit ni la signature ni l'heure", async () => {
     }),
   });
   assert.strictEqual(r.code, 200, r.corps);
-  const d = JSON.parse(fs.readFileSync(bacCourant.registre, "utf-8")).decisions[0];
+  const d = bacCourant.registre().decisions[0];
   assert.strictEqual(d.par, "raph-poste", "la signature vient du canal, pas de ce que le corps raconte");
   assert.strictEqual(d.canal, "local");
   assert.ok(!d.le.startsWith("1970"), "l'horodatage ne se falsifie pas depuis le corps");
@@ -303,18 +284,20 @@ test("l'empreinte lie toujours la décision au plan affiché, y compris par le t
   assert.ok(/le plan a changé/.test(r.corps));
 });
 
-test("une boîte illisible répond, nomme le fichier, et ne tue pas le cockpit", async () => {
+test("un store illisible répond, nomme le fichier, et ne tue pas le cockpit", async () => {
   // Le gestionnaire passé à createServer est `async` : une exception qui en sortait
   // devenait une promesse rejetée que Node ne rattrape pas, et Node tuait le processus.
   // Un seul GET sur une boîte tronquée suffisait, systemd relançait, et cinq crashs en
   // dix secondes passaient l'unité en échec. L'accès depuis le téléphone finissait par
   // exiger une commande tapée sur la machine, ce qu'il était censé éviter.
-  fs.writeFileSync(path.join(bacCourant.dir, "EN-ATTENTE.json"), '{"en_attente":[{"dossier":"ajus');
+  const base = store.cheminBase(bacCourant.dir);
+  for (const f of [base, `${base}-wal`, `${base}-shm`]) fs.rmSync(f, { force: true });
+  fs.writeFileSync(base, "pas une base SQLite");
   const r = await demander({ chemin: "/" });
-  assert.strictEqual(r.code, 500, "un fichier corrompu est une réponse, pas un arrêt");
-  assert.ok(/EN-ATTENTE\.json/.test(r.corps), "le message doit dire quel fichier réparer");
+  assert.strictEqual(r.code, 500, "une base corrompue est une réponse, pas un arrêt");
+  assert.ok(r.corps.includes(store.FICHIER), "le message doit dire quel fichier réparer");
 
-  fs.writeFileSync(path.join(bacCourant.dir, "EN-ATTENTE.json"), JSON.stringify({ en_attente: [] }));
+  fs.rmSync(base, { force: true });
   const apres = await demander({ chemin: "/" });
   assert.strictEqual(apres.code, 200, "le cockpit doit avoir survécu à la requête précédente");
 });
@@ -416,7 +399,7 @@ test("sans rien à décider, la page le dit une fois et n'offre pas d'enregistre
   // comme une page qui n'a pas fini de charger.
   demonter();
   const vide = fs.mkdtempSync(path.join(os.tmpdir(), "acces-vide-"));
-  fs.writeFileSync(path.join(vide, "EN-ATTENTE.json"), JSON.stringify({ en_attente: [] }));
+  store.lireBoite(vide);
   await monter({ APPROVALS_DIR: vide });
 
   const r = await demander({ chemin: "/" });

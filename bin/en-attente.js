@@ -1,24 +1,39 @@
 #!/usr/bin/env node
 
 // Le premier lecteur de la boîte des décisions en attente, et le plus bête : il affiche.
-// Un notifieur Telegram, un mail, un cockpit web seraient trois autres lecteurs du même
-// fichier. C'est pour ça que l'arrêt n'est couplé à aucun transport.
+// Le cockpit et le canal d'alerte en sont deux autres lecteurs. C'est pour ça que l'arrêt
+// n'est couplé à aucun transport.
+//
+//   node bin/en-attente.js                        affiche ce qui attend
+//   node bin/en-attente.js --abandonner <dossier> retire le plan gelé, son registre courant
+//                                                 et sa demande
 //
 // Sortie 0 si rien n'attend, 1 s'il y a des décisions à prendre : utilisable tel quel dans
 // un cron ou un `if` shell.
 
-const fs = require("fs");
 const path = require("path");
+const store = require("../src/store");
 
 const approvalsDir = process.env.APPROVALS_DIR || path.join(__dirname, "..", "approvals");
-const boitePath = path.join(approvalsDir, "EN-ATTENTE.json");
+const [option, dossier] = process.argv.slice(2);
 
-if (!fs.existsSync(boitePath)) {
-  console.log("Rien en attente.");
+// Abandonner remplace ce qu'on faisait en supprimant le fichier du plan gelé. Les décisions
+// déjà prises restent en base, rattachées à leur empreinte.
+if (option === "--abandonner") {
+  if (!dossier) {
+    console.error("Usage : node bin/en-attente.js --abandonner <dossier>");
+    process.exit(2);
+  }
+  const retire = store.abandonnerPlan(approvalsDir, dossier);
+  console.log(retire ? `Plan "${dossier}" abandonné : le prochain tour repartira de zéro.` : `Aucun plan "${dossier}" à abandonner.`);
   process.exit(0);
 }
+if (option) {
+  console.error(`Option inconnue : ${option}`);
+  process.exit(2);
+}
 
-const { en_attente: attentes = [] } = JSON.parse(fs.readFileSync(boitePath, "utf-8"));
+const { en_attente: attentes = [] } = store.lireBoite(approvalsDir);
 
 if (attentes.length === 0) {
   console.log("Rien en attente.");
@@ -43,8 +58,7 @@ for (const a of attentes) {
   console.log(`  ${a.dossier}`);
   console.log(`    ${a.actions} action(s), depuis ${depuisQuand(a.depuis)}`);
   console.log(`    empreinte  ${a.empreinte}`);
-  console.log(`    décider    ${a.registre}`);
-  if (a.plan_gele) console.log(`    plan gelé  ${a.plan_gele}`);
+  console.log(`    décider    dans le cockpit`);
   if (a.appliquer_avec) console.log(`    puis       node orchestrator.js ${a.appliquer_avec} <spec>`);
   console.log("");
 }

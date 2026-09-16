@@ -40,6 +40,12 @@ specs/cockpit-apps.json
 # message en double, rien de plus.
 approvals/ALERTES.json
 
+# Le store SQLite des approbations, avec son journal WAL : même raison que les fichiers
+# qu'il remplace, sa sauvegarde appartient au NAS.
+approvals/*.sqlite
+approvals/*.sqlite-wal
+approvals/*.sqlite-shm
+
 # Worktrees de travail : des checkouts, pas du contenu de dépôt.
 .claude/worktrees/
 

@@ -1,9 +1,22 @@
 const fs = require("fs");
 const path = require("path");
 const approval = require("./approval");
-// Les fichiers d'approbation survivent au run : ils s'écrivent atomiquement et se lisent
-// avec un message qui nomme le fichier fautif. Voir src/durable.js.
+// Plans gelés, registres et boîte survivent au run dans le store SQLite des approbations,
+// hors du workspace. Voir src/store.js.
+const store = require("./store");
+// L'orientation, elle, s'écrit dans le workspace : c'est une entrée du tour, pas un état.
 const durable = require("./durable");
+
+// L'identité d'une approbation dans le store. Le dossier quand il est déclaré, sinon le nom
+// du plan gelé ou du registre, sans suffixe : `marketing.plan.json` et
+// `marketing.decisions.json` désignent tous deux le dossier `marketing`, comme leurs
+// fichiers le faisaient déjà.
+function nomDe(fichier) {
+  return path.basename(String(fichier || "")).replace(/\.(plan|decisions)\.json$|\.json$/, "");
+}
+function cleDossier(stage) {
+  return stage.dossier || nomDe(stage.plan_gele || stage.decisions);
+}
 
 // Horloge injectable : les dates de gel et de dépôt se testent sans attendre.
 const maintenant = (ctx) => (ctx.maintenant ? ctx.maintenant() : Date.now());
@@ -185,18 +198,19 @@ handlers.consigne = async (stage, ctx) => {
   }
 
   const dir = path.resolve(ctx.approvalsDir || ".");
-  const planGele = path.join(dir, stage.plan_gele);
+  const dossier = approbations.length ? cleDossier(approbations[0]) : cleDossier(stage);
+  const abandon = `npm run en-attente -- --abandonner ${dossier}`;
   const ecrire = (contenu) =>
     fs.writeFileSync(path.join(ctx.workspaceDir, stage.output), JSON.stringify(contenu, null, 2));
 
-  const gele = durable.lireJson(planGele);
+  const gele = store.lirePlan(dir, dossier);
   if (!gele) {
     ecrire({ consigne: null, raison: "aucun plan gelé : premier tour" });
     ctx.reporter.event("consigne:aucune", { stage: stage.id });
     return;
   }
 
-  const registre = durable.lireJson(path.join(dir, stage.decisions));
+  const registre = store.lireRegistre(dir, dossier);
   const etat = approval.evaluate({ actions: gele.actions || [], decisions: registre, auto: [] });
 
   if (etat.verdict === "ORIENTE") {
@@ -217,14 +231,14 @@ handlers.consigne = async (stage, ctx) => {
     throw new Error(
       `Stage "${stage.id}" : le plan gelé ${etat.empreinte} est entièrement tranché. ` +
         `Rien à refaire : c'est lui que la suite consomme. ` +
-        `Pour repartir de zéro malgré tout, supprimer ${planGele}.`
+        `Pour repartir de zéro malgré tout : ${abandon}.`
     );
   }
   throw new Error(
     `Stage "${stage.id}" : le plan gelé ${etat.empreinte} attend une décision` +
       (etat.perimee ? " (le registre porte sur un plan plus ancien)" : "") +
       `. Décider dans le cockpit, ou y écrire une consigne, avant de relancer. ` +
-      `Pour abandonner ce plan, supprimer ${planGele}.`
+      `Pour abandonner ce plan : ${abandon}.`
   );
 };
 
@@ -232,34 +246,14 @@ function readJson(dir, file) {
   return JSON.parse(fs.readFileSync(path.join(dir, file), "utf-8"));
 }
 
-// Boîte durable des décisions en attente. Un pipeline qui s'arrête sur une approbation
-// l'écrit dans un terminal, ce que personne ne lit quand le run est déclenché par un cron
-// sur un NAS : il s'arrêterait, et l'attente durerait indéfiniment sans que rien ne le
-// signale.
+// Boîte des décisions en attente. Un pipeline qui s'arrête sur une approbation l'écrit dans
+// un terminal, ce que personne ne lit quand le run tourne sur une autre machine : il
+// s'arrêterait, et l'attente durerait indéfiniment sans que rien ne le signale.
 //
-// Cette boîte est délibérément un simple fichier, sans transport. Prévenir par Telegram,
-// par mail ou via un cockpit sont alors trois LECTEURS du même état, et choisir l'un
-// n'interdit pas les autres. Coupler l'arrêt à un transport figerait ce choix dans le
-// code qui garde l'argent.
-const INBOX = "EN-ATTENTE.json";
-
-function lireInbox(approvalsDir) {
-  return durable.lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
-}
-
-// La clé est le DOSSIER, pas le pipeline : la demande est créée par la planification et
-// consommée par l'application, deux pipelines différents. Keyer par pipeline laisserait
-// l'entrée pour toujours, puisque le pipeline qui l'a créée n'est pas celui qui la résout.
-//
-// Une entrée par dossier : replanifier remplace la demande au lieu de l'empiler, sinon la
-// boîte se remplirait de demandes portant sur des plans qui n'existent plus.
-function majInbox(approvalsDir, dossier, entree) {
-  const boite = lireInbox(approvalsDir);
-  boite.en_attente = boite.en_attente.filter((e) => e.dossier !== dossier);
-  if (entree) boite.en_attente.push({ dossier, ...entree });
-  durable.ecrireJson(path.join(approvalsDir, INBOX), boite);
-  return boite;
-}
+// La boîte est un état, sans transport. Le cockpit, le canal d'alerte et `en-attente` en
+// sont trois lecteurs, et choisir l'un n'interdit pas les autres. La clé est le DOSSIER, pas
+// le pipeline, et une entrée par dossier : relancer remplace la demande au lieu de l'empiler.
+const majInbox = (approvalsDir, dossier, entree) => store.deposer(approvalsDir, dossier, entree);
 
 // Approbation humaine des actions sensibles. Ce stage NE PORTE PAS de gate, et c'est
 // délibéré : un gate route son échec vers l'agent responsable pour qu'il le corrige, or
@@ -271,8 +265,9 @@ function majInbox(approvalsDir, dossier, entree) {
 // destruction du dossier de travail, et aucun agent n'y a accès.
 handlers.approval = async (stage, ctx) => {
   const { actions } = readJson(ctx.workspaceDir, stage.actions);
-  const registrePath = path.resolve(ctx.approvalsDir || ".", stage.decisions);
-  const decisions = durable.lireJson(registrePath);
+  const dir = path.resolve(ctx.approvalsDir || ".");
+  const dossier = cleDossier(stage);
+  const decisions = store.lireRegistre(dir, dossier);
 
   const etat = approval.evaluate({ actions, decisions, auto: stage.auto });
   fs.writeFileSync(
@@ -308,7 +303,7 @@ handlers.approval = async (stage, ctx) => {
     throw new Error(
       `Stage "${stage.id}" : le plan a changé depuis la décision : ` +
         `approuvé pour "${etat.perimee.trouve}", proposé maintenant "${etat.perimee.attendu}". ` +
-        `Aucune action n'est exécutable. Relire le nouveau plan et redécider dans ${registrePath}.`
+        `Aucune action n'est exécutable. Relire le nouveau plan et redécider dans le cockpit (dossier "${dossier}").`
     );
   }
 
@@ -339,7 +334,7 @@ handlers.approval = async (stage, ctx) => {
     // La demande sort de la boîte : quelqu'un a répondu, elle n'attend plus personne.
     // L'y laisser ferait afficher au cockpit une décision déjà prise, et c'est la
     // meilleure façon de faire ignorer les vraies.
-    if (stage.dossier) majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
+    if (stage.dossier) majInbox(dir, stage.dossier, null);
 
     throw new Error(
       `Stage "${stage.id}" : réponse libre reçue, le plan "${etat.empreinte}" repart au travail.\n` +
@@ -355,10 +350,9 @@ handlers.approval = async (stage, ctx) => {
     // modèle ne redonne pas deux fois le même plan : le cycle ne pourrait jamais
     // aboutir. On fige donc le texte exact qui sera soumis, et c'est lui qui
     // s'exécutera.
-    let gele = null;
-    if (stage.plan_gele) {
-      gele = path.resolve(ctx.approvalsDir || ".", stage.plan_gele);
-      durable.ecrireJson(gele, {
+    const gele = Boolean(stage.plan_gele);
+    if (gele) {
+      store.gelerPlan(dir, dossier, {
         empreinte: etat.empreinte,
         gele_le: new Date(maintenant(ctx)).toISOString(),
         actions,
@@ -367,12 +361,10 @@ handlers.approval = async (stage, ctx) => {
     }
 
     if (stage.dossier) {
-      majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, {
+      majInbox(dir, stage.dossier, {
         empreinte: etat.empreinte,
         depuis: new Date(maintenant(ctx)).toISOString(),
         actions: etat.en_attente.length,
-        registre: registrePath,
-        plan_gele: gele,
         appliquer_avec: stage.appliquer_avec || null,
       });
     }
@@ -392,10 +384,9 @@ handlers.approval = async (stage, ctx) => {
     throw new Error(
       entete +
         `${liste}\n` +
-        `Décider dans ${registrePath}, avec "plan": "${etat.empreinte}" et une entrée ` +
-        `{ "action_id", "decision": "approuve" | "refuse" } par action.` +
+        `Décider dans le cockpit : dossier "${dossier}", "plan": "${etat.empreinte}".` +
         (gele
-          ? `\nLe plan est gelé dans ${gele} : c'est lui que la suite consomme, à l'identique. ` +
+          ? `\nLe plan est gelé dans le store des approbations : c'est lui que la suite consomme, à l'identique. ` +
             `Relancer ce pipeline produirait un autre plan.`
           : "\nPuis relancer.")
     );
@@ -406,7 +397,7 @@ handlers.approval = async (stage, ctx) => {
   // finirait par afficher des demandes déjà traitées, ce qui est la façon la plus sûre de
   // faire ignorer les vraies.
   if (!stage.dossier) return;
-  majInbox(path.resolve(ctx.approvalsDir || "."), stage.dossier, null);
+  majInbox(dir, stage.dossier, null);
 };
 
 // La validation descend avec le handler : le chargeur du moteur ne connaît pas "output".

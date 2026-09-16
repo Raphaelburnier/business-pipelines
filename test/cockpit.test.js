@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const cockpit = require("../src/cockpit");
+const store = require("../src/store");
 
 const tests = [];
 function test(name, fn) {
@@ -11,52 +12,34 @@ function test(name, fn) {
 
 const T0 = Date.parse("2026-08-19T12:00:00.000Z");
 
-// Un dossier d'approbations jetable, avec la boîte et le plan gelé tels que le moteur les
-// écrit vraiment. Les tests lisent donc la forme de production, pas une forme inventée.
+// Un dossier d'approbations jetable, avec la demande et le plan gelé écrits dans le store
+// comme le stage d'approbation les écrit. Les tests lisent donc la forme de production.
+const DOSSIER = "ajustement-prix";
 function bac({ empreinteBoite = "abc123", empreintePlan = "abc123", collecteLe = "2026-08-19T11:00:00.000Z", actions, decisions } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cockpit-"));
-  const registre = path.join(dir, "ajustement-prix.decisions.json");
-  const planGele = path.join(dir, "ajustement-prix.plan.json");
 
-  fs.writeFileSync(
-    path.join(dir, "EN-ATTENTE.json"),
-    JSON.stringify({
-      en_attente: [
-        {
-          dossier: "ajustement-prix",
-          empreinte: empreinteBoite,
-          depuis: "2026-08-19T11:30:00.000Z",
-          actions: 1,
-          registre,
-          plan_gele: planGele,
-          appliquer_avec: null,
-        },
-      ],
-    })
-  );
+  store.deposer(dir, DOSSIER, { empreinte: empreinteBoite, depuis: "2026-08-19T11:30:00.000Z", actions: 1, appliquer_avec: null });
+  store.gelerPlan(dir, DOSSIER, {
+    empreinte: empreintePlan,
+    gele_le: "2026-08-19T11:30:00.000Z",
+    collecte_le: collecteLe,
+    actions: actions || [
+      {
+        id: "prix-001",
+        type: "changement_prix",
+        cible: "v1|110590223642|0",
+        valeur: { de: 499.99, vers: 240.99, devise: "USD" },
+        justification: "hors marché",
+        sources: ["v1|1|0"],
+      },
+    ],
+  });
 
-  fs.writeFileSync(
-    planGele,
-    JSON.stringify({
-      empreinte: empreintePlan,
-      gele_le: "2026-08-19T11:30:00.000Z",
-      collecte_le: collecteLe,
-      actions: actions || [
-        {
-          id: "prix-001",
-          type: "changement_prix",
-          cible: "v1|110590223642|0",
-          valeur: { de: 499.99, vers: 240.99, devise: "USD" },
-          justification: "hors marché",
-          sources: ["v1|1|0"],
-        },
-      ],
-    })
-  );
-
-  if (decisions) fs.writeFileSync(registre, JSON.stringify(decisions));
-  return { dir, registre, planGele };
+  if (decisions) store.ecrireRegistre(dir, DOSSIER, decisions);
+  return { dir };
 }
+
+const registreDe = (dir) => store.lireRegistre(dir, DOSSIER);
 
 test("l'état montre les actions du plan gelé, pas le compte de la boîte", () => {
   const { dir } = bac();
@@ -109,7 +92,7 @@ test("un dossier hors de la boîte est refusé : le chemin d'écriture ne vient 
 });
 
 test("une empreinte qui ne correspond plus est refusée : le plan a changé sous la page", () => {
-  const { dir, registre } = bac({ empreinteBoite: "abc123", empreintePlan: "NOUVELLE" });
+  const { dir } = bac({ empreinteBoite: "abc123", empreintePlan: "NOUVELLE" });
   assert.throws(
     () => cockpit.enregistrer({ approvalsDir: dir, dossier: "ajustement-prix", empreinte: "abc123", par: "r", decisions: [{ action_id: "prix-001", decision: "approuve" }] }),
     (err) => {
@@ -118,22 +101,22 @@ test("une empreinte qui ne correspond plus est refusée : le plan a changé sous
       return true;
     }
   );
-  assert.ok(!fs.existsSync(registre), "rien ne doit être écrit");
+  assert.strictEqual(registreDe(dir), null, "rien ne doit être écrit");
 });
 
 test("une décision non signée est refusée : un audit anonyme ne dit pas qui a engagé l'argent", () => {
-  const { dir, registre } = bac();
+  const { dir } = bac();
   for (const par of [undefined, "", "   "]) {
     assert.throws(
       () => cockpit.enregistrer({ approvalsDir: dir, dossier: "ajustement-prix", empreinte: "abc123", par, decisions: [{ action_id: "prix-001", decision: "approuve" }] }),
       cockpit.Refus
     );
   }
-  assert.ok(!fs.existsSync(registre));
+  assert.strictEqual(registreDe(dir), null);
 });
 
 test("une action absente du plan, ou un verbe inconnu, sont refusés", () => {
-  const { dir, registre } = bac();
+  const { dir } = bac();
   assert.throws(
     () => cockpit.enregistrer({ approvalsDir: dir, dossier: "ajustement-prix", empreinte: "abc123", par: "r", decisions: [{ action_id: "inventee", decision: "approuve" }] }),
     cockpit.Refus
@@ -142,11 +125,11 @@ test("une action absente du plan, ou un verbe inconnu, sont refusés", () => {
     () => cockpit.enregistrer({ approvalsDir: dir, dossier: "ajustement-prix", empreinte: "abc123", par: "r", decisions: [{ action_id: "prix-001", decision: "peut-etre" }] }),
     cockpit.Refus
   );
-  assert.ok(!fs.existsSync(registre), "une seule décision fautive n'écrit rien du tout");
+  assert.strictEqual(registreDe(dir), null, "une seule décision fautive n'écrit rien du tout");
 });
 
 test("une décision valide s'écrit signée et datée, au format que le moteur relit", () => {
-  const { dir, registre } = bac();
+  const { dir } = bac();
   const r = cockpit.enregistrer({
     approvalsDir: dir,
     dossier: "ajustement-prix",
@@ -159,7 +142,7 @@ test("une décision valide s'écrit signée et datée, au format que le moteur r
   assert.deepStrictEqual(r.decisions, [
     { action_id: "prix-001", decision: "approuve", par: "raphael", le: "2026-08-19T12:00:00.000Z", motif: "aligné" },
   ]);
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(registre, "utf-8")), r, "le fichier porte exactement ça");
+  assert.deepStrictEqual(registreDe(dir), r, "le store porte exactement ça");
 });
 
 test("le maximum de fraîcheur est lu dans le pipeline, pas recopié", () => {
@@ -174,7 +157,7 @@ test("le maximum de fraîcheur est lu dans le pipeline, pas recopié", () => {
 });
 
 test("une réponse libre s'écrit seule, signée et datée, sans aucune décision", () => {
-  const { dir, registre } = bac();
+  const { dir } = bac();
   const r = cockpit.enregistrer({
     approvalsDir: dir,
     dossier: "ajustement-prix",
@@ -190,7 +173,7 @@ test("une réponse libre s'écrit seule, signée et datée, sans aucune décisio
   assert.strictEqual(r.reponse_le, "2026-08-19T12:00:00.000Z");
   assert.strictEqual(r.reponse_canal, "tailnet");
   assert.deepStrictEqual(r.decisions, []);
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(registre, "utf-8")), r);
+  assert.deepStrictEqual(registreDe(dir), r);
 });
 
 test("une réponse blanche seule est refusée : rien ne repartirait", () => {
