@@ -416,7 +416,127 @@ Phases 6 et 7 : pas de changement, sauf la règle C8 sur `llm.via`.
    d'outillage ?
 9. **Pipelines eBay** : on les retire avant la migration du format ?
 
-## 8. Décision prise
+## 8. Décisions de Raphaël, 2026-09-16
 
 **Question ouverte §15 : option A.** Les fiches `project.json` sont centralisées dans
-`business-pipelines/projects/<project-id>/project.json`. Choix de Raphaël, 2026-09-16.
+`business-pipelines/projects/<project-id>/project.json`.
+
+| # | Décision | Conséquence pour le plan |
+|---|---|---|
+| 1 | **Agent SDK**, pas la CLI | C1 fermé. Phase 1 enrichit `agent-runner.js` |
+| 2 | **Abonnement** pour les runs | C2 fermé. La §8 de la spec redevient le cas central : `waiting_quota`, coût affiché comme équivalent API. Les runs s'authentifient avec la session Claude Code du PC, le NAS n'a plus besoin de `ANTHROPIC_API_KEY` une fois les runs déplacés. Risque ouvert ci-dessous |
+| 3 | Question à reformuler | voir §9 |
+| 4 | **Aucune décision prise par un agent.** Un projet ne se code qu'après un plan approuvé. Toute décision non prévue par le plan remonte à Raphaël avec un rapport complet : ce qui change, ce que ça implique, fichiers et coûts touchés | C4 fermé, et plus strict que ma recommandation. Le nœud d'approbation porte un **rapport d'impact au schéma imposé**, que le validateur exige. Un outcome d'agent peut renvoyer au travail, jamais valider ni trancher |
+| 5 | **Le NAS stocke et sert l'API. Tous les runs tournent sur le PC.** OmniRoute reste sur le PC | C8 fermé. Plus de `runsOn: nas` pour les étapes de travail : le NAS porte le maître, l'event store, le cockpit, les dépôts bare et les poids. Le service `marketing` du compose NAS part sur le PC. Le WoL devient le chemin normal de tout run |
+| 6 | **ACL Tailscale** : seul le PC (et le NAS en local) joint le port WebSocket du maître. **Jeton par worker** hors git (`.env`), le maître ne stocke que le hash. Le maître vérifie le jeton **et** que le nom de machine Tailscale correspond au worker annoncé. Révocation worker par worker | C5 fermé. Le nom de machine se lit par `tailscale whois` sur l'IP du pair, ce qui suppose que le maître voie la vraie IP tailnet et pas `127.0.0.1` derrière `serve` **[À VÉRIFIER sur DSM]** |
+| 7 | **Veille, pas d'arrêt.** Le maître ne demande la veille que si : aucune étape en file pour le PC, aucune activité utilisateur Windows depuis X minutes (configurable), aucun verrou « ne pas endormir » actif dans le cockpit. Un flag de config réduira les conditions à la première quand le ROG sera un serveur dédié | C13 fermé. À ajouter : toggle « ne pas endormir » dans le cockpit, lecture de l'inactivité Windows depuis WSL **[À VÉRIFIER : méthode]** |
+| 8 | **Deux régimes git** : projets gérés = bare NAS principal + miroir GitHub (branches `run/*` incluses) ; outillage = GitHub principal, NAS en sauvegarde ; cockpit commite `agent-registry` en local sur le NAS puis pousse vers GitHub en asynchrone avec retry | C9 fermé. Reporté dans la §7.3 de `docs/SPEC-cockpit-agentique.md` |
+| 9 | **Retirer tout ce qui concerne eBay** | plan de retrait proposé à part, avant de toucher au code |
+
+**Risque ouvert sur la décision 2.** La page Agent SDK de la documentation Claude Code dit :
+« Unless previously approved, Anthropic does not allow third party developers to offer claude.ai
+login or rate limits for their products, including agents built on the Claude Agent SDK. » Elle
+précise que l'usage du SDK relève des Commercial Terms. Le texte vise les produits proposés à
+des tiers. L'usage personnel d'un abonnement pour des runs automatisés sur ses propres machines
+n'y est pas traité explicitement. Avant la phase 3, relire les conditions de l'abonnement ou
+poser la question au support. Le runner garde la possibilité de basculer sur une clé API par
+backend, sans changer les pipelines.
+
+## 9. Question 3 reformulée : format des pipelines
+
+Trois sous-questions, chacune avec un exemple.
+
+**3a. Quel format est écrit dans les fichiers ?**
+
+Aujourd'hui un pipeline est une **liste d'étapes jouées dans l'ordre**. Une boucle n'est pas une
+flèche, c'est une règle attachée à une étape : dans `marketing.json`, l'étape `couverture` dit
+« si `couverture.json` vaut `INCOMPLETE`, envoie les manques à `plan-synthesist`, puis reprends
+à `couverture` ».
+
+La spec propose un **graphe** : des nœuds, et des flèches entre eux (`review → code` si
+`changes_requested`).
+
+- **Option A** : on garde la liste d'étapes dans les fichiers, et l'éditeur visuel dessine un
+  graphe à partir d'elle.
+- **Option B** : on écrit le graphe dans les fichiers (format de la spec), et le moteur le
+  traduit en étapes au moment de l'exécuter.
+
+Recommandation : **B**. L'éditeur visuel et le JSON restent identiques, ce qui est la
+promesse de la §11.3. Condition : le graphe doit savoir dire tout ce que la liste dit déjà
+(étapes en parallèle, tranche de spec par agent, schéma des sorties, routage d'un manque vers
+l'agent responsable). Test d'acceptation : `marketing.json` réécrit en graphe donne exactement le
+même run.
+
+**3b. Quel nom pour la décision humaine ?**
+
+Dans le code, `gate` veut dire « contrôle automatique fait par du code » (tests qui passent,
+couverture complète). Dans la spec, `gate` veut dire « Raphaël décide ». Le même mot pour deux
+choses opposées finira par une erreur de lecture.
+
+Recommandation : `gate` garde son sens actuel (contrôle par du code), le nœud humain s'appelle
+`approval`, comme dans le code actuel.
+
+**3c. Comment on compte les tours de boucle ?**
+
+Exemple : `code` produit, puis `tests` et `securite` vérifient. Chacun peut renvoyer à `code`.
+
+- **Par flèche** (spec) : `tests → code` a `maxLoops: 3` et `securite → code` a `maxLoops: 3`.
+  En alternant les deux échecs, `code` peut être relancé **6 fois**.
+- **Par cycle** (moteur actuel) : la boucle `code ↔ vérifications` a une seule limite de 3.
+  `code` est relancé **3 fois au plus**, quel que soit le vérificateur qui échoue.
+
+Le moteur comptait par étape au début, et un run a dépassé son plafond réel de cette façon. Il
+a été corrigé pour compter par cycle.
+
+Recommandation : **par cycle**. `maxLoops` se pose sur la boucle, pas sur chaque flèche.
+
+**Ce qu'il faut répondre** : 3a (A ou B), 3b (d'accord pour `approval` ?), 3c (par cycle ?).
+
+## 10. Plan de retrait d'eBay (décision 9)
+
+Proposé ici, pas encore appliqué. Il se fera sur une branche à part, `chore/retirer-ebay`, après
+ta validation.
+
+### Ce qui part sans discussion
+
+| Catégorie | Fichiers |
+|---|---|
+| Pipelines | `pipelines/veille-ebay.json`, `pipelines/ajustement-prix.json`, `pipelines/ajustement-prix-appliquer.json` |
+| Specs | `specs/veille.json`, `specs/veille.env.example`, `specs/ajustement-prix.json`, `specs/ajustement-prix.env.example` |
+| Agents | `.claude/agents/veille-analyst.md`, `.claude/agents/price-planner.md` |
+| Code eBay | `src/ebay.js`, `src/executeur-prix.js`, `src/stats.js`, `bin/ebay-consentement.js` |
+| Types d'étape eBay | `fetch`, `stats`, `verify`, `verify-actions` dans `src/stage-handlers.js` |
+| Tests | `test/ebay.test.js`, `test/veille.test.js`, `test/stats.test.js`, `test/executeur-prix.test.js` |
+| Divers | scripts `veille`, `plan:prix`, `appliquer:prix` de `package.json`, l'exécuteur `changement_prix` d'`orchestrator.js`, les sections eBay du README, les commentaires eBay de `.gitignore` et `.dockerignore` |
+
+### Ce qui reste, parce que `marketing` s'en sert
+
+`consigne`, `approval`, `verify-couverture`, `src/approval.js`, `src/cockpit.js`, `src/durable.js`,
+`src/alerte.js`, `bin/alerter.js`, `bin/en-attente.js`, le cockpit entier.
+
+### Ce qui doit être réécrit
+
+Les tests `approval`, `cockpit`, `acces`, `alerte` et `cycle` prennent `ajustement-prix` et des
+actions `changement_prix` comme exemple. Ils testent des mécanismes génériques (empreinte, gel,
+signature, péremption), donc ils restent, avec un dossier d'exemple neutre à la place. Le nombre
+de vérifications doit rester le même, hors tests des fichiers supprimés.
+
+### Deux points à trancher
+
+1. **`charger`, `execute` et `src/execute.js`.** C'est la partie « agir » de la chaîne proposer,
+   geler, décider, agir. Sans eBay, plus aucun exécuteur n'est branché : c'est du code mort. Mais
+   la phase 06 (déploiement derrière approbation) en aura besoin.
+   Recommandation : **les retirer**, et les reprendre depuis l'historique quand un vrai
+   exécuteur existera.
+2. **`bin/cycle.js` et `src/cycle.js`.** Boucle générique, mais ses règles (planifier,
+   replanifier, appliquer) ont été écrites pour le pipeline de prix, et le maître de la phase 3
+   la remplace. Recommandation : **les retirer**.
+
+### Hors dépôt, à faire par toi
+
+- Révoquer l'application eBay (App ID et Cert ID) dans le portail développeur eBay. Le refresh
+  token est déjà supprimé, mais les identifiants permanents restent valides.
+- Supprimer `specs/veille.env` et `specs/ajustement-prix.env` du checkout principal. Ils ne sont
+  pas suivis et portent les secrets eBay. Je ne les supprime pas moi-même.
+- Les worktrees `alerte-cron`, `cockpit-reponse-libre` et `fix-deploiement-nas` pointent vers
+  des branches déjà fusionnées et contiennent encore eBay. Ils peuvent être supprimés.
