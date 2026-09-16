@@ -1,420 +1,657 @@
 # Audit, phase 0 du cockpit agentique
 
-Audit du 2026-09-16, fait contre `SPEC-cockpit-agentique.md`. Aucun fichier de code n'a été
-modifié. Ce document est le seul livrable de la phase.
+Audit de `business-pipelines` et `agent-orchestrator` contre `docs/SPEC-cockpit-agentique.md`.
+Deuxième version, du 2026-09-17. Aucun fichier de code n'a été modifié.
 
-Dépôts lus :
+## Méthode
 
-| Dépôt | Branche lue | Commit |
-|---|---|---|
-| `business-pipelines` | `main` | `833eb84` |
-| `agent-orchestrator` | `master` | `5bdafd4` |
-| `Saas-generator` | `feat/agent-skills` | `1a13fdd` |
+Workflow `audit-cockpit-spec` (run `wf_8373ca97-bba`), 41 agents, tous en lecture seule.
 
-Lus aussi : `PLAN.md`, les notes du vault (`business-pipelines`, `agent-orchestrator`,
-`omniroute`), `~/.config/agent-orchestrator/backends.json` (noms de variables seulement) et
-`claude --help` (Claude Code 2.1.273).
+1. Deux auditeurs en parallèle, un par dépôt. Chacun a lu la spec en entier et les décisions
+   déjà prises (sections 8 à 10 ci-dessous), puis a rendu la stack, le code réutilisable, les
+   conflits avec preuves (fichier, ligne, extrait lu) et les points [À VÉRIFIER] tranchables.
+2. Chaque conflit signalé est passé devant un vérificateur chargé de le **réfuter** : relire
+   les preuves et la section de spec citée, chercher ce qui le contredit, et conclure
+   `confirmé`, `nuancé` (fond juste, formulation corrigée) ou `réfuté`.
+3. Synthèse : seuls les conflits non réfutés figurent ici. Pour un conflit nuancé, c'est la
+   formulation corrigée par le vérificateur qui est retenue.
 
-Non vérifiable depuis ce poste : tout ce qui se passe sur le NAS. Le cockpit
-`https://nas.tail8296f6.ts.net` n'a répondu ni depuis Windows ni depuis WSL pendant l'audit,
-et WSL ne résout pas le nom MagicDNS.
+| Dépôt | Branche lue | Conflits signalés | Confirmés | Nuancés | Réfutés |
+|---|---|---|---|---|---|
+| `business-pipelines` | `main` (`833eb84`) | 16 | 2 | 14 | 0 |
+| `agent-orchestrator` | `master` (`5bdafd4`) | 23 | 5 | 18 | 0 |
+
+`business-pipelines` a été lu en tenant compte de la PR #9 (`chore/retirer-ebay`), pas encore
+fusionnée : rien de ce qu'elle retire (eBay, `charger`, `execute`, cycle) n'est compté comme
+réutilisable ni comme conflit.
+
+**Convention.** « Décision N » renvoie au tableau de la section 8 de ce document, pas à la §14 de
+la spec, dont la numérotation est différente. Les vérificateurs ont relevé plusieurs fois cette
+confusion. Les identifiants `C1` à `C14` cités dans la section 8 renvoient à la première version
+de cet audit (commit `559ab5d`). Les conflits de cette version portent les identifiants `B1` à
+`B16` (business-pipelines) et `A1` à `A23` (agent-orchestrator).
 
 ## 1. Résumé
 
-La spec a été écrite sans lire le code, et ça se voit sur six points qui changent la forme du
-travail. Les voici, du plus structurant au moins structurant.
+Ce qui change la forme du travail, par ordre d'impact :
 
-1. **Le moteur n'appelle pas la CLI, il passe par l'Agent SDK** (`@anthropic-ai/claude-agent-sdk`
-   0.1.77). Le SDK fournit déjà ce que la spec demande à `claude -p` : `session_id`, flux de
-   messages, `interrupt()`, `resume`, coût, erreur typée `rate_limit`. Le runner actuel jette
-   tout ça et ne garde que le message final.
-2. **La facturation réelle n'est pas un abonnement.** Le NAS tourne avec `ANTHROPIC_API_KEY`, et
-   `PLAN.md` verrouille « Opus 5 en accès direct, pas via un abonnement relayé ». La §8 de la
-   spec (quota par fenêtre, `waiting_quota` comme cas central) décrit un autre mode.
-3. **Le format de pipeline existant est une liste ordonnée de stages, pas un graphe.** Les
-   gates, le routage des findings, `rerun_from`, les épisodes de correction, le slicing et les
-   stages typés n'ont pas d'équivalent direct dans `nodes` / `edges`. Et le mot `gate` désigne
-   déjà un contrôle déterministe, pas une décision humaine.
-4. **Le signal `outcome.json` écrit par l'agent contredit une décision verrouillée** : le juge
-   est du code, jamais l'agent lui-même.
-5. **L'identité Tailscale passe par un en-tête**, `Tailscale-User-Login`, injecté par
-   `tailscale serve`. La spec dit l'inverse. Et cet en-tête nomme un utilisateur, pas une
-   machine : il ne peut pas servir tel quel à authentifier un worker.
-6. **OmniRoute et Ollama tournent sur le PC**, pas sur le NAS. Une étape NAS routée vers
-   OmniRoute ne marche pas quand le PC dort.
-
-Le reste est compatible ou se règle par un ajustement de plan. La base existante est solide
-(230 vérifications vertes côté `business-pipelines`, suite verte côté moteur) et la plupart
-des principes de la spec sont déjà appliqués dans le code.
+1. **Le runner ne tourne pas sur le `claude` installé.** Le SDK 0.1.77 lance son CLI embarqué en
+   2.0.77, alors que `claude --version` donne 2.1.273. Les réponses tirées de `claude --help` ne
+   valent donc pas pour les runs tant que ce choix n'est pas fait (A3).
+2. **Une limite de quota n'est détectée nulle part.** Selon la forme réelle de la sortie, elle
+   finit en échec, en faux succès silencieux ou en deux relances immédiates dans la même fenêtre
+   saturée. Avec l'abonnement (décision 2), c'est le premier cas à traiter en phase 1 (A12).
+3. **Une approbation fait échouer le run.** Le stage `approval` lève une exception, le lanceur
+   clôt le rapport en `failed`. Il n'y a ni `waiting_approval` ni reprise du même run (B5).
+4. **Les approbations passent par un dossier `approvals/` partagé** entre le run et le cockpit, sur
+   le même hôte. Déplacer marketing sur le PC (décision 5) casse ce partage : la migration des
+   approbations doit précéder ce déplacement, pas attendre la phase 5 (B7).
+5. **Le réseau bridge du NAS est un trou d'identité.** Tout conteneur du réseau `business`, dont
+   le service marketing qui exécute des agents, peut poster une décision au cockpit, signée du
+   compte système ou sous ton nom en forgeant l'en-tête Tailscale (B4).
+6. **Le WebSocket du maître ne peut pas vivre derrière `tailscale serve`.** Derrière serve, le
+   backend voit `127.0.0.1` et la vérification du nom de machine de la décision 6 devient
+   impossible (B3).
+7. **La spec n'intègre pas encore les décisions 3a, 3b et 3c.** Le vocabulaire `gate` humain et le
+   `maxLoops` par arête reviennent dans les §3, §5.4, §7.3.1, §8 et §12 (B13, A7 à A9).
+8. **`allowedTools` n'est pas une restriction.** C'est une liste d'auto-approbation. Le runner ne
+   passe pas l'option `tools`, et `acceptEdits` accepte les éditions : un agent « lecture seule »
+   ne l'est pas techniquement, seul le hook de périmètre borne ses écritures (A4).
 
 ## 2. Stack actuelle
 
-### 2.1 business-pipelines
+### 2.1 business-pipelines (`main`, `833eb84`)
 
-- Node 22, **JavaScript CommonJS**, aucun TypeScript, aucun framework serveur.
-- Dépendances : `agent-orchestrator` (`file:../agent-orchestrator`) et `nodemailer`. Rien d'autre.
-- Tests : scripts Node avec un harness maison (`test/harness.js`), lancés en chaîne par
-  `npm test`. Pas de Vitest.
+- **Langage** : JavaScript CommonJS, sans TypeScript ni zod. Node 22 (`node:22-alpine` dans
+  l'image, 22.23.1 sur le poste).
+- **Dépendances** : `agent-orchestrator` en `file:../agent-orchestrator`, `nodemailer` pour le
+  canal d'alerte. Aucune dépendance serveur.
+- **Cockpit** : serveur `http` natif (`bin/cockpit.js`, 740 lignes). Routes `GET /`,
+  `GET /api/etat`, `POST /api/decider`, plus manifeste, service worker et icônes. Logique sans
+  HTTP dans `src/cockpit.js`, contrôle d'accès dans `src/acces.js`, PWA dans `src/pwa.js`,
+  modules déployés dans `src/apps.js`.
+- **Front** : aucun build. HTML rendu côté serveur dans une chaîne, CSS et JS inline, deux thèmes,
+  PWA installable avec un service worker qui ne met rien en cache.
+- **État durable** : fichiers JSON dans `approvals/` (boîte `EN-ATTENTE.json`, plan gelé, registre
+  de décisions), écrits de façon atomique par `src/durable.js`. Pas de base.
+- **Pipelines** : liste de stages (`pipelines/marketing.json` : consigne, analyse en parallèle,
+  synthèse, `verify-couverture` avec gate déterministe, `approval`). Agents dans
+  `.claude/agents/*.md`, frontmatter `name`, `description`, `tools`, `model`, sans version.
+- **Lanceur** : `orchestrator.js <pipeline> <spec>`, workspace jetable recréé à chaque run, sans
+  `vcs` ni reprise.
+- **Tests** : scripts Node avec `assert` et un mini-runner, enchaînés par `npm test`. Pas de
+  Vitest.
+- **Déploiement** : Docker Compose sur le NAS. `cockpit` toujours debout, publié sur
+  `127.0.0.1:4600`, écoute `0.0.0.0` dans le conteneur (`COCKPIT_HOTE` + `COCKPIT_CONTENEUR=1`),
+  réseau bridge `business`, sans clé. `marketing` lancé à la main avec `specs/deploiement.env`
+  (`ANTHROPIC_API_KEY`). Moteur copié dans `.moteur/` par `bin/preparer-image.sh`. Exposition par
+  `tailscale serve --https=443` vers `localhost:4600`.
+- **Branches** : tout est fusionné dans `main` (dont `feat/tailnet-acces`), sauf
+  `chore/retirer-ebay` (PR #9), `docs/audit-cockpit` (PR #8) et `worktree-sante-bind-contrat`
+  (`cc3f770`, qui ajoute `src/sante.js`). Trois worktrees pointent sur des branches déjà
+  fusionnées.
 
-**Le cockpit** (`bin/cockpit.js`, 740 lignes, plus `src/cockpit.js`, `src/acces.js`,
-`src/pwa.js`, `src/apps.js`) :
+### 2.2 agent-orchestrator (`master`, `5bdafd4`)
 
-- serveur `http` natif ;
-- HTML rendu côté serveur dans une chaîne de caractères, CSS inline, petit script inline pour
-  poster les décisions. Pas de React, pas d'étape de build ;
-- PWA installable (manifeste, service worker sans cache, icônes) ;
-- routes : `GET /`, `GET /api/etat`, `POST /api/decider`, et les ressources PWA ;
-- contenu : bandeau « ce qui attend », tuiles de modules lues dans `specs/cockpit-apps.json`,
-  dossiers d'approbation avec décision par action, note et réponse libre ;
-- défenses déjà en place : écoute loopback (ou publication loopback de l'hôte en conteneur,
-  déclarée par `COCKPIT_CONTENEUR=1`), liste blanche d'hôtes contre le rebinding DNS, contrôle
-  d'`Origin` et de `Content-Type` sur les écritures, signature tirée du canal, échappement de
-  tout texte, `Cache-Control: no-store`, aucune exception qui tue le processus ;
-- **le cockpit ne reçoit aucune clé Anthropic**, par choix documenté dans `docker-compose.yaml`.
+- **Langage** : JavaScript CommonJS, pas de build. Un seul paquet, `main: src/index.js`, binaire
+  `orch`.
+- **Dépendance unique** : `@anthropic-ai/claude-agent-sdk`, déclaré `^0.1.0`, figé en **0.1.77**
+  par le lockfile. ESM-only, chargé par `import()`. Il embarque son propre CLI en **2.0.77** et le
+  runner ne passe pas `pathToClaudeCodeExecutable`.
+- **Absent** : zod, SQLite, serveur HTTP, front. Validation écrite à la main dans `src/loader.js`.
+- **Modules** : `agent-runner` (appel `query()`, hook `PreToolUse` de périmètre, retry des crashs
+  de process), `engine` (stages, gates automatiques, épisodes de correction bornés),
+  `stage-executor` (prompt, contrôle des sorties, retry de format, `must_change`),
+  `gate-evaluator` et `router`, `backends`, `budget-tracker` (lève une exception au dépassement),
+  `reporter` (événements en mémoire, écrits en fin de run), `resume` (`.orch-resume.json`), `vcs`
+  (git, `gh repo create`, branches `generation/*`, merge auto), `workspace`, `resolve`,
+  `env-loader`, `slicer`, `artifact-validator`, `report-parser`.
+- **Formats** : agents en `.md` au frontmatter plat (compatible sous-agents Claude Code).
+  Pipelines en liste de `stages` avec `slicing`, `budget`, `retry`, `gate`. 12 agents et 4
+  pipelines livrés.
+- **Tests** : 9 fichiers, environ 100 scénarios, tous verts, seul mock `ctx.runAgent`.
+- **Config machine** : `~/.config/agent-orchestrator/backends.json`, backends `ollama`,
+  `ollama-coder`, `omniroute`, `opus-direct` (OmniRoute sur `localhost:20128`, Ollama sur
+  `localhost:11434`).
 
-**Le cycle** (`bin/cycle.js`, `src/cycle.js`) : une boucle générique « lire l'état, choisir une
-action, la faire, prévenir ». Son conteneur a été **retiré du NAS le 2026-09-13**. Le fichier
-reste.
-
-**Les pipelines** : `marketing` (en service sur le NAS, à la demande), `veille-ebay`,
-`ajustement-prix`, `ajustement-prix-appliquer` (eBay écarté, décision de retrait non prise).
-
-**Stages typés fournis par le dépôt** (`src/stage-handlers.js`, 1 019 lignes) : `fetch`,
-`verify`, `verify-actions`, `verify-couverture`, `approval`, `consigne`, `charger`, `execute`.
-
-**État durable** : fichiers JSON dans `approvals/`, hors du workspace : boîte
-`EN-ATTENTE.json`, `<dossier>.decisions.json`, `<dossier>.plan.json` (plan gelé),
-`<dossier>.ledger.json`. Lus par le cockpit, le cycle et l'alerteur.
-
-**Journal d'exécution** : le `Reporter` du moteur garde les événements en mémoire et les écrit
-dans `generation-report.json` **à la fin du run**. Rien n'est observable pendant le run, à part
-la sortie console.
-
-**Lanceur** (`orchestrator.js`) : vide le workspace à chaque run (`overwrite: true`), ne branche
-ni `vcs` ni `--resume`. C'est un point ouvert de `PLAN.md`.
-
-### 2.2 agent-orchestrator
-
-- Node, **JavaScript CommonJS**, un seul paquet (pas de monorepo), 3 887 lignes dont les tests.
-- Dépendance unique : `@anthropic-ai/claude-agent-sdk` `^0.1.0`, installé en **0.1.77**. Ce SDK
-  embarque son propre `cli.js` : il n'utilise pas le `claude` 2.1.273 installé sur la machine.
-- Pas de zod. La validation des pipelines est écrite à la main dans `src/loader.js`.
-- Remote GitHub (`Raphaelburnier/agent-orchestrator`), branche `master`.
-
-Modules utiles pour la spec :
-
-| Module | Ce qu'il fait aujourd'hui |
-|---|---|
-| `engine.js` | boucle de stages, gates, routage, épisodes de correction, reprise |
-| `agent-runner.js` | appelle `query()` du SDK, hook de périmètre `PreToolUse`, retry sur crash transitoire, renvoie `{ costUsd, turns, summary }` |
-| `backends.js` | un backend = un jeu de variables d'environnement, `_billed: "false"` |
-| `budget-tracker.js` | cumule USD et turns, **lève une erreur** au plafond |
-| `reporter.js` | événements en mémoire, écrits en fin de run |
-| `resume.js` | `.orch-resume.json`, empreinte pipeline + spec |
-| `vcs.js` | commit par stage vert, merge final si tous les gates sont verts |
-| `workspace.js` | dossier isolé avec marque de propriété |
-
-Le runner ne remonte ni `session_id`, ni messages intermédiaires, ni tokens. Il accepte un
-`abortController` mais aucun appelant ne s'en sert pour un stop.
-
-### 2.3 Format agents du SaaS generator
-
-Même format que le moteur, puisque le SaaS generator en est le premier consommateur :
-
-- agents en `.md` dans `.claude/agents/`, frontmatter plat `name`, `description`, `tools`
-  (liste séparée par des virgules), `model` (`opus` | `sonnet`), puis le prompt système ;
-- pipelines JSON au format stages du moteur (`web-app.json`, `discord-bot.json`) ;
-- spec projet JSON libre (`spec.example.json` : stack, écrans, modèle de données, contraintes).
-
-Le parseur de frontmatter (`loadAgentDefinition`) découpe chaque ligne sur le premier `:`. Il ne
-lit pas d'objet imbriqué comme `defaultLlm: { via, model }` : le format de la §5.2 demande un
-vrai parseur YAML.
-
-Agents existants, sans version : 12 dans le moteur, 5 dans `business-pipelines`, 6 dans le
-SaaS generator.
-
-Le SaaS generator déclare aussi ses déploiements au cockpit (commit `1a13fdd`), ce qui alimente
-les tuiles de modules.
-
-### 2.4 OmniRoute et backends
-
-Déclarés dans `~/.config/agent-orchestrator/backends.json` :
-
-| Backend | URL | Facturé | Modèles |
-|---|---|---|---|
-| `anthropic` (intégré) | auth native | oui | étiquette de l'agent |
-| `ollama`, `ollama-coder` | `localhost:11434` | non | qwen3:8b, qwen2.5-coder:7b |
-| `omniroute` | `localhost:20128` | non | combos `agentic-code` / `agentic-bulk` |
-| `opus-direct` | `localhost:20128` | oui | `anthropic/claude-opus-5`, `anthropic/claude-sonnet-5` |
-
-OmniRoute 3.8.50 tourne en service systemd utilisateur **dans le WSL de ce poste**. Il répond
-(307 sur `/`), Ollama aussi (200).
-
-### 2.5 Déploiement NAS
-
-- `docker-compose.yaml` : `cockpit` (toujours debout, publié sur `127.0.0.1:4600` de l'hôte,
-  réseau bridge `business`) et `marketing` (profil `manuel`, lancé par
-  `docker compose run --rm marketing`, reçoit `specs/deploiement.env` qui ne porte que
-  `ANTHROPIC_API_KEY`).
-- Image `node:22-alpine`, ripgrep système. Le moteur est copié dans `.moteur/` par
-  `bin/preparer-image.sh` avant le build (copie identique au dépôt, dossier `.claude` exclu).
-- Tailscale : `tailscale serve --https=443` vers `localhost:4600`, nom
-  `nas.tail8296f6.ts.net` (`bin/tailnet-relais.sh`).
-
-### 2.6 Branches et worktrees de business-pipelines
-
-- `feat/tailnet-acces` est **déjà fusionnée dans `main`**, comme toutes les branches locales
-  sauf une.
-- `worktree-sante-bind-contrat` porte un commit non fusionné, `cc3f770`. Sa correction de bind
-  est remplacée par celle de `main` (`COCKPIT_CONTENEUR`). Mais il ajoute `src/sante.js`, un
-  contrat de résultat de contrôle de santé qui distingue `INCONNU` d'un échec et porte un champ
-  `attendue` (la cible était-elle censée répondre). C'est exactement la distinction
-  `sleeping` / `offline` de la §7.1.
-- Quatre worktrees actifs sous `.claude/worktrees/`.
+**Saas-generator, pour comparaison** : même format d'agents et de pipelines, plus des stages typés
+(`migrate`, `assemble`, `smoke`), `requires`, `env_contract`, `scope_dir` et des clés de
+commentaire `_note`. Il consomme le moteur en `file:` et utilise déjà zod v4.
 
 ## 3. Ce qui est réutilisable
 
-| Existant | Sert à | Remarque |
-|---|---|---|
-| `acces.js` (hôtes, origine, identité, bind) | §10, auth cockpit | à garder tel quel, et à étendre pour SSE |
-| Compose loopback + `tailscale serve` | §10 isolation | déjà conforme à « jamais `0.0.0.0` publié » |
-| `agent-runner.js` + hook de périmètre | §6 runner | à enrichir, pas à réécrire |
-| `backends.js` | §6.1 routage OmniRoute / Ollama | correspond à `llm.via` |
-| `engine.js` gates, routage, épisodes | §5.4 boucles bornées | la borne existe déjà, par épisode |
-| `resume.js` | §6.3 reprise | reprise par stage, pas par session |
-| `vcs.js` | §7.3 checkpoints | commit par stage déjà là |
-| `budget-tracker.js` | §8 budgets | à passer d'une erreur à une gate |
-| harness des tests (`runAgent` mocké) | §6.4 tests sans quota | 230 vérifications sans un appel de modèle |
-| stages `approval` / `consigne` / `charger` | §5.4 `gate` humaine | gel du plan, empreinte, péremption |
-| `src/sante.js` (branche non fusionnée) | §7.1 états machines | à récupérer |
-| `cockpit-apps.json` | §11.1 topologie | les modules déployés n'apparaissent pas dans la spec |
-| PWA du cockpit | §11.4 mobile | déjà installable sur téléphone |
+### 3.1 business-pipelines
 
-## 4. Conflits avec la spec
+| Élément | Chemin | Sert à | Remarque |
+|---|---|---|---|
+| Contrôle d'accès (hôtes, origine, identité par canal, bind fail-closed) | `src/acces.js` | §10 auth et isolation | Tel quel pour REST et SSE. Insuffisant pour les workers (B3), repli « local » à revoir (B4) |
+| Serveur http et ses défenses (erreurs async, `no-store`, taille du corps, `application/json`) | `bin/cockpit.js` l.613-722 | §10 API REST | Le rendu HTML inline sera remplacé par React |
+| Logique d'approbation sans HTTP (empreinte, fusion des décisions, note, réponse libre) | `src/cockpit.js` | §10 approbations, §11.2 | Règles à garder lors de la migration vers SQLite (B6) |
+| Juge d'approbation (`EN_ATTENTE`, `ORIENTE`, `APPROUVE`) | `src/approval.js` | nœud `approval` (3b), gate budget | `ORIENTE` n'existe pas dans la spec (B6) |
+| Écriture atomique | `src/durable.js` | file disque du worker (§7.4), commits en attente (§7.3.3) | 51 lignes, testé |
+| PWA (manifeste, SW sans cache, page hors portée) | `src/pwa.js` | §11.4 mobile | Vérifier le SW avec un flux SSE long avant la phase 4 |
+| Registre des modules déployés | `src/apps.js` | §11.1 topologie | Absent de la spec, garder la règle d'origine distincte |
+| Canal d'alerte courriel | `src/alerte.js`, `bin/alerter.js` | §7.2 alerte de réveil, §8 quota | Devra lire l'event store |
+| Stages `consigne`, `approval`, `verify-couverture` et leurs validateurs | `src/stage-handlers.js` | nœuds script et `approval` | « `approval` ne porte pas de gate » rejoint la décision 4 |
+| Pipeline marketing | `pipelines/marketing.json` | test d'équivalence du graphe (3a) | Exerce `parallel`, `slicing`, `output_schema`, gate, `rerun_from` |
+| Compose (publication loopback, réseau dédié, secrets en lecture seule, cockpit sans clé) | `docker-compose.yaml` | §10 | Voir B1 et B4 |
+| Image et préparation du moteur | `Dockerfile`, `bin/preparer-image.sh` | §4 | `npm install --omit=dev` n'installera pas TypeScript : compiler `schemas` avant la copie ou passer en multi-stage |
+| Relais `tailscale serve` | `bin/tailnet-relais.sh` | §10 exposition | Cherche tailscale dans le PATH ou côté Windows, pas dans le paquet DSM. Jamais `funnel` |
+| Contrat de contrôle de santé (`INCONNU`, champ `attendue`) | `src/sante.js` sur `worktree-sante-bind-contrat` | §7.1 `sleeping` contre `offline` | Ne récupérer que ce fichier |
+| Tests cockpit, accès, PWA, apps, approbation | `test/` | non-régression phases 4 et 5 | `acces.test.js` seul porte 113 assertions |
 
-Chaque ligne demande une décision. Ma recommandation est donnée, je n'ai rien tranché.
+### 3.2 agent-orchestrator
 
-### C1. Runner : CLI ou Agent SDK (§6)
+| Élément | Chemin | Sert à | Remarque |
+|---|---|---|---|
+| Runner Agent SDK | `src/agent-runner.js` | §6 (décision 1) | Base de la phase 1. Ne garde que `result` (l.126). `abortController` est branché et le SDK envoie SIGTERM puis SIGKILL après 5 s |
+| Hook `PreToolUse` de périmètre | `src/agent-runner.js` l.48-72 | cwd, garde-fou du test-writer | Seule borne réelle des écritures aujourd'hui (A4) |
+| Détection des crashs transitoires | `isTransientSdkCrash`, `describeFailure` | §6.2, §8 | À compléter par le classement `rate_limit` avant tout retry (A12) |
+| Backends et `_billed` | `src/backends.js` | `llm.via`, coût estimé contre réel | `via` se traduit en nom de backend. Facturation à porter autrement (A14) |
+| Budget par appel (USD, tours, `avoidedUsd`) | `src/budget-tracker.js` | §8 | Remplacer le `throw` par `budget.exceeded` et une approbation (A13) |
+| Reporter d'événements typés | `src/reporter.js` | §3.4, §9 | Appelé partout. À brancher sur SQLite, noms `a:b` à passer en `a.b`. Aujourd'hui un process tué perd tous les événements |
+| Épisodes de correction bornés | `src/engine.js` l.95-109 | décision 3c | Sémantique déjà par cycle, à reprendre dans le compilateur |
+| Gate automatique et routage par composant | `src/gate-evaluator.js`, `src/router.js` | décision 3b | Verdict hors liste = exception |
+| Contrôle des sorties, `must_change`, `forbidden_keys` | `src/stage-executor.js`, `src/artifact-validator.js` | garde-fous d'agent | `must_change` empêche de déclarer un travail non fait |
+| Tolérance JSON des artefacts | `src/report-parser.js` | lecture d'`outcome.json` | Jamais sur les registres |
+| Validation fail-fast au chargement | `src/loader.js` | §5.4, §11.3, paquet `schemas` | Règles à porter en zod avec `superRefine` |
+| Journal de reprise avec empreinte | `src/resume.js` | §6.3, §9 | Garder l'empreinte de la définition résolue dans `runs` |
+| Commit par étape, scan de secrets, push best-effort | `src/vcs.js` | §7.3.1 | « Le commit local fait foi » correspond à la spec. Le reste est à refaire (A18) |
+| Harness à `runAgent` scripté | `test/harness.js`, `test/fixtures/generic.json` | §6.4, acceptations phases 1 et 2 | Teste le moteur sans quota |
+| Types du SDK | `node_modules/@anthropic-ai/claude-agent-sdk/entrypoints/sdk/*.d.ts` | §6.2, §8, `schemas` | `init` (session_id, model, apiKeySource), `result` (total_cost_usd, usage, subtypes), `error: 'rate_limit'`, options `resume`, `maxBudgetUsd`, `pathToClaudeCodeExecutable`, `stderr` |
+| Agents et pipelines livrés | `agents/*.md`, `pipelines/*.json` | contenu initial d'`agent-registry` | Candidats `v1` après conversion du frontmatter |
+| Agents et pipelines du SaaS generator | `Saas-generator/.claude/agents`, `pipelines/web-app.json` | registre, test du compilateur | `web-app.json` est le meilleur cas de test : stages typés, `requires`, plusieurs gates vers le même `rerun_from`, `scope_dir` |
 
-- **Spec** : `claude -p --output-format stream-json`, parsing de stdout, faux binaire.
-- **Code** : Agent SDK. Les types de la version installée exposent `SDKSystemMessage` avec
-  `subtype: 'init'` et `session_id`, `SDKResultMessage` avec `total_cost_usd` et `usage`,
-  `Query.interrupt()`, l'option `resume`, `systemPrompt` en chaîne ou en preset avec `append`,
-  une erreur d'assistant typée `'rate_limit'`, et `pathToClaudeCodeExecutable`.
-- **Recommandation** : garder le SDK. Il fait le parsing et le transport à notre place, et le
-  moteur en dépend déjà partout. Enrichir `runOnce` pour émettre `step.started` /
-  `step.progress` / `step.finished` à partir des messages, et exposer `session_id`.
-  Mettre à jour le SDK (0.1.77 est ancien) dans la même phase.
-- **Tests sans quota** : deux options. Garder le mock de `runAgent` du harness, qui marche déjà.
-  Ou un faux binaire via `pathToClaudeCodeExecutable`, mais le SDK parle au CLI dans un
-  protocole de contrôle bidirectionnel en `stream-json`, donc le faux doit l'imiter
-  **[À VÉRIFIER]**. Je recommande le mock de `runAgent` pour le moteur, et un faux binaire
-  seulement si un test de bout en bout le justifie.
+## 4. Conflits vérifiés
 
-### C2. Abonnement ou clé API (§8)
+État : **tranché** (une décision le règle, la spec ou un document reste parfois à mettre à jour),
+**partiel** (une partie est tranchée), **ouvert** (décision à prendre, voir section 6).
 
-- **Spec** : abonnement Pro/Max, coût estimé, limite par fenêtre au centre.
-- **Code et plan** : `ANTHROPIC_API_KEY` sur le NAS, backend `opus-direct` facturé à l'usage,
-  décision verrouillée dans `PLAN.md`. La note du backend précise « pas de quota d'abonnement,
-  donc pas d'attente de réinitialisation ».
-- **Impact** : `total_cost_usd` est une dépense réelle sur ce chemin, pas une estimation.
-  `waiting_quota` reste utile (rate limit API, crédits épuisés) mais n'est plus le cas central.
-- **À décider** : quel mode pour les runs automatisés. Si l'abonnement doit servir, vérifier
-  d'abord que les conditions d'utilisation l'autorisent pour un usage automatisé via SDK
-  **[À VÉRIFIER]**. Le fournisseur `claude` (OAuth) d'OmniRoute consomme le même quota que les
-  sessions interactives.
+### 4.1 business-pipelines
 
-### C3. Graphe `nodes` / `edges` ou stages ordonnés (§5.4)
+| Id | Conflit | Vérif. | État |
+|---|---|---|---|
+| B1 | Le cockpit écoute sur `0.0.0.0` dans son conteneur | confirmé | ouvert |
+| B2 | WoL en `network_mode: host` contre l'isolation du compose | nuancé | ouvert |
+| B3 | Identité par en-tête, inutilisable pour les workers | confirmé | partiel |
+| B4 | Décisions postables depuis le réseau bridge du NAS | nuancé | ouvert |
+| B5 | Une approbation fait échouer le run | nuancé | ouvert |
+| B6 | Décision par action et réponse libre contre décision unique | nuancé | partiel |
+| B7 | `approvals/` partagé par fichiers et chemins absolus | nuancé | ouvert |
+| B8 | Identité d'approbation codée en dur dans le template | nuancé | ouvert |
+| B9 | Workspace jetable, sans checkpoint ni relance depuis une étape | nuancé | partiel |
+| B10 | PLAN.md verrouille encore l'accès API direct | nuancé | tranché |
+| B11 | Deux numérotations de phases qui se recouvrent | nuancé | ouvert |
+| B12 | Agents non versionnés, embarqués dans l'image | nuancé | ouvert |
+| B13 | La spec n'intègre pas les décisions 3a, 3b, 3c | nuancé | tranché |
+| B14 | Budget porté par le template, qui tue le run | nuancé | partiel |
+| B15 | Le cockpit commandera de la dépense sans canal défini | nuancé | partiel |
+| B16 | Pas de point d'injection pour un faux binaire | nuancé | tranché |
 
-- **Spec** : graphe, arêtes conditionnelles `on`, `maxLoops` par arête, `layout`.
-- **Code** : stages ordonnés avec `parallel`, `slicing`, `inputs` / `outputs` /
-  `output_schema`, gates déterministes (`pass_when`, `fail_when`, `items`, `targets`,
-  `rerun_from`), `retry.max_fix_cycles` compté **par épisode**, `requires`, stages typés avec
-  validateurs.
-- **Collision de vocabulaire** : dans le code, `gate` est un contrôle déterministe porté par un
-  stage. Dans la spec, `gate` est une décision humaine. Le code appelle celle-ci `approval`.
-- **Détail qui compte** : un plafond par arête reproduit le bug déjà corrigé dans le moteur
-  (deux gates qui renvoient au même point montaient chacun jusqu'au plafond, donc deux fois le
-  plafond réel). Voir la note `agent-orchestrator`, « le plafond par épisode ».
-- **Recommandation** : un schéma v2 en graphe qui **compile vers les stages actuels**, ou
-  l'inverse, avec deux exigences : le pipeline `marketing` actuel s'exprime sans perte, et
-  `maxLoops` borne un cycle (une composante), pas une arête. Renommer le nœud humain en
-  `approval` pour garder `gate` dans son sens actuel.
+**B1. Écoute sur `0.0.0.0` dans le conteneur** (§10). *Confirmé.*
+La spec : « Les services écoutent sur 127.0.0.1 ou sur l'IP Tailscale, jamais sur 0.0.0.0 ». Le
+compose force `COCKPIT_HOTE=0.0.0.0` avec `COCKPIT_CONTENEUR=1`, et c'est voulu : un bind sur
+`127.0.0.1` dans un conteneur a rendu le cockpit injoignable dix jours. Le confinement vient de la
+publication `127.0.0.1:4600:4600`, qui respecte la règle Compose de la spec. Le test automatisé de
+la §10 mesure les ports depuis une machine hors tailnet et passerait sur l'installation actuelle.
+Preuves : `docker-compose.yaml:16, 44-45`, `src/acces.js:30-36`.
+Recommandation : reformuler la règle au niveau de l'hôte (aucun port publié hors `127.0.0.1` ou IP
+tailnet), le bind interne au conteneur restant libre s'il est déclaré.
 
-### C4. `outcome.json` écrit par l'agent (§5.4)
+**B2. Wake-on-LAN et isolation** (§7.2, §10). *Nuancé.*
+La spec envisage `network_mode: host` pour le magic packet. En host, Docker ignore la section
+`ports` : un cockpit qui partagerait ce conteneur serait joignable sur toutes les interfaces du
+NAS, LAN compris, là où l'en-tête Tailscale se forge. Avec la décision 5, le WoL sert à chaque
+étape lancée pendant que le PC dort.
+Preuves : `docker-compose.yaml:17-21`, `src/acces.js:43-47`.
+Recommandation : le processus qui envoie le WoL ne porte jamais le port du cockpit. Petit
+conteneur dédié en host sans port d'écoute, ou script sur l'hôte DSM appelé par le maître. Tester
+sur le NAS avant la phase 3.
 
-- **Spec** : l'agent `code-reviewer` écrit `approved` ou `changes_requested`, et le graphe route
-  là-dessus.
-- **Décision verrouillée** : « le juge doit être du code, pas un agent ». `must_change` et
-  `verify-couverture` existent précisément parce qu'un agent qui déclare son propre résultat
-  n'atteste de rien.
-- **Recommandation** : l'outcome d'un agent peut **choisir une route** (quoi faire ensuite),
-  jamais **valider** (passer une étape qui compte). Toute arête vers une approbation ou une
-  fusion passe par un nœud `script` déterministe. Le validateur de pipeline le vérifie.
+**B3. Identité Tailscale** (§1, §7.4, §10). *Confirmé.*
+La §1 dit « vérifiée via la connexion Tailscale et non via un header » et parle d'un travail
+commencé sur `feat/tailnet-acces`. Le mécanisme fusionné lit `Tailscale-User-Login`, qui nomme un
+utilisateur, et n'est fiable que parce que le service reste en loopback derrière `tailscale serve`.
+Derrière serve, le backend voit `127.0.0.1` : aucun `tailscale whois` possible sur l'IP du pair.
+Preuves : `src/acces.js:109-116`, `README.md:575-578`, `bin/tailnet-relais.sh:78`.
+Recommandation : WebSocket du maître sur un listener distinct du cockpit, lié à l'IP tailnet,
+jamais derrière serve. Jeton par worker, whois sur l'IP source, ACL. L'en-tête reste au cockpit.
+Corriger la phrase de la §1.
+État : la décision 6 fixe les contrôles. La séparation des listeners reste à acter.
 
-### C5. Identité Tailscale (§1, §7.4, §10)
+**B4. Décisions postables depuis le réseau bridge** (§10, §3.7). *Nuancé.*
+Le cockpit écoute sur `0.0.0.0` dans le réseau `business`, que le service marketing partage. Tout
+conteneur de ce réseau peut poster une décision sans passer par le tailnet, de deux façons : sans
+en-tête et avec `Host: 127.0.0.1:4600`, la décision est signée du compte système du conteneur
+(root, faute de `USER` dans le Dockerfile) ; en forgeant `tailscale-user-login`, elle est signée
+sous ton nom, canal « tailnet ». Le loopback de l'hôte NAS n'est pas en cause, `acces.js` assume ce
+cas. Le conteneur marketing monte déjà `approvals/` en écriture : la route HTTP ajoute une porte,
+elle n'ouvre pas l'accès au registre.
+Preuves : `src/acces.js:130-137`, `docker-compose.yaml:76-78`.
+Recommandation : sortir marketing du réseau `business`. Refuser le canal local ne suffit pas,
+l'en-tête se forge aussi. Mettre à jour le commentaire périmé du compose (l.17-19).
 
-- **Spec** : « identité vérifiée via la connexion Tailscale et non via un header ».
-- **Code** : l'identité **est** l'en-tête `Tailscale-User-Login`. Il n'est fiable que parce que
-  le service n'est joignable qu'en loopback derrière `tailscale serve`. Le raisonnement est
-  écrit dans `src/acces.js`.
-- **Problème pour les workers** : l'en-tête nomme l'utilisateur. Le téléphone et le PC portent
-  le même utilisateur, donc une liste blanche de machines ne peut pas s'appuyer dessus. Un
-  appareil `tagged` ne reçoit aucun en-tête.
-- **Options** : `tailscale whois` sur l'IP du pair (suppose un bind direct sur l'IP Tailscale,
-  pas `serve`), ACL Tailscale sur le port du maître plus un jeton par worker, ou tag du PC plus
-  ACL. **[À VÉRIFIER]** avec le paquet Tailscale de DSM.
-- **Recommandation** : ACL Tailscale qui n'ouvre le port WebSocket qu'au PC, plus un jeton par
-  worker dans un `.env`. L'en-tête reste réservé au cockpit, où il désigne bien une personne.
+**B5. Une approbation fait échouer le run** (§9, §12 phase 2). *Nuancé.*
+Le stage `approval` lève une exception quand des actions attendent une décision
+(`stage-handlers.js:711-720`) ou après une réponse libre (l.656-661). `orchestrator.js:93-97` clôt
+le rapport en `failed` et sort en code 1. Aucun `waiting_approval`, `gate.opened` ni
+`gate.decided`. Un event store alimenté tel quel afficherait chaque tour marketing arrivé à la
+décision comme un run échoué. Après une approbation, relancer marketing échoue volontairement au
+stage `consigne`. Le moteur a un journal de reprise que le lanceur ne branche pas.
+Recommandation : arrêt typé (`waiting_approval`, événement d'ouverture) qui garde gel, empreinte et
+péremption. Après la décision, poursuivre le même run, ou marquer le run terminé en attente
+d'application quand l'approbation est le dernier nœud.
 
-### C6. Services du NAS (§1, §2)
+**B6. Granularité des approbations** (§5.4, §9, §10). *Nuancé.*
+La spec réduit une approbation à `approved` ou `rejected` avec une note. Le code porte un plan gelé
+identifié par son empreinte, une décision signée par action (`approuve`, `refuse`, `motif`, canal,
+horodatage) et une réponse libre (`ORIENTE`) qui ne tranche rien et vide les exécutables. Le schéma
+et l'API de la spec ne gardent ni l'empreinte, ni la granularité, ni la signature, ni la réponse
+libre.
+Preuves : `src/approval.js:43-54, 61-78, 94-113`, `src/cockpit.js:151-156, 173-196`.
+État : le nom `approval` (3b) et le rapport d'impact imposé (4) sont tranchés. La granularité par
+action et la sortie « orientée » restent ouvertes.
 
-- **Spec** : `cockpit.js` et `cycle.js` tournent sur le NAS.
-- **Réalité** : seul le cockpit tourne en continu. `marketing` se lance à la main. Le conteneur
-  du cycle est retiré depuis le 2026-09-13.
-- **Impact** : pas de planificateur en service aujourd'hui. Le maître de la §4 est à créer, pas
-  à faire évoluer.
+**B7. Approbations partagées par fichiers** (§4, §7.4, §9). *Nuancé.*
+Le run écrit le plan gelé et la boîte dans `approvals/`, avec des chemins absolus. Le cockpit suit
+ces chemins pour lire et écrire. Tout ne marche que parce que cockpit et marketing montent le même
+`./approvals` sur le NAS. La spec prévoit la table `approvals` en SQLite et des workers qui ne
+parlent au maître que par WebSocket. Avec la décision 5, sans migration préalable, le cockpit du
+NAS ne verrait plus les demandes. Trois arbitrages marketing réels attendent dans `approvals/`.
+Preuves : `src/stage-handlers.js:688-696`, `src/cockpit.js:54-55`, `docker-compose.yaml:63-66`.
+Recommandation : migrer les approbations vers l'event store, ou au minimum les faire transiter par
+le protocole maître/worker, **avant** de déplacer marketing sur le PC. Reprendre les trois
+arbitrages sans perte, avec un test.
 
-### C7. Où vit l'état durable (§3.1, §9)
+**B8. Identité d'approbation dans le template** (§5.4, §5.5, §9). *Nuancé.*
+`marketing.json` fixe `dossier: "marketing"`, `marketing.decisions.json` et `marketing.plan.json`
+dans un `approvalsDir` unique par processus. Rien n'entre en collision aujourd'hui, faute de
+projets. Quand ce pipeline deviendra un template étendu par plusieurs projets sous un maître
+unique, deux projets partageront plan gelé, registre et entrée de boîte, et l'un bloquera l'autre.
+Preuves : `pipelines/marketing.json:92-101`, `src/stage-handlers.js:480-486`.
+Recommandation : dériver ces noms de `(project_id, pipeline, nœud)` ou de `run_id`, et faire
+refuser par le validateur un `dossier` écrit en dur.
 
-- **Spec** : SQLite pour les runs, étapes, événements **et** approbations.
-- **Code** : approbations dans des fichiers JSON (`approvals/`), avec gel du plan, empreinte,
-  péremption et registre hors workspace. Trois lecteurs indépendants.
-- **Recommandation** : SQLite pour `runs` / `steps` / `events` dès la phase 1. Les approbations
-  restent en fichiers jusqu'à la phase 5, puis migrent en gardant l'empreinte et le gel. **Trois
-  arbitrages marketing attendent une décision sur le NAS** : aucune migration ne doit les perdre.
+**B9. Pas de checkpoint pour un run d'artefacts** (§6.3, §7.3.1). *Nuancé.*
+Le lanceur crée un workspace jetable sans git. Un run marketing n'a ni commit par étape, ni
+`checkpoint_sha`, ni relance depuis une étape, et le `--resume` du moteur n'y est pas utilisable
+(`PLAN.md:142-145`). La §7.3.1 vise les projets gérés qui ont un `repo`. Elle ne dit pas sur quel
+dépôt travaille un run qui ne produit que des artefacts.
+Preuves : `orchestrator.js:47-53`, `PLAN.md:142-145`.
+État : la décision 8 fixe les remotes, pas ce cas. Sans décision, la phase 2 ne pourra pas vérifier
+la relance sur le seul pipeline réel.
 
-### C8. Emplacement d'OmniRoute et d'Ollama (§6.1, §7)
+**B10. PLAN.md contredit la décision 2** (§8). *Nuancé.*
+PLAN.md (l.176-177) garde « orchestrateur en accès direct » dans ses décisions verrouillées. La
+phrase vise d'abord un abonnement relayé par un outil tiers, mais « accès direct » veut dire clé
+API. Le compose fournit encore `ANTHROPIC_API_KEY` au service marketing du NAS, ce qui est cohérent
+avec l'ancien PLAN.md et deviendra superflu après le déplacement sur le PC.
+Recommandation : mettre à jour PLAN.md, puis retirer la clé du NAS après le déplacement.
 
-- **Spec** : n'importe quelle étape peut passer par OmniRoute.
-- **Réalité** : OmniRoute et Ollama écoutent sur `localhost` dans le WSL du PC. Le backend
-  facturé `opus-direct` passe aussi par OmniRoute, ce qui en fait un point unique de panne
-  (`PLAN.md`, phase 01).
-- **À décider** : installer OmniRoute sur le NAS, ou poser la règle « `llm.via: omniroute` ou
-  `ollama` implique `runsOn: pc` », que le validateur imposera. Dans les deux cas, garder un
-  backend Anthropic direct qui ne passe pas par OmniRoute.
+**B11. Deux numérotations de phases** (§12). *Nuancé.*
+PLAN.md numérote de 01 à 06 le plan du marketing au déploiement, la spec de 0 à 7 le cockpit. Les
+périmètres diffèrent, mais « phase 3 », « phase 5 » ou « phase 6 » ne désignent pas la même chose
+d'un document à l'autre, et la première version de cet audit mélangeait déjà les deux.
+Recommandation : préfixer les phases de la spec (`C0` à `C7`) et dire dans les deux documents
+comment ils s'articulent, surtout pour 05 développement et 06 déploiement.
 
-### C9. Remote git (§7.3)
+**B12. Agents non versionnés** (§2, §5.1, §5.2, §3.3). *Nuancé.*
+Les définitions vivent dans `.claude/agents/<nom>.md`, sans `version` ni `outcome`, avec `tools` et
+`model` au lieu de `allowedTools` et `defaultLlm`. Le SDK reçoit quand même `allowedTools` par
+conversion (`agent-runner.js:79`). Après un rebuild de l'image, modifier un agent s'applique à tout
+pipeline qui l'utilise, sans trace de version. C'est un écart de migration attendu, pas une
+violation d'un principe en service.
+Preuves : `orchestrator.js:39-45`, `.claude/agents/brand-analyst.md:1-6`, `.dockerignore:12-17`.
+Recommandation : importer les trois agents marketing en `v1` dans `agent-registry`, résoudre
+`nom@version`, garder `.claude/agents` en repli jusqu'à la bascule.
 
-- **Spec** : dépôt bare sur le NAS comme remote principal, miroir GitHub.
-- **Réalité** : `origin` est GitHub pour les trois dépôts. Les runs de `business-pipelines`
-  n'ont pas de dépôt de travail : le workspace est jetable et `vcs` n'est pas branché.
-- **À décider** : pour quels dépôts le remote NAS s'applique (dépôts de projets générés
-  seulement, ou aussi les trois dépôts d'outillage), et sur quel dépôt travaille un run qui ne
-  produit que des artefacts (marketing).
+**B13. La spec n'a pas intégré 3a, 3b, 3c** (§5.4 et suivantes). *Nuancé.*
+Le graphe de la §5.4 est bien le format retenu (3a), mais la section ne dit pas qu'il est compilé en
+étapes et ne sait pas exprimer ce que `marketing.json` fait déjà : `parallel`, `slicing`,
+`inputs`, `outputs`, `output_schema`, routage d'un manque vers l'agent responsable. Elle garde
+`gate` pour l'humain et `maxLoops` sur l'arête. Le même vocabulaire revient dans la §3 (principe
+6), la §7.3.1, la §8 et la §12 phase 2. Le code actuel n'a qu'une borne globale
+`retry.max_fix_cycles` : le `maxLoops` par cycle de 3c est une troisième forme.
+Recommandation : réécrire ces sections, avec `marketing.json` réécrit en graphe comme test
+d'équivalence. Voir aussi A7, A8, A9.
 
-### C10. Le cockpit lance des runs (§10, §11.2)
+**B14. Budget du template qui tue le run** (§5.5, §8). *Nuancé.*
+Le budget vit dans le template (`max_usd`, `max_total_turns`, `max_turns_per_agent`), qu'un agent
+peut surcharger par `max_turns` (`stage-executor.js:206`). La spec met un budget USD par run et par
+mois dans le projet, sans plafond de tours. Au dépassement, `BudgetTracker.add` lève une exception
+que rien ne rattrape, contre la décision verrouillée de PLAN.md « le garde-fou escalade au lieu de
+tuer ». La reprise ajoutée en `8290f4a` évite de repayer les étapes finies, sans remplacer
+l'escalade. Avec l'abonnement, seuls les plafonds de tours bornent réellement le temps.
+Preuves : `pipelines/marketing.json:9-13`, `agent-orchestrator/src/budget-tracker.js:24-28`,
+`PLAN.md:182`. Voir aussi A13.
 
-- **Spec** : `POST /api/runs`, pause, stop, relance depuis le cockpit.
-- **Code** : le cockpit ne détient aucune clé, par choix explicite, pour que le processus exposé
-  au tailnet ne puisse pas dépenser.
-- **Recommandation** : garder ce principe. Le cockpit écrit une **commande** (table ou file),
-  le maître la lit et l'exécute avec ses propres secrets. Le cockpit reste sans clé.
+**B15. Canal de commande du cockpit** (§10, §4). *Nuancé.*
+Aujourd'hui le cockpit ne détient aucune clé et ne planifie rien (`docker-compose.yaml:46-49`). La
+§10 lui ajoute `POST /api/runs`, `/rerun`, `/resume` : à travers le maître, il pourra commander de
+la dépense de quota. La spec sépare déjà cockpit et maître, mais ne dit ni comment une commande
+passe de l'un à l'autre, ni que le cockpit reste sans clé.
+Recommandation : le cockpit écrit une commande, le maître la valide et la dispatche. Le cockpit ne
+reçoit aucune clé. Les commandes passent par la même vérification d'identité que les décisions.
 
-### C11. Budget : arrêt ou gate (§8)
+**B16. Faux binaire sans point d'injection** (§0.4, §6.4). *Nuancé.*
+La spec veut `test/fixtures/fake-claude.js` choisi par `CLAUDE_BIN`. Le runner vit dans
+`agent-orchestrator`, appelle `query()` du SDK, et ni `CLAUDE_BIN` ni `pathToClaudeCodeExecutable`
+ne sont passés. Les tests mockent `runAgent` (`test/harness.js:85`). Le point d'injection devrait
+être dans `agent-orchestrator`, pas dans ce dépôt. Voir A2.
 
-- **Spec** : dépassement, gate automatique `waiting_approval`.
-- **Code** : `BudgetTracker.add` lève une erreur et tue le run, alors que `PLAN.md` verrouille
-  « le garde-fou escalade au lieu de tuer l'exécution ».
-- Pas de conflit avec la spec, mais un écart du code avec sa propre décision. À corriger en
-  phase 2.
+### 4.2 agent-orchestrator
 
-### C12. Langage, schémas, tests (§0)
+| Id | Conflit | Vérif. | État |
+|---|---|---|---|
+| A1 | Invocation `claude -p` contre Agent SDK | confirmé | tranché |
+| A2 | Le faux binaire de §6.4 ne suffit pas avec le SDK | nuancé | partiel |
+| A3 | Le CLI des runs est le 2.0.77 embarqué | nuancé | ouvert |
+| A4 | `allowedTools` n'est pas une restriction | nuancé | ouvert |
+| A5 | Le parseur de frontmatter ne lit pas le format de la spec | confirmé | ouvert |
+| A6 | Résolution par nom, le premier trouvé gagne | nuancé | ouvert |
+| A7 | Liste de stages contre graphe | nuancé | tranché |
+| A8 | `gate` automatique contre `gate` humaine | confirmé | tranché |
+| A9 | `maxLoops` par arête contre plafond par épisode | nuancé | tranché |
+| A10 | Le plafond de boucles repart à zéro à chaque reprise | nuancé | ouvert |
+| A11 | `outcome.json` unique contre rapports et retry de format | nuancé | partiel |
+| A12 | Limite de quota non détectée | nuancé | ouvert |
+| A13 | Dépassement de budget : exception, coût d'abonnement compté | confirmé | partiel |
+| A14 | OmniRoute n'est pas uniformément payant | nuancé | ouvert |
+| A15 | Ollama ne passe pas par OmniRoute | nuancé | ouvert |
+| A16 | `llm.model` libre contre étiquette résolue par le backend | nuancé | ouvert |
+| A17 | Agents parallèles dans le même workspace | nuancé | ouvert |
+| A18 | VCS au modèle Saas-generator | nuancé | partiel |
+| A19 | Pas de checkpoint garanti par étape | nuancé | ouvert |
+| A20 | Reprise par journal fichier contre `resume` et SQLite | nuancé | ouvert |
+| A21 | Clés de commentaire `_note` contre schéma zod | nuancé | ouvert |
+| A22 | Saas-generator dépend de la surface CommonJS | nuancé | ouvert |
+| A23 | Pas de Vitest | confirmé | ouvert |
 
-- **Spec** : TypeScript, zod dans `packages/schemas`, Vitest.
-- **Code** : CommonJS sans TS, validation écrite à la main, tests en scripts Node.
-- **Impact** : `agent-orchestrator` passe en workspaces npm pour accueillir `packages/schemas`.
-  `preparer-image.sh` copie tout le dépôt, donc reste compatible, mais le paquet `schemas` doit
-  être compilé avant la copie. zod v4 est déjà utilisé dans le SaaS generator.
-- **Recommandation** : Vitest pour le nouveau code, les scripts existants restent dans
-  `npm test` jusqu'à leur migration. Les deux suites doivent rester vertes à chaque phase.
+**A1. CLI contre SDK** (§6.1, §6.2). *Confirmé.*
+La spec lance `claude -p ... --output-format stream-json` et lit stdout ligne par ligne. Le runner
+appelle `query()` et itère sur des objets messages. C'est le SDK qui lance le CLI embarqué avec
+`--output-format stream-json --verbose --input-format stream-json`. La §6.3 (Stop par `SIGTERM`) et
+la §6.4 sont touchées aussi.
+Preuves : `src/agent-runner.js:7, 126`, `sdk.mjs:7671-7677`.
+État : tranché par la décision 1. Réécrire §6.1 à §6.4 en mapping de messages SDK vers événements,
+journal brut = JSONL des messages plus callback `stderr`.
 
-### C13. Machines (§1, §7.5, §7.6)
+**A2. Faux binaire et SDK** (§6.4). *Nuancé.*
+Avec le SDK, `CLAUDE_BIN` ne sert plus de point d'injection. Le SDK lance toujours le CLI en
+`--input-format stream-json` et envoie une requête de contrôle `initialize` qui attend une réponse
+(`sdk.mjs:8329-8338`). Un faux qui se contente d'écrire sur stdout ne suffit pas. Le vérificateur
+n'a pas confirmé que l'itération des messages bloque sans cette réponse.
+Recommandation : moteur, garder le mock de `runAgent`. Runner, injecter la fonction `query` avec un
+générateur scripté (succès, erreur, `rate_limit`, lent). Faux CLI via
+`pathToClaudeCodeExecutable` seulement pour un test d'intégration, qui gère le protocole de
+contrôle.
 
-- Ce poste (`destrobimobile`, i7-11700, RTX 3060) correspond au ROG G10CE. **Le PC homelab est
-  donc aussi le poste de développement**, avec la session Claude Code interactive, OmniRoute et
-  Ollama. Mettre ce poste en veille depuis le maître coupe tout ça.
-- Le commit `cc3f770` dit « the PC shuts down every evening ». La spec parle de veille. Le
-  Wake-on-LAN depuis un arrêt complet (S5) dépend du BIOS et de la carte réseau, pas seulement
-  de la veille (S3) **[À VÉRIFIER]**.
-- RAM du NAS (8 Go) : non vérifiable d'ici.
+**A3. Version du CLI des runs** (§5.2, §6.1). *Nuancé.*
+Le SDK 0.1.77, figé par le lockfile, exécute son `cli.js` en 2.0.77. Les réponses tirées de
+`claude --help` (2.1.273) ne valent pas pour les runs : les alias diffèrent (`fable` d'un côté,
+`opusplan` et `sonnet[1m]` de l'autre), et le format stream-json et les messages de quota peuvent
+différer. Avec `npm ci`, deux workers auraient le même CLI embarqué. La présence de
+`claude_code_version` dans `init` n'a pas été confirmée.
+Preuves : `cli.js:4`, `claude-agent-sdk/package.json:3`, `package.json:13`.
+À décider : monter le SDK et l'épingler, ou passer `pathToClaudeCodeExecutable` vers le `claude`
+système.
 
-### C14. Topologie et modules (§11.1)
+**A4. `allowedTools` et `acceptEdits`** (§5.2). *Nuancé.*
+Le champ `tools` du frontmatter est passé en `allowedTools` (auto-approbation), sans l'option
+`tools` qui restreint l'ensemble disponible, avec `permissionMode: "acceptEdits"`. Une déclaration
+d'agent ne garantit donc pas l'absence de modification. Seul le hook de périmètre limite les
+écritures au workspace. La spec nomme bien le champ `allowedTools` avec des motifs `Bash(...)`, ce
+qui correspond à l'auto-approbation : c'est le code qui mélange les deux notions. Le garde-fou du
+test-writer (§12 phase 7) repose sur un nœud script et n'est pas concerné.
+Preuves : `runtimeTypes.d.ts:257-259`, `src/agent-runner.js:79-80`.
+Recommandation : un champ distinct transmis à `tools` (ou `disallowedTools`). Confirmer par un run
+court le comportement d'Edit non listé.
 
-La spec range maître, machines, business, projets. Le cockpit actuel affiche aussi les
-**modules déployés** (`cockpit-apps.json`, alimenté par le SaaS generator). Ils ne figurent pas
-dans la spec. Proposition : un niveau « app » sous le projet qui l'a produite, avec le même
-contrôle d'URL qu'aujourd'hui.
+**A5. Parseur de frontmatter** (§5.2). *Confirmé.*
+Le parseur découpe chaque ligne au premier `:`, garde des chaînes et exige `tools` et `model`. Un
+fichier au format spec est rejeté. Aucun des 18 agents existants (12 ici, 6 dans Saas-generator)
+n'est lisible par le nouveau schéma.
+Preuves : `src/agent-runner.js:23-27`, `Saas-generator/.claude/agents/architect.md:4-5`.
+Recommandation : vrai parseur YAML validé par zod, script de migration `model` vers
+`defaultLlm { via: "claude", model }`.
+
+**A6. Résolution sans version** (§3.3, §5.1). *Nuancé.*
+`resolve.js` cherche `<nom>.md` et `<nom>.json` dans `./`, `./.claude/`,
+`~/.config/agent-orchestrator/` puis dans les fichiers livrés. Le premier trouvé masque les autres,
+choix documenté. Aucun pipeline ne peut référencer `agent@version`. C'est un écart avec la cible,
+`agent-registry` restant à créer.
+Preuves : `src/resolve.js:10-16`, `README.md:22-23`.
+Recommandation : sur le chemin du maître, résoudre sans repli dans `agent-registry`. Garder la
+résolution par nom de `orch run` comme mode développement explicite.
+
+**A7. Stages contre graphe** (§5.4). *Nuancé.*
+Le moteur joue un tableau `stages`. `slicing` est obligatoire, les stages d'agents exigent des
+`outputs` et acceptent `output_schema` et `scope_dir`, le parallélisme est optionnel
+(`parallel`), la boucle passe par `gate.rerun_from` et le routage par `gate.route_by` et
+`gate.targets`. Rien ne correspond à `nodes` et `edges`.
+Preuves : `src/loader.js:24-25, 37-38`, `src/engine.js:113`, `src/router.js:10-14`.
+État : tranché par 3a. Le schéma graphe doit couvrir toutes ces notions. Tests d'équivalence :
+`marketing.json` et `Saas-generator/pipelines/web-app.json`.
+
+**A8. Deux sens de `gate`** (§5.4, §9). *Confirmé.*
+`stage.gate` est évalué automatiquement sur un rapport JSON. Dans la spec, `gate` est une décision
+humaine avec `gate.opened` et `gate.decided`. La §8 étend en plus le mot au dépassement de budget.
+Preuves : `src/engine.js:91-92`, `README.md:114-116`.
+État : tranché par 3b. Mettre à jour §5.4, §8, §9 (`approval.opened`) et §11.
+
+**A9. Où compter les boucles** (§3, §5.4). *Nuancé.*
+La §5.4 place `maxLoops` sur l'arête de retour. Le principe 6 exige seulement qu'un cycle soit
+« couvert ». Le moteur compte par épisode de reprise, sous un plafond unique par pipeline (3 par
+défaut, `loader.js:147`). Le code documente qu'un comptage par stage a produit deux fois le
+plafond réel.
+Preuves : `src/engine.js:100-103`.
+État : tranché par 3c. Syntaxe où `maxLoops` est porté par le cycle, validation qui rejette un cycle
+non couvert, plafond réglable par cycle.
+
+**A10. Compteur de boucles et reprise** (§3, §9). *Nuancé.*
+Le moteur remet le compteur de cycles à zéro à chaque `--resume`, choix documenté. La spec ne dit
+pas si `steps.loop_index` survit à une reprise. Aujourd'hui la reprise est manuelle. Avec la reprise
+automatique après quota, une série d'interruptions permettrait un nombre de cycles non borné.
+Preuves : `README.md:44-45`, `src/engine.js:42, 54-56`. Question en section 6.
+
+**A11. Signal de sortie** (§5.4). *Nuancé.*
+La spec veut `.orchestrator/outcome.json` `{status, notes}` et un échec immédiat si le fichier
+manque. Le code lit le verdict d'un agent juge dans le rapport désigné par la gate automatique, avec
+des `items` routés. Une sortie déclarée absente ou hors schéma relance le même agent jusqu'à
+`max_format_retries` (2 par défaut, événement `format:retry`). En revanche un verdict manquant ou
+inconnu échoue sans retry.
+Preuves : `src/stage-executor.js:131-134, 276`, `src/gate-evaluator.js:16`.
+État : la décision 4 fixe la règle. Le format (`status` plus `items` optionnels) et le retry restent
+à décider.
+
+**A12. Quota non détecté** (§3, §8). *Nuancé.*
+`runOnce` ne lit que `result`, ni le champ `error` des messages assistant (`rate_limit`,
+`billing_error`), ni `is_error`. Selon la forme réelle de la sortie, qui reste à capturer, une limite
+finit en échec du pipeline, en faux succès silencieux (`success` avec `is_error`), ou en deux
+relances sans délai si le process meurt.
+Preuves : `src/agent-runner.js:131-132, 147`, `coreTypes.d.ts:427-432`.
+Recommandation phase 1 : capturer les sorties brutes, classer `rate_limit` et `is_error` en
+`quota.hit` avant le test du subtype et avant tout retry, exclure ce cas de
+`isTransientSdkCrash`.
+
+**A13. Budget et abonnement** (§8, §5.5). *Confirmé.*
+`BudgetTracker.add` lève une exception, `bin/orch.js` clôt en `failed`. Le backend `anthropic` est
+facturé par défaut (« mieux vaut surestimer »), donc le coût estimé d'abonnement s'impute sur
+`max_usd`. Aucun budget mensuel. Un run sur abonnement peut être tué pour une dépense qui n'existe
+pas.
+Preuves : `src/budget-tracker.js:21-26`, `src/backends.js:13`, `README.md:69-70`.
+Recommandation : trois compteurs (`est_cost_usd`, `real_cost_usd`, `avoided`), budget USD appliqué au
+réel seulement, `budget.exceeded` puis approbation. `max_total_turns` reste un garde-fou dur.
+
+**A14. Facturation d'OmniRoute** (§8). *Nuancé.*
+La spec assimile « via OmniRoute » à de la dépense réelle. Le même proxy sert au moins deux régimes :
+`omniroute` marqué `_billed: false` (combos gratuites) et `opus-direct` payé à l'usage, cette
+information ne figurant que dans une `_note`. La note signale aussi un fournisseur `claude` (OAuth)
+interne qui consommerait le quota d'abonnement. Un compteur unique compterait les appels gratuits
+comme payés. Preuve hors dépôt : `~/.config/agent-orchestrator/backends.json`.
+Recommandation : porter `billing: subscription | api | free` sur le backend ou la combo, pas le
+déduire de `via`.
+
+**A15. Ollama en direct** (§6.1). *Nuancé.*
+La spec dit qu'Ollama passe par OmniRoute. Les backends `ollama` et `ollama-coder` pointent sur
+`localhost:11434`, et la note du backend `omniroute` dit qu'Ollama a été retiré de la combo à cause
+du préremplissage. Le délai de file a ensuite été porté à 120 s, sans nouveau test documenté.
+Preuves : `README.md:53-60`, `backends.json` (hors dépôt).
+Recommandation : corriger §6.1, Ollama appelé en direct par son backend.
+
+**A16. Nom de modèle libre** (§5.2, §5.4, §5.5). *Nuancé.*
+La spec donne `llm: { via, model }` avec un nom libre et quatre niveaux de priorité. Le moteur garde
+`model: opus | sonnet` dans l'agent, le pipeline ne choisit que `backend`, et les
+`ANTHROPIC_DEFAULT_*_MODEL` traduisent l'étiquette. Ni override projet, ni choix au lancement.
+`opus-direct` montre qu'un nom complet préfixé passe par OmniRoute, mais le fournisseur refuse
+points et suffixes d'effort. L'exemple `gemini-flash-lite-latest` n'a pas de préfixe.
+Preuves : `README.md:75-78`, `src/stage-executor.js:212-215`. Question en section 6.
+
+**A17. Parallélisme dans un même workspace** (§7.2). *Nuancé.*
+Trou de spec plutôt qu'écart : la §7.2 fixe une concurrence par worker sans dire ce qu'elle compte.
+Le moteur lance toujours les agents de correction en `Promise.all` dans le même workspace, et les
+agents d'un stage si `parallel: true` (activé dans `marketing.json`). Saas-generator a désactivé
+`parallel` après une interférence observée entre deux process SDK. Le risque pour les agents de
+correction est vraisemblable, pas observé.
+Preuves : `src/engine.js:111-114`, `Saas-generator/pipelines/web-app.json:24`.
+Recommandation : la limite compte les process d'agents, et le parallélisme dans un run exige des
+workspaces isolés.
+
+**A18. VCS** (§7.3.1, §6.3). *Nuancé.*
+Le module `vcs` suit le modèle Saas-generator : branche `generation/<horodatage>`, aucun remote bare,
+`gh repo create --private --push` seulement s'il n'y a pas de `.git`, `.gitignore` réécrit même sur
+un dépôt existant, et `promote` qui fusionne dès que les gates automatiques sont vertes. En mode
+`workspace: existing`, le VCS est coupé.
+Preuves : `src/vcs.js:111-112, 134`, `src/engine.js:184-185`, `bin/orch.js:186`.
+État : la décision 8 fixe les remotes et la décision 4 interdit la fusion par un agent. Nouveau
+module pour les projets gérés : clone ou pull depuis le bare, `run/<runId>`, sha retourné, jamais
+de `gh repo create` ni d'écriture de `.gitignore` (`.git/info/exclude`), fusion seulement après
+une approbation.
+
+**A19. Checkpoints par étape** (§6.3, §7.3.1). *Nuancé.*
+`commitStage` ne commite rien si l'étape n'a produit que des artefacts ignorés, les stages typés ne
+sont pas commités par le moteur, un échec de gate ne commite jamais, et aucun sha n'est enregistré.
+`resume.js` a écarté l'historique git comme source de progression pour cette raison.
+Preuves : `src/resume.js:7-12`, `src/vcs.js:202-209`, `src/engine.js:94, 162`.
+Recommandation : commit systématique par étape (vide si besoin), artefacts d'échange versionnés sur
+`run/*`, sha stocké pour chaque étape.
+
+**A20. Deux stratégies de reprise** (§3.1, §6.3). *Nuancé.*
+La spec reprend la session de l'agent (`resume <session_id>`) et met l'état en SQLite. Le moteur
+tient `.orch-resume.json` dans le workspace et rejoue en entier un stage tué. Les deux ne s'excluent
+pas. Il n'y a pas de concurrence entre deux sources d'état aujourd'hui, faute de SQLite.
+Preuves : `src/resume.js:17`, `README.md:30-38`.
+Recommandation : migrer vers SQLite la liste des étapes sauvées et l'empreinte. `resume` seulement
+sur un workspace intact, reset au checkpoint et rejeu complet sinon.
+
+**A21. Clés de commentaire** (§3.2, §12 phase 6). *Nuancé.*
+Les pipelines justifient leurs choix dans des clés `_note`, `_backends_note`, `_parallel_note`. Un
+schéma zod strict les rejette, un schéma `strip` les efface à la sauvegarde de l'éditeur, et le
+critère « JSON identique hors `layout` » échoue. Les clés `_` des backends sont un autre cas :
+`_billed` est fonctionnel.
+Preuves : `pipelines/research.json:39`, `pipelines/writing.json:5`,
+`Saas-generator/pipelines/web-app.json:87`.
+À décider : champ de note explicite par nœud et par pipeline, ou passthrough documenté des clés
+`^_`.
+
+**A22. Consommateurs CommonJS** (§0.5, §2). *Nuancé.*
+Saas-generator et business-pipelines composent leur orchestrateur à partir de `main: src/index.js`.
+La spec ne cite Saas-generator que comme source du format d'agents, jamais comme consommateur, et la
+migration TypeScript de la §0.5 porte sur `cockpit.js` et `cycle.js`, pas sur le moteur. Changer
+`main`, la structure du dépôt ou l'API exportée casserait Saas-generator.
+Preuves : `README.md:8`, `Saas-generator/package.json:18`, `Saas-generator/orchestrator.js:4-14`.
+Question en section 6.
+
+**A23. Vitest** (§0.3, §12 phase 7). *Confirmé.*
+Ni Vitest ni Playwright dans le dépôt ni dans Saas-generator. Environ 101 tests en scripts Node.
+Le « harness existant » de la phase 7 est un harness maison, pas Vitest.
+Recommandation : introduire Vitest en phase 1, faire tourner les scripts actuels dans une enveloppe,
+ne pas réduire le nombre de vérifications.
 
 ## 5. Réponses aux [À VÉRIFIER]
 
-| Point | Réponse | Source |
-|---|---|---|
-| Syntaxe de `--allowedTools` | liste séparée par virgules ou espaces, exemple `"Bash(git *) Edit"`. La forme `Bash(npm test:*)` de la spec n'apparaît pas dans l'aide : à tester | `claude --help` 2.1.273 |
-| Alias de modèles | `fable`, `opus`, `sonnet`, ou nom complet (`claude-fable-5`). Via `opus-direct` : notation à tirets seulement (`anthropic/claude-opus-5`), point et suffixe d'effort refusés | `claude --help`, `backends.json` |
-| Injection du prompt système | CLI : `--system-prompt` (remplace) ou `--append-system-prompt`. SDK : `systemPrompt` chaîne (remplace, utilisé aujourd'hui) ou `{ type: 'preset', preset: 'claude_code', append }` | aide CLI, types SDK |
-| Variables pour OmniRoute | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`, validé le 2026-09-15 (requête de 25k tokens, 41 outils, `tool_use` servi). Réserves : un bloc texte `(empty response)` accompagne chaque `tool_use`, Groq limité à 8 000 TPM | `backends.json`, note omniroute |
-| Ollama via OmniRoute | Ollama est **retiré** du combo OmniRoute (préremplissage plus long que le délai de file). Il reste joignable en direct par les backends `ollama` | note du backend `omniroute` |
-| Format du message de limite | partiel : le SDK type une erreur d'assistant `'rate_limit'`. Le `subtype` du résultat et l'heure de réinitialisation ne sont pas vérifiés. Il faut une capture réelle | types SDK 0.1.77 |
-| Autres options utiles | `--max-budget-usd`, `--json-schema` (sortie structurée), `--session-id`, `--no-session-persistence`, `--fallback-model` | `claude --help` |
-| WoL depuis un conteneur (`network_mode: host`) | non vérifié. Le compose actuel est en bridge pour l'isolation : passer le maître en host réseau défait ce choix. Alternative : un petit script WoL sur l'hôte DSM, appelé par le maître | à tester sur le NAS |
-| Paquet Git Server de Synology | non vérifié | à tester sur le NAS |
-| Montage SMB/NFS dans WSL | non vérifié | à tester sur le PC |
-| `tailscale serve` sur DSM | déjà utilisé pour le cockpit du NAS. Bind direct sur l'IP 100.x dans un conteneur : non vérifié | compose, `tailnet-relais.sh` |
-| Sortant WSL vers le tailnet | **non concluant** : WSL ne résout pas `nas.tail8296f6.ts.net`, et Windows n'a pas eu de réponse non plus pendant l'audit | test du 2026-09-16 |
+| Point | Statut | Réponse | Source |
+|---|---|---|---|
+| Syntaxe de `--allowedTools` | tranché | Liste séparée par virgules ou espaces. 2.1.273 donne l'exemple `"Bash(git *) Edit"`, le 2.0.77 embarqué `"Bash(git:*) Edit"`. `Bash(npm run:*)` est marqué « prefix matching (legacy) », `Bash(npm *)` est accepté. Le SDK passe `allowedTools.join(",")`. C'est une auto-approbation, `--tools` restreint | `claude --help`, `cli.js` embarqué, `sdk.mjs` l.7709-7724 |
+| Alias de modèles | tranché | 2.1.273 : `fable`, `opus`, `sonnet` ou nom complet. 2.0.77 : `sonnet`, `opus`, `haiku`, `sonnet[1m]`, `opusplan`. Tant que le runner utilise le CLI embarqué, `fable` n'est pas garanti. `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` remappent les étiquettes dans les deux versions | `claude --help`, `cli.js` |
+| Injection du prompt système | tranché | CLI : `--system-prompt`, `--append-system-prompt` et leurs variantes `-file`. SDK : `systemPrompt` en chaîne remplace, `{ type: 'preset', preset: 'claude_code', append }` ajoute. Transmis dans la requête `initialize`. Le runner remplace aujourd'hui et charge `settingSources: ["project"]` | `runtimeTypes.d.ts` l.522-541, `src/agent-runner.js` l.81, 87 |
+| Messages et options du SDK 0.1.77 | tranché | `session_id` sur tous les messages. `init` : model, tools, cwd, apiKeySource, permissionMode. `result` : total_cost_usd, usage, modelUsage, duration_ms, num_turns, is_error, subtypes `success`, `error_during_execution`, `error_max_turns`, `error_max_budget_usd`. Options `resume`, `resumeSessionAt`, `forkSession`, `maxBudgetUsd`, `pathToClaudeCodeExecutable`, `spawnClaudeCodeProcess`, `stderr`. `interrupt()` exige une entrée en streaming : avec un prompt en chaîne, seul `abortController` sert | `coreTypes.d.ts` l.427-499, `runtimeTypes.d.ts` |
+| Options utiles au runner | tranché | `--max-budget-usd`, `--fallback-model`, `--json-schema`, `--session-id`, `--setting-sources`, `--tools`, `--disallowedTools`, `--permission-prompts none`. `--no-session-persistence` empêche `resume`. `--bare` et `--restricted` n'existent qu'en 2.1.273 | `claude --help`, `sdk.mjs` l.7660-7760 |
+| Forme du message de quota | partiel | Dans le 2.0.77, un 429 produit un message assistant `error: "rate_limit"` avec un texte (« session limit », « usage limit », heure de réinitialisation dans le texte). Aucun champ structuré pour l'heure. Non tranchable sans run réel : le `result` qui suit, le code de sortie, le format horaire, le comportement du 2.1.273 | `coreTypes.d.ts` l.427-433, chaînes du `cli.js` |
+| Variables et compatibilité OmniRoute | partiel | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`, et `ANTHROPIC_DEFAULT_*_MODEL` selon le backend. Requête de 25k tokens et 41 outils servie le 2026-09-15, avec un bloc texte parasite `(empty response)`. Non tranchable sans test : noms non Claude, `total_cost_usd` calculé sur la grille Anthropic donc faux, limites côté fournisseur | `backends.json` (noms et notes), `README.md` l.47-78 |
+| Facturation API au lieu de l'abonnement | partiel | Le runner fusionne `process.env` et le `.env` du consommateur. Si `ANTHROPIC_API_KEY` y figure, `apiKeySource` bascule et le run est facturé à l'usage. À vérifier sur le PC : lire `apiKeySource` dans `init` et refuser un run `via: claude` hors abonnement | `src/agent-runner.js` l.94, `coreTypes.d.ts` l.479 |
+| Edit disponible pour un agent qui ne le liste pas | non tranchable | Les types disent que `allowedTools` n'enlève rien et que `acceptEdits` accepte les éditions. Un run court le confirmera | `runtimeTypes.d.ts` l.257-259, 420-426 |
+| Bind dans un conteneur | tranché | En bridge, un bind `127.0.0.1` rend le service injoignable. Bind `0.0.0.0` dans le conteneur, publication `127.0.0.1:4600:4600`, double clé `COCKPIT_HOTE` + `COCKPIT_CONTENEUR`. Non vérifié : publication sur l'IP tailnet, qui suppose l'interface Tailscale présente sur l'hôte DSM (le paquet peut tourner en userspace) | `src/acces.js` l.27-60, `docker-compose.yaml`, commit `cc3f770` |
+| `tailscale serve` sur DSM | partiel | Fonctionne pour le cockpit du NAS, monté probablement à la main puisque le script ne cherche pas le binaire DSM. Derrière serve, pas de `whois` sur l'IP du pair et pas d'en-tête pour un appareil tagged. Passage d'un flux SSE long par serve non vérifié | `bin/tailnet-relais.sh` l.31-43, 78, `src/acces.js` l.118-127 |
+| Bind direct du WebSocket sur l'IP tailnet | non tranchable | À vérifier sur le NAS : interface `tailscale0` (mode TUN), conservation de l'IP source à travers la publication Docker (DNAT la garde, un userland-proxy la remplace). Sans IP source réelle, seul le jeton authentifie | décision 6 |
+| Wake-on-LAN depuis un conteneur | partiel | En bridge, le broadcast limité reste sur le pont Docker. Un broadcast dirigé passe éventuellement par le NAT, sans garantie. Fiable : host, macvlan ou envoi depuis l'hôte DSM, par un émetteur séparé du cockpit (B2). Test sur le NAS avec le PC en veille S3 | `docker-compose.yaml`, `src/acces.js` l.43-47 |
 
-## 6. Plan ajusté
+## 6. Questions ouvertes nées de cet audit
 
-Les phases de la spec restent, avec ces changements.
+Aucune n'est tranchée. Chacune renvoie au conflit qui la motive.
 
-**Phase 0 bis, décisions et ménage** (sans code métier) :
-- trancher C1 à C5, C8 et C9 (questions au §7 ci-dessous) ;
-- récupérer `src/sante.js` depuis `cc3f770` et fermer la branche ;
-- décider du sort des pipelines `veille-ebay` et `ajustement-prix` avant de migrer leur format.
+1. **Règle de bind** : on reformule la §10 au niveau des ports publiés de l'hôte (B1) ?
+2. **Émetteur WoL** : conteneur dédié en host sans port, ou script sur l'hôte DSM (B2) ?
+3. **Listener du maître** : WebSocket sur un listener distinct du cockpit, lié à l'IP tailnet et
+   jamais derrière serve (B3) ?
+4. **Réseau du NAS** : marketing sort du réseau `business` tout de suite, sans attendre son
+   déplacement sur le PC (B4) ?
+5. **Approbations** : on garde la décision par action et la réponse libre (sortie `oriented`) dans
+   le schéma et l'API (B6) ?
+6. **Ordre de migration** : approbations vers l'event store **avant** le déplacement de marketing
+   sur le PC, au lieu de la phase 5 (B7) ?
+7. **Run d'artefacts** : sur quel dépôt travaille un run qui ne produit que des artefacts, pour
+   avoir des checkpoints (B9) ?
+8. **Phases** : on préfixe les phases de la spec `C0` à `C7` (B11) ?
+9. **CLI des runs** : monter et épingler le SDK, ou `pathToClaudeCodeExecutable` vers le `claude`
+   du système (A3) ?
+10. **Outils d'agent** : un champ qui restreint (`tools`) séparé de l'auto-approbation
+    (`allowedTools`) dans le schéma (A4) ?
+11. **Compteur de boucles** : par run, persisté et rechargé à la reprise, ou par tentative (A10) ?
+12. **Facturation** : champ `billing: subscription | api | free` sur le backend (A14) ?
+13. **Nom de modèle** : alias seulement, nom complet seulement, ou les deux (A16) ?
+14. **Concurrence** : la limite compte les process d'agents, et le parallélisme dans un run exige
+    des workspaces isolés (A17) ?
+15. **Notes dans les pipelines** : champ explicite ou passthrough des clés `^_` (A21) ?
+16. **Saas-generator** : suit le nouveau format de graphe, ou reste sur l'ancien avec une version
+    figée du moteur (A22) ?
+17. **Prompt système** : l'agent remplace le prompt de Claude Code ou s'y ajoute (section 5) ?
 
-**Phase 1, runner et event store** :
-- enrichir `agent-runner.js` (événements par message, `session_id`, stop par
-  `interrupt()` / `AbortController`, reprise par `resume`) au lieu d'écrire un runner CLI ;
-- mettre à jour le SDK ;
-- remplacer le stockage en mémoire du `Reporter` par un écrivain SQLite, en gardant
-  `generation-report.json` ;
-- TypeScript avec `allowJs` dans `agent-orchestrator`, Vitest pour le nouveau code.
-- Acceptation inchangée, avec « stop » = `interrupt()` et « reprise » = option `resume`.
+## 7. Plan ajusté
 
-**Phase 2, moteur** :
-- schéma v2 selon la décision C3, avec `marketing` exprimé sans perte comme test ;
-- règle C4 dans le validateur ;
-- budget qui ouvre une approbation au lieu de lever une erreur (C11) ;
-- `agent-registry` : import des agents existants en `v1`, parseur YAML réel.
+Les phases de la spec restent (`C0` à `C7` si la question 8 est acceptée). Changements :
 
-**Phase 3, maître et workers** : dépend de C5 (auth worker), C8 (OmniRoute), C13 (veille ou
-arrêt, poste de dev partagé).
+**Phase 0 bis, avant tout code**
+- Réécrire la spec : §1 (identité), §5.4 et les sections liées (3a, 3b, 3c), §6.1 à §6.4 (SDK),
+  §6.1 (Ollama direct), §8 (facturation par backend), §10 (bind et canal de commande).
+- Mettre à jour PLAN.md (B10) et le commentaire du compose (B4).
+- Récupérer `src/sante.js` depuis `cc3f770`.
+- Trancher les questions 1 à 17.
 
-**Phase 4, cockpit en lecture** : ajouter l'étape de build React au Dockerfile. **L'écran
-d'approbation actuel reste en service** jusqu'à la parité de la phase 5, puisqu'il porte des
-décisions réelles.
+**Phase 1, runner et event store**
+- Choisir la version du CLI des runs (question 9) et vérifier `apiKeySource` dans `init`.
+- Enrichir `agent-runner.js` : événements par message, `session_id`, stop par `abortController`,
+  reprise par `resume`, journal brut JSONL et `stderr`.
+- Détecter `rate_limit` et `is_error` avant tout retry (A12), en capturant de vraies sorties.
+- Brancher le `Reporter` sur SQLite, écrit au fil de l'eau.
+- Vitest en enveloppe autour des scripts existants, sans perdre de vérification.
 
-**Phase 5, cockpit en action** : commandes écrites pour le maître, cockpit toujours sans clé
-(C10). Migration des approbations fichiers vers SQLite (C7).
+**Phase 2, moteur**
+- Schéma graphe compilé en étapes, tests d'équivalence sur `marketing.json` et `web-app.json`.
+- Arrêt typé sur approbation (B5), budget qui ouvre une approbation (A13, B14).
+- Parseur YAML, migration des agents en `v1`, résolution `agent@version` sans repli (A5, A6).
+- Nouveau module VCS pour les projets gérés, checkpoint par étape (A18, A19).
 
-Phases 6 et 7 : pas de changement, sauf la règle C8 sur `llm.via`.
+**Avant de déplacer marketing sur le PC**
+- Migrer les approbations vers l'event store et reprendre les trois arbitrages en attente (B7).
 
-## 7. Questions pour Raphaël
+**Phase 3, maître et workers**
+- Listener WebSocket distinct, jeton, whois et ACL (B3), émetteur WoL séparé (B2), tests réseau sur
+  le NAS.
 
-1. **Runner** : on garde l'Agent SDK plutôt que la CLI ? (recommandé : oui)
-2. **Facturation** : les runs automatisés restent sur clé API, ou tu veux passer par
-   l'abonnement ? Si abonnement, qui vérifie les conditions d'utilisation ?
-3. **Format de pipeline** : graphe v2 qui compile vers les stages, et renommage du nœud humain en
-   `approval` ? `maxLoops` par cycle plutôt que par arête ?
-4. **Outcome d'agent** : d'accord pour « un outcome route, il ne valide jamais » ?
-5. **OmniRoute** : on l'installe aussi sur le NAS, ou on impose `runsOn: pc` à tout nœud qui
-   passe par lui ?
-6. **Auth worker** : ACL Tailscale plus jeton par worker ?
-7. **PC** : il se met en veille ou il s'éteint le soir ? Et le maître a-t-il le droit d'endormir
-   le poste sur lequel tu travailles ?
-8. **Remote NAS** : pour les dépôts de projets générés seulement, ou aussi pour les trois dépôts
-   d'outillage ?
-9. **Pipelines eBay** : on les retire avant la migration du format ?
+**Phases 4 et 5, cockpit**
+- Canal de commande cockpit vers maître, cockpit sans clé (B15). Service worker vérifié avec un flux
+  SSE long.
 
 ## 8. Décisions de Raphaël, 2026-09-16
 
