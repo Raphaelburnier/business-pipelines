@@ -1,16 +1,16 @@
 // Logique du cockpit d'approbation, sans HTTP.
 //
-// La boîte de réception est un état, pas un transport : le commentaire au-dessus de
-// `INBOX` dans stage-handlers le dit, Telegram, mail et cockpit en sont trois lecteurs.
+// La boîte de réception est un état, pas un transport : elle vit dans le store des
+// approbations (src/store.js), et le cockpit, l'alerte et `en-attente` en sont trois lecteurs.
 // Ce module est ce lecteur-là. Séparer la logique du serveur permet de tester ce qui
 // décide sans monter un socket, et ce qui décide est ce qui touche à l'argent.
 //
 // Une page qui écrit des décisions d'approbation change de vrais prix. Elle est donc
 // écrite comme le reste du dépôt : elle refuse plutôt que de deviner.
 const path = require("path");
-const { lireJson, ecrireJson } = require("./durable");
+const { lireJson } = require("./durable");
+const store = require("./store");
 
-const INBOX = "EN-ATTENTE.json";
 const HEURE = 3600 * 1000;
 
 // La fraîcheur se mesure depuis la COLLECTE, pas depuis le gel : c'est la donnée qui
@@ -48,11 +48,13 @@ function maxAgeDuPipeline(pipelinesDir, nom) {
 }
 
 function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
-  const boite = lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
+  const boite = store.lireBoite(approvalsDir);
 
   const dossiers = (boite.en_attente || []).map((entree) => {
-    const plan = entree.plan_gele ? lireJson(entree.plan_gele) : null;
-    const decisions = entree.registre ? lireJson(entree.registre) : null;
+    // Le dossier est la clé, jamais un chemin : la boîte ne porte plus de chemin absolu
+    // d'une machine que le cockpit ne voit pas.
+    const plan = store.lirePlan(approvalsDir, entree.dossier);
+    const decisions = store.lireRegistre(approvalsDir, entree.dossier);
 
     // Une décision déjà prise sur une AUTRE empreinte ne concerne pas ce plan. L'afficher
     // comme si elle s'y appliquait ferait croire à un travail fait qui ne l'est pas.
@@ -83,12 +85,10 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
       reponse_posee: reponsePosee,
       empreinte: entree.empreinte,
       depuis: entree.depuis,
-      registre: entree.registre,
-      plan_gele: entree.plan_gele,
       appliquer_avec: entree.appliquer_avec || null,
       // Le plan gelé est la seule source des actions. La boîte n'en porte que le nombre,
       // délibérément : deux copies d'un même plan finiraient par diverger.
-      plan_absent: entree.plan_gele ? !plan : true,
+      plan_absent: !plan,
       fraicheur: fraicheur(plan, maxAge, maintenant),
       actions: ((plan && plan.actions) || []).map((a) => ({
         ...a,
@@ -132,16 +132,16 @@ function enregistrer({
   canal = null,
   maintenant = Date.now(),
 }) {
-  const boite = lireJson(path.join(approvalsDir, INBOX)) || { en_attente: [] };
+  const boite = store.lireBoite(approvalsDir);
   const entree = (boite.en_attente || []).find((e) => e.dossier === dossier);
 
-  // Le dossier doit venir de la boîte. Sans ça, le chemin du registre serait dicté par la
-  // requête, et une page locale deviendrait une écriture de fichier arbitraire.
+  // Le dossier doit venir de la boîte. Sans ça, la requête choisirait sous quelle clé
+  // écrire, et une page locale pourrait créer un registre pour un plan que personne n'attend.
   if (!entree) {
     throw new Refus(`aucun dossier "${dossier}" en attente : rien à décider`);
   }
 
-  const plan = entree.plan_gele ? lireJson(entree.plan_gele) : null;
+  const plan = store.lirePlan(approvalsDir, entree.dossier);
   if (!plan) {
     throw new Refus(`le plan gelé de "${dossier}" est introuvable : décider à l'aveugle est refusé`);
   }
@@ -209,7 +209,7 @@ function enregistrer({
   // à une action déjà tranchée aurait effacé toutes les autres. On garde donc les décisions
   // précédentes du même plan, et la nouvelle l'emporte action par action. Un registre qui
   // porte sur un autre plan ne se fusionne pas : ses décisions ne valent rien ici.
-  const precedent = lireJson(entree.registre);
+  const precedent = store.lireRegistre(approvalsDir, entree.dossier);
   const parAction = new Map();
   if (precedent && precedent.plan === empreinte) {
     for (const d of precedent.decisions || []) {
@@ -234,11 +234,10 @@ function enregistrer({
         }
       : {}),
   };
-  // Écriture atomique. Une écriture directe interrompue laisse un registre tronqué, et un
-  // JSON tronqué dans les approbations tuait ensuite tout ce qui le relit. Ce fichier est
-  // la trace de qui a engagé l'argent : il est complet, ou il reste le précédent.
-  ecrireJson(entree.registre, contenu);
+  // Écriture en une transaction. Ce registre est la trace de qui a engagé l'argent : il est
+  // complet, ou il reste le précédent.
+  store.ecrireRegistre(approvalsDir, entree.dossier, contenu);
   return contenu;
 }
 
-module.exports = { etat, enregistrer, fraicheur, maxAgeDuPipeline, Refus, INBOX };
+module.exports = { etat, enregistrer, fraicheur, maxAgeDuPipeline, Refus };

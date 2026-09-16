@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const alerte = require("../src/alerte");
+const store = require("../src/store");
 
 const tests = [];
 function test(name, fn) {
@@ -12,49 +13,33 @@ function test(name, fn) {
 const T0 = Date.parse("2026-08-19T12:00:00.000Z");
 const HEURE = 3600 * 1000;
 
-// Un dossier d'approbations jetable, à la forme que le moteur écrit vraiment : la boîte,
-// le plan gelé, le registre. Les tests exercent donc la forme de production.
+// Un dossier d'approbations jetable, écrit dans le store comme le stage d'approbation
+// l'écrit : la demande et le plan gelé. Les tests exercent donc la forme de production.
 function bac({ dossiers = [{}] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alerte-"));
-  const entrees = [];
 
   dossiers.forEach((d, i) => {
     const nom = d.dossier || (i === 0 ? "ajustement-prix" : `dossier-${i}`);
     const empreinte = d.empreinte || "abc123";
-    const registre = path.join(dir, `${nom}.decisions.json`);
-    const planGele = path.join(dir, `${nom}.plan.json`);
 
-    fs.writeFileSync(
-      planGele,
-      JSON.stringify({
-        empreinte,
-        gele_le: "2026-08-19T11:30:00.000Z",
-        collecte_le: d.collecteLe || "2026-08-19T11:00:00.000Z",
-        actions:
-          d.actions ||
-          [
-            {
-              id: "prix-001",
-              type: "changement_prix",
-              cible: "v1|110590223642|0",
-              valeur: { de: 499.99, vers: 240.99, devise: "USD" },
-            },
-          ],
-      })
-    );
-
-    entrees.push({
-      dossier: nom,
+    store.gelerPlan(dir, nom, {
       empreinte,
-      depuis: "2026-08-19T11:30:00.000Z",
-      actions: 1,
-      registre,
-      plan_gele: planGele,
-      appliquer_avec: "appliquer",
+      gele_le: "2026-08-19T11:30:00.000Z",
+      collecte_le: d.collecteLe || "2026-08-19T11:00:00.000Z",
+      actions:
+        d.actions ||
+        [
+          {
+            id: "prix-001",
+            type: "changement_prix",
+            cible: "v1|110590223642|0",
+            valeur: { de: 499.99, vers: 240.99, devise: "USD" },
+          },
+        ],
     });
+    store.deposer(dir, nom, { empreinte, depuis: "2026-08-19T11:30:00.000Z", actions: 1, appliquer_avec: "appliquer" });
   });
 
-  fs.writeFileSync(path.join(dir, "EN-ATTENTE.json"), JSON.stringify({ en_attente: entrees }));
   return dir;
 }
 
@@ -106,12 +91,9 @@ test("replanifier renotifie : une autre empreinte est une autre demande", async 
   await alerte.envoyer({ approvalsDir: dir, pipelinesDir: PIPELINES, maintenant: T0, transport });
 
   // Le planificateur a retourné : nouvelle empreinte, dans la boîte comme dans le plan.
-  const boite = JSON.parse(fs.readFileSync(path.join(dir, "EN-ATTENTE.json"), "utf-8"));
-  boite.en_attente[0].empreinte = "def456";
-  fs.writeFileSync(path.join(dir, "EN-ATTENTE.json"), JSON.stringify(boite));
-  const plan = JSON.parse(fs.readFileSync(path.join(dir, "ajustement-prix.plan.json"), "utf-8"));
-  plan.empreinte = "def456";
-  fs.writeFileSync(path.join(dir, "ajustement-prix.plan.json"), JSON.stringify(plan));
+  const [entree] = store.lireBoite(dir).en_attente;
+  store.deposer(dir, "ajustement-prix", { ...entree, empreinte: "def456" });
+  store.gelerPlan(dir, "ajustement-prix", { ...store.lirePlan(dir, "ajustement-prix"), empreinte: "def456" });
 
   const r = await alerte.envoyer({ approvalsDir: dir, pipelinesDir: PIPELINES, maintenant: T0, transport });
   assert.strictEqual(r.envoyees.length, 1, "le nouveau plan mérite son alerte");

@@ -5,6 +5,7 @@ const path = require("path");
 const { loader } = require("agent-orchestrator");
 const { runPipeline } = require("agent-orchestrator").engine;
 const approval = require("../src/approval");
+const store = require("../src/store");
 const stageHandlers = require("../src/stage-handlers");
 const {
   stageParId,
@@ -18,7 +19,6 @@ const {
 } = require("./harness");
 
 const REGISTRE = "exemple.decisions.json";
-const PLAN_GELE = "exemple.plan.json";
 
 const SPEC = { project_name: "approbation-test", demande: "proposer deux publications" };
 
@@ -47,10 +47,9 @@ const planifier = (opts = {}) =>
     ...opts,
   });
 
-const lireBoite = (dir) => {
-  const p = path.join(dir, "EN-ATTENTE.json");
-  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
-};
+// La boîte et les plans gelés se relisent dans le store, comme le cockpit les lit.
+const lireBoite = (dir) => store.lireBoite(dir);
+const lirePlanGele = (dir) => store.lirePlan(dir, "exemple");
 
 const tests = [];
 function test(name, fn) {
@@ -268,7 +267,7 @@ test("le plan change après la décision : arrêt, aucune action n'est exécutab
   // restait invisible, donc rien à décider dans le cockpit et aucune alerte.
   const boite = lireBoite(h.approvalsDir);
   assert.strictEqual(boite.en_attente.length, 1, "le plan neuf doit entrer dans la boîte");
-  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, PLAN_GELE), "utf-8"));
+  const gele = lirePlanGele(h.approvalsDir);
   assert.strictEqual(
     gele.empreinte,
     approval.fingerprint(neuf),
@@ -290,9 +289,9 @@ test("registre caduc et aucune action à attendre : arrêt net, la boîte reste 
   });
 
   await assert.rejects(() => runPipeline(h.ctx), /le plan a changé depuis la décision/);
-  assert.strictEqual(
-    lireBoite(h.approvalsDir),
-    null,
+  assert.deepStrictEqual(
+    lireBoite(h.approvalsDir).en_attente,
+    [],
     "sans action en attente, il n'y a rien à déposer et la boîte ne doit pas être inventée"
   );
 });
@@ -303,7 +302,7 @@ test("le registre vit hors du workspace, hors de portée des agents", async () =
 
   assert.notStrictEqual(h.approvalsDir, h.workspaceDir);
   assert.ok(
-    !fs.existsSync(path.join(h.workspaceDir, REGISTRE)),
+    !fs.existsSync(path.join(h.workspaceDir, REGISTRE)) && !fs.existsSync(path.join(h.workspaceDir, store.FICHIER)),
     "le registre ne doit jamais apparaître dans le workspace"
   );
 });
@@ -346,9 +345,9 @@ test("réponse libre de bout en bout : la consigne est déposée, rien n'est ex�
 
 test("le gel porte l'empreinte, sa date, et le texte exact des actions", async () => {
   const h = planifier();
-  await assert.rejects(() => runPipeline(h.ctx), /Le plan est gelé dans/);
+  await assert.rejects(() => runPipeline(h.ctx), /Le plan est gelé dans le store/);
 
-  const gele = JSON.parse(fs.readFileSync(path.join(h.approvalsDir, PLAN_GELE), "utf-8"));
+  const gele = lirePlanGele(h.approvalsDir);
   assert.strictEqual(gele.empreinte, approval.fingerprint(PLAN));
   assert.deepStrictEqual(gele.actions, PLAN);
   assert.ok(gele.gele_le, "le gel est daté");
@@ -369,13 +368,15 @@ test("l'arrêt sur approbation dépose la demande dans la boîte", async () => {
   assert.ok(demande.depuis, "l'attente doit être datée, sinon impossible de dire depuis quand");
 });
 
-test("la demande nomme le registre à remplir et le plan gelé", async () => {
+// Les chemins absolus de la boîte ne valaient que sur la machine du run. La demande désigne
+// désormais son dossier, et le plan se retrouve par lui.
+test("la demande ne porte aucun chemin : son dossier suffit à retrouver le plan", async () => {
   const h = planifier();
   await assert.rejects(() => runPipeline(h.ctx));
 
   const demande = lireBoite(h.approvalsDir).en_attente[0];
-  assert.match(demande.registre, /exemple\.decisions\.json$/);
-  assert.match(demande.plan_gele, /exemple\.plan\.json$/);
+  assert.ok(!("registre" in demande) && !("plan_gele" in demande), "aucun chemin de fichier dans la demande");
+  assert.strictEqual(store.lirePlan(h.approvalsDir, demande.dossier).empreinte, demande.empreinte);
 });
 
 // Replanifier remplace la demande. L'empiler laisserait dans la boîte des demandes
@@ -414,7 +415,7 @@ test("sans dossier déclaré, aucune boîte n'est touchée", async () => {
   const h = createHarness({ pipeline, spec: SPEC, script: { planificateur: planCorrect } });
 
   await assert.rejects(() => runPipeline(h.ctx), /attendent ton approbation/);
-  assert.strictEqual(lireBoite(h.approvalsDir), null, "la boîte est optionnelle");
+  assert.deepStrictEqual(lireBoite(h.approvalsDir).en_attente, [], "la boîte est optionnelle");
 });
 
 (async () => {

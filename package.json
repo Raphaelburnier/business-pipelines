@@ -7,9 +7,10 @@
   "scripts": {
     "marketing": "node orchestrator.js marketing ./specs/marketing.json",
     "en-attente": "node bin/en-attente.js",
+    "importer:approbations": "node bin/importer-approbations.js",
     "cockpit": "node bin/cockpit.js",
     "cockpit:tailnet": "bash bin/tailnet-relais.sh",
-    "test": "node test/approval.test.js &&node test/durable.test.js && node test/pwa.test.js && node test/cockpit.test.js && node test/apps.test.js && node test/acces.test.js && node test/alerte.test.js",
+    "test": "node test/store.test.js && node test/approval.test.js && node test/durable.test.js && node test/pwa.test.js && node test/cockpit.test.js && node test/apps.test.js && node test/acces.test.js && node test/alerte.test.js",
     "alerter": "node bin/alerter.js"
   },
   "dependencies": {

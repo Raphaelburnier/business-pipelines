@@ -4,6 +4,7 @@ const path = require("path");
 
 const { BudgetTracker, Reporter, loader } = require("agent-orchestrator");
 const stageHandlers = require("../src/stage-handlers");
+const store = require("../src/store");
 
 const pipelinePath = (name) => path.join(__dirname, "..", "pipelines", `${name}.json`);
 const fixturePath = (name) => path.join(__dirname, "fixtures", `${name}.json`);
@@ -79,10 +80,11 @@ function createHarness({ pipeline, spec, script, maintenant }) {
   return { ctx, calls, prompts, reporter, workspaceDir, approvalsDir };
 }
 
-// Écrit un registre de décisions là où le stage `approval` va le chercher, c'est-à-dire
-// hors du workspace.
+// Écrit un registre de décisions là où le stage `approval` va le chercher : le store des
+// approbations, hors du workspace. `file` garde le nom que déclare le pipeline
+// (`exemple.decisions.json`), dont le dossier se déduit.
 function writeDecisions(approvalsDir, file, content) {
-  fs.writeFileSync(path.join(approvalsDir, file), JSON.stringify(content, null, 2));
+  store.ecrireRegistre(approvalsDir, path.basename(file).replace(/\.decisions\.json$|\.json$/, ""), content);
 }
 
 function writeJson(workspaceDir, file, content) {
