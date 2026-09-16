@@ -1,0 +1,40 @@
+{
+  "name": "approbation",
+  "description": "Pipeline de test neutre : un planificateur propose des actions, une approbation humaine les tranche. Il exerce le gel, l'empreinte, la boîte et la réponse libre sans aucun domaine.",
+  "slicing": {
+    "planificateur": ["demande"]
+  },
+  "budget": {
+    "max_usd": 1,
+    "max_total_turns": 20,
+    "max_turns_per_agent": 10
+  },
+  "retry": {
+    "max_fix_cycles": 1
+  },
+  "stages": [
+    {
+      "id": "plan",
+      "agents": [
+        {
+          "name": "planificateur",
+          "outputs": ["actions.json"],
+          "output_schema": {
+            "actions.json": { "actions": "array" }
+          },
+          "max_turns": 10
+        }
+      ]
+    },
+    {
+      "id": "approbation",
+      "type": "approval",
+      "actions": "actions.json",
+      "decisions": "exemple.decisions.json",
+      "plan_gele": "exemple.plan.json",
+      "auto": [],
+      "output": "approbation.json",
+      "dossier": "exemple"
+    }
+  ]
+}

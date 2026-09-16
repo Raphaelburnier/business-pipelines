@@ -1,116 +1,43 @@
 # business-pipelines
 
-Pipelines business bâtis sur [`agent-orchestrator`](../agent-orchestrator).
+Pipelines business bâtis sur [`agent-orchestrator`](../agent-orchestrator), et le cockpit
+qui tranche leurs approbations.
 
-Ce dépôt est né comme un **spike** avec une question précise : le moteur a été conçu
-autour d'un workspace de fichiers (empreinte, commits git, projet généré). Tient-il quand
-le travail est un appel d'API et non la génération de fichiers ?
+Ce dépôt est né comme un spike : le moteur, conçu autour d'un workspace de fichiers,
+tient-il quand le travail est un appel d'API ? La réponse a été oui, à condition que
+l'accès au monde extérieur appartienne à un stage typé, jamais à un agent. Le pipeline eBay
+qui l'a prouvé a été retiré le 2026-09-16 (voir « Ce qui a été retiré »). Ce qu'il a
+laissé derrière lui ne connaît pas eBay : proposer, geler, décider, consigner.
 
-Réponse : oui, à une condition, et le spike a coûté une modification au moteur.
+## Ce qui tient toujours
 
-## Ce que le spike a établi
-
-**L'accès au monde extérieur appartient à un stage typé, jamais à un agent.** Le handler
-`fetch` appelle l'API officielle, réduit la réponse aux champs utiles et écrit le résultat
-dans le workspace. À partir de là, l'agent lit un fichier et écrit un fichier, exactement
-comme dans un pipeline de génération. Tout ce que le moteur sait déjà faire (gates,
-routage, budget, schémas, cycles de correction) s'applique sans rien changer.
-
-Cet appel ne coûte aucun token, il est reproductible, et il est le seul point de contact
-avec l'extérieur. Un test l'impose explicitement.
-
-**Le juge doit être déterministe.** La première version faisait décider l'analyste de son
-propre verdict. C'est la faute que `must_change` a corrigée côté moteur : un gate qui lit
-le rapport de l'agent n'atteste de rien. Le stage `verification` est donc du code, qui
-contrôle deux choses qu'aucune formulation ne contourne :
-
-- **couverture** : chaque question du spec apparaît dans les réponses ou dans les
-  questions déclarées sans réponse
-- **traçabilité** : chaque `id` cité en source existe dans la collecte
-
-L'agent ne rend aucun verdict. Il ne peut donc pas masquer une omission.
+**Le juge doit être déterministe.** Un gate qui lit le rapport de l'agent n'atteste de
+rien. Les contrôles qui décident d'une suite sont du code, qu'aucune formulation ne
+contourne, et ils coûtent zéro token.
 
 **Une correction apportée au moteur.** Un `gate` déclaré sur un stage typé était
 silencieusement ignoré : la boucle faisait `continue` avant de l'évaluer. Le pipeline
 avait l'air protégé sans l'être, ce qui est pire que pas de gate du tout. Corrigé dans
 agent-orchestrator (`feat: let a typed stage carry a gate instead of silently ignoring it`).
 
-**`must_change` ne s'applique pas ici.** Il prouve qu'un agent a modifié des fichiers.
-Dans une veille en lecture seule, l'agent produit son rapport et rien d'autre : c'est le
-vérificateur déterministe qui joue ce rôle.
+## Le pipeline marketing
 
-## Lecture seule, délibérément
-
-Aucun chemin d'écriture n'existe vers eBay dans ce dépôt. Le risque dominant du projet
-business n'est pas la sécurité informatique mais la **suspension de compte**, et une API
-de lecture ne peut pas la provoquer. Le sandbox est la cible par défaut : viser la
-production demande de poser `EBAY_BASE_URL` explicitement.
-
-## Le pipeline veille-ebay
+```bash
+npm run marketing                            # sur le poste
+sudo docker compose run --rm marketing       # sur le NAS
+```
 
 | Stage | Type | Ce qu'il fait |
 |---|---|---|
-| `collecte` | `fetch` | appelle la Browse API, normalise, écrit `listings.json`. Zéro token. |
-| `statistiques` | `stats` | calcule médianes, comptes et groupes, écrit `stats.json`. Zéro token. |
-| `analyse` | agents | `veille-analyst` interprète et rédige, en citant les valeurs calculées |
-| `verification` | `verify` | contrôle couverture, traçabilité et arithmétique, porte le gate |
+| `consigne` | `consigne` | relit la réponse libre laissée sur le plan précédent |
+| `analyse` | agents | `economy-analyst` et `brand-analyst` analysent la même demande en parallèle |
+| `synthese` | agents | `plan-synthesist` confronte les deux voix en un plan sans lisser leurs désaccords |
+| `couverture` | `verify-couverture` | chaque question traitée, chaque source réelle, chaque constat cité ou écarté ; porte le gate |
+| `approbation` | `approval` | gèle le plan et attend une décision humaine, question par question |
 
-Sur gate rouge, les manques repartent vers l'analyste avec leur raison exacte, puis la
-vérification est rejouée. La collecte, elle, n'est jamais relancée : `rerun_from` pointe
-sur `verification`.
-
-## Le stage `stats`, et pourquoi il existe
-
-Le premier run réel contre eBay a produit un rapport intégralement sourcé, cohérent, et
-faux. L'agent annonçait 46,99 comme médiane de 35 prix là où c'était 45,99 : il avait
-pris la 19e valeur triée pour la 18e. Le gate a dit COMPLETE, parce qu'il contrôlait la
-couverture et l'existence des sources, jamais les nombres.
-
-Ce n'est pas un problème de formulation de prompt. Un nombre calculable ne se demande pas
-à un modèle. `stats.json` est donc produit avant l'agent, de façon déterministe et
-gratuite, et porte médiane, moyenne, quartiles, min et max, globalement puis par état, par
-vendeur et par mode de livraison, plus `champs_absents`, le nombre d'annonces où chaque
-champ manque.
-
-L'agent ne trie plus, ne compte plus, n'arrondit plus. Il choisit la bonne valeur, la
-relie à la bonne question, et la rédige. C'est là qu'est son travail.
-
-### Le contrôle qui rend la correction réelle
-
-Retirer le calcul à l'agent ne suffit pas : rien ne l'empêche de recalculer dans son coin
-et de citer son propre résultat. Chaque réponse porte donc `valeurs`, la liste des clés de
-`stats.json` dont ses nombres viennent :
-
-```json
-{
-  "question": "Quelle est la médiane des prix affichés ?",
-  "reponse": "La médiane est de 45.99 USD sur les 35 annonces collectées.",
-  "valeurs": [
-    { "cle": "prix.mediane", "valeur": 45.99 },
-    { "cle": "devise_unique", "valeur": "USD" }
-  ],
-  "sources": ["v1|110590106561|0"]
-}
-```
-
-La vérification résout chaque `cle` dans `stats.json` et recompare. Une clé inconnue, une
-valeur qui diverge, ou un chiffre écrit sans rien citer : gate rouge, avec les deux
-nombres nommés dans la raison. Le run qui avait produit 46,99 serait rejeté aujourd'hui.
-
-`champs_absents` sert la même honnêteté du côté des questions sans réponse : « le champ
-vendeur est absent sur 34 des 35 annonces » est une raison chiffrée et vérifiable, là où
-« données insuffisantes » n'en est pas une.
-
-Le stage `stats` ne porte jamais de gate, et le chargeur le refuse. Router son résultat à
-un agent lui rendrait la main sur les nombres qu'on vient précisément de lui retirer.
-
-Le pipeline `ajustement-prix` reçoit le même traitement, et l'enjeu y est plus direct :
-une médiane fausse d'un dollar y produit un prix faux, qu'on approuverait en lisant une
-ligne parfaitement plausible.
+Le détail des choix est dans `PLAN.md`, phase 04.
 
 ## Le stage `approval`
-
-Écrit **avant** qu'une seule action d'écriture existe dans ce dépôt, délibérément.
 
 Il ne porte pas de gate, et le chargeur refuse qu'on lui en mette un. Un gate route son
 échec vers l'agent responsable pour qu'il le corrige ; une approbation humaine absente
@@ -119,13 +46,11 @@ de la contourner. Ce stage s'arrête donc net.
 
 **Fail-closed.** Une action demande une approbation sauf si son type figure dans la liste
 `auto` du pipeline. Lister l'inverse obligerait à penser à tout d'avance, et la première
-omission serait celle qui coûte cher. Même logique que le backend facturé par défaut du
-moteur.
+omission serait celle qui coûte cher.
 
 **L'approbation porte sur l'empreinte du plan, pas sur le stage.** C'est ce qui ferme le
-TOCTOU : si le plan change entre la décision et l'exécution, l'approbation meurt avec lui
-et le run s'arrête en nommant les deux empreintes. Approuver une baisse à 79 EUR ne peut
-pas couvrir une baisse à 40 EUR.
+TOCTOU : si le plan change entre la décision et son usage, l'approbation meurt avec lui et
+le run s'arrête en nommant les deux empreintes.
 
 **Le registre vit hors du workspace.** Le workspace est jetable, réécrit à chaque run, et
 surtout les agents y écrivent. Une approbation rangée là serait falsifiable par ce qu'elle
@@ -133,283 +58,77 @@ est censée contrôler. Elle vit dans `approvals/`, ou dans `APPROVALS_DIR`.
 
 Un refus est une décision, pas un échec : l'action est écartée et le run aboutit.
 
-### Le cycle, en deux pipelines
+**La réponse libre.** Quand ni approuver ni refuser ne convient, l'opérateur écrit une
+consigne. Le plan repart au travail avec elle, et rien n'est exécutable, pas même les
+actions automatiques. Une réponse blanche ne vaut rien, et une réponse portant sur un autre
+plan non plus.
 
-```
-npm run plan:prix        collecte → plan → contrôle → approbation
-                         arrêt : les actions en attente, l'empreinte à recopier,
-                         et le plan GELÉ dans approvals/
+### Le gel
 
-                         tu écris approvals/ajustement-prix.decisions.json
+Le moteur repart toujours du premier stage, et un planificateur est un modèle : il ne
+redonne pas deux fois le même plan. Sans gel, relancer après une décision produirait une
+nouvelle empreinte, rendrait la décision caduque, et redemanderait une décision, sans fin.
 
-npm run appliquer:prix   chargement du plan gelé → approbation → exécution
-                         aucun agent, budget déclaré à zéro
-```
-
-**Pourquoi deux pipelines et pas un.** Le moteur repart toujours du premier stage, donc un
-run unique replanifierait après ta décision. Or un planificateur est un modèle : il ne
-redonne pas deux fois le même plan. Nouvelle empreinte, approbation caduque, nouvel arrêt,
-sans fin. Le cycle ne pouvait jamais aboutir, et chaque tour repayait le planificateur.
-
-Planifier et appliquer sont séparés par une décision humaine qui peut prendre des heures.
-Les forcer dans un même run est ce qui créait le problème.
-
-**Le gel** rend l'approbation honnête : tu approuves un texte figé, et c'est exactement
-celui qui s'exécute. La liaison TOCTOU passe de vérifiée à garantie par construction.
+L'approbation écrit donc le plan exact dans `approvals/<dossier>.plan.json`. On approuve un
+texte figé, et c'est ce texte que la suite consomme. La liaison passe de vérifiée à
+garantie par construction.
 
 ### Savoir qu'une décision attend
 
-Un arrêt qui s'écrit dans un terminal est invisible quand le run vient d'un cron sur un
-NAS : le pipeline s'arrêterait et l'attente durerait indéfiniment sans que rien ne le
-signale.
-
-L'approbation dépose donc sa demande dans `approvals/EN-ATTENTE.json`, avec le dossier,
-l'empreinte, le nombre d'actions, depuis quand, le registre à remplir et le pipeline à
-lancer ensuite.
+Un arrêt qui s'écrit dans un terminal est invisible quand le run tourne sur une autre
+machine. L'approbation dépose donc sa demande dans `approvals/EN-ATTENTE.json`, avec le
+dossier, l'empreinte, le nombre d'actions, depuis quand, le registre à remplir et le plan
+gelé.
 
 ```bash
 npm run en-attente
 ```
 
-Sortie 0 si rien n'attend, **1 s'il y a des décisions à prendre**, donc utilisable tel
-quel dans un cron sans parser la sortie.
+Sortie 0 si rien n'attend, **1 s'il y a des décisions à prendre**.
 
-**Cette boîte n'est couplée à aucun transport, délibérément.** Prévenir par Telegram, par
-mail ou via un cockpit sont trois lecteurs du même fichier, et choisir l'un n'interdit pas
-les autres. Coupler l'arrêt à un transport figerait ce choix dans le code qui garde
-l'argent.
+**Cette boîte n'est couplée à aucun transport, délibérément.** Le cockpit, le canal
+d'alerte et `en-attente` sont trois lecteurs du même fichier, et choisir l'un n'interdit
+pas les autres.
 
-La clé est le **dossier**, pas le pipeline : la demande est créée par la planification et
-consommée par l'application, deux pipelines différents. Replanifier remplace la demande au
-lieu de l'empiler, sinon la boîte se remplirait de demandes portant sur des plans qui
-n'existent plus, et une boîte pleine de faux se fait ignorer.
+La clé est le **dossier**, pas le pipeline. Relancer remplace la demande au lieu de
+l'empiler, sinon la boîte se remplirait de demandes portant sur des plans qui n'existent
+plus, et une boîte pleine de faux se fait ignorer. Une fois toutes les actions tranchées,
+la demande sort de la boîte.
 
-### La péremption
+### Un registre caduc n'est pas une anomalie
 
-Un plan bâti sur le marché de lundi n'a plus de sens jeudi : les montants approuvés
-portent sur des données mortes. Le plan gelé emporte donc l'heure de **collecte**, et le
-chargement refuse au-delà de `max_age_heures` (12 h dans le pipeline livré) en disant de
-combien il est en retard.
-
-C'est l'heure de collecte qui fait foi, pas celle du gel ni celle de l'exécution : c'est
-la donnée de marché qui vieillit, pas la décision. Un plan sans aucune date est refusé
-plutôt qu'appliqué à l'aveugle.
-
-Ce risque existait déjà, toute boucle avec un humain dedans l'a. Il était simplement
-masqué par un défaut plus grave.
-
-### Un registre caduc n'est pas une anomalie, c'est le deuxième tour
-
-Le registre de décisions porte l'empreinte du plan qu'il visait. Dès que le planificateur
-en produit un autre, il devient caduc. C'est le cas normal à chaque nouveau cycle, pas un
-incident.
-
-Le stage refusait alors d'exécuter, ce qui est juste, mais il refusait aussi de **déposer**,
-ce qui ne l'était pas. Le nouveau plan restait invisible : rien dans la boîte, donc rien à
-décider dans le cockpit, aucune alerte, et un cron qui repaye le planificateur à chaque
-réveil sans que rien n'avance jamais. Le message renvoyait vers un plan gelé qui n'existait
-pas. Constaté en relançant la planification après un cycle mené à son terme.
-
-Un plan neuf se dépose et s'attend maintenant comme un premier, et le message dit d'abord
-pourquoi la décision précédente ne compte plus. Les décisions périmées restent ignorées :
-toutes les actions repartent en attente. On ne s'arrête sec que dans le seul cas où il n'y
-a rien à faire attendre, parce qu'il n'y a alors rien à déposer non plus.
-
-## Le stage `execute`
-
-La garde a été écrite et testée d'abord, contre un registre d'exécuteurs **vide** : un
-type sans exécuteur arrête le run en le nommant plutôt que de se sauter en silence. Le
-geste qui touche une plateforme marchande est venu ensuite, écrit contre l'API vivante et
-jamais contre une forme devinée. Le registre ne porte toujours que lui, `changement_prix`,
-et la garde n'a pas bougé d'une ligne pour l'accueillir.
-
-Quatre propriétés, toutes vérifiées avant qu'une seule action ne parte :
-
-1. **Le plan n'a pas bougé depuis l'approbation.** Second tour de clé sur le TOCTOU,
-   au moment où le geste part et plus seulement au moment où il est autorisé.
-2. **Rien ne s'exécute qui ne figure pas dans `executables`.** La liste de travail se lit
-   dans l'approbation, jamais dans le plan complet : c'est la liste courte, celle qu'un
-   humain a validée. Partir du plan et filtrer laisserait une erreur de filtre possible.
-3. **Une action déjà faite n'est jamais refaite.** Ledger hors du workspace, sinon
-   l'idempotence ne survivrait pas au run suivant. La clé porte l'empreinte du plan ET
-   l'id : un id comme `prix-001` revient d'un plan à l'autre en désignant autre chose, et
-   sans l'empreinte un ajustement légitime serait sauté au motif qu'un homonyme a eu lieu.
-4. **Chaque succès est consigné immédiatement**, pas à la fin du lot. Un processus tué au
-   milieu doit laisser la trace exacte de ce qui a eu lieu.
-
-Comme `approval`, ce stage ne porte pas de gate, et le chargeur en refuse un : un échec
-d'API n'est pas un défaut qu'un agent peut corriger, et l'y router ferait replanifier,
-ce qui invaliderait l'approbation et réclamerait une nouvelle décision humaine. Boucle
-sans fin garantie.
-
-### Deux natures d'échec
-
-| Nature | Exemple | Comportement |
-|---|---|---|
-| **Cible perdue** | annonce supprimée, 404 ou 403 sur un objet précis | consigner, continuer le lot |
-| **Panne** | 401 identifiants expirés, 429 quota, 5xx, réseau | arrêt immédiat |
-
-C'est la même distinction que `isTransientSdkCrash` côté moteur, et pour la même raison :
-confondre « ce cas-là est perdu » et « le système est en panne » fait prendre la mauvaise
-décision dans les deux sens.
-
-**Fail-closed.** Seul un exécuteur peut déclarer une perte de cible, en posant
-`err.cible = true`. Tout le reste vaut panne. Ne jamais deviner dans le sens permissif :
-un 500 pris pour une cible morte enchaînerait quarante appels sur une API déjà en
-difficulté.
-
-**Bornage des séries.** Trois échecs de cible consécutifs arrêtent le lot malgré tout. Une
-API qui renvoie 404 sur tout parce qu'un identifiant a changé de périmètre ressemble à
-quarante mauvaises cibles, et ce motif doit couper. Une réussite remet le compteur à zéro.
-
-Pourquoi ne pas simplement tout arrêter à la première casse : parce qu'une annonce
-supprimée bloquerait alors les trente-neuf autres actions déjà approuvées, sans issue.
-Relancer échouerait à l'identique, et retirer l'action fautive du plan changerait son
-empreinte, donc invaliderait l'approbation et obligerait à réapprouver tout le reste à la
-main. Le remède était pire que le mal.
-
-### Trois verdicts
-
-`EXECUTE` tout est passé. `PARTIEL` des cibles étaient perdues, le reste est fait, et le
-run **aboutit** : un système sain qui rencontre la réalité ne doit pas produire un « run
-raté », ça apprend à ignorer les échecs. `INTERROMPU` le lot a été coupé, des actions
-approuvées n'ont pas été tentées, et celles-là sont nommées dans le rapport.
+Le registre porte l'empreinte du plan qu'il visait. Dès qu'un nouveau plan est produit, il
+devient caduc. Le stage refuse alors d'en tenir compte, mais il dépose quand même le plan
+neuf, qui s'attend comme un premier. On ne s'arrête sec que s'il n'y a rien à faire
+attendre, parce qu'il n'y a alors rien à déposer non plus.
 
 ## Utilisation
 
 ```bash
 npm install
-npm test                 # 184 vérifications, sans réseau ni credentials
+npm test                 # 116 vérifications, sans réseau ni credentials
 ```
 
-Pour un vrai run, il faut des identifiants sandbox eBay :
+Les tests du stage `approval` tournent sur un pipeline neutre, `test/fixtures/approbation.json`,
+et ne dépendent d'aucun domaine.
 
-```bash
-cp specs/veille.env.example specs/veille.env   # puis remplir
-npm run veille
-```
+## Ce qui a été retiré
 
-Le fichier rempli est gitignoré, le gabarit ne l'est pas. Convention du moteur :
-`specs/veille.json` attend `specs/veille.env`.
+Le 2026-09-16, tout ce qui concernait eBay : les pipelines `veille-ebay`, `ajustement-prix`
+et `ajustement-prix-appliquer`, leurs specs et agents, les stages `fetch`, `stats`, `verify`,
+`verify-actions`, `charger` et `execute`, l'exécuteur de prix, le script de consentement, et
+la boucle `bin/cycle.js`, que le maître du cockpit agentique remplacera.
 
-### Ce qu'il faut y mettre, et pourquoi pas un token
+Leur histoire, et ce que l'API réelle a appris (médiane fausse, place de marché implicite,
+jeton d'écriture, `PUT` qui remplace l'offre), reste lisible dans l'historique git, à partir
+du commit parent du retrait, et dans la note `business-pipelines` du vault. Pour reprendre
+l'exécution d'actions approuvées, repartir de `src/execute.js` et du stage `execute` : leurs
+gardes (ledger hors workspace, cible perdue contre panne, séries bornées) ne dépendaient pas
+d'eBay.
 
-`EBAY_CLIENT_ID` et `EBAY_CLIENT_SECRET`, l'App ID et le Cert ID de la console
-développeur eBay, section Sandbox. Ce sont des identifiants **permanents**.
-
-Un token applicatif eBay expire en environ 2 heures. En ranger un dans un `.env`
-condamne tout run planifié à échouer sur un token périmé sans que rien ne l'explique.
-Le code fabrique donc le token à la demande, à partir des identifiants, et le garde en
-cache jusqu'à son expiration moins une minute de marge. Deux collectes dans le même
-processus ne déclenchent qu'un seul appel OAuth.
-
-`EBAY_OAUTH_TOKEN` reste accepté et court-circuite la fabrication : pratique pour un
-essai à la main, inutilisable pour de l'automatisé.
-
-### La place de marché, parce qu'eBay en choisit une à ta place
-
-`EBAY_MARKETPLACE_ID` par défaut `EBAY_US`. Sans en-tête `X-EBAY-C-MARKETPLACE-ID`,
-eBay ne refuse pas la requête : il retient EBAY_US et renvoie des prix en dollars sans
-rien signaler. Un spec qui demandait des euros recevait donc des dollars, et la réponse
-ne portait aucune trace de l'écart.
-
-Le défaut est donc déclaré, pas hérité. Dans le sandbox, EBAY_US est le seul marché
-peuplé : EBAY_FR répond 200 avec zéro annonce. Viser EBAY_FR n'a de sens qu'en prod.
-
-La collecte porte maintenant `marketplace` et `devises`, les devises réellement
-observées. Une analyse ne peut plus additionner des dollars et des euros en croyant
-faire une médiane sans que le fichier le montre.
-
-## Écrire sur eBay demande un autre jeton
-
-Lire et écrire ne se paient pas de la même monnaie, et ça se vérifie contre le vrai eBay
-plutôt que ça ne se suppose :
-
-| Ce qu'on demande | Ce qu'eBay répond |
-|---|---|
-| `client_credentials` + scope de base | 200, jeton applicatif |
-| `client_credentials` + `sell.inventory` | 400 `invalid_scope` |
-| `GET /sell/inventory/v1/inventory_item` avec un jeton applicatif | 403 `Insufficient permissions` |
-
-Un jeton applicatif s'obtient sans humain et ne peut que lire. Écrire exige un jeton
-**utilisateur**, donné une fois par consentement dans un navigateur, sur le compte vendeur
-concerné. Le consentement rend un refresh token qui vaut environ 18 mois, à partir duquel
-tous les jetons d'écriture suivants se fabriquent sans interaction.
-
-C'est l'unique geste manuel de toute la chaîne, et il n'est pas contournable : c'est eBay
-qui exige qu'un humain autorise une application à toucher à ses annonces.
-
-### Le faire
-
-D'abord, dans la console développeur eBay, section **User Tokens**, « Get a Token from
-eBay via Your Application » : créer un **RuName** et le poser dans `EBAY_RUNAME`. C'est un
-identifiant eBay, pas une URL.
-
-Ensuite, une seule fois :
-
-```
-node bin/ebay-consentement.js specs/ajustement-prix.env
-```
-
-Le script imprime l'URL à ouvrir. Se connecter avec le compte **vendeur** (dans le
-sandbox, un utilisateur de test, pas le compte développeur), accepter, puis coller l'URL
-de retour ou le code seul. `EBAY_REFRESH_TOKEN` est écrit dans le `.env`, qui est
-gitignoré.
-
-Le code de consentement expire en quelques minutes et ne sert qu'une fois : un
-`invalid_grant` veut dire « refais l'étape 1 », pas « mauvaise clé ».
-
-### Ce que le code refuse de faire
-
-`jetonUtilisateur()` ne retombe jamais sur le jeton de lecture quand le refresh token
-manque. Ce repli silencieux produirait un 403 au moment d'exécuter une action qu'un humain
-vient d'approuver, c'est à dire au pire moment possible, et le message parlerait de
-permissions plutôt que de configuration.
-
-Les deux jetons ont aussi des espaces de cache distincts. Partager la clé servirait un
-jeton de lecture à un appel d'écriture, et le refus n'arriverait que chez eBay.
-
-## Ajouter une source
-
-`SOURCES` dans `src/stage-handlers.js` est un registre. Ajouter Amazon ou TikTok s'y fait
-en une entrée, sans toucher au handler ni au moteur. Un pipeline qui nomme une source
-inconnue échoue au chargement, pas après la collecte.
-
-## Ce qui reste à faire
-
-**Fait le 2026-08-18** : premier run réel contre l'API eBay sandbox. Le pipeline passe de
-bout en bout, 35 annonces collectées pour 0,28 $ et 4 tours. Ce run a révélé trois choses
-qu'aucun test sur fixture ne pouvait montrer : la place de marché non déclarée qui faisait
-renvoyer des dollars pour un spec en euros, une requête insatisfiable qui renvoyait zéro
-annonce, et la médiane fausse qui a donné le stage `stats`.
-
-**Fait le 2026-08-19** : consentement obtenu, et l'exécuteur `changement_prix` écrit
-contre l'API vivante. Le prix d'une vraie offre du sandbox est passé de 134,50 à
-129,99 $ par le chemin complet. Voir la section suivante.
-
-**Fait le 2026-08-19** : la boucle complète, contre le vrai eBay. Relevé de marché,
-statistiques, plan, contrôle, gel, approbation, exécution, registre. Le prix d'une vraie
-annonce publiée est passé de 499,99 à 240,99 $, eBay le confirme, et un second passage du
-pipeline d'application n'a rien réexécuté (`a_faire: 0, deja: 1`).
-
-**Fait le 2026-08-19** : le cockpit d'approbation. `node bin/cockpit.js` sert une page
-locale qui lit la boîte, montre chaque plan en attente avec sa fraîcheur, et écrit les
-décisions.
-
-**Fait le 2026-08-19** : le cycle et le canal d'alerte. Un cron réveille `bin/cycle.js`,
-qui lit l'état, choisit une action et prévient par courriel. Voir la section suivante.
-
-**Fait le 2026-08-20** : décider depuis le téléphone. Le cockpit reste sur la boucle
-locale et Tailscale relaie vers lui sous un vrai nom, avec un vrai certificat. La signature
-n'est plus un champ de texte : elle vient du canal. Voir « Depuis le téléphone » plus bas.
-
-**Reste ouvert** : l'application sur l'écran d'accueil, puis le push web qui remplacera
-le courriel comme canal principal. Le courriel restera le filet, parce qu'il marche encore
-quand le téléphone est neuf, réinitialisé ou hors réseau. Reste ouvert aussi l'élargissement
-de ce que l'application pilote : historique d'exécution, dernier état du cycle, et
-déclenchement de la planification. Le principe retenu pour ce dernier point est que la page
-écrit une intention et que le cycle l'exécute, parce qu'un processus web qui lance lui-même
-un pipeline devient un moyen de dépenser sans passer par la boucle de décision.
+La péremption affichée par le cockpit et le canal d'alerte lit encore son maximum dans un
+stage `charger`. Aucun pipeline livré n'en déclare plus, donc elle rend « fraîcheur
+inconnue ». Son sort se décide avec la refonte du cockpit.
 
 ## Le cockpit d'approbation
 
@@ -418,12 +137,13 @@ npm run cockpit              # http://127.0.0.1:4600
 npm run cockpit:tailnet      # monte le relais, pour y accéder du téléphone
 ```
 
-La page montre, pour chaque dossier en attente, l'empreinte du plan, l'âge des données et
-chaque action avec sa justification, ses sources et l'écart de prix en pourcentage.
+La page montre, pour chaque dossier en attente, l'empreinte du plan et chaque action : un
+arbitrage se lit comme une question suivie de son rapport, les autres actions avec leur
+justification et leurs sources.
 
 ### Ce qu'il refuse de faire
 
-Cette page change de vrais prix, elle est donc écrite comme le reste du dépôt.
+Cette page écrit de vraies décisions, elle est donc écrite comme le reste du dépôt.
 
 **Elle n'écoute que sur 127.0.0.1**, y compris depuis qu'on y accède du téléphone. Ce
 n'est plus seulement une précaution, c'est une condition : Tailscale n'injecte l'identité
@@ -680,84 +400,13 @@ l'attaquant local, et le dire autrement serait se raconter une histoire.
 Le canal est consigné dans le registre à côté de la signature : `tailnet` veut dire prouvé
 par WireGuard, `local` veut dire console de la machine et prouvé par rien.
 
-## Le cycle, et pourquoi un cron ne suffit pas
-
-Une boucle avec un humain dedans n'avance pas d'elle-même : elle alterne entre des moments
-où la machine travaille et des moments où elle attend. Un cron qui lancerait simplement la
-planification toutes les heures détruirait la moitié attente. Replanifier change
-l'empreinte du plan, et une empreinte qui change invalide la décision en cours : l'humain
-aurait cliqué sur un montant qui n'existe plus, et le cockpit aurait eu raison de le
-refuser. Il faut donc quelque chose qui sache **ne rien faire**.
-
-```bash
-node bin/cycle.js --plan <pipeline> --spec <spec.json>         # un réveil : lire l'état, choisir une action, prévenir
-node bin/cycle.js --plan <pipeline> --spec <spec.json> --dry   # dit ce qu'il ferait, ne lance rien
-npm run alerter          # le canal seul
-npm run en-attente       # l'affichage seul
-```
-
-| État de la boîte | Action |
-|---|---|
-| rien en attente | planifier |
-| plan gelé introuvable | planifier |
-| plan frais, décision commencée ou pas | attendre |
-| périmé, **aucune** décision prise | attendre, sans rien dépenser |
-| périmé, décision commencée | replanifier |
-| tout décidé | appliquer, avec le pipeline que la demande désigne |
-| la planification précédente n'a rien proposé, il y a moins de 6 h | attendre, sans rien dépenser |
-
-Trois lignes portent tout le reste.
-
-**On ne replanifie jamais pendant qu'une décision fraîche est en cours.** C'est la règle
-qui rend le cron compatible avec un humain lent.
-
-**Un plan périmé que personne n'a regardé ne déclenche rien.** Replanifier appellerait le
-planificateur pour produire un plan que personne n'attend, et recommencerait toutes les
-douze heures, indéfiniment. Si une décision avait commencé, en revanche, quelqu'un s'en
-occupe et était simplement en retard : on lui redonne un plan frais à décider. La
-péremption du moteur s'applique, elle ne devient pas une exception parce qu'un cron est
-passé.
-
-**L'action à appliquer se lit dans la demande, jamais devinée.** Sans `appliquer_avec`, le
-cycle attend plutôt que de choisir un pipeline à la place de celui qui a planifié.
-
-**Une planification qui n'a rien proposé retient la suivante.** C'est la règle la plus
-récente, et elle vient d'une dépense observée, pas d'une crainte. Un planificateur qui lit
-le marché et conclut qu'aucun ajustement n'est justifié a fait son travail : le pipeline se
-termine bien, la boîte reste vide, et le réveil suivant repart donc planifier. Il repaie
-alors l'agent pour relire le même marché et rendre le même constat. Rien dans les journaux
-ne le signale, puisqu'il n'y a pas d'erreur : c'est la dépense la plus discrète de la
-boucle, environ dix dollars par jour à un quart d'heure d'intervalle.
-
-Le stage d'approbation date donc ce constat dans `<dossier>.retenue.json`, et le cycle le
-lit avant de relancer. Six heures, parce que le stock d'un marché de collection ne se
-renouvelle pas à l'heure, et parce que c'est la moitié des douze heures de péremption : une
-planification qui reprend après la retenue a encore le temps d'être décidée avant que ses
-données ne meurent. Dès qu'un plan propose quelque chose, la marque est levée.
-
-C'est la même règle que le plan périmé que personne n'a regardé, appliquée à un cas qui
-n'apparaît qu'une fois le marché devenu pauvre : en cas de doute, ne pas engager d'argent.
-Une configuration incomplète dégrade vers le comportement d'origine, jamais vers un cycle
-qui cesserait de planifier sans le dire.
-
-### Un arrêt normal ressemble à une panne
-
-Un pipeline de planification se **termine en erreur quand il aboutit** : le stage
-d'approbation lève pour arrêter net, c'est sa façon de rendre la main. Lire le seul code
-de sortie ferait passer chaque planification réussie pour un incident, tous les jours,
-jusqu'à ce qu'on cesse de regarder les alertes, ce qui est la panne la plus grave.
-
-Ce qui distingue les deux est observable ailleurs : un arrêt sur approbation a déposé une
-demande dans la boîte. Le cycle compare donc la boîte avant et après. Elle a changé,
-l'arrêt est le bon ; elle n'a pas bougé, c'est un vrai échec.
-
 ## Le canal d'alerte
 
 Le cockpit règle la décision, pas la notification. Ce module est ce qui va chercher
 l'humain, et c'est un lecteur de la boîte de plus, au même titre que `en-attente` et le
 cockpit. Il ne touche ni au moteur ni au cockpit.
 
-Le transport vit dans un registre, comme les sources de marché. Un transport reçoit un
+Le transport vit dans un registre. Un transport reçoit un
 message déjà rédigé et le fait sortir : il ne décide jamais s'il faut l'envoyer. C'est ce
 qui rendra le push de l'application ajoutable sans toucher une ligne de ce qui décide.
 
@@ -772,8 +421,7 @@ autres dossiers partent, et le raté repart au réveil suivant.
 **Il ne répète pas.** La clé de dédoublonnage porte le dossier, l'empreinte du plan et le
 verdict de fraîcheur. Replanifier renotifie, puisque c'est une autre demande. Périmer
 renotifie une fois, parce que l'approbation ne s'appliquera plus et qu'il faut le savoir.
-Deux messages au maximum par plan, et un cron qui se réveille toutes les quinze minutes
-n'en produit aucun de plus. Une boîte qui répète se fait taire aussi sûrement qu'une boîte
+Deux messages au maximum par plan, même lancé toutes les quinze minutes. Une boîte qui répète se fait taire aussi sûrement qu'une boîte
 pleine de faux se fait ignorer.
 
 **Il ne porte aucune décision.** Pas de bouton, pas de lien qui approuve. Un « approuver »
@@ -802,13 +450,8 @@ Puis une ligne de crontab, un quart d'heure étant largement assez fin pour une 
 l'autre moitié est humaine :
 
 ```cron
-*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/cycle.js --plan <pipeline> --spec <spec.json> >> /var/log/business-pipelines.log 2>&1
+*/15 * * * * cd /chemin/vers/business-pipelines && /usr/bin/node bin/alerter.js >> /var/log/business-pipelines.log 2>&1
 ```
-
-Aucun cycle n'est planifié aujourd'hui. Celui du plan de prix a été retiré le 2026-09-13,
-faute d'usage : son service Docker, son script npm et son minuteur local. La boucle
-elle-même reste, `bin/cycle.js` et `src/cycle.js`, prête pour le prochain pipeline qui
-aura besoin d'alterner travail et attente humaine.
 
 ### Ce que ça ne résout pas encore
 
@@ -816,77 +459,3 @@ Le courriel prévient, il ne décide pas, et c'est délibéré : un message ne p
 bouton et aucun lien qui approuve. La décision se prend dans le cockpit, joignable depuis
 le téléphone depuis le 2026-08-20. Ce qui reste, c'est que le courriel n'arrive pas comme
 une notification d'application : il faut ouvrir sa boîte. Le push web réglera ça.
-
-## Ce que la boucle réelle a appris
-
-Quatre runs, quatre refus du planificateur avant la première action. Aucun n'était un bug
-de sa part, et chacun a désigné un défaut réel.
-
-**La requête mélangeait des formats incomparables.** `pokemon booster` agrège des packs
-simples, des lots et des boîtes de 36. La médiane à 45,99 $ n'existait sur aucun marché
-réel, et s'y aligner aurait fait chuter une annonce de 124,99 à 45,99 $.
-
-**Une valeur aberrante faussait le repère.** Une caisse complète à 18 999 $ tirait la
-médiane à 336,99 $. Le planificateur a écrit noir sur blanc : « je ne peux pas recalculer
-de médiane filtrée ». En lui retirant l'arithmétique, ce qui était juste, on lui avait
-aussi retiré le moyen d'écarter un point. Lui rendre le calcul aurait rouvert le défaut
-d'origine, alors `stats.json` porte désormais un second repère, `prix_hors_aberrants`,
-calculé par la règle de l'écart interquartile. Les deux mesures sont publiées côte à
-côte : écarter des points est un choix, pas une correction.
-
-**Les comparables portaient sur d'autres extensions.** Refus encore, et encore justifié.
-
-**Et le quatrième refus a trouvé un bug dans mon code.** Le planificateur a écrit que sa
-cible figurait dans `mes_annonces` mais était rejetée comme absente de la collecte. Il
-avait raison : l'élargissement du contrôle avait atterri sur le contrôle du rapport de
-veille au lieu de celui des actions. Corrigé, avec le test qui l'aurait attrapé, et la
-mutation qui remet l'ancien comportement fait bien tomber ce test.
-
-### Les annonces du vendeur ne se cherchent pas, elles se demandent
-
-Une recherche rend les annonces les plus pertinentes pour une requête, pas les siennes.
-Le sandbox l'a montré sans ambiguïté : une annonce fraîchement publiée que le lookup
-direct rend en 200 est absente de la recherche. En production le problème est le même en
-plus discret, l'annonce se trouvant simplement au-delà de la page lue.
-
-La collecte récupère donc les annonces du vendeur une par une, par `mine_from`, et les
-range hors de `collecte`. Les mêler au marché ferait calculer une médiane qui contient
-déjà son propre prix, donc un alignement sur soi-même. Une annonce vendue ou retirée
-ressort dans `mes_annonces_introuvables` : c'est une information, pas une panne.
-
-## L'exécuteur de prix, et ce que la vraie API a appris
-
-`src/executeur-prix.js` applique une action `changement_prix` approuvée. Trois choses
-qu'aucune documentation accessible ne disait et que seul l'appel réel a montrées.
-
-**eBay rend 400 sur tout appel Sell sans `Accept-Language`**, avec un message qui parle
-d'en-tête. Reçu après un 403 de permissions, il envoie chercher au mauvais endroit.
-
-**Un jeton applicatif rend 403 là où un jeton utilisateur rend 200.** Le type de jeton se
-lit donc au code retour, ce qui est la seule vérification qui vaille.
-
-**`PUT /offer/{id}` remplace l'offre au lieu de la modifier.** Construire le corps de zéro
-effacerait la quantité, la catégorie et l'entrepôt en changeant le prix. L'exécuteur relit
-l'offre et ne touche qu'au prix.
-
-### Les trois refus
-
-**Le prix de départ doit encore correspondre.** Une approbation humaine porte sur un écart
-précis, « de 82 à 79 ». Si le marché a bougé depuis, appliquer 79 exécute une décision que
-personne n'a prise sur le marché d'aujourd'hui. La cible est refusée, le lot continue.
-
-**La devise doit correspondre.** Un plan en euros appliqué à une offre en dollars passerait
-pour un succès en changeant le prix de vingt pour cent. C'est systémique : le plan a été
-calculé sur un autre marché que celui visé, et le lot s'arrête.
-
-**Le prix est relu après écriture.** eBay peut accepter un PUT sans appliquer la valeur
-attendue. Sans relecture, le registre consignerait un changement qui n'a pas eu lieu, et
-c'est précisément la trace sur laquelle un humain s'appuie ensuite.
-
-### Ce que le relevé et l'écriture ne partagent pas
-
-Le relevé vient de la Browse API et nomme ses annonces `v1|123|0`. L'écriture passe par la
-Sell API, qui ne connaît que des `offerId` et des SKU. L'exécuteur accepte les trois
-formes plutôt que d'imposer au planificateur une contrainte qu'il n'a pas les moyens de
-tenir. Une cible au format du relevé se résout en balayant le catalogue du vendeur, borné
-par son propre nombre d'articles.

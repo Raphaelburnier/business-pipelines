@@ -6,6 +6,7 @@ const { BudgetTracker, Reporter, loader } = require("agent-orchestrator");
 const stageHandlers = require("../src/stage-handlers");
 
 const pipelinePath = (name) => path.join(__dirname, "..", "pipelines", `${name}.json`);
+const fixturePath = (name) => path.join(__dirname, "fixtures", `${name}.json`);
 
 class SilentReporter extends Reporter {
   event(type, data = {}) {
@@ -13,54 +14,19 @@ class SilentReporter extends Reporter {
   }
 }
 
-// Charge le VRAI pipeline avec les VRAIS validateurs. Un pipeline qui ne se charge pas
-// fait donc échouer tous les tests, ce qui est le comportement voulu : la validité du
-// pipeline livré n'est pas une hypothèse de test, c'est la première chose testée.
-function loadPipeline(name = "veille-ebay") {
-  return loader.loadPipeline(pipelinePath(name), {
+// Charge un pipeline avec les VRAIS validateurs. Un pipeline qui ne se charge pas fait donc
+// échouer tous les tests qui s'en servent : sa validité n'est pas une hypothèse de test,
+// c'est la première chose testée.
+function charger(fichier) {
+  return loader.loadPipeline(fichier, {
     stageValidators: stageHandlers.validators,
     backends: { anthropic: {} },
   });
 }
 
-// Une réponse HTTP factice, à la forme de celle d'eBay. C'est ce qui permet d'exercer
-// le vrai handler `fetch` et la vraie normalisation sans réseau ni credentials.
-// Le faux eBay distingue la recherche du lookup direct, parce que le vrai les distingue :
-// une annonce publiée peut être rendue par le second et ignorée par le premier, et c'est
-// exactement le cas qui a motivé la récupération des annonces du vendeur une par une.
-// Un transport indifférent à l'URL rendait ce chemin invisible aux tests.
-function fakeEbay(items, { ok = true, status = 200, total, miennes = [] } = {}) {
-  const parId = new Map([...items, ...miennes].map((a) => [a.itemId, a]));
-  return async (url) => {
-    const lookup = String(url).match(/\/buy\/browse\/v1\/item\/(.+)$/);
-    if (lookup) {
-      const item = parId.get(decodeURIComponent(lookup[1]));
-      if (!item) return { ok: false, status: 404, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => item };
-    }
-    return {
-      ok,
-      status,
-      json: async () => ({ total: total ?? items.length, itemSummaries: items }),
-    };
-  };
-}
+const loadPipeline = (name) => charger(pipelinePath(name));
+const loadFixture = (name) => charger(fixturePath(name));
 
-function annonce(i, overrides = {}) {
-  return {
-    itemId: `v1|${100 + i}|0`,
-    title: `Booster box ${i}`,
-    price: { value: String(80 + i), currency: "EUR" },
-    condition: i % 2 === 0 ? "New" : "Used",
-    seller: { username: `vendeur${i % 3}`, feedbackPercentage: "99.1" },
-    shippingOptions: [{ shippingCost: { value: i % 2 === 0 ? "0.0" : "4.9" } }],
-    itemWebUrl: `https://www.ebay.com/itm/${100 + i}`,
-    ...overrides,
-  };
-}
-
-// Le seul mock est runAgent (et le transport HTTP). Le moteur, le stage-executor, le
-// gate-evaluator, le routeur, le budget et le handler `fetch` sont le vrai code.
 // Un stage se désigne par son id, jamais par sa position : insérer une étape en amont
 // ne doit pas casser un test qui parle d'une étape en aval.
 function stageParId(pipeline, id) {
@@ -69,16 +35,10 @@ function stageParId(pipeline, id) {
   return s;
 }
 
-function createHarness({
-  pipeline,
-  spec,
-  script,
-  items = [1, 2, 3, 4].map((i) => annonce(i)),
-  transport,
-  executeurs,
-  maintenant,
-}) {
-  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "veille-"));
+// Le seul mock est runAgent. Le moteur, le stage-executor, le gate-evaluator, le routeur,
+// le budget et les handlers de stage sont le vrai code.
+function createHarness({ pipeline, spec, script, maintenant }) {
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-"));
   const calls = {};
   const prompts = [];
 
@@ -109,13 +69,9 @@ function createHarness({
     ),
     runAgent,
     stageHandlers: stageHandlers.handlers,
-    // Vide par défaut, comme en production : c'est le test qui choisit d'en injecter un.
-    executeurs: executeurs || {},
-    // Horloge injectable : une péremption ne se teste pas en attendant douze heures.
     maintenant,
-    transports: { ebay: transport || fakeEbay(items) },
     backends: {},
-    env: { EBAY_OAUTH_TOKEN: "jeton-de-test" },
+    env: {},
     budget: new BudgetTracker(pipeline.budget),
     reporter,
   };
@@ -141,9 +97,9 @@ module.exports = {
   stageParId,
   createHarness,
   loadPipeline,
+  loadFixture,
   pipelinePath,
-  fakeEbay,
-  annonce,
+  fixturePath,
   writeJson,
   readJson,
   writeDecisions,

@@ -1,8 +1,8 @@
 {
-  "_lisez_moi": "Gabarit. Copier sous le nom que le pipeline attend (ex. ajustement-prix.decisions.json). Le champ plan est l'empreinte donnée par le message d'arrêt : elle lie ces décisions à CE plan exact, et devient caduque s'il change.",
+  "_lisez_moi": "Gabarit. Copier sous le nom que le pipeline attend (ex. marketing.decisions.json). Le champ plan est l'empreinte donnée par le message d'arrêt : elle lie ces décisions à CE plan exact, et devient caduque s'il change.",
   "plan": "0000000000000000",
   "decisions": [
-    { "action_id": "prix-001", "decision": "approuve", "par": "raphael", "le": "2026-08-17" },
-    { "action_id": "prix-002", "decision": "refuse", "motif": "marge trop faible", "par": "raphael", "le": "2026-08-17" }
+    { "action_id": "arbitrage-001", "decision": "approuve", "par": "raphael", "le": "2026-08-17" },
+    { "action_id": "arbitrage-002", "decision": "refuse", "motif": "hors de la stratégie", "par": "raphael", "le": "2026-08-17" }
   ]
 }

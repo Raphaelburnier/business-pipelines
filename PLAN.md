@@ -146,11 +146,13 @@ d'exécution, à décider plutôt qu'à glisser.
 
 La clé Anthropic hors passerelle, décrite en phase 01.
 
-Le ménage des anciennes pipelines, en partie fait. Le cycle de prix a été retiré le
-2026-09-13 : il ne tournait nulle part, ni sur le NAS où son conteneur n'avait jamais été
-créé, ni sur le poste où son minuteur était désactivé. Son service Docker, son script npm
-et son minuteur local sont partis, la boucle générique `bin/cycle.js` reste. Les pipelines
-de veille et de prix, avec leurs tests, sont toujours en place : décision non prise.
+Le ménage des anciennes pipelines est fait. Le cycle de prix a été retiré le 2026-09-13 :
+il ne tournait nulle part. Le 2026-09-16, tout ce qui concernait eBay est parti à son tour :
+les pipelines de veille et de prix, leurs stages (`fetch`, `stats`, `verify`,
+`verify-actions`, `charger`, `execute`), l'exécuteur, le consentement, et la boucle
+`bin/cycle.js`. Décision de Raphaël, consignée dans `docs/AUDIT.md` sur la branche
+`docs/audit-cockpit`. Les tests génériques de l'approbation tournent désormais sur un
+pipeline neutre.
 
 Le retrait du cycle laissait le NAS sans aucun service détenteur de la clé Anthropic. Le
 service marketing à la demande la reçoit désormais, et le cockpit n'en reçoit toujours
