@@ -54,7 +54,8 @@ le run s'arrête en nommant les deux empreintes.
 
 **Le registre vit hors du workspace.** Le workspace est jetable, réécrit à chaque run, et
 surtout les agents y écrivent. Une approbation rangée là serait falsifiable par ce qu'elle
-est censée contrôler. Elle vit dans `approvals/`, ou dans `APPROVALS_DIR`.
+est censée contrôler. Elle vit dans le store des approbations, `approvals/approbations.sqlite`
+(ou le même fichier sous `APPROVALS_DIR`).
 
 Un refus est une décision, pas un échec : l'action est écartée et le run aboutit.
 
@@ -69,16 +70,25 @@ Le moteur repart toujours du premier stage, et un planificateur est un modèle :
 redonne pas deux fois le même plan. Sans gel, relancer après une décision produirait une
 nouvelle empreinte, rendrait la décision caduque, et redemanderait une décision, sans fin.
 
-L'approbation écrit donc le plan exact dans `approvals/<dossier>.plan.json`. On approuve un
-texte figé, et c'est ce texte que la suite consomme. La liaison passe de vérifiée à
-garantie par construction.
+L'approbation gèle donc le plan exact dans le store, sous son dossier. On approuve un texte
+figé, et c'est ce texte que la suite consomme. La liaison passe de vérifiée à garantie par
+construction.
+
+Pour abandonner un plan gelé et repartir de zéro :
+
+```bash
+npm run en-attente -- --abandonner <dossier>
+```
+
+Le plan, son registre courant et sa demande partent. Les décisions déjà prises restent en
+base, rattachées à l'empreinte qu'elles tranchaient.
 
 ### Savoir qu'une décision attend
 
 Un arrêt qui s'écrit dans un terminal est invisible quand le run tourne sur une autre
-machine. L'approbation dépose donc sa demande dans `approvals/EN-ATTENTE.json`, avec le
-dossier, l'empreinte, le nombre d'actions, depuis quand, le registre à remplir et le plan
-gelé.
+machine. L'approbation dépose donc sa demande dans la boîte du store, avec le dossier,
+l'empreinte, le nombre d'actions et depuis quand. La demande ne porte aucun chemin de
+fichier : le dossier suffit à retrouver le plan et le registre.
 
 ```bash
 npm run en-attente
@@ -87,8 +97,35 @@ npm run en-attente
 Sortie 0 si rien n'attend, **1 s'il y a des décisions à prendre**.
 
 **Cette boîte n'est couplée à aucun transport, délibérément.** Le cockpit, le canal
-d'alerte et `en-attente` sont trois lecteurs du même fichier, et choisir l'un n'interdit
+d'alerte et `en-attente` sont trois lecteurs du même store, et choisir l'un n'interdit
 pas les autres.
+
+### Le store des approbations
+
+Plans gelés, registres de décisions, boîte et journal des alertes vivent dans une base
+SQLite, `approvals/approbations.sqlite`, par `node:sqlite` livré avec Node 22 : aucune
+compilation native dans l'image Alpine. Node signale le module comme expérimental au
+démarrage, sans effet sur son fonctionnement.
+
+Ils vivaient avant dans des fichiers JSON dont la boîte portait les chemins absolus, ce qui
+ne marchait que si le run et le cockpit montaient le même dossier sur le même hôte. La base
+se lit par dossier. Elle garde aussi l'historique : réécrire le registre d'un plan remplace
+ses décisions à lui, jamais celles d'un plan précédent.
+
+Le cockpit et le pipeline marketing ouvrent la même base sur le NAS, une connexion par
+opération, en mode WAL. Un run sur le PC ne peut pas écrire dans une base posée sur le NAS :
+ce transport arrive avec le maître et ses workers. D'ici là, marketing reste sur le NAS.
+
+**Migrer des approbations tenues en fichiers**, une fois, au déploiement :
+
+```bash
+sudo docker compose run --rm cockpit node bin/importer-approbations.js
+```
+
+L'import lit la boîte, les plans gelés, les registres et le journal d'alertes, écrit le tout
+dans la base, puis relit chaque élément et le compare au fichier. Au moindre écart, il le
+nomme et sort en erreur. Il est idempotent et ne touche à aucun fichier : les archiver reste
+à faire à la main, après avoir vérifié le cockpit.
 
 La clé est le **dossier**, pas le pipeline. Relancer remplace la demande au lieu de
 l'empiler, sinon la boîte se remplirait de demandes portant sur des plans qui n'existent
@@ -106,7 +143,7 @@ attendre, parce qu'il n'y a alors rien à déposer non plus.
 
 ```bash
 npm install
-npm test                 # 116 vérifications, sans réseau ni credentials
+npm test                 # 128 vérifications, sans réseau ni credentials
 ```
 
 Les tests du stage `approval` tournent sur un pipeline neutre, `test/fixtures/approbation.json`,

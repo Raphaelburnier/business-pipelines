@@ -1,4 +1,7 @@
-FROM node:22-alpine
+# Version mineure épinglée : le store des approbations utilise `node:sqlite`, disponible sans
+# option seulement depuis Node 22.13. Une image `node:22-alpine` plus ancienne restée en cache
+# sur le NAS ferait tomber le cockpit au premier accès à la base.
+FROM node:22.23-alpine
 
 # Le SDK d'agents lance le CLI Claude Code en sous-processus, et ce CLI embarque un ripgrep
 # lié à la glibc. Alpine est sur musl, donc ce binaire ne s'exécute pas. USE_BUILTIN_RIPGREP=0

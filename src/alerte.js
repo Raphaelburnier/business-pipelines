@@ -9,11 +9,8 @@
 // La logique est séparée du transport, comme le cockpit sépare la logique du serveur :
 // ce qui décide d'envoyer se teste sans réseau, et ce qui se décide ici est si une
 // demande qui engage de l'argent est vue ou oubliée.
-const path = require("path");
 const cockpit = require("./cockpit");
-const durable = require("./durable");
-
-const JOURNAL = "ALERTES.json";
+const store = require("./store");
 
 // Registre de transports, comme `SOURCES` pour les marchés. Un transport reçoit un
 // message déjà rédigé et le fait sortir, rien de plus : il ne décide jamais s'il faut
@@ -58,10 +55,8 @@ const TRANSPORTS = {
   },
 };
 
-function lireJournal(approvalsDir) {
-  const p = path.join(approvalsDir, JOURNAL);
-  return durable.lireJson(p) || { envoyees: [] };
-}
+// Le journal des alertes parties vit dans le store, à côté de la boîte qu'il commente.
+const lireJournal = (approvalsDir) => store.lireJournal(approvalsDir);
 
 // La clé porte le dossier, l'empreinte du plan ET le verdict de fraîcheur, et c'est ce
 // qui borne le bavardage sans rien perdre.
@@ -133,8 +128,7 @@ function message(dossier, { maintenant, cockpitUrl }) {
   }
 
   lignes.push("");
-  if (cockpitUrl) lignes.push(`Décider : ${cockpitUrl}`);
-  if (dossier.registre) lignes.push(`ou à la main : ${dossier.registre}`);
+  lignes.push(cockpitUrl ? `Décider : ${cockpitUrl}` : "Décider dans le cockpit.");
 
   return { titre, texte: lignes.join("\n") };
 }
@@ -152,11 +146,7 @@ function aNotifier({ approvalsDir, pipelinesDir = null, maintenant = Date.now(),
     .map((d) => ({ dossier: d, cle: cle(d), ...message(d, { maintenant, cockpitUrl }) }));
 }
 
-function consigner(approvalsDir, entree) {
-  const journal = lireJournal(approvalsDir);
-  journal.envoyees.push(entree);
-  durable.ecrireJson(path.join(approvalsDir, JOURNAL), journal);
-}
+const consigner = (approvalsDir, entree) => store.consignerAlerte(approvalsDir, entree);
 
 // Envoie ce qui mérite de l'être, et consigne CE QUI EST PARTI, jamais ce qui a échoué.
 //
@@ -226,4 +216,4 @@ function transportDe(nom) {
   return transport;
 }
 
-module.exports = { aNotifier, envoyer, message, cle, transportDe, lireJournal, TRANSPORTS, JOURNAL };
+module.exports = { aNotifier, envoyer, message, cle, transportDe, lireJournal, TRANSPORTS };
