@@ -61,6 +61,14 @@ test("aucune requête ne sort du dossier servi", () => {
   }
 });
 
+test("une adresse avec paramètres reste la même page", () => {
+  const { racine } = bac();
+  // Un lien partagé, un cache-buster, un paramètre de suivi : la page ne doit pas
+  // disparaître parce qu'on a ajouté une query.
+  assert.ok(statique.ressource({ racine, url: "/app?v=2" }), "/app?v=2 est la page");
+  assert.ok(statique.ressource({ racine, url: "/app/assets/index-abc123.js?v=2" }), "un asset garde sa query");
+});
+
 test("les autres routes du cockpit ne sont pas interceptées", () => {
   const { racine } = bac();
   assert.strictEqual(statique.ressource({ racine, url: "/" }), null);
