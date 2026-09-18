@@ -27,8 +27,13 @@ services:
       # l'image, et en lecture seule : rien du conteneur n'a de raison de les réécrire.
       - ./specs:/app/specs:ro
       - ./logs:/app/logs
+      # L'event store des runs (§9). Le cockpit le lit ; le moteur et le maître y écrivent.
+      # Monté en écriture parce que SQLite pose un journal WAL à l'ouverture, même pour
+      # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
+      - ./etat:/app/etat
     environment:
       - NODE_ENV=production
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
       # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
@@ -68,8 +73,11 @@ services:
       # Le workspace, le rapport et le coût du tour survivent au conteneur jetable.
       - ./runs:/app/runs
       - ./logs:/app/logs
+      - ./etat:/app/etat
     environment:
       - NODE_ENV=production
+      # Le run écrit ici ce que le cockpit lira : même fichier, deux conteneurs.
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
     # La clé Anthropic vit dans ce fichier de l'hôte et n'entre jamais dans l'image. Le
     # cockpit, lui, n'en reçoit toujours aucune.
     env_file:

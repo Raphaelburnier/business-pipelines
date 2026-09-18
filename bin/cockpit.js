@@ -41,11 +41,14 @@
 //     segment, et rendait un autre identifiant dès qu'il portait un underscore.
 const http = require("http");
 const path = require("path");
-const { envLoader } = require("agent-orchestrator");
+const { envLoader, EventStore } = require("agent-orchestrator");
 const cockpit = require("../src/cockpit");
 const acces = require("../src/acces");
 const pwa = require("../src/pwa");
 const apps = require("../src/apps");
+const api = require("../src/api-lecture");
+const flux = require("../src/flux");
+const statique = require("../src/statique");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -74,6 +77,30 @@ const HOTE = acces.adresseEcoute({
 // Surchargeable comme APPROVALS_DIR, et pour la même raison : ce qui n'est pas déplaçable
 // ne se teste que contre le dossier réel du dépôt.
 const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
+
+// L'event store des runs (§9). Le cockpit le LIT, il n'y écrit jamais : ce qui s'est passé
+// est écrit par le moteur et par le maître, au moment où ça arrive.
+//
+// Ouvert une fois, gardé ouvert : SQLite en WAL laisse lire pendant qu'un run écrit, et
+// rouvrir la base à chaque requête coûterait un verrou à chaque rafraîchissement de page.
+// Une base absente ou illisible ne tue pas le cockpit — les décisions d'approbation, elles,
+// ne dépendent pas d'elle et doivent rester accessibles.
+// Le front buildé (web/dist). Absent, la page /app le dit : un 404 muet laisserait croire
+// à une route cassée alors qu'il manque une commande de build.
+const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
+
+let magasin = null;
+let magasinErreur = null;
+function store() {
+  if (magasin || magasinErreur) return magasin;
+  try {
+    magasin = new EventStore(ENV.ORCH_EVENT_STORE || undefined);
+  } catch (err) {
+    magasinErreur = err.message;
+    console.error(`event store indisponible : ${err.message}`);
+  }
+  return magasin;
+}
 
 // Le registre des applications est relu à chaque rendu de page, pas une fois au démarrage.
 //
@@ -641,6 +668,24 @@ async function traiter(req, res) {
     }
   }
 
+  // Le cockpit en lecture (phase 4). La page d'approbation garde la racine : les deux
+  // cohabitent le temps que celle-ci reprenne aussi les décisions.
+  if (req.method === "GET" && (req.url === "/app" || req.url.startsWith("/app/"))) {
+    if (!statique.present(WEB)) {
+      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8", ...DURCISSEMENT });
+      return res.end(`Front non construit. Lancer : npm run web:build\nAttendu dans ${WEB}\n`);
+    }
+    const r = statique.ressource({ racine: WEB, url: req.url });
+    if (!r) return json(res, 404, { erreur: "fichier inconnu" });
+    res.writeHead(200, {
+      "Content-Type": r.type,
+      "Content-Length": r.corps.length,
+      "Cache-Control": r.cache,
+      "X-Content-Type-Options": "nosniff",
+    });
+    return res.end(r.corps);
+  }
+
   if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
     const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...DURCISSEMENT });
@@ -649,6 +694,52 @@ async function traiter(req, res) {
 
   if (req.method === "GET" && req.url === "/api/etat") {
     return json(res, 200, cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
+  }
+
+  // ---- lecture des runs (phase 4) ----
+  //
+  // Derrière le même contrôle d'identité que le reste : ce que le cockpit montre d'un run,
+  // ce sont des prompts, des coûts et des noms de machines.
+  if (req.method === "GET" && req.url.startsWith("/api/runs")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const url = new URL(req.url, "http://cockpit");
+    const reste = url.pathname.slice("/api/runs".length).replace(/^\//, "");
+    if (!reste) {
+      const limite = Math.min(Number(url.searchParams.get("limite") || 20) || 20, 100);
+      return json(res, 200, { runs: api.runs(magasinOuvert, { limite, projet: url.searchParams.get("projet") }) });
+    }
+    const detail = api.run(magasinOuvert, decodeURIComponent(reste.split("/")[0]));
+    if (!detail) return json(res, 404, { erreur: "run inconnu" });
+    return json(res, 200, detail);
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/api/machines")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(res, 200, { machines: api.machines(magasinOuvert) });
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/api/tableau-de-bord")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(res, 200, api.tableauDeBord(magasinOuvert));
+  }
+
+  // Le flux temps réel. Il ne rend jamais la main tant que le client écoute : la réponse
+  // est tenue ouverte, et `flux.ouvrir` la referme quand la connexion tombe.
+  if (req.method === "GET" && req.url.startsWith("/api/flux")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const url = new URL(req.url, "http://cockpit");
+    flux.ouvrir({
+      req,
+      res,
+      store: magasinOuvert,
+      runId: url.searchParams.get("run"),
+      apresId: Number(url.searchParams.get("apres") || 0) || 0,
+    });
+    return undefined;
   }
 
   if (req.method === "POST" && req.url === "/api/decider") {
