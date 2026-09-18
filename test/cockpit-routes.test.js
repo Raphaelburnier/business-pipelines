@@ -90,6 +90,11 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual((await requete(PORT, "/api/runs/inconnu")).code, 404);
     assert.strictEqual((await requete(PORT, "/api/machines")).code, 200);
 
+    // Une adresse du front avec paramètres reste servie : `/app?v=2` est la même page.
+    const avecQuery = await requete(PORT, "/app?v=2");
+    const attendu = fs.existsSync(path.join(RACINE, "web", "dist", "index.html")) ? 200 : 503;
+    assert.strictEqual(avecQuery.code, attendu, "/app?v=2 doit être traité comme /app");
+
     // Le front : construit, il est servi ; absent, le cockpit le DIT au lieu d'un 404 muet.
     const app = await requete(PORT, "/app");
     if (fs.existsSync(path.join(RACINE, "web", "dist", "index.html"))) {

@@ -670,7 +670,10 @@ async function traiter(req, res) {
 
   // Le cockpit en lecture (phase 4). La page d'approbation garde la racine : les deux
   // cohabitent le temps que celle-ci reprenne aussi les décisions.
-  if (req.method === "GET" && (req.url === "/app" || req.url.startsWith("/app/"))) {
+  // Le chemin, pas l'URL : `/app?v=2` est la même page que `/app`. Comparer l'URL entière
+  // renvoyait « route inconnue » dès qu'un lien portait le moindre paramètre.
+  const chemin = req.url.split("?")[0];
+  if (req.method === "GET" && (chemin === "/app" || chemin.startsWith("/app/"))) {
     if (!statique.present(WEB)) {
       res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8", ...DURCISSEMENT });
       return res.end(`Front non construit. Lancer : npm run web:build\nAttendu dans ${WEB}\n`);
