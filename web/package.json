@@ -1,0 +1,22 @@
+{
+  "name": "cockpit-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Le cockpit en lecture : topologie d'un run et tableau de bord, branchés sur le flux d'événements.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.18",
+    "@vitejs/plugin-react": "5.1.1",
+    "tailwindcss": "4.1.18",
+    "vite": "7.3.6"
+  }
+}

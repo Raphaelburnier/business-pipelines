@@ -9,8 +9,10 @@
     "en-attente": "node bin/en-attente.js",
     "importer:approbations": "node bin/importer-approbations.js",
     "cockpit": "node bin/cockpit.js",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web ci && npm --prefix web run build",
     "cockpit:tailnet": "bash bin/tailnet-relais.sh",
-    "test": "node test/store.test.js && node test/approval.test.js && node test/durable.test.js && node test/pwa.test.js && node test/cockpit.test.js && node test/apps.test.js && node test/acces.test.js && node test/alerte.test.js",
+    "test": "node test/store.test.js && node test/approval.test.js && node test/durable.test.js && node test/pwa.test.js && node test/cockpit.test.js && node test/apps.test.js && node test/acces.test.js && node test/alerte.test.js && node test/api-lecture.test.js && node test/statique.test.js && node test/cockpit-routes.test.js && node test/acceptation-phase4.test.js",
     "alerter": "node bin/alerter.js"
   },
   "dependencies": {

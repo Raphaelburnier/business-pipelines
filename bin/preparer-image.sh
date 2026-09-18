@@ -22,4 +22,14 @@ mkdir -p "$RACINE/.moteur"
 tar -C "$MOTEUR" --exclude=node_modules --exclude=.git -cf - . | tar -C "$RACINE/.moteur" -xf -
 
 echo "Moteur déposé dans .moteur ($(du -sh "$RACINE/.moteur" | cut -f1))"
+
+# Le front est construit ici, pas dans l'image : le build demande 200 Mo de dépendances et
+# un conteneur qui les installerait à chaque build coûterait plusieurs minutes pour un
+# résultat identique. Ce qui entre dans l'image, c'est web/dist.
+if [[ ! -f "$RACINE/web/dist/index.html" || -n "$(find "$RACINE/web/src" -newer "$RACINE/web/dist/index.html" 2>/dev/null)" ]]; then
+  echo "Construction du front…"
+  npm --prefix "$RACINE/web" ci --silent
+  npm --prefix "$RACINE/web" run build --silent
+fi
+echo "Front prêt dans web/dist ($(du -sh "$RACINE/web/dist" | cut -f1))"
 echo "Puis : docker compose build && docker compose up -d"

@@ -496,3 +496,34 @@ Le courriel prévient, il ne décide pas, et c'est délibéré : un message ne p
 bouton et aucun lien qui approuve. La décision se prend dans le cockpit, joignable depuis
 le téléphone depuis le 2026-08-20. Ce qui reste, c'est que le courriel n'arrive pas comme
 une notification d'application : il faut ouvrir sa boîte. Le push web réglera ça.
+
+## Le cockpit en lecture
+
+La page d'approbation garde la racine ; le cockpit des runs vit sous `/app`. Il lit
+l'event store du moteur (§9 de la spec) et ne lui écrit jamais : ce qui s'est passé est
+écrit par le moteur et par le maître, au moment où ça arrive.
+
+```bash
+npm run web:build   # construit le front (Vite + React + Tailwind) dans web/dist
+npm run cockpit     # sert la page d'approbation, /app, et l'API
+npm run web:dev     # développement du front seul, API relayée vers le cockpit local
+```
+
+Routes de lecture, toutes derrière le même contrôle d'identité que le reste :
+
+| Route | Ce qu'elle rend |
+|---|---|
+| `GET /api/tableau-de-bord` | runs récents, machines, décisions qui attendent, coût du jour |
+| `GET /api/runs` | la liste des runs (`?limite=`, `?projet=`) |
+| `GET /api/runs/<id>` | un run, ses étapes, leur machine et leur issue |
+| `GET /api/machines` | l'état des machines et l'âge de leur dernier signe de vie |
+| `GET /api/flux` | le flux d'événements en SSE (`?run=`, reprise par `Last-Event-ID`) |
+
+Le flux ne porte pas l'état, il dit qu'il a changé : la page recharge la vue concernée. Une
+page qui reconstruirait l'état à partir des événements finirait par diverger de la base le
+jour où un événement manque.
+
+L'event store se monte dans le conteneur (`./etat:/app/etat`, `ORCH_EVENT_STORE`). Une base
+absente ou illisible n'empêche pas de décider : la page d'approbation n'en dépend pas, et
+les routes de runs répondent alors 503 en le disant.
+

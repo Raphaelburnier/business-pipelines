@@ -6,6 +6,9 @@
 #
 # Les fichiers de configuration arrivent par un montage en lecture seule, à l'exécution.
 node_modules
+# Les dépendances de build du front pèsent 200 Mo et ne servent qu'à produire web/dist,
+# qui lui doit entrer dans l'image : c'est la page que le cockpit sert.
+web/node_modules
 .git
 .gitignore
 # Les définitions d'agents sont du code : le lanceur les lit dans .claude/agents, et sans

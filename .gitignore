@@ -51,3 +51,6 @@ approvals/*.sqlite-shm
 
 # Copie du moteur pour le contexte de build Docker, déposée par bin/preparer-image.sh.
 .moteur/
+etat/
+web/node_modules/
+web/dist/
