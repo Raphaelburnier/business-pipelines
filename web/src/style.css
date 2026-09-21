@@ -63,3 +63,26 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
+
+/* React Flow sur les couleurs du cockpit : son thème clair par défaut détonnerait dans le
+   mode sombre, et ses contrôles ne servent à rien sur un arbre qu'on ne déplace pas. */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--color-trait);
+  --xy-node-background-color: transparent;
+  --xy-node-border: none;
+}
+.react-flow__node-cockpit {
+  cursor: pointer;
+}
+.react-flow__node-cockpit:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Une arête active respire, sans tirets : les tirets sont réservés au multi-machine. */
+@media (prefers-reduced-motion: no-preference) {
+  .arete-active .react-flow__edge-path {
+    animation: pulse-douce 1.6s ease-in-out infinite;
+  }
+}

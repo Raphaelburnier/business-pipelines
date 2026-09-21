@@ -73,7 +73,7 @@ function demarrerCockpit(env) {
 
 function ecouterFlux(port) {
   const recu = [];
-  const requete = http.get({ host: "127.0.0.1", port, path: "/api/flux" }, (res) => {
+  const requete = http.get({ host: "127.0.0.1", port, path: "/api/stream" }, (res) => {
     res.setEncoding("utf-8");
     res.on("data", (morceau) => {
       for (const ligne of morceau.split("\n")) {
@@ -153,9 +153,11 @@ test("un run lancé hors du cockpit apparaît dans le flux et dans l'API, pendan
     );
 
     // Et l'API rend le même run, avec ses deux étapes et leur issue.
-    const tableau = await lire(PORT, "/api/tableau-de-bord");
-    assert.strictEqual(tableau.code, 200);
-    assert.strictEqual(tableau.corps.runs[0].projet, "acceptation");
+    const topo = await lire(PORT, "/api/topology");
+    assert.strictEqual(topo.code, 200);
+    const projet = topo.corps.projets.find((p) => p.id === "acceptation");
+    assert.ok(projet, "le projet du run apparaît dans la topologie");
+    assert.strictEqual(projet.aFiche, false, "le projet n'a pas de fiche : il est connu par son run");
 
     const detail = await lire(PORT, `/api/runs/${runId}`);
     assert.deepStrictEqual(
