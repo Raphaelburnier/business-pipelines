@@ -89,6 +89,10 @@ const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
 // à une route cassée alors qu'il manque une commande de build.
 const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
 
+// Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
+// tire les catégories et les projets.
+const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
+
 let magasin = null;
 let magasinErreur = null;
 function store() {
@@ -699,48 +703,66 @@ async function traiter(req, res) {
     return json(res, 200, cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
   }
 
-  // ---- lecture des runs (phase 4) ----
+  // ---- lecture des runs (§10) ----
   //
   // Derrière le même contrôle d'identité que le reste : ce que le cockpit montre d'un run,
-  // ce sont des prompts, des coûts et des noms de machines.
-  if (req.method === "GET" && req.url.startsWith("/api/runs")) {
+  // ce sont des prompts, des coûts et des noms de machines. Les routes et leurs paramètres
+  // suivent la spec (décision 7 du 2026-09-18).
+  const lecture = req.method === "GET" ? new URL(req.url, "http://cockpit") : null;
+
+  if (lecture && lecture.pathname.startsWith("/api/runs")) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
-    const url = new URL(req.url, "http://cockpit");
-    const reste = url.pathname.slice("/api/runs".length).replace(/^\//, "");
+    const reste = lecture.pathname.slice("/api/runs".length).replace(/^\//, "");
     if (!reste) {
-      const limite = Math.min(Number(url.searchParams.get("limite") || 20) || 20, 100);
-      return json(res, 200, { runs: api.runs(magasinOuvert, { limite, projet: url.searchParams.get("projet") }) });
+      const limite = Math.min(Number(lecture.searchParams.get("limite") || 20) || 20, 100);
+      try {
+        return json(res, 200, {
+          runs: api.runs(magasinOuvert, {
+            limite,
+            projet: lecture.searchParams.get("project"),
+            statut: lecture.searchParams.get("status"),
+          }),
+        });
+      } catch (err) {
+        // Un statut inconnu est une faute de la requête, pas une panne.
+        return json(res, 400, { erreur: err.message });
+      }
     }
     const detail = api.run(magasinOuvert, decodeURIComponent(reste.split("/")[0]));
     if (!detail) return json(res, 404, { erreur: "run inconnu" });
     return json(res, 200, detail);
   }
 
-  if (req.method === "GET" && req.url.startsWith("/api/machines")) {
+  if (lecture && lecture.pathname === "/api/machines") {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     return json(res, 200, { machines: api.machines(magasinOuvert) });
   }
 
-  if (req.method === "GET" && req.url.startsWith("/api/tableau-de-bord")) {
+  if (lecture && lecture.pathname === "/api/topology") {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
-    return json(res, 200, api.tableauDeBord(magasinOuvert));
+    return json(res, 200, api.topologie(magasinOuvert, { projetsDir: PROJETS }));
+  }
+
+  if (lecture && lecture.pathname === "/api/usage") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(res, 200, api.usage(magasinOuvert));
   }
 
   // Le flux temps réel. Il ne rend jamais la main tant que le client écoute : la réponse
   // est tenue ouverte, et `flux.ouvrir` la referme quand la connexion tombe.
-  if (req.method === "GET" && req.url.startsWith("/api/flux")) {
+  if (lecture && lecture.pathname === "/api/stream") {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
-    const url = new URL(req.url, "http://cockpit");
     flux.ouvrir({
       req,
       res,
       store: magasinOuvert,
-      runId: url.searchParams.get("run"),
-      apresId: Number(url.searchParams.get("apres") || 0) || 0,
+      runId: lecture.searchParams.get("run"),
+      apresId: Number(lecture.searchParams.get("apres") || 0) || 0,
     });
     return undefined;
   }

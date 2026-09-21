@@ -1,13 +1,20 @@
 // Ce que le cockpit sait des runs, en lecture seule.
 //
-// Tout vient de l'event store (§9) : le cockpit ne recalcule rien, ne devine rien, et
-// n'affiche que ce qui y est écrit (principe 4 de la spec). Si une information manque à
-// l'écran, c'est qu'elle manque en base, et c'est le moteur qu'il faut corriger, pas la
-// page.
+// Tout vient de l'event store (§9) et des fiches `projects/<id>/project.json` : le cockpit
+// ne recalcule rien, ne devine rien, et n'affiche que ce qui y est écrit (principe 4 de la
+// spec). Si une information manque à l'écran, c'est qu'elle manque en base ou dans une
+// fiche, et c'est là qu'il faut corriger, pas dans la page.
 //
-// Ces fonctions sont pures au sens qui compte ici : elles prennent un store et rendent des
-// objets JSON. Aucune n'ouvre de socket, donc ce qui décide de ce que voit l'écran se
-// teste sans serveur — même raison que pour `src/cockpit.js`.
+// Chaque forme rendue ici est décrite par un schéma zod de `packages/schemas/cockpit.js`
+// (agent-orchestrator). Un test valide les réponses contre eux : le front et ses fixtures
+// en tirent leurs types, donc une dérive se voit au test, pas à l'écran.
+//
+// Ces fonctions prennent un store et rendent des objets JSON. Aucune n'ouvre de socket, donc
+// ce qui décide de ce que voit l'écran se teste sans serveur.
+const fs = require("fs");
+const path = require("path");
+const { validerProjet } = require("agent-orchestrator/packages/schemas");
+
 const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_machine"]);
 
 function ligneRun(store, run) {
@@ -32,26 +39,20 @@ function ligneRun(store, run) {
 }
 
 /**
- * La liste des runs, les plus récents d'abord.
+ * La liste des runs, les plus récents d'abord (`GET /api/runs?project=&status=`).
  * @param {any} store
- * @param {{ limite?: number, projet?: string|null }} [filtre]
+ * @param {{ limite?: number, projet?: string|null, statut?: string|null }} [filtre]
  */
-function runs(store, { limite = 20, projet = null } = {}) {
-  return store.runs({ limite, projectId: projet }).map((run) => ligneRun(store, run));
+function runs(store, { limite = 20, projet = null, statut = null } = {}) {
+  return store.runs({ limite, projectId: projet, status: statut }).map((run) => ligneRun(store, run));
 }
 
-/**
- * Un run et tout ce qu'on en sait : ses étapes, ses approbations, son dernier événement.
- * @param {any} store
- * @param {string} runId
- */
-function run(store, runId) {
-  const brut = store.run(runId);
-  if (!brut) return null;
-  const etapes = store.etapes(runId).map((e) => ({
+function ligneEtape(e) {
+  return {
     id: e.id,
     noeud: e.node_id,
     type: e.type,
+    agent: e.agent_ref || null,
     machine: e.machine_id,
     statut: e.status,
     llm: e.llm_via ? { via: e.llm_via, model: e.llm_model } : null,
@@ -63,11 +64,21 @@ function run(store, runId) {
     coutEquivalentUsd: Number(e.est_cost_usd || 0),
     tokens: { entree: e.tokens_in, sortie: e.tokens_out },
     outcome: e.outcome,
-  }));
+  };
+}
+
+/**
+ * Un run et tout ce qu'on en sait : ses étapes, ses approbations, son dernier événement.
+ * @param {any} store
+ * @param {string} runId
+ */
+function run(store, runId) {
+  const brut = store.run(runId);
+  if (!brut) return null;
   const derniers = store.evenements({ runId });
   return {
     ...ligneRun(store, brut),
-    etapes,
+    etapes: store.etapes(runId).map(ligneEtape),
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
     dernierEvenementId: derniers.length ? derniers[derniers.length - 1].id : 0,
   };
@@ -116,8 +127,7 @@ function machines(store, { maintenant = Date.now() } = {}) {
  */
 function evenements(store, { runId = null, apresId = 0, limite = 200 } = {}) {
   const lignes = runId ? store.evenements({ runId, apresId }) : store.evenements({ apresId });
-  const coupe = lignes.slice(0, limite);
-  return coupe.map((e) => ({
+  return lignes.slice(0, limite).map((e) => ({
     id: e.id,
     at: e.ts,
     type: e.type,
@@ -128,35 +138,156 @@ function evenements(store, { runId = null, apresId = 0, limite = 200 } = {}) {
   }));
 }
 
+// ---------- topologie (§11.1) ----------
+
 /**
- * Le tableau de bord : ce qu'on veut voir en ouvrant la page. Les runs vivants d'abord,
- * les machines, les décisions qui attendent.
- * @param {any} store
- * @param {{ limite?: number, maintenant?: number }} [options]
+ * Les fiches projet (`projects/<id>/project.json`, décision §15 option A). Une fiche
+ * illisible ne fait pas tomber la vue : elle est nommée dans `anomalies`, et le reste
+ * s'affiche. Se taire serait pire, on croirait le projet absent.
+ * @param {string|null} projetsDir
  */
-function tableauDeBord(store, { limite = 10, maintenant = Date.now() } = {}) {
-  const liste = runs(store, { limite });
-  const vivants = liste.filter((r) => r.vivant);
-  const attentes = [];
-  for (const r of vivants) {
-    for (const a of store.approbationsEnAttente(r.id)) {
-      attentes.push({ run: r.id, projet: r.projet, ...resumerApprobation(a) });
+function lireFiches(projetsDir) {
+  const fiches = [];
+  const anomalies = [];
+  if (!projetsDir || !fs.existsSync(projetsDir)) return { fiches, anomalies };
+  for (const entree of fs.readdirSync(projetsDir, { withFileTypes: true })) {
+    if (!entree.isDirectory()) continue;
+    const fichier = path.join(projetsDir, entree.name, "project.json");
+    if (!fs.existsSync(fichier)) continue;
+    try {
+      fiches.push(validerProjet(JSON.parse(fs.readFileSync(fichier, "utf-8"))));
+    } catch (err) {
+      anomalies.push(`projects/${entree.name}/project.json : ${String(err.message).split("\n")[0]}`);
     }
   }
+  return { fiches, anomalies };
+}
+
+// La couleur d'un projet dans l'arbre vient de son dernier run.
+function etatDuProjet(dernier) {
+  if (!dernier) return "inactif";
+  if (dernier.status === "running" || dernier.status === "queued") return "actif";
+  if (dernier.status === "paused") return "pause";
+  if (String(dernier.status).startsWith("waiting_")) return "attente";
+  if (dernier.status === "failed") return "erreur";
+  return "inactif";
+}
+
+/**
+ * L'arbre maître → machines → catégories → projets (`GET /api/topology`).
+ *
+ * Un projet sans fiche mais avec des runs (lancé à la main avant la création de sa fiche)
+ * apparaît quand même, marqué `aFiche: false`, dans la catégorie « sans fiche » : un run
+ * réel qui n'apparaîtrait nulle part serait le pire des trous d'observabilité.
+ *
+ * Les machines d'un projet sont sa `homeMachine` plus celles où ses étapes ont réellement
+ * tourné. C'est ce qui trace l'arête en pointillés d'un projet multi-machine.
+ * @param {any} store
+ * @param {{ projetsDir?: string|null, maintenant?: number, limiteRuns?: number }} [options]
+ */
+function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRuns = 500 } = {}) {
+  const { fiches, anomalies } = lireFiches(projetsDir);
+  const tousLesRuns = store.runs({ limite: limiteRuns });
+
+  const parProjet = new Map();
+  for (const r of tousLesRuns) {
+    if (!r.project_id) continue;
+    if (!parProjet.has(r.project_id)) parProjet.set(r.project_id, []);
+    parProjet.get(r.project_id).push(r);
+  }
+
+  // Les cinq derniers runs suffisent : une machine qui n'a pas servi depuis ne doit pas
+  // garder son arête pour toujours.
+  const machinesVues = (runsDuProjet) => {
+    const vues = new Set();
+    for (const r of runsDuProjet.slice(0, 5)) for (const e of store.etapes(r.id)) if (e.machine_id) vues.add(String(e.machine_id));
+    return vues;
+  };
+
+  const projet = ({ id, nom, categorie, homeMachine, pipelines, aFiche }) => {
+    const runsDuProjet = parProjet.get(id) || [];
+    const dernier = runsDuProjet[0] || null;
+    const approbations = runsDuProjet
+      .filter((r) => ETATS_VIVANTS.has(String(r.status)))
+      .reduce((n, r) => n + store.approbationsEnAttente(r.id).length, 0);
+    return {
+      id,
+      nom,
+      categorie,
+      homeMachine,
+      machines: [...new Set([homeMachine, ...machinesVues(runsDuProjet)])],
+      pipelines,
+      etat: etatDuProjet(dernier),
+      aFiche,
+      dernierRun: dernier ? { id: dernier.id, statut: dernier.status, debut: dernier.started_at } : null,
+      approbationsEnAttente: approbations,
+    };
+  };
+
+  const projets = fiches.map((f) =>
+    projet({
+      id: f.id,
+      nom: f.name,
+      categorie: f.business,
+      homeMachine: f.homeMachine,
+      pipelines: f.pipelines.map((p) => p.extends),
+      aFiche: true,
+    })
+  );
+  const connus = new Set(projets.map((p) => p.id));
+  for (const [id, runsDuProjet] of parProjet) {
+    if (connus.has(id)) continue;
+    projets.push(
+      projet({
+        id,
+        nom: id,
+        categorie: "sans fiche",
+        homeMachine: "pc",
+        pipelines: [...new Set(runsDuProjet.map((r) => r.pipeline_ref))],
+        aFiche: false,
+      })
+    );
+  }
+
+  const categories = [...new Set(projets.map((p) => p.categorie))].sort().map((c) => ({ id: c, nom: c }));
   return {
-    runs: liste,
-    vivants: vivants.length,
+    // Le maître n'est pas encore un service (décision 8 : phase 5). Ce qui sert cette
+    // réponse est le cockpit du NAS, donc c'est lui qui est « en ligne ».
+    maitre: { nom: "maître", etat: "online" },
     machines: machines(store, { maintenant }),
-    approbations: attentes,
-    // Le coût du jour, en équivalent API : c'est la jauge qui dit si un run part en vrille,
-    // pas une facture.
-    coutDuJourUsd: Number(
-      liste
-        .filter((r) => r.debut && Date.parse(r.debut) >= maintenant - 24 * 3600 * 1000)
-        .reduce((total, r) => total + r.coutEquivalentUsd, 0)
-        .toFixed(4)
-    ),
+    categories,
+    projets,
+    anomalies,
   };
 }
 
-module.exports = { runs, run, machines, evenements, tableauDeBord, resumerApprobation, ETATS_VIVANTS };
+// ---------- usage (§8, barre du haut) ----------
+
+/**
+ * Runs actifs et coût équivalent sur 24 h et sur le mois (`GET /api/usage`). La jauge de
+ * quota reste nulle tant que le maître ne lit pas `getUsage()` du SDK (phase 5) : mieux
+ * vaut une jauge absente qu'une jauge inventée.
+ * @param {any} store
+ * @param {{ maintenant?: number, limiteRuns?: number }} [options]
+ */
+function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
+  const liste = store.runs({ limite: limiteRuns });
+  const debutJour = maintenant - 24 * 3600 * 1000;
+  const date = new Date(maintenant);
+  const debutMois = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  const somme = (depuis) =>
+    Number(
+      liste
+        .filter((r) => r.started_at && Date.parse(r.started_at) >= depuis)
+        .reduce((total, r) => total + Number(r.est_cost_usd || 0), 0)
+        .toFixed(4)
+    );
+  return {
+    runsActifs: liste.filter((r) => ETATS_VIVANTS.has(String(r.status))).length,
+    coutEquivalentJourUsd: somme(debutJour),
+    coutEquivalentMoisUsd: somme(debutMois),
+    quota: null,
+  };
+}
+
+module.exports = { runs, run, machines, evenements, topologie, usage, resumerApprobation, lireFiches, ETATS_VIVANTS };

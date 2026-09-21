@@ -1,0 +1,14 @@
+{
+  "id": "marketing",
+  "name": "Plan marketing",
+  "business": "marketing",
+  "homeMachine": "pc",
+  "repo": "ssh://admindunas@192.168.1.18/volume1/docker/git/marketing.git",
+  "pipelines": [
+    {
+      "extends": "marketing@1",
+      "spec": "../../specs/marketing.json",
+      "budget": { "usdPerRun": 2, "usdPerMonth": 20 }
+    }
+  ]
+}

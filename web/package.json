@@ -3,20 +3,31 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Le cockpit en lecture : topologie d'un run et tableau de bord, branchés sur le flux d'événements.",
+  "description": "Le cockpit : topologie, dashboard des agents et panneau latéral, sur l'API ou sur la maquette de l'annexe A.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "maquette": "vite --open '/app/?source=maquette'",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dagrejs/dagre": "1.1.5",
+    "@xyflow/react": "12.10.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.18",
+    "@types/node": "22.19.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
     "tailwindcss": "4.1.18",
-    "vite": "7.3.6"
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "5.0.1",
+    "zod": "4.6.5"
   }
 }

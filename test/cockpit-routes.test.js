@@ -24,7 +24,8 @@ function base() {
   const runId = store.creerRun({ pipelineRef: "marketing@1", projectId: "marketing", trigger: "test" });
   const etape = store.creerEtape({ runId, nodeId: "economie", type: "agent", machineId: "pc" });
   store.majEtape(etape, { status: "succeeded", estCostUsd: 0.2 });
-  store.emettre({ type: "run.start", runId, payload: {} });
+  store.statutRun(runId, "succeeded");
+  store.emettre({ type: "run.started", runId, payload: {} });
   store.fermer();
   return { dir, base: path.join(dir, "events.sqlite"), runId };
 }
@@ -75,13 +76,18 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     COCKPIT_OPERATEUR_LOCAL: "test",
   });
   try {
-    const tableau = await requete(PORT, "/api/tableau-de-bord");
-    assert.strictEqual(tableau.code, 200);
-    const lu = JSON.parse(tableau.corps);
-    assert.strictEqual(lu.runs.length, 1);
+    const topo = await requete(PORT, "/api/topology");
+    assert.strictEqual(topo.code, 200);
+    const lu = JSON.parse(topo.corps);
+    assert.strictEqual(lu.projets.length, 1);
     assert.strictEqual(lu.machines.length >= 1, true);
     // Rien de ce que sert le cockpit ne doit finir dans un cache partagé.
-    assert.strictEqual(tableau.entetes["cache-control"], "no-store");
+    assert.strictEqual(topo.entetes["cache-control"], "no-store");
+
+    const liste = JSON.parse((await requete(PORT, "/api/runs?project=marketing&status=succeeded")).corps);
+    assert.strictEqual(liste.runs.length, 1);
+    assert.strictEqual((await requete(PORT, "/api/runs?status=fini")).code, 400, "un statut inconnu est une faute de requête");
+    assert.strictEqual((await requete(PORT, "/api/usage")).code, 200);
 
     const run = await requete(PORT, `/api/runs/${bac.runId}`);
     assert.strictEqual(run.code, 200);
@@ -120,7 +126,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/tableau-de-bord", "/api/runs", "/api/machines", "/api/flux", "/app"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/runs", "/api/machines", "/api/stream", "/app"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);

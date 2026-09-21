@@ -500,28 +500,44 @@ une notification d'application : il faut ouvrir sa boîte. Le push web réglera 
 ## Le cockpit en lecture
 
 La page d'approbation garde la racine ; le cockpit des runs vit sous `/app`. Il lit
-l'event store du moteur (§9 de la spec) et ne lui écrit jamais : ce qui s'est passé est
-écrit par le moteur et par le maître, au moment où ça arrive.
+l'event store du moteur (§9 de la spec) et les fiches `projects/<id>/project.json`, et n'écrit
+jamais : ce qui s'est passé est écrit par le moteur et par le maître, au moment où ça arrive.
 
 ```bash
-npm run web:build   # construit le front (Vite + React + Tailwind) dans web/dist
+npm run web:build   # construit le front (TypeScript strict, React Flow, Tailwind) dans web/dist
+npm run web:test    # tests du front : fixtures de la maquette, disposition de l'arbre
 npm run cockpit     # sert la page d'approbation, /app, et l'API
 npm run web:dev     # développement du front seul, API relayée vers le cockpit local
 ```
 
-Routes de lecture, toutes derrière le même contrôle d'identité que le reste :
+Deux vues : la **topologie**, un arbre maître → machines → catégories → projets (plié au rang
+2 sur téléphone, arête en pointillés vers l'autre machine d'un projet multi-machine), et les
+**agents**, la liste live des étapes filtrable par projet et par machine. Un clic ouvre le
+panneau latéral d'un projet, d'une machine ou d'un run (timeline par machine, étapes avec
+`agent@version`). L'éditeur de pipelines arrive en phase 6, les actions en phase 5.
+
+**Maquette.** `/app/?source=maquette` branche la maquette de l'annexe A au lieu de l'API : six
+projets dont un multi-machine, le PC qui se réveille, un run marketing rejoué en une
+trentaine de secondes (deux agents en parallèle, une boucle de correction, une approbation),
+un run en `waiting_quota`, un run ad hoc. Un badge « maquette » l'annonce dans la barre du haut.
+Les fixtures sont validées par les mêmes schémas zod que les réponses de l'API
+(`agent-orchestrator/packages/schemas/cockpit.js`), et les types du front en sont tirés par
+`z.infer` : une dérive de l'un se voit au test de l'autre.
+
+Routes de lecture (§10), toutes derrière le même contrôle d'identité que le reste :
 
 | Route | Ce qu'elle rend |
 |---|---|
-| `GET /api/tableau-de-bord` | runs récents, machines, décisions qui attendent, coût du jour |
-| `GET /api/runs` | la liste des runs (`?limite=`, `?projet=`) |
-| `GET /api/runs/<id>` | un run, ses étapes, leur machine et leur issue |
+| `GET /api/topology` | maître, machines, catégories, projets (avec fiche ou connus par leurs runs), anomalies de fiches |
+| `GET /api/runs` | la liste des runs (`?project=`, `?status=`, `?limite=`) |
+| `GET /api/runs/<id>` | un run, ses étapes (`agent@version`, machine, modèle, issue) et ses décisions |
 | `GET /api/machines` | l'état des machines et l'âge de leur dernier signe de vie |
-| `GET /api/flux` | le flux d'événements en SSE (`?run=`, reprise par `Last-Event-ID`) |
+| `GET /api/usage` | runs actifs, coût équivalent sur 24 h et sur le mois ; quota lu en phase 5 |
+| `GET /api/stream` | le flux d'événements en SSE (`?run=`, reprise par `Last-Event-ID`) |
 
-Le flux ne porte pas l'état, il dit qu'il a changé : la page recharge la vue concernée. Une
-page qui reconstruirait l'état à partir des événements finirait par diverger de la base le
-jour où un événement manque.
+Le flux ne porte pas l'état, il dit qu'il a changé : la page recharge la vue concernée, au
+plus une fois toutes les 600 ms. Une page qui reconstruirait l'état à partir des événements
+finirait par diverger de la base le jour où un événement manque.
 
 L'event store se monte dans le conteneur (`./etat:/app/etat`, `ORCH_EVENT_STORE`). Une base
 absente ou illisible n'empêche pas de décider : la page d'approbation n'en dépend pas, et

@@ -9,6 +9,7 @@ const os = require("os");
 const path = require("path");
 const { EventStore } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
+const { cockpit } = require("agent-orchestrator/packages/schemas/cockpit");
 const flux = require("../src/flux");
 
 const tests = [];
@@ -119,18 +120,84 @@ test("les machines portent leur état et l'âge de leur dernier signe de vie", (
   assert.strictEqual(pc.meta.mac, "aa:bb:cc:dd:ee:ff");
 });
 
-test("le tableau de bord réunit ce qu'on vient chercher : runs vivants, machines, décisions", () => {
+test("les runs se filtrent par projet et par statut", () => {
   const { store } = bac();
-  const runId = runComplet(store);
-  store.statutRun(runId, "succeeded");
-  const enCours = runComplet(store, { projet: "tcg" });
+  const fini = runComplet(store);
+  store.statutRun(fini, "succeeded");
+  runComplet(store, { projet: "tcg" });
 
-  const tb = api.tableauDeBord(store);
-  assert.strictEqual(tb.runs.length, 2);
-  assert.strictEqual(tb.vivants, 1, "un run terminé n'est plus vivant");
-  assert.strictEqual(tb.approbations.length, 1, "seules les décisions des runs vivants sont remontées");
-  assert.strictEqual(tb.approbations[0].run, enCours);
-  assert.strictEqual(tb.coutDuJourUsd, 0.84);
+  assert.strictEqual(api.runs(store, { statut: "succeeded" }).length, 1);
+  assert.strictEqual(api.runs(store, { projet: "tcg", statut: "waiting_approval" }).length, 1);
+  assert.throws(() => api.runs(store, { statut: "fini" }), /statut de run inconnu/);
+});
+
+// Une fiche projet écrite comme dans `projects/<id>/project.json`.
+function fiche(dir, id, contenu) {
+  fs.mkdirSync(path.join(dir, id), { recursive: true });
+  fs.writeFileSync(path.join(dir, id, "project.json"), typeof contenu === "string" ? contenu : JSON.stringify(contenu));
+}
+
+test("la topologie range les projets par catégorie, avec leurs machines réelles", () => {
+  const { dir, store } = bac();
+  const projets = path.join(dir, "projects");
+  fiche(projets, "marketing", {
+    id: "marketing",
+    name: "Plan marketing",
+    business: "marketing",
+    homeMachine: "nas",
+    repo: "ssh://nas/marketing.git",
+    pipelines: [{ extends: "marketing@1" }],
+  });
+  fiche(projets, "casse", "{ ce n'est pas du JSON");
+  runComplet(store); // projet « marketing », une étape sur le NAS et une sur le PC
+  runComplet(store, { projet: "orphelin" }); // des runs, pas de fiche
+
+  const topo = api.topologie(store, { projetsDir: projets });
+  const marketing = topo.projets.find((p) => p.id === "marketing");
+  assert.strictEqual(marketing.categorie, "marketing");
+  assert.strictEqual(marketing.homeMachine, "nas");
+  // Une étape a tourné sur le PC : c'est l'arête en pointillés du projet multi-machine.
+  assert.ok(marketing.machines.includes("pc"), `machines : ${marketing.machines}`);
+  assert.strictEqual(marketing.etat, "attente", "un run en attente de décision colore le projet");
+  assert.strictEqual(marketing.approbationsEnAttente, 1);
+  assert.strictEqual(marketing.aFiche, true);
+
+  // Un projet connu par ses runs seulement apparaît quand même, marqué comme tel.
+  const orphelin = topo.projets.find((p) => p.id === "orphelin");
+  assert.strictEqual(orphelin.aFiche, false);
+  assert.strictEqual(orphelin.categorie, "sans fiche");
+
+  // Une fiche illisible est nommée, elle ne fait pas tomber la vue.
+  assert.strictEqual(topo.anomalies.length, 1);
+  assert.match(topo.anomalies[0], /projects\/casse\/project.json/);
+  assert.deepStrictEqual(topo.categories.map((c) => c.id), ["marketing", "sans fiche"]);
+});
+
+test("l'usage compte les runs actifs et le coût équivalent, sans inventer de jauge", () => {
+  const { store } = bac();
+  const fini = runComplet(store);
+  store.statutRun(fini, "succeeded");
+  runComplet(store, { projet: "tcg" });
+
+  const u = api.usage(store);
+  assert.strictEqual(u.runsActifs, 1);
+  assert.strictEqual(u.coutEquivalentJourUsd, 0.84);
+  assert.strictEqual(u.coutEquivalentMoisUsd, 0.84);
+  // Le quota vient de `getUsage()` du SDK, lu par le maître en phase 5 : pas avant.
+  assert.strictEqual(u.quota, null);
+});
+
+test("chaque réponse respecte le schéma que le front et les fixtures partagent", () => {
+  const { dir, store } = bac();
+  const runId = runComplet(store);
+  // Ce que l'API rend et ce que décrit `packages/schemas/cockpit.js` ne doivent pas diverger :
+  // le front en tire ses types, les fixtures de la maquette aussi.
+  cockpit.run.array().parse(api.runs(store));
+  cockpit.runDetaille.parse(api.run(store, runId));
+  cockpit.machine.array().parse(api.machines(store));
+  cockpit.evenement.array().parse(api.evenements(store, { runId }));
+  cockpit.topologie.parse(api.topologie(store, { projetsDir: path.join(dir, "rien") }));
+  cockpit.usage.parse(api.usage(store));
 });
 
 // ---- le flux ----
@@ -144,7 +211,7 @@ function serveurDeFlux(store, options = {}) {
 
 function ecouter(port, entetes = {}) {
   const recu = [];
-  const requete = http.get({ host: "127.0.0.1", port, path: "/api/flux", headers: entetes }, (res) => {
+  const requete = http.get({ host: "127.0.0.1", port, path: "/api/stream", headers: entetes }, (res) => {
     res.setEncoding("utf-8");
     res.on("data", (morceau) => {
       for (const ligne of morceau.split("\n")) {
