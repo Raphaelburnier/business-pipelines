@@ -332,3 +332,32 @@ Le plan de la spec suppose un départ de zéro. Avec quatre phases déjà livré
     (qui est aussi publié sur toutes les interfaces) ?
 15. La copie `docs/SPEC-cockpit-agentique.md` du dépôt est l'ancienne version : la remplacer par
     celle du 2026-09-18 ?
+
+## 9. Décisions du 2026-09-18
+
+Réponses de Raphaël aux questions du §8. Là où elles s'écartent de la spec, elles l'emportent
+sur elle.
+
+| # | Question | Décision |
+|---|---|---|
+| 1 | Runner (C1) | Garder l'Agent SDK. Le faux binaire `CLAUDE_BIN` n'est pas exigé : les tests gardent le faux `query` injecté. |
+| 2 | Nœud humain (C2) | `approval`. `gate` reste le juge automatique. |
+| 3 | `maxLoops` (C3) | Par cycle. |
+| 4 | Issue `oriented` (C4) | Gardée pour l'instant. |
+| 5 | TypeScript (C5) | Laissé à Claude. Voir ci-dessous. |
+| 6 | Front (C6) | Refait selon l'annexe A (maquette sur fixtures, React Flow, dagre, arbre de topologie), avec Tailwind ou une autre librairie à la place du « CSS simple ». |
+| 7 | Routes et événements (C7, C8) | Alignés sur la spec. |
+| 8 | Maître (C11) | Service permanent à la phase 5. |
+| 9 | Chat et OmniRoute (C12) | Le chat peut réveiller le PC. |
+| 10 | Checkpoints (C13) | Par lot. |
+| 11 | Veille (C19) | Le worker continue de la demander. |
+| 12 | `homeMachine` par défaut (C16) | `pc`. |
+| 13 | Tailscale sur Windows | À remettre en démarrage automatique. |
+| 14 | Port 4700 | Changer le port par défaut du maître. |
+| 15 | Copie de la spec | Remplacée par la version du 2026-09-18. |
+
+Décision 5, prise par Claude : le front passe en TypeScript strict tout de suite, puisqu'il est
+refait (Vite le compile sans étape en plus). Le moteur reste en JavaScript vérifié par `tsc`
+(`@ts-check` et JSDoc) : ses types viennent déjà des schémas zod par `z.infer` dans le JSDoc, sans
+duplication. Un fichier du moteur passe en `.ts` quand il est réécrit, pas avant. Réécrire du code
+testé et fusionné pour changer son extension coûterait des jours sans rien corriger.
