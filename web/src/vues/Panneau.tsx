@@ -1,10 +1,10 @@
 // Le panneau latéral (§11.2) : ouvert par un clic sur un nœud, jamais en modale, pour que
 // l'arbre reste visible. Trois contenus : un projet, un run, une machine.
 //
-// Pas encore de boutons lancer, pause, stop ni de décision : ils arrivent avec la phase 5.
-// Un bouton qui ne fait rien apprendrait à se méfier des autres.
+// Le lancement est la première action de phase 5. Pause, stop et décisions migreront ici
+// ensuite ; chaque bouton n'apparaît que lorsque son chemin serveur existe réellement.
 import { useMemo, useState } from "react";
-import { useCharge, useHorloge } from "../donnees/contexte";
+import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
 import type { Etape, RunDetaille } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
@@ -30,9 +30,24 @@ export function Panneau({ selection, onSelection, onFermer }: { selection: Selec
 
 function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selection) => void }) {
   const maintenant = useHorloge(5000);
+  const { source } = useSource();
   const topo = useCharge((s) => s.topologie(), []);
   const runs = useCharge((s) => s.runs({ project: id, limite: 5 }), [id]);
   const projet = topo.donnees?.projets.find((p) => p.id === id);
+  const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
+  const [erreurLancement, setErreurLancement] = useState<string | null>(null);
+
+  async function lancer(pipelineIndex: number) {
+    setLancement("sending");
+    setErreurLancement(null);
+    try {
+      await source.lancerRun(id, pipelineIndex);
+      setLancement("sent");
+    } catch (err) {
+      setLancement("idle");
+      setErreurLancement(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   if (topo.erreur) return <Erreur>{topo.erreur}</Erreur>;
   if (!projet) return <p className="text-sm text-douce">Lecture du projet…</p>;
@@ -61,6 +76,26 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
           )}
         </dl>
       </div>
+      {projet.aFiche && projet.pipelines.length > 0 && (
+        <div>
+          <Titre>Lancer</Titre>
+          <div className="flex flex-col gap-2">
+            {projet.pipelines.map((pipeline, index) => (
+              <button
+                key={`${pipeline}:${index}`}
+                type="button"
+                disabled={lancement === "sending" || lancement === "sent"}
+                onClick={() => lancer(index)}
+                className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {lancement === "sending" ? "Envoi…" : lancement === "sent" ? "Run demandé" : `Lancer ${pipeline}`}
+              </button>
+            ))}
+          </div>
+          {lancement === "sent" && <p className="mt-1 text-xs text-ok">Commande signée et mise en file. Le run apparaîtra ci-dessous.</p>}
+          {erreurLancement && <Erreur>{erreurLancement}</Erreur>}
+        </div>
+      )}
       <div>
         <Titre compteur={runs.donnees?.length}>5 derniers runs</Titre>
         {runs.erreur && <Erreur>{runs.erreur}</Erreur>}

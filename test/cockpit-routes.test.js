@@ -65,6 +65,29 @@ function requete(port, chemin, entetes = {}) {
   });
 }
 
+function poster(port, chemin, corps, entetes = {}) {
+  const brut = JSON.stringify(corps);
+  return new Promise((resoudre, rejeter) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        path: chemin,
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(brut), ...entetes },
+      },
+      (res) => {
+        let reponse = "";
+        res.setEncoding("utf-8");
+        res.on("data", (d) => (reponse += d));
+        res.on("end", () => resoudre({ code: res.statusCode, entetes: res.headers, corps: reponse }));
+      }
+    );
+    req.on("error", rejeter);
+    req.end(brut);
+  });
+}
+
 const PORT = 4699;
 
 test("les routes de lecture servent les runs, les machines et le front", async () => {
@@ -79,7 +102,8 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const topo = await requete(PORT, "/api/topology");
     assert.strictEqual(topo.code, 200);
     const lu = JSON.parse(topo.corps);
-    assert.strictEqual(lu.projets.length, 1);
+    assert.strictEqual(lu.projets.some((projet) => projet.id === "marketing"), true);
+    assert.strictEqual(lu.projets.some((projet) => projet.id === "steam-tierlist"), true);
     assert.strictEqual(lu.machines.length >= 1, true);
     // Rien de ce que sert le cockpit ne doit finir dans un cache partagé.
     assert.strictEqual(topo.entetes["cache-control"], "no-store");
@@ -95,6 +119,24 @@ test("les routes de lecture servent les runs, les machines et le front", async (
 
     assert.strictEqual((await requete(PORT, "/api/runs/inconnu")).code, 404);
     assert.strictEqual((await requete(PORT, "/api/machines")).code, 200);
+
+    const lancement = await poster(PORT, "/api/runs", { projectId: "steam-tierlist" });
+    assert.strictEqual(lancement.code, 202);
+    const commandeLancee = JSON.parse(lancement.corps).commande;
+    assert.strictEqual(commandeLancee.statut, "pending");
+    const suivi = await requete(PORT, `/api/commands/${commandeLancee.id}`);
+    assert.strictEqual(suivi.code, 200);
+    assert.strictEqual(JSON.parse(suivi.corps).commande.projet, "steam-tierlist");
+    assert.strictEqual((await requete(PORT, "/api/commands/inconnue")).code, 404);
+    const verification = new EventStore(bac.base);
+    assert.deepStrictEqual(verification.commandes({ statut: "pending" }).map((c) => c.payload.projectId), ["steam-tierlist"]);
+    verification.fermer();
+
+    assert.strictEqual(
+      (await poster(PORT, "/api/runs", { projectId: "../secret" })).code,
+      400,
+      "un identifiant ne peut pas sortir du registre de projets"
+    );
 
     // Une adresse du front avec paramètres reste servie : `/app?v=2` est la même page.
     const avecQuery = await requete(PORT, "/app?v=2");

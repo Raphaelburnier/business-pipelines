@@ -31,6 +31,7 @@ services:
       # Monté en écriture parce que SQLite pose un journal WAL à l'ouverture, même pour
       # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
       - ./etat:/app/etat
+      - ./projects:/app/projects:ro
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
@@ -50,8 +51,34 @@ services:
       - COCKPIT_CONTENEUR=1
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
-    # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
-    # tout le reste du dépôt s'emploie à empêcher.
+      # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
+      # tout le reste du dépôt s'emploie à empêcher.
+
+  # Seul ce service reçoit la clé Anthropic. Le cockpit dépose une commande signée dans
+  # SQLite ; le runner la prend, lance le pipeline, puis consigne son résultat. Cette
+  # séparation empêche le processus exposé au tailnet d'appeler directement un modèle.
+  runner:
+    build: .
+    container_name: business_runner
+    restart: unless-stopped
+    command: ["node", "bin/commande-runner.js"]
+    volumes:
+      - ./etat:/app/etat
+      - ./projects:/app/projects:ro
+      - ./agent-registry:/app/agent-registry:ro
+      - ./workspaces:/app/workspaces
+      - ./logs:/app/logs
+      - /volume1/docker/git:/git
+    environment:
+      - NODE_ENV=production
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_REGISTRE=/app/agent-registry
+      - OUTPUT_ROOT=/app/workspaces
+      - ORCH_ROLE=nas
+    env_file:
+      - ./specs/deploiement.env
+    networks:
+      - business
 
   # Le pipeline marketing, lancé à la demande, jamais en continu :
   #

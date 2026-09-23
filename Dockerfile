@@ -8,7 +8,7 @@ FROM node:22.23-alpine
 # le renvoie vers celui du système, installé ici. Sans ça les outils de recherche d'un agent
 # échouent un par un, ce qui ressemble à un agent qui ne trouve rien plutôt qu'à une image
 # mal construite.
-RUN apk add --no-cache ripgrep
+RUN apk add --no-cache git openssh-client ripgrep
 ENV USE_BUILTIN_RIPGREP=0
 
 WORKDIR /app

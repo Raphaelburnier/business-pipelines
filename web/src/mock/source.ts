@@ -24,6 +24,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     },
     run: async (id: string) => etat().runs.find((r) => r.id === id) ?? null,
     usage: async () => etat().usage,
+    lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.
       let dernier = etat().evenements.at(-1)?.id ?? 0;

@@ -703,12 +703,69 @@ async function traiter(req, res) {
     return json(res, 200, cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
   }
 
+  // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
+  // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
+  // l'event store, que le service runner consomme dans un autre conteneur.
+  if (req.method === "POST" && chemin === "/api/runs") {
+    if (!acces.origineAutorisee(req.headers, PORTEE)) {
+      return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    }
+    const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (type !== "application/json") {
+      return json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    }
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+
+    let brut = "";
+    for await (const morceau of req) {
+      brut += morceau;
+      if (brut.length > 20_000) return json(res, 413, { erreur: "corps trop gros" });
+    }
+    try {
+      const demande = JSON.parse(brut);
+      const commande = magasinOuvert.creerCommande({
+        kind: "run.start",
+        payload: {
+          projectId: demande.projectId,
+          pipelineIndex: demande.pipelineIndex,
+          llmOverrides: demande.llmOverrides,
+        },
+        par: qui.par,
+        canal: qui.canal,
+      });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) {
+      return json(res, 400, { erreur: err.message });
+    }
+  }
+
   // ---- lecture des runs (§10) ----
   //
   // Derrière le même contrôle d'identité que le reste : ce que le cockpit montre d'un run,
   // ce sont des prompts, des coûts et des noms de machines. Les routes et leurs paramètres
   // suivent la spec (décision 7 du 2026-09-18).
   const lecture = req.method === "GET" ? new URL(req.url, "http://cockpit") : null;
+
+  if (lecture && lecture.pathname.startsWith("/api/commands/")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const id = decodeURIComponent(lecture.pathname.slice("/api/commands/".length));
+    const commande = magasinOuvert.commande(id);
+    if (!commande) return json(res, 404, { erreur: "commande inconnue" });
+    return json(res, 200, {
+      commande: {
+        id: commande.id,
+        type: commande.kind,
+        statut: commande.status,
+        projet: commande.payload.projectId,
+        creeeLe: commande.created_at,
+        priseLe: commande.taken_at,
+        termineeLe: commande.done_at,
+        resultat: commande.resultat,
+      },
+    });
+  }
 
   if (lecture && lecture.pathname.startsWith("/api/runs")) {
     const magasinOuvert = store();

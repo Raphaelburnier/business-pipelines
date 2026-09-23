@@ -1,0 +1,17 @@
+{
+  "project_name": "steam-tierlist",
+  "task": "Choisir et livrer une amélioration utile et visible de Steam TierList après avoir audité son état actuel.",
+  "priorities": [
+    "utilisabilité sur téléphone",
+    "gestion claire des erreurs Steam",
+    "fiabilité de la sauvegarde locale",
+    "couverture de test des comportements critiques"
+  ],
+  "constraints": [
+    "une seule amélioration cohérente par run",
+    "conserver React, Vite, Express et le chemin public /steam/",
+    "ne jamais lire ni afficher server/.env",
+    "ne pas ajouter de compte utilisateur, de base de données ou de nouveau secret",
+    "npm test doit rester vert"
+  ]
+}

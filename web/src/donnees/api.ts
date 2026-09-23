@@ -21,6 +21,20 @@ async function lire<T>(chemin: string): Promise<T> {
   return corps as T;
 }
 
+async function ecrire<T>(chemin: string, corps: unknown): Promise<T> {
+  const reponse = await fetch(chemin, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(corps),
+  });
+  const lu: unknown = await reponse.json().catch(() => ({ erreur: "réponse illisible" }));
+  if (!reponse.ok) {
+    const message = lu && typeof lu === "object" && "erreur" in lu && typeof lu.erreur === "string" ? lu.erreur : `${reponse.status}`;
+    throw new ErreurApi(message, reponse.status);
+  }
+  return lu as T;
+}
+
 export function sourceApi(): Source {
   return {
     nom: "api",
@@ -42,6 +56,10 @@ export function sourceApi(): Source {
       }
     },
     usage: () => lire<Usage>("/api/usage"),
+    async lancerRun(projectId, pipelineIndex = 0) {
+      const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", { projectId, pipelineIndex });
+      return reponse.commande;
+    },
     ecouter(surEvenement, surConnexion, runId) {
       // `EventSource` reconnecte seul et renvoie `Last-Event-ID` : une coupure ne perd rien,
       // le serveur reprend après le dernier événement reçu.

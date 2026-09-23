@@ -21,6 +21,7 @@ export interface Source {
   runs(filtre?: FiltreRuns): Promise<Run[]>;
   run(id: string): Promise<RunDetaille | null>;
   usage(): Promise<Usage>;
+  lancerRun(projectId: string, pipelineIndex?: number): Promise<{ id: string; statut: string }>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }

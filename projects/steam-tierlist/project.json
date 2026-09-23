@@ -1,0 +1,15 @@
+{
+  "id": "steam-tierlist",
+  "name": "Steam TierList",
+  "business": "outils-perso",
+  "homeMachine": "nas",
+  "repo": "/git/steam-tierlist.git",
+  "pipelines": [
+    {
+      "extends": "improve-app@1",
+      "spec": "improvement.json",
+      "overrides": { "nodes": {} },
+      "budget": { "usdPerRun": 3, "usdPerMonth": 15 }
+    }
+  ]
+}
