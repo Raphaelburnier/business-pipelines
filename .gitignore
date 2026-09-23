@@ -54,3 +54,6 @@ approvals/*.sqlite-shm
 etat/
 web/node_modules/
 web/dist/
+
+# Coffre Vaultwarden : il vit sur le NAS et se sauvegarde par Hyper Backup, jamais par git.
+nas/vaultwarden/data/

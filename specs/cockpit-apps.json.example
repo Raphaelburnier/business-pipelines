@@ -21,6 +21,11 @@
       "nom": "tcg-generator",
       "url": "http://192.168.1.18:4700",
       "description": "Générateur de cartes, première app sortie du générateur de SaaS"
+    },
+    {
+      "nom": "vaultwarden",
+      "url": "https://nas.tail8296f6.ts.net:8443",
+      "description": "Mots de passe, par Tailscale uniquement"
     }
   ]
 }
