@@ -51,8 +51,8 @@ services:
       - COCKPIT_CONTENEUR=1
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
-      # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
-      # tout le reste du dépôt s'emploie à empêcher.
+    # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
+    # tout le reste du dépôt s'emploie à empêcher.
 
   # Seul ce service reçoit la clé Anthropic. Le cockpit dépose une commande signée dans
   # SQLite ; le runner la prend, lance le pipeline, puis consigne son résultat. Cette
@@ -68,7 +68,10 @@ services:
       - ./agent-registry:/app/agent-registry:ro
       - ./workspaces:/app/workspaces
       - ./logs:/app/logs
-      - /volume1/docker/git:/git
+      # Un dépôt par projet, jamais le dossier entier : les agents de ce conteneur ont Bash,
+      # et monter /volume1/docker/git leur donnait les dépôts de tous les autres projets.
+      # Monté en écriture, parce que le run pousse sa branche run/<runId>.
+      - /volume1/docker/git/steam-tierlist.git:/git/steam-tierlist.git
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
