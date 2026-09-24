@@ -11,21 +11,21 @@ import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { SelecteurModele } from "./SelecteurModele";
 
-export function Panneau({ selection, onSelection, onFermer }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void }) {
+export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
-    <aside className="flex h-full flex-col gap-3 overflow-y-auto rounded-xl border border-trait bg-surface p-3">
+    <section className={`flex h-full flex-col gap-4 overflow-y-auto rounded-xl border border-trait bg-surface p-4 ${modePage ? "detail-page" : ""}`}>
       <div className="flex items-center">
         <span className="text-xs font-bold uppercase tracking-wider text-douce">
           {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : "Machine"}
         </span>
         <button type="button" onClick={onFermer} className="ml-auto rounded px-2 py-0.5 text-xs text-douce hover:text-accent" aria-label="Fermer le panneau">
-          fermer
+          {modePage ? "← Retour au graphe" : "fermer"}
         </button>
       </div>
       {selection.type === "projet" && <PanneauProjet id={selection.id} onSelection={onSelection} />}
       {selection.type === "run" && <PanneauRun id={selection.id} />}
       {selection.type === "machine" && <PanneauMachine id={selection.id} />}
-    </aside>
+    </section>
   );
 }
 
@@ -52,7 +52,8 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
   }
 
   if (topo.erreur) return <Erreur>{topo.erreur}</Erreur>;
-  if (!projet) return <p className="text-sm text-douce">Lecture du projet…</p>;
+  if (!topo.donnees) return <p className="text-sm text-douce">Lecture du projet…</p>;
+  if (!projet) return <Erreur>Projet inconnu : {id}</Erreur>;
   return (
     <>
       <div>
@@ -159,7 +160,7 @@ function PanneauRun({ id }: { id: string }) {
               </div>
             </div>
           ))}
-          <a className="mt-1 inline-block text-xs font-semibold text-accent underline" href="/">
+          <a className="mt-1 inline-block text-xs font-semibold text-accent underline" href="/decisions">
             Aller décider
           </a>
         </div>

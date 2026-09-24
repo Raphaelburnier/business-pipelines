@@ -86,7 +86,7 @@ const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
 // rouvrir la base à chaque requête coûterait un verrou à chaque rafraîchissement de page.
 // Une base absente ou illisible ne tue pas le cockpit — les décisions d'approbation, elles,
 // ne dépendent pas d'elle et doivent rester accessibles.
-// Le front buildé (web/dist). Absent, la page /app le dit : un 404 muet laisserait croire
+// Le front buildé (web/dist). Absent, la racine le dit : un 404 muet laisserait croire
 // à une route cassée alors qu'il manque une commande de build.
 const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
 
@@ -432,9 +432,14 @@ body{font:16px/1.55 var(--police-texte);color:var(--encre);background:var(--fond
 
 /* ---- en-tête ---- */
 .entete{margin-bottom:1.1rem}
+.entete-ligne{display:flex;align-items:center;justify-content:space-between;gap:1rem}
 .marque{font-family:var(--police-titre);font-weight:var(--graisse-titre);
   letter-spacing:var(--serrage);font-size:1.7rem;line-height:1.1}
 .qui{color:var(--encre-douce);font-size:.875rem;margin:.3rem 0 0}
+.retour-graphe{color:var(--accent);font-size:.85rem;font-weight:700;text-decoration:none;
+  border:1px solid var(--trait);border-radius:9px;padding:.45rem .7rem;background:var(--surface)}
+.retour-graphe:hover{border-color:var(--accent)}
+.retour-graphe:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---- bandeau d'accueil ---- */
 .bandeau{display:flex;align-items:center;gap:1rem;min-height:76px;
@@ -573,7 +578,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 }
 </style>
 <header class="entete">
-  <div class="marque">Cockpit</div>
+  <div class="entete-ligne"><div class="marque">Décisions</div><a class="retour-graphe" href="/">← Graphe</a></div>
   <p class="qui">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.</p>
 </header>
 ${bandeau(etat)}
@@ -677,17 +682,24 @@ async function traiter(req, res) {
     }
   }
 
-  // Le cockpit en lecture (phase 4). La page d'approbation garde la racine : les deux
-  // cohabitent le temps que celle-ci reprenne aussi les décisions.
-  // Le chemin, pas l'URL : `/app?v=2` est la même page que `/app`. Comparer l'URL entière
-  // renvoyait « route inconnue » dès qu'un lien portait le moindre paramètre.
+  // Le cockpit React est l'entrée principale. Les objets ont une vraie route afin qu'un
+  // clic dans le graphe ouvre une page partageable ; l'ancien /app reste un alias.
   const chemin = req.url.split("?")[0];
+  const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin.startsWith("/projects/") || chemin.startsWith("/runs/") || chemin.startsWith("/machines/") ||
+    chemin.startsWith("/assets/");
   if (req.method === "GET" && (chemin === "/app" || chemin.startsWith("/app/"))) {
+    // La query suit : `/app/?source=maquette` doit rester la maquette après la redirection.
+    const suite = req.url.slice(chemin.length);
+    res.writeHead(308, { Location: `/${suite}`, ...DURCISSEMENT });
+    return res.end();
+  }
+  if (req.method === "GET" && routeWeb) {
     if (!statique.present(WEB)) {
       res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8", ...DURCISSEMENT });
       return res.end(`Front non construit. Lancer : npm run web:build\nAttendu dans ${WEB}\n`);
     }
-    const r = statique.ressource({ racine: WEB, url: req.url });
+    const r = statique.ressource({ racine: WEB, prefixe: "/", url: req.url });
     if (!r) return json(res, 404, { erreur: "fichier inconnu" });
     res.writeHead(200, {
       "Content-Type": r.type,
@@ -698,7 +710,7 @@ async function traiter(req, res) {
     return res.end(r.corps);
   }
 
-  if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
+  if (req.method === "GET" && (chemin === "/decisions" || chemin === "/decisions/")) {
     const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...DURCISSEMENT });
     return res.end(html);

@@ -180,20 +180,29 @@ test("les routes de lecture servent les runs, les machines et le front", async (
       "OmniRoute est accepté quand le PC qui le sert est en ligne"
     );
 
-    // Une adresse du front avec paramètres reste servie : `/app?v=2` est la même page.
-    const avecQuery = await requete(PORT, "/app?v=2");
+    // Une adresse du front avec paramètres reste servie : `/?v=2` est la même page.
+    const avecQuery = await requete(PORT, "/?v=2");
     const attendu = fs.existsSync(path.join(RACINE, "web", "dist", "index.html")) ? 200 : 503;
-    assert.strictEqual(avecQuery.code, attendu, "/app?v=2 doit être traité comme /app");
+    assert.strictEqual(avecQuery.code, attendu, "/?v=2 doit être traité comme /");
 
-    // Le front : construit, il est servi ; absent, le cockpit le DIT au lieu d'un 404 muet.
-    const app = await requete(PORT, "/app");
+    // Le front : construit, il est servi à la racine et sur les pages de détail. L'ancien
+    // /app redirige sans garder deux architectures concurrentes.
+    const app = await requete(PORT, "/");
     if (fs.existsSync(path.join(RACINE, "web", "dist", "index.html"))) {
       assert.strictEqual(app.code, 200);
       assert.match(app.entetes["content-type"], /text\/html/);
+      assert.strictEqual((await requete(PORT, "/projects/steam-tierlist")).code, 200);
     } else {
       assert.strictEqual(app.code, 503);
       assert.match(app.corps, /npm run web:build/);
     }
+    const ancien = await requete(PORT, "/app");
+    assert.strictEqual(ancien.code, 308);
+    assert.strictEqual(ancien.entetes.location, "/");
+    // Un ancien lien vers la maquette doit encore ouvrir la maquette.
+    const maquette = await requete(PORT, "/app/?source=maquette");
+    assert.strictEqual(maquette.entetes.location, "/?source=maquette");
+    assert.strictEqual((await requete(PORT, "/decisions")).code, 200);
   } finally {
     cockpit.kill();
   }
@@ -231,7 +240,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/runs", "/api/machines", "/api/stream", "/app"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/runs", "/api/machines", "/api/stream", "/", "/app", "/decisions"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);

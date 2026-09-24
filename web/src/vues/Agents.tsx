@@ -71,7 +71,14 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
             </thead>
             <tbody>
               {visibles.map((l) => (
-                <tr key={l.id} className="cursor-pointer border-t border-trait bg-carte hover:bg-fond" onClick={() => onSelection({ type: "run", id: l.run.id })}>
+                <tr
+                  key={l.id}
+                  className="cursor-pointer border-t border-trait bg-carte hover:bg-fond"
+                  onClick={() => onSelection({ type: "run", id: l.run.id })}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelection({ type: "run", id: l.run.id }); }}
+                  role="link"
+                  tabIndex={0}
+                >
                   <td className="px-2 py-1.5">
                     <div className="font-mono">{l.agent ?? l.type}</div>
                     <div className="text-[11px] text-douce">

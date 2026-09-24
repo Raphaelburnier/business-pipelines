@@ -1,36 +1,35 @@
 @import "tailwindcss";
 
-/* La même direction artistique que la page d'approbation : ivoire et terre cuite en clair,
-   noir et violet en sombre. Les deux pages du cockpit se ressemblent parce qu'elles sont
-   le même outil, et chaque paire texte / fond a été mesurée au-dessus de 4.5:1. */
+/* Une console d'exploitation froide et lisible : givre, encre et signal turquoise. Le rail
+   reprend la forme d'un bus de messages, l'objet propre à cet orchestrateur. */
 @theme {
-  --color-fond: #eae4d7;
-  --color-surface: #fffdf8;
+  --color-fond: #eaf0f1;
+  --color-surface: #f8fbfa;
   --color-carte: #ffffff;
-  --color-encre: #1e1a14;
-  --color-douce: #5a5145;
-  --color-trait: #ddd5c6;
-  --color-accent: #a5422a;
-  --color-bleu: #2f5c8a;
+  --color-encre: #142126;
+  --color-douce: #52646b;
+  --color-trait: #cbd6d8;
+  --color-accent: #087b83;
+  --color-bleu: #315b7c;
   --color-ok: #2f6b3f;
   --color-ok-fond: #e4efe3;
   --color-danger: #a8362a;
   --color-danger-fond: #f8e4e0;
   --color-alerte: #7d5510;
   --color-alerte-fond: #f6ebd5;
-  --font-titre: ui-serif, Georgia, "Times New Roman", serif;
+  --font-titre: "Arial Narrow", "Roboto Condensed", "Aptos Narrow", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   @theme {
-    --color-fond: #09090c;
-    --color-surface: #141419;
-    --color-carte: #23232e;
-    --color-encre: #f3f3f6;
-    --color-douce: #a5a5b3;
-    --color-trait: #3a3a49;
-    --color-accent: #a78bfa;
-    --color-bleu: #7db3f5;
+    --color-fond: #0b1418;
+    --color-surface: #111e23;
+    --color-carte: #17272d;
+    --color-encre: #edf7f6;
+    --color-douce: #9ab0b5;
+    --color-trait: #30454b;
+    --color-accent: #67d4d0;
+    --color-bleu: #8db6d2;
     --color-ok: #5fd08a;
     --color-ok-fond: #12301f;
     --color-danger: #f58a7c;
@@ -43,13 +42,118 @@
 
 html {
   color-scheme: light dark;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
+  width: 100%;
+  overflow: hidden;
   background-color: var(--color-fond);
   color: var(--color-encre);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.cockpit-shell {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  min-height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+}
+.cockpit-nav {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--color-trait);
+  background: var(--color-surface);
+  padding: 1.1rem .85rem;
+}
+.marque-cockpit {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  color: var(--color-encre);
+  text-decoration: none;
+}
+.marque-cockpit > span:last-child { display: flex; flex-direction: column; line-height: 1; }
+.marque-cockpit b { font-family: var(--font-titre); font-size: 1.25rem; letter-spacing: .12em; }
+.marque-cockpit small { margin-top: .2rem; color: var(--color-douce); font: 600 .62rem/1 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+.marque-signal {
+  width: .72rem;
+  height: .72rem;
+  border: 2px solid var(--color-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+.nav-bus {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-top: 2rem;
+  padding-left: .25rem;
+}
+.nav-bus::before {
+  position: absolute;
+  top: .8rem;
+  bottom: .8rem;
+  left: .58rem;
+  width: 1px;
+  background: var(--color-trait);
+  content: "";
+}
+.nav-lien {
+  position: relative;
+  display: flex;
+  min-height: 2.55rem;
+  align-items: center;
+  gap: .72rem;
+  border-radius: .5rem;
+  padding: .55rem .55rem;
+  color: var(--color-douce);
+  font-size: .82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.nav-lien:hover, .nav-lien[aria-current="page"] { background: var(--color-fond); color: var(--color-encre); }
+.nav-lien:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.nav-point { z-index: 1; width: .45rem; height: .45rem; flex: none; border: 1px solid var(--color-douce); border-radius: 50%; background: var(--color-surface); }
+.nav-lien[aria-current="page"] .nav-point { border-color: var(--color-accent); background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.nav-legende { margin-top: auto; color: var(--color-douce); font: 600 .62rem/1 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.cockpit-corps { display: grid; min-width: 0; min-height: 100dvh; grid-template-rows: auto minmax(0, 1fr); }
+.cockpit-entete { display: flex; align-items: end; gap: 2rem; border-bottom: 1px solid var(--color-trait); padding: .85rem 1.2rem; background: color-mix(in srgb, var(--color-surface) 88%, transparent); }
+.cockpit-entete h1 { margin: .1rem 0 0; font-family: var(--font-titre); font-size: clamp(1.35rem, 2vw, 1.8rem); letter-spacing: -.015em; }
+.sur-titre { color: var(--color-accent); font: 700 .64rem/1.2 ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+.cockpit-mesures { min-width: 0; flex: 1; }
+.cockpit-contenu { min-width: 0; min-height: 0; padding: .85rem; }
+.detail-page { width: min(100%, 72rem); margin-inline: auto; }
+.page-vide { width: min(100%, 34rem); margin: 12vh auto 0; border: 1px solid var(--color-trait); border-radius: .75rem; background: var(--color-surface); padding: 2rem; }
+.page-vide h2 { font-family: var(--font-titre); }
+.page-vide button { border: 0; border-radius: .5rem; background: var(--color-accent); color: white; padding: .7rem 1rem; font-weight: 700; }
+
+@media (max-width: 720px) {
+  .cockpit-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .cockpit-nav { width: 100vw; max-width: 100vw; flex-direction: row; align-items: center; gap: .7rem; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--color-trait); padding: calc(.7rem + env(safe-area-inset-top)) .75rem .7rem; }
+  .marque-cockpit small, .nav-legende, .nav-bus::before { display: none; }
+  .nav-bus { min-width: 0; flex: 1; flex-direction: row; justify-content: flex-end; gap: .1rem; margin: 0; padding: 0; }
+  .nav-lien { min-height: 2.25rem; gap: .38rem; padding: .45rem .5rem; font-size: .75rem; }
+  .nav-point { width: .36rem; height: .36rem; }
+  .cockpit-corps { width: 100vw; min-width: 0; min-height: 0; height: calc(100dvh - 4.35rem); overflow: hidden; }
+  .cockpit-entete { display: block; padding: .65rem .85rem; }
+  .cockpit-mesures { margin-top: .5rem; }
+  .cockpit-contenu { padding: .55rem; }
+}
+
+@media (max-width: 480px) {
+  .cockpit-nav { gap: .35rem; }
+  .marque-cockpit { gap: 0; }
+  .marque-signal, .nav-point { display: none; }
+  .marque-cockpit b { font-size: 1rem; letter-spacing: .08em; }
+  .nav-bus { justify-content: flex-end; }
+  .nav-lien { flex: 0 0 auto; min-height: 2rem; padding: .38rem .4rem; font-size: .68rem; }
 }
 
 /* Une étape qui tourne respire. Discrètement, et jamais pour quelqu'un qui a demandé
