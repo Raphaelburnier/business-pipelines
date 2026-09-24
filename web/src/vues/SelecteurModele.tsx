@@ -114,6 +114,7 @@ export function SelecteurModele({ choix, onChoix, desactive = false }: { choix: 
                             >
                               <span className="max-w-[65%] shrink-0 truncate">{m.nom}</span>
                               <span className="min-w-0 truncate text-[11px] text-douce">{capacites(m)}</span>
+                              {classement.annotations[m.id] && <span className="ml-auto whitespace-nowrap text-[11px] text-alerte">{classement.annotations[m.id]}</span>}
                               {MENTION_ETAT[m.etat] && <span className={`ml-auto whitespace-nowrap text-[11px] ${MENTION_ETAT[m.etat]?.classe}`}>{MENTION_ETAT[m.etat]?.texte}</span>}
                             </button>
                           </li>

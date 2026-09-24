@@ -8,7 +8,7 @@ services:
   cockpit:
     build: .
     container_name: business_cockpit
-    restart: unless-stopped
+    restart: always
     ports:
       # Boucle locale de l'hôte uniquement. Écrire "4600:4600" publierait le cockpit sur
       # tout le réseau, et n'importe quelle machine du LAN pourrait alors fabriquer
@@ -35,6 +35,8 @@ services:
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_MACHINE=nas
+      - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
       # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
@@ -60,7 +62,7 @@ services:
   runner:
     build: .
     container_name: business_runner
-    restart: unless-stopped
+    restart: always
     command: ["node", "bin/commande-runner.js"]
     volumes:
       - ./etat:/app/etat
@@ -72,13 +74,37 @@ services:
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_MACHINE=nas
       - ORCH_REGISTRE=/app/agent-registry
+      - ORCH_WORKERS=/app/specs/workers.json
+      - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
       - OUTPUT_ROOT=/app/workspaces
       - ORCH_ROLE=nas
     env_file:
       - ./specs/deploiement.env
-    networks:
-      - business
+    # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve
+    # l'adresse source du worker pour `tailscale whois` et permet aussi le broadcast WoL.
+    network_mode: host
+    depends_on:
+      - tailscale-whois
+
+  # Le runner exécute du code produit par des agents : lui monter le socket LocalAPI de
+  # Tailscale lui donnerait bien plus que `whois`. Ce relais séparé possède le socket mais
+  # n'expose qu'une lecture d'identité sur 127.0.0.1.
+  tailscale-whois:
+    build: .
+    container_name: business_tailscale_whois
+    restart: always
+    command: ["node", "/agent-orchestrator/bin/orch-whois-proxy.js"]
+    volumes:
+      - /var/packages/Tailscale/target/bin/tailscale:/usr/local/bin/tailscale:ro
+      - /var/packages/Tailscale/var/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+    environment:
+      - NODE_ENV=production
+      - ORCH_TAILSCALE_SOCKET=/var/run/tailscale/tailscaled.sock
+      - ORCH_WHOIS_PROXY_HOTE=127.0.0.1
+      - ORCH_WHOIS_PROXY_PORT=4651
+    network_mode: host
 
   # Le pipeline marketing, lancé à la demande, jamais en continu :
   #

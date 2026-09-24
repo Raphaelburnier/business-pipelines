@@ -36,7 +36,11 @@ export function catalogueMaquette(maintenant: number): ReponseModeles {
     },
     ageSecondes: 90,
     perime: false,
-    viaRunner: ["claude", "omniroute"],
+    viaParMachine: { nas: ["claude"], pc: ["claude", "omniroute"] },
+    machines: [
+      { machine: "nas", nom: "NAS", etat: "online", dernierHeartbeat: new Date(maintenant).toISOString(), depuisSecondes: 0, meta: null },
+      { machine: "pc", nom: "PC", etat: "online", dernierHeartbeat: new Date(maintenant).toISOString(), depuisSecondes: 0, meta: { mac: "aa:bb:cc:dd:ee:ff" } },
+    ],
     raison: null,
   };
 }

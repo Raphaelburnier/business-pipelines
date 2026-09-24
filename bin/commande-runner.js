@@ -10,7 +10,7 @@ const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
 const STORE = process.env.ORCH_EVENT_STORE || path.join(RACINE, "etat", "events.sqlite");
 const INTERVALLE = Number(process.env.COMMAND_POLL_MS || 1000);
-const CODES_ATTENDUS = new Set([0, 75, 76]);
+const CODES_ATTENDUS = new Set([0, 75, 76, 77]);
 
 let arret = false;
 let enfant = null;
@@ -33,6 +33,7 @@ function lancer(commande) {
     fichier,
     "--pipeline",
     String(commande.payload.pipelineIndex),
+    "--distribue",
   ];
   for (const [noeud, llm] of Object.entries(commande.payload.llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);

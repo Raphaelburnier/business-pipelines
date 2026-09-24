@@ -18,10 +18,10 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-function base() {
+function base({ avecPc = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "routes-"));
   const store = new EventStore(path.join(dir, "events.sqlite"));
-  store.majMachine({ id: "pc", state: "online", heartbeat: true });
+  if (avecPc) store.majMachine({ id: "pc", state: "online", heartbeat: true, meta: { mac: "aa:bb:cc:dd:ee:ff" } });
   const runId = store.creerRun({ pipelineRef: "marketing@1", projectId: "marketing", trigger: "test" });
   const etape = store.creerEtape({ runId, nodeId: "economie", type: "agent", machineId: "pc" });
   store.majEtape(etape, { status: "succeeded", estCostUsd: 0.2 });
@@ -142,11 +142,12 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual((await requete(PORT, "/api/runs?status=fini")).code, 400, "un statut inconnu est une faute de requête");
     assert.strictEqual((await requete(PORT, "/api/usage")).code, 200);
 
-    // Le relevé poussé par le PC est servi tel quel, avec son âge et les backends du runner.
+    // Le relevé poussé par le PC est servi avec son âge, les backends par machine et leur état.
     const reponseModeles = JSON.parse((await requete(PORT, "/api/modeles")).corps);
     modeles.reponse.parse(reponseModeles);
     assert.strictEqual(reponseModeles.catalogue.modeles[0].id, "omniroute:agentic-code");
-    assert.deepStrictEqual(reponseModeles.viaRunner, ["claude"]);
+    assert.deepStrictEqual(reponseModeles.viaParMachine, { nas: ["claude"], pc: ["claude", "omniroute"] });
+    assert.strictEqual(reponseModeles.machines.some((m) => m.machine === "pc" && m.etat === "online"), true);
     assert.strictEqual(reponseModeles.perime, true, "un relevé de 2026-01-01 est périmé");
 
     const run = await requete(PORT, `/api/runs/${bac.runId}`);
@@ -175,8 +176,8 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     );
     assert.strictEqual(
       (await poster(PORT, "/api/runs", { projectId: "steam-tierlist", llmOverrides: { "*": { via: "omniroute", model: "agentic-code" } } })).code,
-      400,
-      "un backend que le runner ne joint pas est refusé avant la mise en file"
+      202,
+      "OmniRoute est accepté quand le PC qui le sert est en ligne"
     );
 
     // Une adresse du front avec paramètres reste servie : `/app?v=2` est la même page.
@@ -193,6 +194,27 @@ test("les routes de lecture servent les runs, les machines et le front", async (
       assert.strictEqual(app.code, 503);
       assert.match(app.corps, /npm run web:build/);
     }
+  } finally {
+    cockpit.kill();
+  }
+});
+
+test("un run OmniRoute est refusé avant la file quand le PC n'est pas enregistré", async () => {
+  const bac = base({ avecPc: false });
+  const cockpit = await demarrer({
+    COCKPIT_PORT: String(PORT + 3),
+    APPROVALS_DIR: path.join(bac.dir, "approvals"),
+    ORCH_EVENT_STORE: bac.base,
+    COCKPIT_OPERATEUR_LOCAL: "test",
+    COCKPIT_CATALOGUE_MODELES: releve(bac.dir),
+  });
+  try {
+    const lancement = await poster(PORT + 3, "/api/runs", {
+      projectId: "steam-tierlist",
+      llmOverrides: { "*": { via: "omniroute", model: "agentic-code" } },
+    });
+    assert.strictEqual(lancement.code, 400);
+    assert.match(JSON.parse(lancement.corps).erreur, /pc.*non enregistrée/);
   } finally {
     cockpit.kill();
   }

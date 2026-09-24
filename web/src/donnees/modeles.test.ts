@@ -14,10 +14,19 @@ describe("classement du sélecteur", () => {
     });
   });
 
-  test("un runner qui ne joint pas OmniRoute ne peut rien en prendre", () => {
-    const c = classer({ ...reponse, viaRunner: ["claude"] });
+  test("un PC absent empêche de choisir OmniRoute", () => {
+    const c = classer({ ...reponse, machines: reponse.machines.filter((m) => m.machine !== "pc") });
     expect(c.utilisables).toEqual([]);
-    expect(c.indisponibles.every((i) => i.raison.startsWith("non joignable"))).toBe(true);
+    expect(c.indisponibles.every((i) => i.raison.includes("non enregistrée"))).toBe(true);
+  });
+
+  test("un PC endormi mais réveillable garde OmniRoute utilisable et l'annonce", () => {
+    const c = classer({
+      ...reponse,
+      machines: reponse.machines.map((m) => (m.machine === "pc" ? { ...m, etat: "sleeping" as const } : m)),
+    });
+    expect(c.utilisables.length).toBeGreaterThan(0);
+    expect(c.annotations["omniroute:agentic-code"]).toBe("réveillera le PC");
   });
 
   test("la recherche porte sur le nom, l'identifiant et le fournisseur", () => {

@@ -1,0 +1,11 @@
+[Unit]
+Description=Publie le catalogue OmniRoute vers le cockpit NAS
+After=network-online.target omniroute.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/code/Raphaelburnier/business-pipelines
+Environment=PATH=%h/.local/bin:%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/business-pipelines/modeles.env
+ExecStart=%h/code/Raphaelburnier/business-pipelines/bin/publier-modeles.sh

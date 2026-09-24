@@ -1,0 +1,10 @@
+[Unit]
+Description=Relève les modèles OmniRoute toutes les deux minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=modeles-cockpit.service
+
+[Install]
+WantedBy=timers.target

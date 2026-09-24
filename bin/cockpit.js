@@ -93,10 +93,10 @@ const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
 // Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
 // tire les catégories et les projets.
 const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
-// Le relevé des modèles poussé par le PC, et les backends que le runner de CETTE machine
-// sait joindre. Sur le NAS, seul `claude` (clé API) : OmniRoute vit sur le PC.
+// Le relevé des modèles poussé par le PC, et les backends joignables par chaque machine.
+// Sur le NAS, `claude` vient de la clé du runner ; OmniRoute reste local au worker PC.
 const CATALOGUE_MODELES = ENV.COCKPIT_CATALOGUE_MODELES || path.join(RACINE, "etat", "modeles.json");
-const VIA_RUNNER = (ENV.COCKPIT_VIA_RUNNER || "claude").split(",").map((v) => v.trim()).filter(Boolean);
+const VIA_PAR_MACHINE = catalogueModeles.lireViaParMachine(ENV.COCKPIT_VIA_MACHINES);
 
 let magasin = null;
 let magasinErreur = null;
@@ -729,11 +729,16 @@ async function traiter(req, res) {
     }
     try {
       const demande = JSON.parse(brut);
-      // Un modèle que le runner ne sait pas joindre échouerait au premier nœud, après la
-      // mise en file : autant le refuser ici, avec la raison.
+      // Un modèle sans machine capable de le servir échouerait au premier nœud, après la
+      // mise en file : autant le refuser ici, avec la raison. Une machine endormie mais
+      // munie d'une adresse WoL reste utilisable : le maître la réveillera.
+      const etatMachines = api.machines(magasinOuvert);
       for (const llm of Object.values(demande.llmOverrides || {})) {
-        if (llm && !VIA_RUNNER.includes(llm.via)) {
-          return json(res, 400, { erreur: `backend « ${llm.via} » non joignable depuis le runner (${VIA_RUNNER.join(", ")})` });
+        if (llm) {
+          const disponibilite = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine: VIA_PAR_MACHINE, machines: etatMachines });
+          if (!disponibilite.utilisable) {
+            return json(res, 400, { erreur: `backend « ${llm.via} » indisponible : ${disponibilite.raison}` });
+          }
         }
       }
       const commande = magasinOuvert.creerCommande({
@@ -822,7 +827,16 @@ async function traiter(req, res) {
   }
 
   if (lecture && lecture.pathname === "/api/modeles") {
-    return json(res, 200, catalogueModeles.lireCatalogue(CATALOGUE_MODELES, { viaRunner: VIA_RUNNER }));
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(
+      res,
+      200,
+      catalogueModeles.lireCatalogue(CATALOGUE_MODELES, {
+        viaParMachine: VIA_PAR_MACHINE,
+        machines: api.machines(magasinOuvert),
+      })
+    );
   }
 
   // Le flux temps réel. Il ne rend jamais la main tant que le client écoute : la réponse
