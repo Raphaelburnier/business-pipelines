@@ -54,6 +54,7 @@ function NoeudCockpit({ data }: NodeProps<Node<DonneesNoeud>>) {
         <span className="truncate text-sm font-semibold">
           {n.maitre?.nom ?? n.machine?.nom ?? n.machine?.machine ?? n.categorie?.nom ?? n.projet?.nom}
         </span>
+        {(n.projet || n.machine) && <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-accent">ouvrir →</span>}
         {n.plie && n.masques > 0 && (
           <span className="ml-auto rounded-full bg-fond px-1.5 text-[10px] font-bold text-douce">+{n.masques}</span>
         )}

@@ -1,85 +1,109 @@
-// Le cockpit : deux vues (topologie, agents), une barre commune, un panneau latéral.
-//
-// L'éditeur de pipelines est la troisième vue de la spec ; il arrive en phase 6 et n'a pas
-// d'onglet d'ici là. Un onglet qui ne mène nulle part apprendrait à se méfier des autres.
-//
-// La vue et la sélection vivent dans le fragment d'URL : recharger la page, ou envoyer le
-// lien depuis le téléphone, garde ce qu'on regardait.
-import { useCallback, useEffect, useState } from "react";
+// Le cockpit principal. Les vues ont de vraies URL : un nœud du graphe ouvre une page
+// partageable, et le bouton Retour du navigateur ramène exactement où l'opérateur était.
+import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { FournisseurSource } from "./donnees/contexte";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
 import { Barre } from "./vues/Barre";
 import { Panneau } from "./vues/Panneau";
 
-type Vue = "topologie" | "agents";
+type Route =
+  | { type: "graph" }
+  | { type: "agents" }
+  | { type: "detail"; selection: Selection }
+  | { type: "inconnue" };
 
-function lireAdresse(): { vue: Vue; selection: Selection | null } {
-  const [vue, type, id] = window.location.hash.replace(/^#\/?/, "").split("/");
-  const v: Vue = vue === "agents" ? "agents" : "topologie";
-  if ((type === "projet" || type === "run" || type === "machine") && id) {
-    return { vue: v, selection: { type, id: decodeURIComponent(id) } };
-  }
-  return { vue: v, selection: null };
+function lireRoute(): Route {
+  const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
+  if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
+  const correspondances: Record<string, Selection["type"]> = { projects: "projet", runs: "run", machines: "machine" };
+  const type = correspondances[morceaux[0] ?? ""];
+  if (type && morceaux[1]) return { type: "detail", selection: { type, id: decodeURIComponent(morceaux[1]) } as Selection };
+  return { type: "inconnue" };
 }
 
-function ecrireAdresse(vue: Vue, selection: Selection | null) {
-  const suite = selection ? `/${selection.type}/${encodeURIComponent(selection.id)}` : "";
-  const cible = `#/${vue}${suite}`;
-  if (window.location.hash !== cible) window.location.hash = cible;
+function chemin(selection: Selection): string {
+  const dossiers = { projet: "projects", run: "runs", machine: "machines" } as const;
+  return `/${dossiers[selection.type]}/${encodeURIComponent(selection.id)}`;
 }
 
-function Cockpit() {
-  const [etat, setEtat] = useState(lireAdresse);
+function useNavigation() {
+  const [route, setRoute] = useState(lireRoute);
   useEffect(() => {
-    const suivre = () => setEtat(lireAdresse());
-    window.addEventListener("hashchange", suivre);
-    return () => window.removeEventListener("hashchange", suivre);
+    const suivre = () => setRoute(lireRoute());
+    window.addEventListener("popstate", suivre);
+    return () => window.removeEventListener("popstate", suivre);
   }, []);
+  const aller = useCallback((destination: string) => {
+    if (window.location.pathname !== destination) window.history.pushState(null, "", destination);
+    setRoute(lireRoute());
+  }, []);
+  return { route, aller };
+}
 
-  const choisir = useCallback((selection: Selection | null) => ecrireAdresse(etat.vue, selection), [etat.vue]);
-  const changerVue = (vue: Vue) => ecrireAdresse(vue, etat.selection);
+function Lien({ href, actif, aller, children }: { href: string; actif: boolean; aller: (href: string) => void; children: ReactNode }) {
+  const ouvrir = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    aller(href);
+  };
+  return (
+    <a href={href} onClick={ouvrir} aria-current={actif ? "page" : undefined} className="nav-lien">
+      <span className="nav-point" aria-hidden="true" />
+      {children}
+    </a>
+  );
+}
+
+function Coquille() {
+  const { route, aller } = useNavigation();
+  const ouvrir = useCallback((selection: Selection) => aller(chemin(selection)), [aller]);
+  const titre = route.type === "graph" ? "Carte des opérations" : route.type === "agents" ? "Agents et étapes" : route.type === "detail" ? "Détail opérationnel" : "Page inconnue";
 
   return (
-    <div className="flex h-dvh flex-col gap-3 p-3">
-      <header className="flex flex-wrap items-center gap-3 border-b border-trait pb-2">
-        <h1 className="text-lg font-bold">Cockpit</h1>
-        <nav className="flex gap-1" aria-label="Vues">
-          {(["topologie", "agents"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => changerVue(v)}
-              aria-current={etat.vue === v ? "page" : undefined}
-              className={`rounded-lg px-3 py-1 text-sm font-semibold ${etat.vue === v ? "bg-carte text-encre" : "text-douce hover:text-encre"}`}
-            >
-              {v === "topologie" ? "Topologie" : "Agents"}
-            </button>
-          ))}
+    <div className="cockpit-shell">
+      <aside className="cockpit-nav">
+        <a href="/" onClick={(e) => { e.preventDefault(); aller("/"); }} className="marque-cockpit" aria-label="Cockpit, accueil">
+          <span className="marque-signal" aria-hidden="true" />
+          <span><b>ORCH</b><small>control</small></span>
+        </a>
+        <nav className="nav-bus" aria-label="Navigation principale">
+          <Lien href="/" actif={route.type === "graph"} aller={aller}>Graphe</Lien>
+          <Lien href="/agents" actif={route.type === "agents"} aller={aller}>Agents</Lien>
+          <a href="/decisions" className="nav-lien"><span className="nav-point" aria-hidden="true" />Décisions</a>
         </nav>
-        {/* Sur téléphone, la barre prend sa propre ligne : tassée à côté des onglets, chaque
-            libellé passait à la ligne. */}
-        <div className="w-full min-w-0 lg:w-auto lg:flex-1">
-          <Barre />
-        </div>
-      </header>
+        <div className="nav-legende">NAS · tailnet</div>
+      </aside>
 
-      {/* Le panneau ne recouvre jamais la vue (§11.2) : à côté sur grand écran, dessous sur
-          téléphone, l'arbre restant visible au-dessus. */}
-      <main className={`grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 ${etat.selection ? "grid-rows-[55%_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-1" : ""}`}>
-        <div className="min-h-0 min-w-0">
-          {etat.vue === "topologie" ? <Topologie selection={etat.selection} onSelection={choisir} /> : <Agents onSelection={choisir} />}
-        </div>
-        {etat.selection && <Panneau key={`${etat.selection.type}:${etat.selection.id}`} selection={etat.selection} onSelection={choisir} onFermer={() => choisir(null)} />}
-      </main>
+      <div className="cockpit-corps">
+        <header className="cockpit-entete">
+          <div>
+            <div className="sur-titre">Agent orchestrateur</div>
+            <h1>{titre}</h1>
+          </div>
+          <div className="cockpit-mesures"><Barre /></div>
+        </header>
+
+        <main className="cockpit-contenu">
+          {route.type === "graph" && <Topologie selection={null} onSelection={(selection) => selection && ouvrir(selection)} />}
+          {route.type === "agents" && <Agents onSelection={ouvrir} />}
+          {route.type === "detail" && (
+            <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => aller("/")} />
+          )}
+          {route.type === "inconnue" && (
+            <section className="page-vide">
+              <div className="sur-titre">404</div>
+              <h2>Cette page n’existe pas.</h2>
+              <button type="button" onClick={() => aller("/")}>Revenir au graphe</button>
+            </section>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
 
 export default function App() {
-  return (
-    <FournisseurSource>
-      <Cockpit />
-    </FournisseurSource>
-  );
+  return <FournisseurSource><Coquille /></FournisseurSource>;
 }
