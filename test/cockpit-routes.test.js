@@ -10,6 +10,7 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 const { EventStore } = require("agent-orchestrator");
+const { modeles } = require("agent-orchestrator/packages/schemas/modeles");
 
 const RACINE = path.resolve(__dirname, "..");
 const tests = [];
@@ -28,6 +29,33 @@ function base() {
   store.emettre({ type: "run.started", runId, payload: {} });
   store.fermer();
   return { dir, base: path.join(dir, "events.sqlite"), runId };
+}
+
+function releve(dir) {
+  const chemin = path.join(dir, "modeles.json");
+  const modele = {
+    id: "omniroute:agentic-code",
+    llm: { via: "omniroute", model: "agentic-code" },
+    type: "combo",
+    fournisseur: "combo",
+    nom: "agentic-code",
+    capacites: { outils: true, vision: false, raisonnement: true },
+    contexte: 200000,
+    etat: "inconnu",
+    raison: "état de la chaîne non relevé",
+    resetAt: null,
+  };
+  const catalogue = {
+    version: 1,
+    releveLe: "2026-01-01T00:00:00.000Z",
+    machine: "pc",
+    passerelle: { etat: "ok", detail: null },
+    quotas: "scope_absent",
+    connexions: [],
+    modeles: [modele],
+  };
+  fs.writeFileSync(chemin, JSON.stringify(catalogue));
+  return chemin;
 }
 
 function illisible(dir) {
@@ -97,6 +125,7 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     APPROVALS_DIR: path.join(bac.dir, "approvals"),
     ORCH_EVENT_STORE: bac.base,
     COCKPIT_OPERATEUR_LOCAL: "test",
+    COCKPIT_CATALOGUE_MODELES: releve(bac.dir),
   });
   try {
     const topo = await requete(PORT, "/api/topology");
@@ -112,6 +141,13 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual(liste.runs.length, 1);
     assert.strictEqual((await requete(PORT, "/api/runs?status=fini")).code, 400, "un statut inconnu est une faute de requête");
     assert.strictEqual((await requete(PORT, "/api/usage")).code, 200);
+
+    // Le relevé poussé par le PC est servi tel quel, avec son âge et les backends du runner.
+    const reponseModeles = JSON.parse((await requete(PORT, "/api/modeles")).corps);
+    modeles.reponse.parse(reponseModeles);
+    assert.strictEqual(reponseModeles.catalogue.modeles[0].id, "omniroute:agentic-code");
+    assert.deepStrictEqual(reponseModeles.viaRunner, ["claude"]);
+    assert.strictEqual(reponseModeles.perime, true, "un relevé de 2026-01-01 est périmé");
 
     const run = await requete(PORT, `/api/runs/${bac.runId}`);
     assert.strictEqual(run.code, 200);
@@ -136,6 +172,11 @@ test("les routes de lecture servent les runs, les machines et le front", async (
       (await poster(PORT, "/api/runs", { projectId: "../secret" })).code,
       400,
       "un identifiant ne peut pas sortir du registre de projets"
+    );
+    assert.strictEqual(
+      (await poster(PORT, "/api/runs", { projectId: "steam-tierlist", llmOverrides: { "*": { via: "omniroute", model: "agentic-code" } } })).code,
+      400,
+      "un backend que le runner ne joint pas est refusé avant la mise en file"
     );
 
     // Une adresse du front avec paramètres reste servie : `/app?v=2` est la même page.
@@ -168,7 +209,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/runs", "/api/machines", "/api/stream", "/app"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/runs", "/api/machines", "/api/stream", "/app"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);

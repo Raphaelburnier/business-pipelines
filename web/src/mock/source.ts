@@ -4,6 +4,7 @@
 // touche aucune vue (annexe A).
 import type { Evenement } from "../types";
 import type { FiltreRuns, Source } from "../donnees/source";
+import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
 
 export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(), pasMs = 500 } = {}): Source {
@@ -24,6 +25,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     },
     run: async (id: string) => etat().runs.find((r) => r.id === id) ?? null,
     usage: async () => etat().usage,
+    modeles: async () => catalogueMaquette(maintenant()),
     lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.

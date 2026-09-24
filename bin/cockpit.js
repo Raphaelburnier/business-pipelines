@@ -49,6 +49,7 @@ const apps = require("../src/apps");
 const api = require("../src/api-lecture");
 const flux = require("../src/flux");
 const statique = require("../src/statique");
+const catalogueModeles = require("../src/modeles");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -92,6 +93,10 @@ const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
 // Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
 // tire les catégories et les projets.
 const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
+// Le relevé des modèles poussé par le PC, et les backends que le runner de CETTE machine
+// sait joindre. Sur le NAS, seul `claude` (clé API) : OmniRoute vit sur le PC.
+const CATALOGUE_MODELES = ENV.COCKPIT_CATALOGUE_MODELES || path.join(RACINE, "etat", "modeles.json");
+const VIA_RUNNER = (ENV.COCKPIT_VIA_RUNNER || "claude").split(",").map((v) => v.trim()).filter(Boolean);
 
 let magasin = null;
 let magasinErreur = null;
@@ -724,6 +729,13 @@ async function traiter(req, res) {
     }
     try {
       const demande = JSON.parse(brut);
+      // Un modèle que le runner ne sait pas joindre échouerait au premier nœud, après la
+      // mise en file : autant le refuser ici, avec la raison.
+      for (const llm of Object.values(demande.llmOverrides || {})) {
+        if (llm && !VIA_RUNNER.includes(llm.via)) {
+          return json(res, 400, { erreur: `backend « ${llm.via} » non joignable depuis le runner (${VIA_RUNNER.join(", ")})` });
+        }
+      }
       const commande = magasinOuvert.creerCommande({
         kind: "run.start",
         payload: {
@@ -807,6 +819,10 @@ async function traiter(req, res) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     return json(res, 200, api.usage(magasinOuvert));
+  }
+
+  if (lecture && lecture.pathname === "/api/modeles") {
+    return json(res, 200, catalogueModeles.lireCatalogue(CATALOGUE_MODELES, { viaRunner: VIA_RUNNER }));
   }
 
   // Le flux temps réel. Il ne rend jamais la main tant que le client écoute : la réponse

@@ -7,7 +7,7 @@
 // Le flux ne porte pas l'état, il dit qu'il a changé : une vue recharge ce qu'elle affiche à
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
-import type { Evenement, Run, RunDetaille, StatutRun, Topologie, Usage } from "../types";
+import type { Evenement, Llm, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage } from "../types";
 
 export interface FiltreRuns {
   project?: string;
@@ -21,7 +21,10 @@ export interface Source {
   runs(filtre?: FiltreRuns): Promise<Run[]>;
   run(id: string): Promise<RunDetaille | null>;
   usage(): Promise<Usage>;
-  lancerRun(projectId: string, pipelineIndex?: number): Promise<{ id: string; statut: string }>;
+  /** Le dernier relevé des modèles poussé par le PC. */
+  modeles(): Promise<ReponseModeles>;
+  /** `llm` s'applique à tous les nœuds agents du run ; absent, chaque nœud garde le sien. */
+  lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }

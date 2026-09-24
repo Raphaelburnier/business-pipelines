@@ -6,9 +6,10 @@
 import { useMemo, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
-import type { Etape, RunDetaille } from "../types";
+import type { Etape, Llm, RunDetaille } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
+import { SelecteurModele } from "./SelecteurModele";
 
 export function Panneau({ selection, onSelection, onFermer }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void }) {
   return (
@@ -36,12 +37,13 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
   const projet = topo.donnees?.projets.find((p) => p.id === id);
   const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
   const [erreurLancement, setErreurLancement] = useState<string | null>(null);
+  const [llm, setLlm] = useState<Llm | null>(null);
 
   async function lancer(pipelineIndex: number) {
     setLancement("sending");
     setErreurLancement(null);
     try {
-      await source.lancerRun(id, pipelineIndex);
+      await source.lancerRun(id, pipelineIndex, llm);
       setLancement("sent");
     } catch (err) {
       setLancement("idle");
@@ -80,6 +82,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
         <div>
           <Titre>Lancer</Titre>
           <div className="flex flex-col gap-2">
+            <SelecteurModele choix={llm} onChoix={setLlm} desactive={lancement !== "idle"} />
             {projet.pipelines.map((pipeline, index) => (
               <button
                 key={`${pipeline}:${index}`}
