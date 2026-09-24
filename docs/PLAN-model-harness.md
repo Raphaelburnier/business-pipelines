@@ -129,22 +129,54 @@ Reste à faire (Codex) : installer un minuteur systemd utilisateur sur le PC qui
 Conflit attendu : `Panneau.tsx` est aussi modifié par la refonte de navigation non
 committée du worktree `steam-tierlist-run`. Trois ajouts localisés, à reporter à la main.
 
-### Décision ouverte, à trancher par Raphaël avant l'étape 3
+### Décision du 2026-09-24 : voie A, les runs OmniRoute tournent sur le PC
 
-Aujourd'hui le sélecteur est honnête mais peu utile : le runner du NAS ne joint pas
-OmniRoute, donc tous les modèles OmniRoute y sont grisés « non joignable depuis le
-runner ». Trois voies :
+Tranché par Raphaël. Implémentation confiée à Codex. Les autres voies, pour mémoire :
+B (OmniRoute servi au NAS par `tailscale serve`, revient sur la décision 5) et C (statu quo)
+sont écartées.
 
-| Voie | Principe | Coût | Risque |
-|---|---|---|---|
-| A. Runs sur le PC | Le maître du NAS confie les nœuds au worker du PC (phase 3 existante), qui a OmniRoute en local ; `COCKPIT_VIA_RUNNER=claude,omniroute` quand le PC est éveillé | Déployer le maître en service permanent (décision 8) | Le PC doit être réveillé (WoL existe) |
-| B. OmniRoute sur le tailnet | `tailscale serve` sur le PC vers `127.0.0.1:20128`, ACL limitée au NAS ; le runner reçoit un backend `omniroute` | Faible | Revient sur la décision 5 ; la clé d'inférence entre dans le conteneur runner |
-| C. Statu quo | Le sélecteur sert d'état des lieux ; les runs restent sur `claude` | Nul | Aucun |
+Aujourd'hui le runner du NAS ne joint pas OmniRoute : tous les modèles OmniRoute sont grisés
+« non joignable depuis le runner ». La voie A confie les nœuds OmniRoute au worker du PC, qui
+a la passerelle en local. Le code du maître et des workers existe (phase 3 :
+`src/maitre.js`, `src/worker.js`, `bin/orch-worker.js`, `src/dispatch.js`, `src/wol.js`) ;
+il n'est pas branché sur le chemin des runs du cockpit.
 
-Recommandation : A, qui respecte la décision 5 et prolonge ce qui existe. B si le besoin
-est immédiat.
+Travail pour Codex, dans l'ordre :
 
-### Étape 3 : erreurs à l'exécution et fournisseur réel (Codex)
+1. Trancher avec Raphaël l'écart noté dans `etat-business-pipelines.md` : fusionner runner et
+   maître, ou garder le runner comme seul détenteur de la clé et lui faire lancer
+   `orch projet ... --distribue`. Recommandation : garder le runner (il porte déjà la file
+   de commandes et la clé), et lui faire ouvrir le maître avec `--distribue`.
+2. Maître : l'ouvrir sur le NAS au port 4650 (le 4700 est pris), derrière l'ACL Tailscale et
+   le jeton haché déjà prévus. Le runner est le seul à l'ouvrir ; pas de second processus
+   concurrent sur l'event store.
+3. Worker du PC : service systemd utilisateur `orch-worker` (`ORCH_MAITRE_URL`,
+   `ORCH_MACHINE=pc`, `ORCH_JETON` dans un fichier en 600, jamais sur la ligne de commande).
+   Il lit `~/.config/agent-orchestrator/backends.json`, où le backend `omniroute` est valide.
+4. Placement : un nœud dont le LLM effectif a `via: omniroute` doit partir sur `pc`, quel que
+   soit son `runsOn` du template, ou être refusé avant le run si `pc` n'est pas enregistré.
+   L'écrire dans `src/dispatch.js` ou `src/graphe.js` (`role = noeud.runsOn || "pc"`), pas
+   dans le cockpit.
+5. Réveil : si `pc` dort, le maître le réveille par WoL (`src/wol.js`) et le run attend en
+   `waiting_machine`, comme le prévoit la spec. Jamais de repli silencieux sur `claude`.
+6. Cockpit : remplacer `COCKPIT_VIA_RUNNER` par une table par machine, par exemple
+   `COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute`, dans `src/modeles.js`. `/api/modeles`
+   rend `viaParMachine` et l'état des machines (déjà dans `/api/machines`). `classer()` rend
+   un modèle OmniRoute utilisable si `pc` est `online` ou réveillable, et l'annote « réveillera
+   le PC » s'il dort. `POST /api/runs` applique la même règle. Étendre
+   `modeles.reponse` dans `packages/schemas/modeles.js`.
+7. Relevé : garder `bin/publier-modeles.sh` sur un minuteur du PC pour l'instant. Plus tard,
+   le worker pourra pousser le relevé par le protocole WebSocket (nouveau type de message),
+   ce qui supprime la dépendance SSH.
+8. Tests : un nœud `omniroute` part sur `pc` ; `pc` absent refuse le run avant la mise en
+   file ; `pc` endormi passe le run en `waiting_machine` puis le reprend ; un nœud `claude`
+   reste sur le NAS ; le sélecteur rend OmniRoute utilisable quand `pc` est en ligne.
+
+Critère de fin : depuis le téléphone, choisir `agentic-code` dans le lanceur, lancer
+Steam TierList, voir les nœuds agents tourner sur `pc` avec `via: omniroute` dans le détail
+du run, et le coût affiché comme équivalent.
+
+### Étape 3 : erreurs à l'exécution et fournisseur réel (Codex, après la voie A)
 
 Commencer par une vérification, avant tout code : ce que `query()` du SDK agent rend
 quand OmniRoute répond 429 ou 503 (message d'erreur texte ? code ? en-têtes ?). Le SDK
