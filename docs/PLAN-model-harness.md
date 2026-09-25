@@ -188,7 +188,7 @@ Steam TierList, voir les nœuds agents tourner sur `pc` avec `via: omniroute` da
 du run, et le coût affiché comme équivalent. PC endormi, le même lancement est refusé sans
 le réveiller, tandis que « Demander au cockpit » continue de répondre via Claude sur le NAS.
 
-### Étape 3 : erreurs à l'exécution et fournisseur réel (Codex, après la voie A)
+### Étape 3 : erreurs à l'exécution et fournisseur réel (largement faite par Codex, `d212cd0`)
 
 Commencer par une vérification, avant tout code : ce que `query()` du SDK agent rend
 quand OmniRoute répond 429 ou 503 (message d'erreur texte ? code ? en-têtes ?). Le SDK
@@ -218,18 +218,43 @@ Puis, dans `agent-orchestrator` :
 - Coût : quand OmniRoute sert, `total_cost_usd` du SDK est une estimation au tarif public
   (AUDIT C12). L'afficher comme « équivalent », comme le reste de `/api/usage`.
 
-### Étape 4 : chat (§11.7, Codex, avancé avant l'étape 3)
+### Étape 4 : chat (§11.7), première tranche faite le 2026-09-25
 
-Première tranche : fils et messages durables, route de conversation consommée par le runner,
-Claude sur le NAS, contexte cockpit strictement en lecture seule, réponse en flux et panneau
-mobile. Le chat ne crée ni run ni branche et ne dispose d'aucune route d'écriture comme outil.
-Dépense suivie à part avec plafond mensuel (spec §11.7).
+Livré (moteur `a35dd3d`, `fe6d3a2`, `6b81bc1` ; cockpit, commit de ce jour) :
 
-Le sélecteur multi-modèles du chat est différé : tant qu'OmniRoute dépend du PC, Claude est
-le seul backend du mode permanent. Aucun modèle OmniRoute n'est substitué quand le PC dort.
+- Stockage : `chat_threads`, `chat_messages`, commande `chat.respond`, usage du mois à part.
+- `agent-orchestrator/src/chat.js` : réponse de Claude en flux (`includePartialMessages`),
+  sans aucun outil, sans réglage de projet, dans un dossier vide. Le contexte du cockpit
+  (15 derniers runs, machines, usage) arrive en instantané lecture seule dans le prompt.
+- Runner : deux boucles, `run.start` et `chat.respond` (`prendreCommande({ kinds })`) ; une
+  question n'attend plus la fin d'un run.
+- Cockpit : `GET/POST /api/chat`, `GET /api/chat/<id>`, `POST /api/chat/<id>/messages`,
+  mêmes contrôles d'écriture que `POST /api/runs`, une réponse à la fois par fil, plafond
+  `COCKPIT_CHAT_PLAFOND_USD` (10 $ par défaut), modèle `COCKPIT_CHAT_MODELE` (`sonnet`).
+- Front : vue `/demander` et `/demander/<id>`, liste des fils et conversation côte à côte
+  sur grand écran, empilées sur téléphone ; relecture du fil chaque seconde pendant une
+  réponse ; maquette dans `mock/chat.ts`.
+- Vérifié de bout en bout en local avec le vrai Claude : question posée par l'API, prise par
+  le runner, réponse fondée sur la base, refus explicite de lancer un run.
+
+Constat en passant, corrigé pour tous les agents (`6b81bc1`) : sur une machine connectée à
+claude.ai, le CLI ajoutait les connecteurs du compte (Gmail, Drive, Notion…) à chaque agent,
+`tools: []` compris. 140 k tokens par appel (0,28 $ pour une phrase) et des outils
+d'écriture hors périmètre. `strictMcpConfig` avec `mcpServers: {}` les retire (0,0016 $).
+Ça concernait aussi les agents de pipeline sur le worker PC.
+
+Reste pour les tranches suivantes :
+
+- Outils MCP `cockpit-read` à la place de l'instantané, pour lire un log d'étape à la demande.
+- `vault-search` et le contexte `_context/` du projet sélectionné (question ouverte 2 de la spec).
+- Boutons « expliquer cette étape » depuis le panneau d'un run, qui pré-remplissent le fil.
+- Pousser les messages par le flux SSE au lieu de relire le fil chaque seconde.
+- Le sélecteur multi-modèles du chat reste différé : tant qu'OmniRoute dépend du PC, Claude
+  est le seul backend du mode permanent. Aucun modèle OmniRoute n'est substitué quand le PC dort.
 
 ## Ce qu'il ne faut pas faire
 
+- Retirer `strictMcpConfig` d'`agent-runner` : les connecteurs claude.ai reviendraient dans chaque agent.
 - Utiliser ou stocker une clé OmniRoute `manage`.
 - Donner une clé quelconque au service `cockpit`.
 - Écrire une branche de code par fournisseur (`if provider === ...`).

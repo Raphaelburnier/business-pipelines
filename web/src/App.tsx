@@ -5,11 +5,13 @@ import { FournisseurSource } from "./donnees/contexte";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
 import { Barre } from "./vues/Barre";
+import { Demander } from "./vues/Demander";
 import { Panneau } from "./vues/Panneau";
 
 type Route =
   | { type: "graph" }
   | { type: "agents" }
+  | { type: "demander"; filId: string | null }
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
 
@@ -17,6 +19,7 @@ function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
+  if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   const correspondances: Record<string, Selection["type"]> = { projects: "projet", runs: "run", machines: "machine" };
   const type = correspondances[morceaux[0] ?? ""];
   if (type && morceaux[1]) return { type: "detail", selection: { type, id: decodeURIComponent(morceaux[1]) } as Selection };
@@ -59,7 +62,8 @@ function Lien({ href, actif, aller, children }: { href: string; actif: boolean; 
 function Coquille() {
   const { route, aller } = useNavigation();
   const ouvrir = useCallback((selection: Selection) => aller(chemin(selection)), [aller]);
-  const titre = route.type === "graph" ? "Carte des opérations" : route.type === "agents" ? "Agents et étapes" : route.type === "detail" ? "Détail opérationnel" : "Page inconnue";
+  const titre =
+    route.type === "graph" ? "Carte des opérations" : route.type === "agents" ? "Agents et étapes" : route.type === "demander" ? "Demander au cockpit" : route.type === "detail" ? "Détail opérationnel" : "Page inconnue";
 
   return (
     <div className="cockpit-shell">
@@ -71,6 +75,7 @@ function Coquille() {
         <nav className="nav-bus" aria-label="Navigation principale">
           <Lien href="/" actif={route.type === "graph"} aller={aller}>Graphe</Lien>
           <Lien href="/agents" actif={route.type === "agents"} aller={aller}>Agents</Lien>
+          <Lien href="/demander" actif={route.type === "demander"} aller={aller}>Demander</Lien>
           <a href="/decisions" className="nav-lien"><span className="nav-point" aria-hidden="true" />Décisions</a>
         </nav>
         <div className="nav-legende">NAS · tailnet</div>
@@ -88,6 +93,7 @@ function Coquille() {
         <main className="cockpit-contenu">
           {route.type === "graph" && <Topologie selection={null} onSelection={(selection) => selection && ouvrir(selection)} />}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
+          {route.type === "demander" && <Demander filId={route.filId} aller={aller} />}
           {route.type === "detail" && (
             <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => aller("/")} />
           )}

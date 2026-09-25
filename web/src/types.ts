@@ -6,6 +6,7 @@
 import type { z } from "zod";
 import type { cockpit } from "@schemas/cockpit";
 import type { modeles } from "@schemas/modeles";
+import type { chat } from "@schemas/chat";
 
 export type EtatMachine = z.infer<typeof cockpit.etatMachine>;
 export type StatutRun = z.infer<typeof cockpit.statutRun>;
@@ -25,3 +26,8 @@ export type EtatModele = z.infer<typeof modeles.etatModele>;
 export type Modele = z.infer<typeof modeles.modele>;
 export type ReponseModeles = z.infer<typeof modeles.reponse>;
 export type Llm = Modele["llm"];
+
+export type MessageChat = z.infer<typeof chat.message>;
+export type FilChat = z.infer<typeof chat.fil>;
+export type FilDetaille = z.infer<typeof chat.filDetaille>;
+export type ListeFils = z.infer<typeof chat.listeFils>;

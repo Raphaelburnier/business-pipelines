@@ -50,6 +50,7 @@ const api = require("../src/api-lecture");
 const flux = require("../src/flux");
 const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
+const apiChat = require("../src/api-chat");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -97,6 +98,37 @@ const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
 // Sur le NAS, `claude` vient de la clé du runner ; OmniRoute reste local au worker PC.
 const CATALOGUE_MODELES = ENV.COCKPIT_CATALOGUE_MODELES || path.join(RACINE, "etat", "modeles.json");
 const VIA_PAR_MACHINE = catalogueModeles.lireViaParMachine(ENV.COCKPIT_VIA_MACHINES);
+// « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
+const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
+const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
+
+// Le corps JSON d'une écriture du front, avec les contrôles de POST /api/runs : origine du
+// cockpit, JSON seul, 20 ko au plus. Rend `null` après avoir répondu en cas de refus.
+async function corpsJson(req, res) {
+  if (!acces.origineAutorisee(req.headers, PORTEE)) {
+    json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    return null;
+  }
+  const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") {
+    json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    return null;
+  }
+  let brut = "";
+  for await (const morceau of req) {
+    brut += morceau;
+    if (brut.length > 20_000) {
+      json(res, 413, { erreur: "corps trop gros" });
+      return null;
+    }
+  }
+  try {
+    return JSON.parse(brut || "{}");
+  } catch {
+    json(res, 400, { erreur: "JSON illisible" });
+    return null;
+  }
+}
 
 let magasin = null;
 let magasinErreur = null;
@@ -836,6 +868,41 @@ async function traiter(req, res) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     return json(res, 200, api.usage(magasinOuvert));
+  }
+
+  // ---- Demander au cockpit (§11.7) ----
+  //
+  // Lecture et questions derrière le même contrôle d'identité que les runs. Aucune route
+  // ici ne déclenche autre chose qu'une réponse écrite : le chat n'agit pas.
+  const cheminChat = req.url.split("?")[0];
+  if (cheminChat === "/api/chat" || cheminChat.startsWith("/api/chat/")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const morceaux = cheminChat.split("/").filter(Boolean).slice(2).map(decodeURIComponent);
+
+    if (req.method === "GET" && morceaux.length === 0) {
+      return json(res, 200, apiChat.listeFils(magasinOuvert, { plafondUsd: CHAT_PLAFOND_USD, modele: CHAT_MODELE }));
+    }
+    if (req.method === "GET" && morceaux.length === 1) {
+      const fil = apiChat.filDetaille(magasinOuvert, morceaux[0]);
+      return fil ? json(res, 200, fil) : json(res, 404, { erreur: "conversation inconnue" });
+    }
+    const nouveauFil = req.method === "POST" && morceaux.length === 0;
+    const suite = req.method === "POST" && morceaux.length === 2 && morceaux[1] === "messages";
+    if (nouveauFil || suite) {
+      const demande = await corpsJson(req, res);
+      if (!demande) return undefined;
+      const { code, corps } = apiChat.poser(magasinOuvert, {
+        threadId: suite ? morceaux[0] : null,
+        contenu: demande.contenu,
+        projet: typeof demande.projet === "string" ? demande.projet : null,
+        par: qui.par,
+        canal: qui.canal,
+        plafondUsd: CHAT_PLAFOND_USD,
+      });
+      return json(res, code, corps);
+    }
+    return json(res, 405, { erreur: "méthode non prise en charge" });
   }
 
   if (lecture && lecture.pathname === "/api/modeles") {

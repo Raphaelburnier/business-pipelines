@@ -4,12 +4,14 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-const { EventStore } = require("agent-orchestrator");
+const { EventStore, chat } = require("agent-orchestrator");
+const api = require("../src/api-lecture");
 
 const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
 const STORE = process.env.ORCH_EVENT_STORE || path.join(RACINE, "etat", "events.sqlite");
 const INTERVALLE = Number(process.env.COMMAND_POLL_MS || 1000);
+const MODELE_CHAT = process.env.COCKPIT_CHAT_MODELE || "sonnet";
 const CODES_ATTENDUS = new Set([0, 75, 76, 77]);
 
 let arret = false;
@@ -48,30 +50,55 @@ function lancer(commande) {
   });
 }
 
-async function boucle() {
+// L'instantané que lit le chat : ce que l'API du cockpit montre déjà, rien de plus.
+function contexteCockpit(store) {
+  return {
+    releveLe: new Date().toISOString(),
+    runs: api.runs(store, { limite: 15 }),
+    machines: api.machines(store),
+    usage: api.usage(store),
+  };
+}
+
+async function repondre(store, commande) {
+  const { threadId, responseMessageId } = commande.payload;
+  return chat.repondreChat({ store, threadId, responseMessageId, contexte: contexteCockpit(store), modele: MODELE_CHAT });
+}
+
+// Deux files dans le même processus : un run tient sa boucle pendant des minutes, une
+// question ne doit pas l'attendre. Chaque boucle ne réserve que ses propres commandes.
+async function boucle(store, kinds, executer) {
+  while (!arret) {
+    const commande = store.prendreCommande({ kinds });
+    if (!commande) {
+      await attendre(INTERVALLE);
+      continue;
+    }
+    console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
+    try {
+      store.terminerCommande(commande.id, await executer(commande));
+    } catch (err) {
+      store.terminerCommande(commande.id, { ok: false, raison: err.message });
+      console.error(`Commande ${commande.id} refusée : ${err.message}`);
+    }
+  }
+}
+
+async function executerRun(commande) {
+  const resultat = await lancer(commande);
+  if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: resultat };
+  return { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` };
+}
+
+async function demarrer() {
   const store = new EventStore(STORE);
   const reprises = store.reprendreCommandesInterrompues();
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
-    while (!arret) {
-      const commande = store.prendreCommande();
-      if (!commande) {
-        await attendre(INTERVALLE);
-        continue;
-      }
-      console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
-      try {
-        const resultat = await lancer(commande);
-        if (CODES_ATTENDUS.has(resultat.code)) {
-          store.terminerCommande(commande.id, { ok: true, detail: resultat });
-        } else {
-          store.terminerCommande(commande.id, { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` });
-        }
-      } catch (err) {
-        store.terminerCommande(commande.id, { ok: false, raison: err.message });
-        console.error(`Commande ${commande.id} refusée : ${err.message}`);
-      }
-    }
+    await Promise.all([
+      boucle(store, ["run.start"], executerRun),
+      boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
+    ]);
   } finally {
     store.fermer();
   }
@@ -84,7 +111,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-boucle().catch((err) => {
+demarrer().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });

@@ -1,5 +1,5 @@
 // La source réelle : l'API REST du cockpit et son flux SSE (§10).
-import type { Evenement, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
+import type { Evenement, FilDetaille, ListeFils, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
 import type { FiltreRuns, Source } from "./source";
 
 class ErreurApi extends Error {
@@ -57,6 +57,17 @@ export function sourceApi(): Source {
     },
     usage: () => lire<Usage>("/api/usage"),
     modeles: () => lire<ReponseModeles>("/api/modeles"),
+    fils: () => lire<ListeFils>("/api/chat"),
+    async fil(id: string) {
+      try {
+        return await lire<FilDetaille>(`/api/chat/${encodeURIComponent(id)}`);
+      } catch (err) {
+        if (err instanceof ErreurApi && err.code === 404) return null;
+        throw err;
+      }
+    },
+    poser: (contenu, filId = null) =>
+      ecrire<FilDetaille>(filId ? `/api/chat/${encodeURIComponent(filId)}/messages` : "/api/chat", { contenu }),
     async lancerRun(projectId, pipelineIndex = 0, llm = null) {
       const corps = llm ? { projectId, pipelineIndex, llmOverrides: { "*": llm } } : { projectId, pipelineIndex };
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", corps);

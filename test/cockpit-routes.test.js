@@ -11,6 +11,7 @@ const os = require("os");
 const path = require("path");
 const { EventStore } = require("agent-orchestrator");
 const { modeles } = require("agent-orchestrator/packages/schemas/modeles");
+const { chat } = require("agent-orchestrator/packages/schemas/chat");
 
 const RACINE = path.resolve(__dirname, "..");
 const tests = [];
@@ -157,6 +158,28 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual((await requete(PORT, "/api/runs/inconnu")).code, 404);
     assert.strictEqual((await requete(PORT, "/api/machines")).code, 200);
 
+    // Demander au cockpit : la question dépose un message et une commande, rien d'autre.
+    const question = await poster(PORT, "/api/chat", { contenu: "Pourquoi le dernier run a échoué ?" });
+    assert.strictEqual(question.code, 202);
+    const filCree = chat.filDetaille.parse(JSON.parse(question.corps));
+    assert.deepStrictEqual(filCree.messages.map((m) => [m.role, m.statut]), [["user", "complete"], ["assistant", "queued"]]);
+    assert.strictEqual(filCree.titre, "Pourquoi le dernier run a échoué ?");
+    assert.strictEqual(
+      (await poster(PORT, `/api/chat/${filCree.id}/messages`, { contenu: "Et avant ?" })).code,
+      409,
+      "une seule réponse en cours par fil"
+    );
+    assert.strictEqual((await poster(PORT, "/api/chat", { contenu: "   " })).code, 400);
+    const listeChat = chat.listeFils.parse(JSON.parse((await requete(PORT, "/api/chat")).corps));
+    assert.strictEqual(listeChat.fils.length, 1);
+    assert.strictEqual(listeChat.usage.bloque, false);
+    assert.strictEqual((await requete(PORT, `/api/chat/${filCree.id}`)).code, 200);
+    assert.strictEqual((await requete(PORT, "/api/chat/inconnu")).code, 404);
+    const verificationChat = new EventStore(bac.base);
+    assert.deepStrictEqual(verificationChat.commandes({ statut: "pending" }).map((c) => c.kind), ["chat.respond"]);
+    verificationChat.prendreCommande({ kinds: ["chat.respond"] });
+    verificationChat.fermer();
+
     const lancement = await poster(PORT, "/api/runs", { projectId: "steam-tierlist" });
     assert.strictEqual(lancement.code, 202);
     const commandeLancee = JSON.parse(lancement.corps).commande;
@@ -261,7 +284,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/runs", "/api/machines", "/api/stream", "/", "/app", "/decisions"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/", "/app", "/decisions"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);
