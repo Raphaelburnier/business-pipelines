@@ -72,9 +72,10 @@ services:
     command: ["node", "bin/commande-runner.js"]
     volumes:
       - ./etat:/app/etat
-      # Registre des workers et configuration de déploiement : le maître lit
-      # /app/specs/workers.json, sans jamais intégrer le jeton brut à l'image.
-      - ./specs:/app/specs:ro
+      # Registre des workers : le maître lit /app/specs/workers.json, sans jamais intégrer le
+      # jeton brut à l'image. Ce fichier seul, pas tout specs/ : les agents de ce conteneur
+      # ont Bash, et specs/ contient les .env des autres projets et le jeton d'abonnement.
+      - ./specs/workers.json:/app/specs/workers.json:ro
       - ./projects:/app/projects:ro
       - ./agent-registry:/app/agent-registry:ro
       - ./workspaces:/app/workspaces
