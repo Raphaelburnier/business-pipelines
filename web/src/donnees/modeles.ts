@@ -15,6 +15,13 @@ export interface Classement {
   total: number;
 }
 
+const ETATS_LISIBLES: Partial<Record<ReponseModeles["machines"][number]["etat"], string>> = {
+  sleeping: "en veille",
+  offline: "hors ligne",
+  waking: "en cours de réveil",
+  error: "en erreur",
+};
+
 /** Pourquoi un run ne peut pas prendre ce modèle, ou `null` s'il le peut. */
 export function disponibiliteBackend(m: Modele, reponse: ReponseModeles): { raison: string | null; annotation: string | null } {
   const cibles = Object.entries(reponse.viaParMachine)
@@ -27,15 +34,11 @@ export function disponibiliteBackend(m: Modele, reponse: ReponseModeles): { rais
     const machine = parId.get(id);
     if (!machine) continue;
     if (machine.etat === "online" || machine.etat === "busy") return { raison: null, annotation: null };
-    if (machine.etat === "waking") return { raison: null, annotation: `${id === "pc" ? "PC" : id} en cours de réveil` };
-    const reveillable =
-      (machine.etat === "sleeping" || machine.etat === "offline") && typeof machine.meta?.mac === "string" && machine.meta.mac.trim();
-    if (reveillable) return { raison: null, annotation: `réveillera le ${id === "pc" ? "PC" : id}` };
   }
 
   const presentes = cibles.map((id) => parId.get(id)).filter((machine) => machine !== undefined);
   const raison = presentes.length
-    ? presentes.map((machine) => `${machine.machine} ${machine.etat}${machine.meta?.mac ? "" : " sans WoL"}`).join(", ")
+    ? presentes.map((machine) => `${machine.machine} ${ETATS_LISIBLES[machine.etat] ?? machine.etat}`).join(", ")
     : `machine ${cibles.join(" ou ")} non enregistrée`;
   return { raison, annotation: null };
 }

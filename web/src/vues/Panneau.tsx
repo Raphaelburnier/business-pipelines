@@ -334,7 +334,7 @@ function PanneauMachine({ id }: { id: string }) {
         <dd>{projets.map((p) => p.nom).join(", ") || VIDE}</dd>
       </dl>
       {machine.etat === "sleeping" && (
-        <p className="text-[12px] text-douce">En veille. Le maître la réveille dès qu'une étape lui est destinée ; le réveil à la demande arrive avec la phase 5.</p>
+        <p className="text-[12px] text-douce">En veille. Les tâches de développement restent indisponibles jusqu'au réveil manuel du PC.</p>
       )}
     </>
   );

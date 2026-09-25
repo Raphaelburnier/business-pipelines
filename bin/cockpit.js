@@ -742,8 +742,8 @@ async function traiter(req, res) {
     try {
       const demande = JSON.parse(brut);
       // Un modèle sans machine capable de le servir échouerait au premier nœud, après la
-      // mise en file : autant le refuser ici, avec la raison. Une machine endormie mais
-      // munie d'une adresse WoL reste utilisable : le maître la réveillera.
+      // mise en file : autant le refuser ici, avec la raison. Une machine endormie reste
+      // indisponible : lancer une tâche de développement ne réveille pas le PC.
       const etatMachines = api.machines(magasinOuvert);
       for (const llm of Object.values(demande.llmOverrides || {})) {
         if (llm) {

@@ -20,13 +20,14 @@ describe("classement du sélecteur", () => {
     expect(c.indisponibles.every((i) => i.raison.includes("non enregistrée"))).toBe(true);
   });
 
-  test("un PC endormi mais réveillable garde OmniRoute utilisable et l'annonce", () => {
+  test("un PC endormi rend OmniRoute indisponible sans tenter de le réveiller", () => {
     const c = classer({
       ...reponse,
       machines: reponse.machines.map((m) => (m.machine === "pc" ? { ...m, etat: "sleeping" as const } : m)),
     });
-    expect(c.utilisables.length).toBeGreaterThan(0);
-    expect(c.annotations["omniroute:agentic-code"]).toBe("réveillera le PC");
+    expect(c.utilisables).toEqual([]);
+    expect(c.indisponibles.every((i) => i.raison === "pc en veille")).toBe(true);
+    expect(c.annotations).toEqual({});
   });
 
   test("la recherche porte sur le nom, l'identifiant et le fournisseur", () => {

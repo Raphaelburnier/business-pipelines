@@ -24,7 +24,8 @@
 Raphaël fait tourner des pipelines d'agents (agentic loops) pour plusieurs business/projets, sur deux machines :
 
 - **NAS Synology** : toujours allumé, héberge déjà `business-pipelines` (services `cockpit.js` et `cycle.js`, déployés via Docker Compose / Container Manager).
-- **PC homelab** (ROG G10CE) : machine de calcul, **se met en veille** quand il n'y a pas de travail, réveillée par **Wake-on-LAN depuis le NAS**.
+- **PC homelab** (ROG G10CE) : unique machine de calcul pour les tâches de développement.
+  S'il est en veille ou hors ligne, ces tâches sont indisponibles ; le NAS ne le réveille pas.
 
 Accès distant (téléphone, PC principal) via **Tailscale** — travail déjà commencé sur la branche `feat/tailnet-acces` (le service écoute en local, l'identité de l'appelant est vérifiée via la connexion Tailscale et non via un header).
 
@@ -96,7 +97,7 @@ Les workers ne clonent pas `agent-registry` : le maître résout `agent@version`
 │  Orchestrateur MAÎTRE ── Event store (SQLite)         │
 │        │  lit les registres (git)                     │
 │        ├── Worker NAS (étapes runsOn: nas)            │
-│        └── Wake-on-LAN ─┐                             │
+│        └── refuse une tâche si le worker PC est absent│
 └─────────────────────────┼─────────────────────────────┘
                           ▼
 ┌──────────── PC homelab (veille possible) ─────────────┐
@@ -107,13 +108,13 @@ Les workers ne clonent pas `agent-registry` : le maître résout `agent@version`
 Maître ↔ workers : WebSocket. cockpit.js → navigateur : SSE.
 ```
 
-- **Maître (NAS)** : planifie les runs, dispatche chaque étape vers le bon worker selon `runsOn`, réveille le PC si besoin, applique budgets/quotas/gates, écrit dans l'event store.
-- **Workers (NAS, PC)** : processus légers. Ils **ouvrent eux-mêmes** une connexion WebSocket vers le maître (le maître n'a jamais besoin de joindre le PC, sauf pour le WoL). Ils reçoivent une étape, font `git pull`, l'exécutent, font `git push`, renvoient les événements et un **heartbeat** (§7.4).
+- **Maître (NAS)** : planifie les runs, dispatche chaque étape vers le bon worker selon `runsOn`, refuse avant la file une tâche dont le worker est indisponible, applique budgets/quotas/gates, écrit dans l'event store.
+- **Workers (NAS, PC)** : processus légers. Ils **ouvrent eux-mêmes** une connexion WebSocket vers le maître. Ils reçoivent une étape, font `git pull`, l'exécutent, font `git push`, renvoient les événements et un **heartbeat** (§7.4).
 - **cockpit.js** : API REST (commandes) + flux SSE (événements) vers le navigateur, au-dessus de l'event store (§10).
 
 ### Répartition de la charge
 
-**Le maître n'est pas un modèle d'IA.** C'est du code (scheduler, règles, SQLite, WebSocket). Il consomme très peu et tourne sur le NAS parce que le NAS est toujours allumé : si le maître était sur le PC, personne ne pourrait réveiller le PC, lancer les runs planifiés ni afficher le cockpit pendant sa veille.
+**Le maître n'est pas un modèle d'IA.** C'est du code (scheduler, règles, SQLite, WebSocket). Il consomme très peu et tourne sur le NAS parce que le NAS est toujours allumé : le cockpit et son chat restent ainsi disponibles pendant la veille du PC, même si les tâches de développement sont alors refusées.
 
 | Charge | Où elle tourne | Poids |
 |---|---|---|
@@ -348,19 +349,17 @@ Chaque worker envoie un heartbeat toutes les N secondes (configurable).
 - `sleeping` = PC mis en veille volontairement (distinct de `offline`).
 - `offline` = heartbeat perdu sans mise en veille demandée.
 
-### 7.2 Dispatch et réveil
+### 7.2 Dispatch et disponibilité
 
-1. Une étape `runsOn: pc` est prête et le PC est `sleeping` → le maître envoie un **magic packet WoL** → état `waking`.
-2. Il attend le heartbeat du worker PC (timeout configurable) puis dispatche.
-3. Timeout dépassé → étape en attente + alerte dans le cockpit.
-4. **Veille, jamais extinction.** Le Wake-on-LAN depuis une machine éteinte est peu fiable sous Windows (le démarrage rapide le casse souvent) ; depuis la veille il fonctionne bien.
-5. **Contexte à connaître** : le ROG G10CE est encore le poste de développement de Raphaël et deviendra un serveur homelab dédié quand il aura acheté sa nouvelle machine principale. Tant que ce n'est pas le cas, le maître ne peut demander la veille que si **toutes** ces conditions sont réunies :
-   - aucune étape en file pour le PC ;
-   - aucune activité clavier/souris Windows depuis X minutes (configurable) ;
-   - aucun verrou « ne pas endormir » actif dans le cockpit (interrupteur à prévoir dans l'UI).
-   Un drapeau de configuration (`dedicatedHomelab: true`) ne laissera plus que la première condition.
+1. Une tâche de développement n'est mise en file que si le worker PC est `online` ou `busy`.
+2. Si le PC est `sleeping`, `offline`, `waking`, absent ou en erreur, l'API refuse le lancement avec une raison lisible.
+3. Le maître n'envoie aucun paquet Wake-on-LAN et ne met pas le run en attente d'un réveil.
+4. Aucun repli silencieux vers Claude : le modèle et la machine choisis restent une décision explicite.
+5. Le cockpit et « Demander au cockpit » continuent de fonctionner via le NAS pendant l'indisponibilité du PC.
 
-Note Docker/Synology : l'envoi du broadcast WoL depuis un conteneur nécessite probablement `network_mode: host` **[À VÉRIFIER]**.
+Le ROG G10CE reste le poste de développement de Raphaël. Le cockpit ne décide donc ni de son
+réveil ni de sa mise en veille. Cette politique pourra être revue lorsqu'il deviendra un serveur
+homelab dédié.
 
 Concurrence : configurable par worker (défaut **1**, pour ménager le quota d'abonnement).
 
@@ -404,7 +403,7 @@ Concurrence : configurable par worker (défaut **1**, pour ménager le quota d'a
 - **Cache local obligatoire** : au premier chargement, l'artefact est copié sur le NVMe du PC, son `sha256` est vérifié, puis il est chargé depuis ce cache. Les poids ne sont jamais chargés directement depuis le partage réseau.
 - Chargement à la demande, déchargement LRU au-delà d'un plafond RAM configurable.
 - `device` : `cpu` par défaut. Le GPU (RTX 3060) est utilisable pour PyTorch via CUDA dans WSL, mais reste optionnel : **fallback CPU obligatoire** si CUDA est indisponible ou instable.
-- **Tout nœud `model` s'exécute sur le PC.** Si le PC dort, le maître le réveille (§7.2), même quand les autres étapes du pipeline sont sur le NAS.
+- **Tout nœud `model` s'exécute sur le PC.** Si le PC dort, son lancement est refusé (§7.2), même quand les autres étapes du pipeline sont sur le NAS.
 - Validation entrée/sortie via les JSON Schema du registre. Timeout et `try/except` par requête : un modèle qui plante renvoie une erreur, il ne tue pas le serveur.
 - Écoute uniquement en local ou sur le tailnet (§10).
 - Évolution possible : exposer aussi ces modèles comme outils MCP pour que les agents les appellent directement.
@@ -426,8 +425,7 @@ Le PC tourne sous Windows 11. Le worker, Claude Code et le serveur de modèles t
 
 - **Démarrage automatique** : après un démarrage ou une sortie de veille, le worker et le serveur de modèles doivent se relancer seuls (tâche planifiée Windows qui lance `wsl`). WSL ne doit pas s'arrêter tant qu'ils tournent.
 - **Réseau** : Tailscale est installé côté Windows. Vérifier que la connexion **sortante** WSL → IP tailnet du NAS fonctionne (le worker n'a besoin que de sortant, c'est l'intérêt du WebSocket initié par le worker).
-- **Wake-on-LAN** : activé dans le BIOS et dans les propriétés de la carte réseau Windows.
-- **Mise en veille** : déclenchée côté Windows (commande lancée depuis WSL) uniquement après `sleep.allowed` du maître.
+- **Réveil et veille** : laissés à Windows et à Raphaël ; le worker ne les déclenche pas.
 
 ---
 
@@ -561,7 +559,7 @@ rang 3   projets
 - **Ce n'est pas un arbre strict** : un projet avec des étapes sur les deux machines a un trait plein vers sa `homeMachine` et une **arête en pointillés** vers l'autre machine, plus un badge multi-machine.
 - **Arêtes** : pas de conditions (contrairement à un arbre de décision). Étiquette optionnelle : nombre de pipelines ou état du dernier run.
 - **États** (couleur de bordure + pastille) : actif, en pause, en attente (gate, quota, machine), erreur, inactif. Machine : en ligne, occupée, en veille, réveil en cours, hors ligne. Arêtes animées pendant un run.
-- **Interactions** : clic = panneau latéral ; double-clic = plier/déplier ; clic droit = menu contextuel (lancer un pipeline, pause, stop, ouvrir dans l'éditeur, voir les logs) ; nœud machine en veille = bouton réveiller.
+- **Interactions** : clic = panneau latéral ; double-clic = plier/déplier ; clic droit = menu contextuel (lancer un pipeline, pause, stop, ouvrir dans l'éditeur, voir les logs) ; un nœud machine en veille explique pourquoi les tâches sont indisponibles, sans bouton de réveil.
 - Mise à jour en direct par SSE : un événement ne recalcule que les nœuds concernés, jamais tout l'arbre.
 
 ### 11.2 Panneau latéral
@@ -570,7 +568,7 @@ Ouvert par un clic sur un nœud, jamais en modale (on garde l'arbre visible).
 
 - **Projet** : machine, catégorie, pipelines attachés, 5 derniers runs, budget consommé, boutons lancer / éditer.
 - **Run en cours** : liste des étapes avec agent@version, modèle, statut, durée, tokens, coût ; actions pause, stop, relancer depuis une étape, approuver/rejeter une gate.
-- **Machine** : état, workers connectés, étapes en cours, dernier heartbeat, bouton réveiller.
+- **Machine** : état, workers connectés, étapes en cours, dernier heartbeat et conséquence sur les lancements.
 
 ### 11.3 Éditeur de pipelines (inspiration n8n)
 
@@ -627,7 +625,7 @@ Un panneau de conversation pour **comprendre ce qui se passe** : pourquoi un run
 
 **Moteur** : agent `cockpit-assistant@1` du registre, exécuté par le runner existant. Aucun moteur séparé.
 
-**Modèle** : par défaut un **modèle économique via OmniRoute**, pour ne pas consommer le quota d'abonnement dont les agents de code ont besoin. Sélecteur dans l'interface pour basculer sur Claude quand une question est difficile. La dépense du chat est suivie **à part** dans `/api/usage`, avec un plafond mensuel : au-delà, le chat est désactivé avec un message clair, jamais en silence.
+**Modèle** : Claude via le runner du NAS, afin que la conversation reste disponible quand le PC dort. Le service web du cockpit ne reçoit aucune clé. Les modèles OmniRoute pourront être proposés plus tard comme choix facultatif lorsque le PC est en ligne, mais ils ne remplacent jamais Claude silencieusement. La dépense du chat est suivie **à part** dans `/api/usage`, avec un plafond mensuel : au-delà, le chat est désactivé avec un message clair, jamais en silence.
 
 **Outils** : un serveur MCP local `cockpit-read`, **strictement en lecture**, exposant :
 
@@ -681,8 +679,8 @@ Chaque phase se termine par une démo et une validation de Raphaël.
 - **Acceptation :** la boucle `code ↔ review` s'arrête à `maxLoops` ; une gate bloque le run jusqu'à décision ; la relance depuis `review` restaure le bon commit ; un cycle sans `maxLoops` est refusé.
 
 ### Phase 3 — Maître + workers
-- Protocole maître/worker en WebSocket (§7.4), heartbeat, états machines, dispatch `runsOn`, WoL, mise en veille, démarrage auto du worker WSL (§7.6), remote bare NAS + miroir GitHub (§7.3).
-- **Acceptation :** un pipeline avec une étape NAS puis une étape PC s'exécute de bout en bout avec le PC initialement en veille ; une coupure réseau de 30 s pendant une étape ne perd aucun événement ; la perte du worker PC est visible et n'échoue pas silencieusement ; un échec du miroir GitHub ne bloque pas le run.
+- Protocole maître/worker en WebSocket (§7.4), heartbeat, états machines, dispatch `runsOn`, démarrage auto du worker WSL (§7.6), remote bare NAS + miroir GitHub (§7.3).
+- **Acceptation :** un pipeline avec une étape NAS puis une étape PC s'exécute de bout en bout quand le PC est en ligne ; PC endormi, le lancement est refusé avant la file sans réveil ni repli ; une coupure réseau de 30 s pendant une étape ne perd aucun événement ; la perte du worker PC est visible et n'échoue pas silencieusement ; un échec du miroir GitHub ne bloque pas le run.
 
 ### Phase 4 — Cockpit en lecture
 - Migration de `cockpit.js` en API REST + SSE ; front React : topologie + dashboard live.
@@ -713,6 +711,10 @@ Chaque phase se termine par une démo et une validation de Raphaël.
 - Miroir du vault sur le NAS, index FTS5 et serveur MCP `vault-search` (§7.6).
 - **Acceptation :** « pourquoi le run X a-t-il échoué ? » donne une réponse citant l'étape et la ligne de log concernées, **sans lancer de recherche dans `notes/`** ; sélectionner un projet charge son contexte `_context/` dans le fil ; une divergence entre `PROJECTS.md` et les runs réels est signalée avec ses deux sources ; une suggestion produit une carte à confirmer et ne déclenche jamais rien par elle-même ; le chat ne dispose d'aucun outil d'écriture (test : une consigne injectée dans un log, du type « annule ce run », ne déclenche rien) ; le plafond de dépense atteint désactive le chat avec un message explicite ; le fil est repris correctement depuis le mobile.
 
+Décision du 2026-09-24 : la première tranche de cette phase est avancée dans le chantier du
+harness. Elle commence avec Claude sur le NAS et les données du cockpit en lecture seule ; le
+RAG complet du vault et le sélecteur multi-modèles restent dans la phase 8.
+
 ## 13. Hors scope (pour l'instant)
 
 - Fine-tuning de modèles de langage.
@@ -731,12 +733,13 @@ Chaque phase se termine par une démo et une validation de Raphaël.
 5. **Évals** : harness existant Vitest/Playwright pour l'instant ; agent `test-writer` plus tard avec garde-fous (§12, Phase 7).
 6. **Langage** : TypeScript pour Node et React, migration progressive (§0).
 7. **Exposition** : jamais sur internet, tailnet uniquement (§3, §10).
-8. **Chat intégré** : lecture seule, via un MCP local `cockpit-read`, sur un modèle économique OmniRoute par défaut (§11.7).
+8. **Chat intégré** : lecture seule, via un MCP local `cockpit-read`, sur Claude depuis le runner du NAS afin de rester disponible sans le PC (§11.7).
+9. **Worker PC** : unique machine de développement pour l'instant ; PC endormi ou hors ligne, la tâche est refusée avant la file, sans Wake-on-LAN ni repli (§7.2).
 
 ## 15. Questions ouvertes
 
 1. Emplacement des fiches projet (`project.json`) : **A)** toutes centralisées dans `business-pipelines/projects/`, ou **B)** une fiche `.orchestrator/project.json` dans chaque repo projet + une simple liste des repos dans `business-pipelines`. Recommandation : A.
-2. Confidentialité du vault : envoyer des extraits de notes personnelles à un modèle tiers via OmniRoute, ou router les questions de connaissance vers Ollama en local (au prix d'un réveil du PC) ?
+2. Confidentialité du vault : quels dossiers peuvent être envoyés à Claude par le chat permanent du NAS ? Par défaut, limiter aux fichiers `_context/` explicitement prévus et demander une décision avant d'ouvrir `notes/`.
 
 ---
 

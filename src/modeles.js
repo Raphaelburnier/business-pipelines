@@ -30,36 +30,34 @@ function lireViaParMachine(valeur = "nas:claude;pc:claude,omniroute") {
   return table;
 }
 
-const ETATS_JOIGNABLES = new Set(["online", "busy", "waking"]);
+const ETATS_JOIGNABLES = new Set(["online", "busy"]);
+const ETATS_LISIBLES = { sleeping: "en veille", offline: "hors ligne", waking: "en cours de réveil", error: "en erreur" };
 
 /**
- * Vérifie qu'au moins une machine configurée pour ce backend est présente et joignable,
- * ou explicitement réveillable grâce à son adresse MAC.
+ * Vérifie qu'au moins une machine configurée pour ce backend est présente et joignable.
+ * Une machine en veille reste indisponible : le lancement d'un run ne doit jamais avoir
+ * pour effet secondaire de réveiller le PC (décision du 2026-09-24).
  * @param {string} via
  * @param {{ viaParMachine: Record<string, string[]>, machines: any[] }} etat
  */
 function disponibiliteVia(via, { viaParMachine, machines }) {
   const cibles = Object.entries(viaParMachine).filter(([, vias]) => vias.includes(via)).map(([machine]) => machine);
-  if (!cibles.length) return { utilisable: false, machine: null, reveillera: false, raison: `backend « ${via} » non configuré` };
+  if (!cibles.length) return { utilisable: false, machine: null, raison: `backend « ${via} » non configuré` };
 
   const parId = new Map(machines.map((m) => [m.machine, m]));
   for (const id of cibles) {
     const machine = parId.get(id);
     if (!machine) continue;
     if (ETATS_JOIGNABLES.has(machine.etat)) {
-      return { utilisable: true, machine: id, reveillera: false, raison: null };
-    }
-    const mac = machine.meta && typeof machine.meta.mac === "string" && machine.meta.mac.trim();
-    if (["sleeping", "offline"].includes(machine.etat) && mac) {
-      return { utilisable: true, machine: id, reveillera: true, raison: null };
+      return { utilisable: true, machine: id, raison: null };
     }
   }
 
   const presentes = cibles.map((id) => parId.get(id)).filter(Boolean);
   const raison = presentes.length
-    ? presentes.map((m) => `${m.machine} ${m.etat}${m.meta && m.meta.mac ? "" : " sans WoL"}`).join(", ")
+    ? presentes.map((m) => `${m.machine} ${ETATS_LISIBLES[m.etat] || m.etat}`).join(", ")
     : `machine ${cibles.join(" ou ")} non enregistrée`;
-  return { utilisable: false, machine: null, reveillera: false, raison };
+  return { utilisable: false, machine: null, raison };
 }
 
 /**

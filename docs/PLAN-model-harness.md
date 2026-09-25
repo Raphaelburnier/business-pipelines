@@ -9,7 +9,8 @@ que le code contient réellement. Lire aussi `docs/SPEC-cockpit-agentique.md` §
 
 Depuis le cockpit, savoir quels modèles un run peut utiliser maintenant, qui les sert,
 avec quelles capacités, s'il reste du quota, et sinon pourquoi et jusqu'à quand. Puis
-choisir l'un d'eux au lancement d'un run, et plus tard dans le chat.
+choisir l'un d'eux au lancement d'un run. Le même chantier ajoute maintenant un mode
+« Demander au cockpit » en lecture seule, distinct des tâches de développement.
 
 ## Ce que le code contient (vérifié le 2026-09-24)
 
@@ -56,6 +57,9 @@ choisir l'un d'eux au lancement d'un run, et plus tard dans le chat.
    décide de la disponibilité. `cline/google/gemma-4` est chez cline.
 6. Étendre les schémas zod de `agent-orchestrator/packages/schemas`, réutiliser
    `llm {via, model}`. Pas de second modèle de domaine.
+7. Questions et tâches sont deux chemins différents : le chat utilise Claude depuis le
+   runner du NAS et reste disponible sans le PC ; les tâches OmniRoute exigent le worker PC
+   en ligne. Aucun Wake-on-LAN et aucun repli silencieux entre les deux.
 
 ## Architecture
 
@@ -106,19 +110,17 @@ bin/publier-modeles.sh --ssh-->  etat/modeles.json
   l'emporte (`src/registre.js`, `llmEffectif`).
 - Tests : `test/vitest/catalogue-modeles.test.mjs`.
 
-Reste à faire (Codex) : installer un minuteur systemd utilisateur sur le PC qui lance
-`NAS_SSH=<compte@hôte> bin/publier-modeles.sh` toutes les 2 minutes, sur le modèle de
-`claude-jobs-repli.timer`. Vérifier que le compte SSH peut écrire dans
-`/volume1/docker/business-pipelines/etat/`.
+Le minuteur systemd utilisateur `modeles-cockpit.timer` est installé sur le PC et publie
+toutes les deux minutes dans `/volume1/docker/business-pipelines/etat/modeles.json`.
 
 ### Étape 2 : cockpit (faite)
 
 `business-pipelines` branche `feat/model-harness` :
 
-- `src/modeles.js` et `GET /api/modeles` : sert le dernier relevé, son âge, `perime`, et
-  `viaRunner` (variable `COCKPIT_VIA_RUNNER`, défaut `claude`).
-- `POST /api/runs` refuse (400) un `llmOverrides` dont le backend n'est pas dans
-  `viaRunner`, avant la mise en file.
+- `src/modeles.js` et `GET /api/modeles` : sert le dernier relevé, son âge, `perime`,
+  `viaParMachine` et l'état des machines (`COCKPIT_VIA_MACHINES`).
+- `POST /api/runs` refuse (400), avant la mise en file, un `llmOverrides` dont aucune
+  machine configurée n'est actuellement `online` ou `busy`.
 - Front : `donnees/modeles.ts` (`classer`, `raisonIndisponible`, `correspond`),
   `vues/SelecteurModele.tsx` (recherche sur nom, identifiant et fournisseur ; groupes,
   combos en tête ; indisponibles repliés avec raison et reprise ; bouton relire),
@@ -129,9 +131,18 @@ Reste à faire (Codex) : installer un minuteur systemd utilisateur sur le PC qui
 Conflit attendu : `Panneau.tsx` est aussi modifié par la refonte de navigation non
 committée du worktree `steam-tierlist-run`. Trois ajouts localisés, à reporter à la main.
 
-### Décision du 2026-09-24 : voie A, les runs OmniRoute tournent sur le PC
+### Décisions du 2026-09-24 : voie A, PC sans réveil automatique, chat permanent
 
-Tranché par Raphaël. Implémentation confiée à Codex. Les autres voies, pour mémoire :
+Tranché par Raphaël. Les nœuds OmniRoute tournent sur l'unique worker PC. Le téléphone et
+les autres appareils sont des interfaces du cockpit, pas des workers. Une tâche de
+développement n'est lançable que si le PC est déjà en ligne ; s'il dort ou est hors ligne,
+elle est refusée avant la file. Aucun Wake-on-LAN.
+
+En parallèle, « Demander au cockpit » reste disponible quand le PC dort : conversation
+Claude exécutée par le runner du NAS, strictement en lecture seule et séparée d'un run de
+développement. Le service web du cockpit ne reçoit toujours aucune clé.
+
+Les autres voies, pour mémoire :
 B (OmniRoute servi au NAS par `tailscale serve`, revient sur la décision 5) et C (statu quo)
 sont écartées.
 
@@ -157,24 +168,25 @@ Travail pour Codex, dans l'ordre :
    soit son `runsOn` du template, ou être refusé avant le run si `pc` n'est pas enregistré.
    L'écrire dans `src/dispatch.js` ou `src/graphe.js` (`role = noeud.runsOn || "pc"`), pas
    dans le cockpit.
-5. Réveil : si `pc` dort, le maître le réveille par WoL (`src/wol.js`) et le run attend en
-   `waiting_machine`, comme le prévoit la spec. Jamais de repli silencieux sur `claude`.
+5. Disponibilité : si `pc` dort ou est hors ligne, refuser le run avant la file avec une
+   raison lisible. Ne pas envoyer de WoL et ne jamais replier silencieusement sur `claude`.
 6. Cockpit : remplacer `COCKPIT_VIA_RUNNER` par une table par machine, par exemple
    `COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute`, dans `src/modeles.js`. `/api/modeles`
    rend `viaParMachine` et l'état des machines (déjà dans `/api/machines`). `classer()` rend
-   un modèle OmniRoute utilisable si `pc` est `online` ou réveillable, et l'annote « réveillera
-   le PC » s'il dort. `POST /api/runs` applique la même règle. Étendre
+   un modèle OmniRoute utilisable seulement si `pc` est `online` ou `busy`.
+   `POST /api/runs` applique la même règle. Étendre
    `modeles.reponse` dans `packages/schemas/modeles.js`.
 7. Relevé : garder `bin/publier-modeles.sh` sur un minuteur du PC pour l'instant. Plus tard,
    le worker pourra pousser le relevé par le protocole WebSocket (nouveau type de message),
    ce qui supprime la dépendance SSH.
-8. Tests : un nœud `omniroute` part sur `pc` ; `pc` absent refuse le run avant la mise en
-   file ; `pc` endormi passe le run en `waiting_machine` puis le reprend ; un nœud `claude`
-   reste sur le NAS ; le sélecteur rend OmniRoute utilisable quand `pc` est en ligne.
+8. Tests : un nœud `omniroute` part sur `pc` ; `pc` absent ou endormi refuse le run avant
+   la mise en file ; un nœud `claude` reste sur le NAS ; le sélecteur rend OmniRoute
+   utilisable uniquement quand `pc` est en ligne.
 
 Critère de fin : depuis le téléphone, choisir `agentic-code` dans le lanceur, lancer
 Steam TierList, voir les nœuds agents tourner sur `pc` avec `via: omniroute` dans le détail
-du run, et le coût affiché comme équivalent.
+du run, et le coût affiché comme équivalent. PC endormi, le même lancement est refusé sans
+le réveiller, tandis que « Demander au cockpit » continue de répondre via Claude sur le NAS.
 
 ### Étape 3 : erreurs à l'exécution et fournisseur réel (Codex, après la voie A)
 
@@ -206,14 +218,15 @@ Puis, dans `agent-orchestrator` :
 - Coût : quand OmniRoute sert, `total_cost_usd` du SDK est une estimation au tarif public
   (AUDIT C12). L'afficher comme « équivalent », comme le reste de `/api/usage`.
 
-### Étape 4 : chat (§11.7, Codex, après l'étape 3)
+### Étape 4 : chat (§11.7, Codex, avancé avant l'étape 3)
 
-Réutiliser `SelecteurModele` et `classer()` tels quels, avec deux différences : le chat ne
-demande pas l'appel d'outils du même ordre (MCP en lecture seule), et son défaut est un
-modèle économique via OmniRoute. Dépense suivie à part avec plafond mensuel (spec §11.7).
-Le modèle choisi se mémorise par fil (`chat_threads`), pas globalement. Au rechargement,
-si le modèle mémorisé n'est plus utilisable, le fil l'affiche comme indisponible avec sa
-raison et ne lui substitue rien.
+Première tranche : fils et messages durables, route de conversation consommée par le runner,
+Claude sur le NAS, contexte cockpit strictement en lecture seule, réponse en flux et panneau
+mobile. Le chat ne crée ni run ni branche et ne dispose d'aucune route d'écriture comme outil.
+Dépense suivie à part avec plafond mensuel (spec §11.7).
+
+Le sélecteur multi-modèles du chat est différé : tant qu'OmniRoute dépend du PC, Claude est
+le seul backend du mode permanent. Aucun modèle OmniRoute n'est substitué quand le PC dort.
 
 ## Ce qu'il ne faut pas faire
 

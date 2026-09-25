@@ -72,6 +72,9 @@ services:
     command: ["node", "bin/commande-runner.js"]
     volumes:
       - ./etat:/app/etat
+      # Registre des workers et configuration de déploiement : le maître lit
+      # /app/specs/workers.json, sans jamais intégrer le jeton brut à l'image.
+      - ./specs:/app/specs:ro
       - ./projects:/app/projects:ro
       - ./agent-registry:/app/agent-registry:ro
       - ./workspaces:/app/workspaces
@@ -86,13 +89,16 @@ services:
       - ORCH_MACHINE=nas
       - ORCH_REGISTRE=/app/agent-registry
       - ORCH_WORKERS=/app/specs/workers.json
+      # Une tâche de développement exige le PC déjà disponible. Une course entre le clic
+      # et le dispatch échoue clairement au lieu d'envoyer un paquet Wake-on-LAN.
+      - ORCH_REVEIL_MACHINE=0
       - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
       - OUTPUT_ROOT=/app/workspaces
       - ORCH_ROLE=nas
     env_file:
       - ./specs/deploiement.env
     # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve
-    # l'adresse source du worker pour `tailscale whois` et permet aussi le broadcast WoL.
+    # l'adresse source du worker pour `tailscale whois`.
     network_mode: host
     depends_on:
       - tailscale-whois

@@ -18,10 +18,10 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-function base({ avecPc = true } = {}) {
+function base({ avecPc = true, etatPc = "online" } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "routes-"));
   const store = new EventStore(path.join(dir, "events.sqlite"));
-  if (avecPc) store.majMachine({ id: "pc", state: "online", heartbeat: true, meta: { mac: "aa:bb:cc:dd:ee:ff" } });
+  if (avecPc) store.majMachine({ id: "pc", state: etatPc, heartbeat: true, meta: { mac: "aa:bb:cc:dd:ee:ff" } });
   const runId = store.creerRun({ pipelineRef: "marketing@1", projectId: "marketing", trigger: "test" });
   const etape = store.creerEtape({ runId, nodeId: "economie", type: "agent", machineId: "pc" });
   store.majEtape(etape, { status: "succeeded", estCostUsd: 0.2 });
@@ -224,6 +224,27 @@ test("un run OmniRoute est refusé avant la file quand le PC n'est pas enregistr
     });
     assert.strictEqual(lancement.code, 400);
     assert.match(JSON.parse(lancement.corps).erreur, /pc.*non enregistrée/);
+  } finally {
+    cockpit.kill();
+  }
+});
+
+test("un run OmniRoute est refusé avant la file quand le PC est en veille", async () => {
+  const bac = base({ etatPc: "sleeping" });
+  const cockpit = await demarrer({
+    COCKPIT_PORT: String(PORT + 4),
+    APPROVALS_DIR: path.join(bac.dir, "approvals"),
+    ORCH_EVENT_STORE: bac.base,
+    COCKPIT_OPERATEUR_LOCAL: "test",
+    COCKPIT_CATALOGUE_MODELES: releve(bac.dir),
+  });
+  try {
+    const lancement = await poster(PORT + 4, "/api/runs", {
+      projectId: "steam-tierlist",
+      llmOverrides: { "*": { via: "omniroute", model: "agentic-code" } },
+    });
+    assert.strictEqual(lancement.code, 400);
+    assert.match(JSON.parse(lancement.corps).erreur, /pc en veille/);
   } finally {
     cockpit.kill();
   }
