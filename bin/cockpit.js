@@ -51,6 +51,7 @@ const flux = require("../src/flux");
 const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
 const apiChat = require("../src/api-chat");
+const fluxChat = require("../src/flux-chat");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -718,6 +719,7 @@ async function traiter(req, res) {
   // clic dans le graphe ouvre une page partageable ; l'ancien /app reste un alias.
   const chemin = req.url.split("?")[0];
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/demander" || chemin.startsWith("/demander/") ||
     chemin.startsWith("/projects/") || chemin.startsWith("/runs/") || chemin.startsWith("/machines/") ||
     chemin.startsWith("/assets/");
   if (req.method === "GET" && (chemin === "/app" || chemin.startsWith("/app/"))) {
@@ -882,6 +884,11 @@ async function traiter(req, res) {
 
     if (req.method === "GET" && morceaux.length === 0) {
       return json(res, 200, apiChat.listeFils(magasinOuvert, { plafondUsd: CHAT_PLAFOND_USD, modele: CHAT_MODELE }));
+    }
+    // Tenu ouvert pendant la réponse ; `ouvrirFil` le referme quand elle est finie.
+    if (req.method === "GET" && morceaux.length === 2 && morceaux[1] === "flux") {
+      fluxChat.ouvrirFil({ req, res, store: magasinOuvert, threadId: morceaux[0] });
+      return undefined;
     }
     if (req.method === "GET" && morceaux.length === 1) {
       const fil = apiChat.filDetaille(magasinOuvert, morceaux[0]);

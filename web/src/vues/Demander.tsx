@@ -1,8 +1,7 @@
 // « Demander au cockpit » (§11.7) : comprendre un run, un coût, un échec, sans rien lancer.
 //
 // Les réponses viennent de Claude par le runner du NAS : le chat reste disponible quand le
-// PC dort. L'écran relit le fil tant qu'une réponse s'écrit ; le flux SSE ne porte que les
-// événements des runs.
+// PC dort. Pendant une réponse, le fil arrive par son propre flux SSE (`/api/chat/<id>/flux`).
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis, usd } from "../format";
@@ -10,7 +9,6 @@ import type { FilDetaille, MessageChat } from "../types";
 import { Erreur, Titre, Vide } from "../ui";
 
 const EXEMPLES = ["Pourquoi le dernier run a échoué ?", "Qu'est-ce qui coûte le plus ce mois-ci ?", "Le PC est-il disponible pour lancer une tâche ?"];
-const RELECTURE_MS = 1000;
 
 const enCours = (fil: FilDetaille | null) => !!fil?.messages.some((m) => m.role === "assistant" && (m.statut === "queued" || m.statut === "streaming"));
 
@@ -60,16 +58,15 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
     void relire();
   }, [relire]);
 
-  // Tant qu'une réponse s'écrit, le fil est relu ; la liste l'est une fois la réponse finie.
+  // Tant qu'une réponse s'écrit, le fil arrive par son flux ; la liste est relue ensuite.
   const actif = enCours(fil);
   useEffect(() => {
-    if (!actif) {
+    if (!actif || !filId) {
       setTourListe((t) => t + 1);
       return;
     }
-    const minuterie = setInterval(() => void relire(), RELECTURE_MS);
-    return () => clearInterval(minuterie);
-  }, [actif, relire]);
+    return source.ecouterFil(filId, setFil, () => setTourListe((t) => t + 1));
+  }, [actif, filId, source]);
 
   // Accolades obligatoires : les navigateurs récents font rendre une promesse à
   // scrollIntoView, que React prendrait pour une fonction de nettoyage.
