@@ -15,8 +15,11 @@ ENV SHELL=/bin/bash
 # Les dépôts de projets montés appartiennent à admindunas, le runner tourne en root. Git
 # refuse alors de pousser (« dubious ownership »). Les variables GIT_CONFIG_* du compose ne
 # suffisent pas : git les efface pour le sous-processus qui reçoit un push local. Seule une
-# configuration système ou globale atteint ce sous-processus.
-RUN git config --system --add safe.directory /git/steam-tierlist.git
+# configuration système ou globale atteint ce sous-processus. Les dossiers de travail des
+# runs sont couverts aussi : la bascule les rend à admindunas, et git refusait alors le
+# dépôt du run précédent (« not in a git directory », deux runs perdus le 2026-09-26).
+RUN git config --system --add safe.directory /git/steam-tierlist.git \
+ && git config --system --add safe.directory '/app/workspaces/*'
 ENV USE_BUILTIN_RIPGREP=0
 
 WORKDIR /app
