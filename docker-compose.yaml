@@ -84,6 +84,13 @@ services:
       - ORCH_REGISTRE=/app/agent-registry
       - OUTPUT_ROOT=/app/workspaces
       - ORCH_ROLE=nas
+      # Le dépôt monté appartient à admindunas, le runner tourne en root : sans cette
+      # exception, git refuse de le cloner (« dubious ownership »). Posé en variables
+      # d'environnement, qui comptent comme configuration protégée pour git, pour survivre à
+      # la recréation du conteneur. Le premier run du 2026-09-25 a échoué là.
+      - GIT_CONFIG_COUNT=1
+      - GIT_CONFIG_KEY_0=safe.directory
+      - GIT_CONFIG_VALUE_0=/git/steam-tierlist.git
     env_file:
       - ./specs/deploiement.env
     networks:
