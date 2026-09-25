@@ -30,9 +30,10 @@ const TYPES = {
  */
 function ressource({ racine, prefixe = "/app", url }) {
   const chemin = decodeURIComponent(String(url).split("?")[0]);
-  if (chemin !== prefixe && !chemin.startsWith(`${prefixe}/`)) return null;
+  const sousPrefixe = prefixe === "/" ? chemin.startsWith("/") : chemin === prefixe || chemin.startsWith(`${prefixe}/`);
+  if (!sousPrefixe) return null;
 
-  const relatif = chemin.slice(prefixe.length).replace(/^\//, "");
+  const relatif = (prefixe === "/" ? chemin.slice(1) : chemin.slice(prefixe.length)).replace(/^\//, "");
   const cible = path.resolve(racine, relatif || "index.html");
   const racineResolue = path.resolve(racine);
   if (cible !== racineResolue && !cible.startsWith(racineResolue + path.sep)) return null;

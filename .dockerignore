@@ -24,6 +24,9 @@ approvals
 workspace
 runs
 logs
+etat
+workspaces
+agent-registry
 
 # Secrets.
 specs/*.env

@@ -1,41 +1,59 @@
 // Le panneau latéral (§11.2) : ouvert par un clic sur un nœud, jamais en modale, pour que
 // l'arbre reste visible. Trois contenus : un projet, un run, une machine.
 //
-// Pas encore de boutons lancer, pause, stop ni de décision : ils arrivent avec la phase 5.
-// Un bouton qui ne fait rien apprendrait à se méfier des autres.
+// Le lancement est la première action de phase 5. Pause, stop et décisions migreront ici
+// ensuite ; chaque bouton n'apparaît que lorsque son chemin serveur existe réellement.
 import { useMemo, useState } from "react";
-import { useCharge, useHorloge } from "../donnees/contexte";
+import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
-import type { Etape, RunDetaille } from "../types";
+import type { Etape, Llm, RunDetaille } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
+import { SelecteurModele } from "./SelecteurModele";
 
-export function Panneau({ selection, onSelection, onFermer }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void }) {
+export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
-    <aside className="flex h-full flex-col gap-3 overflow-y-auto rounded-xl border border-trait bg-surface p-3">
+    <section className={`flex h-full flex-col gap-4 overflow-y-auto rounded-xl border border-trait bg-surface p-4 ${modePage ? "detail-page" : ""}`}>
       <div className="flex items-center">
         <span className="text-xs font-bold uppercase tracking-wider text-douce">
           {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : "Machine"}
         </span>
         <button type="button" onClick={onFermer} className="ml-auto rounded px-2 py-0.5 text-xs text-douce hover:text-accent" aria-label="Fermer le panneau">
-          fermer
+          {modePage ? "← Retour au graphe" : "fermer"}
         </button>
       </div>
       {selection.type === "projet" && <PanneauProjet id={selection.id} onSelection={onSelection} />}
       {selection.type === "run" && <PanneauRun id={selection.id} />}
       {selection.type === "machine" && <PanneauMachine id={selection.id} />}
-    </aside>
+    </section>
   );
 }
 
 function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selection) => void }) {
   const maintenant = useHorloge(5000);
+  const { source } = useSource();
   const topo = useCharge((s) => s.topologie(), []);
   const runs = useCharge((s) => s.runs({ project: id, limite: 5 }), [id]);
   const projet = topo.donnees?.projets.find((p) => p.id === id);
+  const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
+  const [erreurLancement, setErreurLancement] = useState<string | null>(null);
+  const [llm, setLlm] = useState<Llm | null>(null);
+
+  async function lancer(pipelineIndex: number) {
+    setLancement("sending");
+    setErreurLancement(null);
+    try {
+      await source.lancerRun(id, pipelineIndex, llm);
+      setLancement("sent");
+    } catch (err) {
+      setLancement("idle");
+      setErreurLancement(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   if (topo.erreur) return <Erreur>{topo.erreur}</Erreur>;
-  if (!projet) return <p className="text-sm text-douce">Lecture du projet…</p>;
+  if (!topo.donnees) return <p className="text-sm text-douce">Lecture du projet…</p>;
+  if (!projet) return <Erreur>Projet inconnu : {id}</Erreur>;
   return (
     <>
       <div>
@@ -61,6 +79,27 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
           )}
         </dl>
       </div>
+      {projet.aFiche && projet.pipelines.length > 0 && (
+        <div>
+          <Titre>Lancer</Titre>
+          <div className="flex flex-col gap-2">
+            <SelecteurModele choix={llm} onChoix={setLlm} desactive={lancement !== "idle"} />
+            {projet.pipelines.map((pipeline, index) => (
+              <button
+                key={`${pipeline}:${index}`}
+                type="button"
+                disabled={lancement === "sending" || lancement === "sent"}
+                onClick={() => lancer(index)}
+                className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {lancement === "sending" ? "Envoi…" : lancement === "sent" ? "Run demandé" : `Lancer ${pipeline}`}
+              </button>
+            ))}
+          </div>
+          {lancement === "sent" && <p className="mt-1 text-xs text-ok">Commande signée et mise en file. Le run apparaîtra ci-dessous.</p>}
+          {erreurLancement && <Erreur>{erreurLancement}</Erreur>}
+        </div>
+      )}
       <div>
         <Titre compteur={runs.donnees?.length}>5 derniers runs</Titre>
         {runs.erreur && <Erreur>{runs.erreur}</Erreur>}
@@ -121,7 +160,7 @@ function PanneauRun({ id }: { id: string }) {
               </div>
             </div>
           ))}
-          <a className="mt-1 inline-block text-xs font-semibold text-accent underline" href="/">
+          <a className="mt-1 inline-block text-xs font-semibold text-accent underline" href="/decisions">
             Aller décider
           </a>
         </div>
@@ -295,7 +334,7 @@ function PanneauMachine({ id }: { id: string }) {
         <dd>{projets.map((p) => p.nom).join(", ") || VIDE}</dd>
       </dl>
       {machine.etat === "sleeping" && (
-        <p className="text-[12px] text-douce">En veille. Le maître la réveille dès qu'une étape lui est destinée ; le réveil à la demande arrive avec la phase 5.</p>
+        <p className="text-[12px] text-douce">En veille. Les tâches de développement restent indisponibles jusqu'au réveil manuel du PC.</p>
       )}
     </>
   );

@@ -48,6 +48,19 @@ test("une route du front rend l'index, un fichier manquant reste manquant", () =
   );
 });
 
+test("le même serveur sait monter le front à la racine", () => {
+  const { racine } = bac();
+  assert.ok(statique.ressource({ racine, prefixe: "/", url: "/" }));
+  assert.ok(statique.ressource({ racine, prefixe: "/", url: "/projects/steam-tierlist" }));
+  const asset = statique.ressource({ racine, prefixe: "/", url: "/assets/index-abc123.js" });
+  assert.strictEqual(asset.type, "text/javascript; charset=utf-8");
+  assert.strictEqual(
+    statique.ressource({ racine, prefixe: "/", url: "/../specs/cockpit.env" }),
+    null,
+    "monter à la racine ne doit pas permettre de sortir du dossier"
+  );
+});
+
 test("aucune requête ne sort du dossier servi", () => {
   const { racine } = bac();
   for (const url of [

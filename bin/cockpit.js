@@ -49,6 +49,8 @@ const apps = require("../src/apps");
 const api = require("../src/api-lecture");
 const flux = require("../src/flux");
 const statique = require("../src/statique");
+const catalogueModeles = require("../src/modeles");
+const apiChat = require("../src/api-chat");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -85,13 +87,48 @@ const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
 // rouvrir la base à chaque requête coûterait un verrou à chaque rafraîchissement de page.
 // Une base absente ou illisible ne tue pas le cockpit — les décisions d'approbation, elles,
 // ne dépendent pas d'elle et doivent rester accessibles.
-// Le front buildé (web/dist). Absent, la page /app le dit : un 404 muet laisserait croire
+// Le front buildé (web/dist). Absent, la racine le dit : un 404 muet laisserait croire
 // à une route cassée alors qu'il manque une commande de build.
 const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
 
 // Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
 // tire les catégories et les projets.
 const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
+// Le relevé des modèles poussé par le PC, et les backends joignables par chaque machine.
+// Sur le NAS, `claude` vient de la clé du runner ; OmniRoute reste local au worker PC.
+const CATALOGUE_MODELES = ENV.COCKPIT_CATALOGUE_MODELES || path.join(RACINE, "etat", "modeles.json");
+const VIA_PAR_MACHINE = catalogueModeles.lireViaParMachine(ENV.COCKPIT_VIA_MACHINES);
+// « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
+const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
+const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
+
+// Le corps JSON d'une écriture du front, avec les contrôles de POST /api/runs : origine du
+// cockpit, JSON seul, 20 ko au plus. Rend `null` après avoir répondu en cas de refus.
+async function corpsJson(req, res) {
+  if (!acces.origineAutorisee(req.headers, PORTEE)) {
+    json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    return null;
+  }
+  const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") {
+    json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    return null;
+  }
+  let brut = "";
+  for await (const morceau of req) {
+    brut += morceau;
+    if (brut.length > 20_000) {
+      json(res, 413, { erreur: "corps trop gros" });
+      return null;
+    }
+  }
+  try {
+    return JSON.parse(brut || "{}");
+  } catch {
+    json(res, 400, { erreur: "JSON illisible" });
+    return null;
+  }
+}
 
 let magasin = null;
 let magasinErreur = null;
@@ -427,9 +464,14 @@ body{font:16px/1.55 var(--police-texte);color:var(--encre);background:var(--fond
 
 /* ---- en-tête ---- */
 .entete{margin-bottom:1.1rem}
+.entete-ligne{display:flex;align-items:center;justify-content:space-between;gap:1rem}
 .marque{font-family:var(--police-titre);font-weight:var(--graisse-titre);
   letter-spacing:var(--serrage);font-size:1.7rem;line-height:1.1}
 .qui{color:var(--encre-douce);font-size:.875rem;margin:.3rem 0 0}
+.retour-graphe{color:var(--accent);font-size:.85rem;font-weight:700;text-decoration:none;
+  border:1px solid var(--trait);border-radius:9px;padding:.45rem .7rem;background:var(--surface)}
+.retour-graphe:hover{border-color:var(--accent)}
+.retour-graphe:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---- bandeau d'accueil ---- */
 .bandeau{display:flex;align-items:center;gap:1rem;min-height:76px;
@@ -568,7 +610,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 }
 </style>
 <header class="entete">
-  <div class="marque">Cockpit</div>
+  <div class="entete-ligne"><div class="marque">Décisions</div><a class="retour-graphe" href="/">← Graphe</a></div>
   <p class="qui">Décisions signées <b>${ech(qui.par)}</b>, ${ech(canal)}.</p>
 </header>
 ${bandeau(etat)}
@@ -672,17 +714,24 @@ async function traiter(req, res) {
     }
   }
 
-  // Le cockpit en lecture (phase 4). La page d'approbation garde la racine : les deux
-  // cohabitent le temps que celle-ci reprenne aussi les décisions.
-  // Le chemin, pas l'URL : `/app?v=2` est la même page que `/app`. Comparer l'URL entière
-  // renvoyait « route inconnue » dès qu'un lien portait le moindre paramètre.
+  // Le cockpit React est l'entrée principale. Les objets ont une vraie route afin qu'un
+  // clic dans le graphe ouvre une page partageable ; l'ancien /app reste un alias.
   const chemin = req.url.split("?")[0];
+  const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin.startsWith("/projects/") || chemin.startsWith("/runs/") || chemin.startsWith("/machines/") ||
+    chemin.startsWith("/assets/");
   if (req.method === "GET" && (chemin === "/app" || chemin.startsWith("/app/"))) {
+    // La query suit : `/app/?source=maquette` doit rester la maquette après la redirection.
+    const suite = req.url.slice(chemin.length);
+    res.writeHead(308, { Location: `/${suite}`, ...DURCISSEMENT });
+    return res.end();
+  }
+  if (req.method === "GET" && routeWeb) {
     if (!statique.present(WEB)) {
       res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8", ...DURCISSEMENT });
       return res.end(`Front non construit. Lancer : npm run web:build\nAttendu dans ${WEB}\n`);
     }
-    const r = statique.ressource({ racine: WEB, url: req.url });
+    const r = statique.ressource({ racine: WEB, prefixe: "/", url: req.url });
     if (!r) return json(res, 404, { erreur: "fichier inconnu" });
     res.writeHead(200, {
       "Content-Type": r.type,
@@ -693,7 +742,7 @@ async function traiter(req, res) {
     return res.end(r.corps);
   }
 
-  if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
+  if (req.method === "GET" && (chemin === "/decisions" || chemin === "/decisions/")) {
     const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...DURCISSEMENT });
     return res.end(html);
@@ -703,12 +752,81 @@ async function traiter(req, res) {
     return json(res, 200, cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
   }
 
+  // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
+  // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
+  // l'event store, que le service runner consomme dans un autre conteneur.
+  if (req.method === "POST" && chemin === "/api/runs") {
+    if (!acces.origineAutorisee(req.headers, PORTEE)) {
+      return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    }
+    const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (type !== "application/json") {
+      return json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    }
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+
+    let brut = "";
+    for await (const morceau of req) {
+      brut += morceau;
+      if (brut.length > 20_000) return json(res, 413, { erreur: "corps trop gros" });
+    }
+    try {
+      const demande = JSON.parse(brut);
+      // Un modèle sans machine capable de le servir échouerait au premier nœud, après la
+      // mise en file : autant le refuser ici, avec la raison. Une machine endormie reste
+      // indisponible : lancer une tâche de développement ne réveille pas le PC.
+      const etatMachines = api.machines(magasinOuvert);
+      for (const llm of Object.values(demande.llmOverrides || {})) {
+        if (llm) {
+          const disponibilite = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine: VIA_PAR_MACHINE, machines: etatMachines });
+          if (!disponibilite.utilisable) {
+            return json(res, 400, { erreur: `backend « ${llm.via} » indisponible : ${disponibilite.raison}` });
+          }
+        }
+      }
+      const commande = magasinOuvert.creerCommande({
+        kind: "run.start",
+        payload: {
+          projectId: demande.projectId,
+          pipelineIndex: demande.pipelineIndex,
+          llmOverrides: demande.llmOverrides,
+        },
+        par: qui.par,
+        canal: qui.canal,
+      });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) {
+      return json(res, 400, { erreur: err.message });
+    }
+  }
+
   // ---- lecture des runs (§10) ----
   //
   // Derrière le même contrôle d'identité que le reste : ce que le cockpit montre d'un run,
   // ce sont des prompts, des coûts et des noms de machines. Les routes et leurs paramètres
   // suivent la spec (décision 7 du 2026-09-18).
   const lecture = req.method === "GET" ? new URL(req.url, "http://cockpit") : null;
+
+  if (lecture && lecture.pathname.startsWith("/api/commands/")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const id = decodeURIComponent(lecture.pathname.slice("/api/commands/".length));
+    const commande = magasinOuvert.commande(id);
+    if (!commande) return json(res, 404, { erreur: "commande inconnue" });
+    return json(res, 200, {
+      commande: {
+        id: commande.id,
+        type: commande.kind,
+        statut: commande.status,
+        projet: commande.payload.projectId,
+        creeeLe: commande.created_at,
+        priseLe: commande.taken_at,
+        termineeLe: commande.done_at,
+        resultat: commande.resultat,
+      },
+    });
+  }
 
   if (lecture && lecture.pathname.startsWith("/api/runs")) {
     const magasinOuvert = store();
@@ -750,6 +868,54 @@ async function traiter(req, res) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     return json(res, 200, api.usage(magasinOuvert));
+  }
+
+  // ---- Demander au cockpit (§11.7) ----
+  //
+  // Lecture et questions derrière le même contrôle d'identité que les runs. Aucune route
+  // ici ne déclenche autre chose qu'une réponse écrite : le chat n'agit pas.
+  const cheminChat = req.url.split("?")[0];
+  if (cheminChat === "/api/chat" || cheminChat.startsWith("/api/chat/")) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const morceaux = cheminChat.split("/").filter(Boolean).slice(2).map(decodeURIComponent);
+
+    if (req.method === "GET" && morceaux.length === 0) {
+      return json(res, 200, apiChat.listeFils(magasinOuvert, { plafondUsd: CHAT_PLAFOND_USD, modele: CHAT_MODELE }));
+    }
+    if (req.method === "GET" && morceaux.length === 1) {
+      const fil = apiChat.filDetaille(magasinOuvert, morceaux[0]);
+      return fil ? json(res, 200, fil) : json(res, 404, { erreur: "conversation inconnue" });
+    }
+    const nouveauFil = req.method === "POST" && morceaux.length === 0;
+    const suite = req.method === "POST" && morceaux.length === 2 && morceaux[1] === "messages";
+    if (nouveauFil || suite) {
+      const demande = await corpsJson(req, res);
+      if (!demande) return undefined;
+      const { code, corps } = apiChat.poser(magasinOuvert, {
+        threadId: suite ? morceaux[0] : null,
+        contenu: demande.contenu,
+        projet: typeof demande.projet === "string" ? demande.projet : null,
+        par: qui.par,
+        canal: qui.canal,
+        plafondUsd: CHAT_PLAFOND_USD,
+      });
+      return json(res, code, corps);
+    }
+    return json(res, 405, { erreur: "méthode non prise en charge" });
+  }
+
+  if (lecture && lecture.pathname === "/api/modeles") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(
+      res,
+      200,
+      catalogueModeles.lireCatalogue(CATALOGUE_MODELES, {
+        viaParMachine: VIA_PAR_MACHINE,
+        machines: api.machines(magasinOuvert),
+      })
+    );
   }
 
   // Le flux temps réel. Il ne rend jamais la main tant que le client écoute : la réponse

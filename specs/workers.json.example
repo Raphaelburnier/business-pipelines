@@ -1,0 +1,13 @@
+{
+  "workers": [
+    {
+      "machine": "pc",
+      "hashJeton": "REMPLACER_PAR_L_EMPREINTE_PRODUITE_PAR_ORCH_JETON",
+      "actif": true,
+      "nomTailscale": "destrobimobile",
+      "mac": "AA:BB:CC:DD:EE:FF",
+      "concurrence": 1,
+      "notes": "Worker WSL du PC ; le jeton brut reste uniquement dans worker.env sur le PC."
+    }
+  ]
+}

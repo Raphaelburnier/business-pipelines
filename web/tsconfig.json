@@ -16,7 +16,9 @@
     "checkJs": false,
     "types": ["vite/client", "node"],
     "paths": {
-      "@schemas/cockpit": ["../node_modules/agent-orchestrator/packages/schemas/cockpit.js"]
+      "@schemas/cockpit": ["../node_modules/agent-orchestrator/packages/schemas/cockpit.js"],
+      "@schemas/modeles": ["../node_modules/agent-orchestrator/packages/schemas/modeles.js"],
+      "@schemas/chat": ["../node_modules/agent-orchestrator/packages/schemas/chat.js"]
     }
   },
   "include": ["src"]

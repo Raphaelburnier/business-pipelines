@@ -8,7 +8,10 @@ services:
   cockpit:
     build: .
     container_name: business_cockpit
-    restart: unless-stopped
+    # `always`, pas `unless-stopped` : DSM arrête les conteneurs par `docker stop` quand le
+    # NAS s'éteint, ce qui compte comme un arrêt manuel. Après le redémarrage du 2026-09-23,
+    # aucun n'est revenu seul.
+    restart: always
     ports:
       # Boucle locale de l'hôte uniquement. Écrire "4600:4600" publierait le cockpit sur
       # tout le réseau, et n'importe quelle machine du LAN pourrait alors fabriquer
@@ -31,9 +34,12 @@ services:
       # Monté en écriture parce que SQLite pose un journal WAL à l'ouverture, même pour
       # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
       - ./etat:/app/etat
+      - ./projects:/app/projects:ro
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_MACHINE=nas
+      - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
       # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
@@ -52,6 +58,68 @@ services:
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
     # tout le reste du dépôt s'emploie à empêcher.
+
+  # Seul ce service reçoit la clé Anthropic. Le cockpit dépose une commande signée dans
+  # SQLite ; le runner la prend, lance le pipeline, puis consigne son résultat. Cette
+  # séparation empêche le processus exposé au tailnet d'appeler directement un modèle.
+  runner:
+    build: .
+    container_name: business_runner
+    # `always`, pas `unless-stopped` : DSM arrête les conteneurs par `docker stop` quand le
+    # NAS s'éteint, ce qui compte comme un arrêt manuel. Après le redémarrage du 2026-09-23,
+    # aucun n'est revenu seul.
+    restart: always
+    command: ["node", "bin/commande-runner.js"]
+    volumes:
+      - ./etat:/app/etat
+      # Registre des workers et configuration de déploiement : le maître lit
+      # /app/specs/workers.json, sans jamais intégrer le jeton brut à l'image.
+      - ./specs:/app/specs:ro
+      - ./projects:/app/projects:ro
+      - ./agent-registry:/app/agent-registry:ro
+      - ./workspaces:/app/workspaces
+      - ./logs:/app/logs
+      # Un dépôt par projet, jamais le dossier entier : les agents de ce conteneur ont Bash,
+      # et monter /volume1/docker/git leur donnait les dépôts de tous les autres projets.
+      # Monté en écriture, parce que le run pousse sa branche run/<runId>.
+      - /volume1/docker/git/steam-tierlist.git:/git/steam-tierlist.git
+    environment:
+      - NODE_ENV=production
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_MACHINE=nas
+      - ORCH_REGISTRE=/app/agent-registry
+      - ORCH_WORKERS=/app/specs/workers.json
+      # Une tâche de développement exige le PC déjà disponible. Une course entre le clic
+      # et le dispatch échoue clairement au lieu d'envoyer un paquet Wake-on-LAN.
+      - ORCH_REVEIL_MACHINE=0
+      - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
+      - OUTPUT_ROOT=/app/workspaces
+      - ORCH_ROLE=nas
+    env_file:
+      - ./specs/deploiement.env
+    # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve
+    # l'adresse source du worker pour `tailscale whois`.
+    network_mode: host
+    depends_on:
+      - tailscale-whois
+
+  # Le runner exécute du code produit par des agents : lui monter le socket LocalAPI de
+  # Tailscale lui donnerait bien plus que `whois`. Ce relais séparé possède le socket mais
+  # n'expose qu'une lecture d'identité sur 127.0.0.1.
+  tailscale-whois:
+    build: .
+    container_name: business_tailscale_whois
+    restart: always
+    command: ["node", "/agent-orchestrator/bin/orch-whois-proxy.js"]
+    volumes:
+      - /var/packages/Tailscale/target/bin/tailscale:/usr/local/bin/tailscale:ro
+      - /var/packages/Tailscale/var/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+    environment:
+      - NODE_ENV=production
+      - ORCH_TAILSCALE_SOCKET=/var/run/tailscale/tailscaled.sock
+      - ORCH_WHOIS_PROXY_HOTE=127.0.0.1
+      - ORCH_WHOIS_PROXY_PORT=4651
+    network_mode: host
 
   # Le pipeline marketing, lancé à la demande, jamais en continu :
   #
