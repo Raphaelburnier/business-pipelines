@@ -188,7 +188,11 @@ Steam TierList, voir les nœuds agents tourner sur `pc` avec `via: omniroute` da
 du run, et le coût affiché comme équivalent. PC endormi, le même lancement est refusé sans
 le réveiller, tandis que « Demander au cockpit » continue de répondre via Claude sur le NAS.
 
-### Étape 3 : erreurs à l'exécution et fournisseur réel (largement faite par Codex, `d212cd0`)
+### Étape 3 : erreurs à l'exécution et fournisseur réel (faite, Codex `d212cd0`)
+
+Vérifié le 2026-09-25 : erreurs normalisées dans `agent-runner`, événement `step:llm` par appel
+(`via`, `model`, `statut`, `latenceMs`, `erreur`), relevé des modèles redemandé par le worker PC
+après `rate_limited` ou `quota_exhausted` (`ctx.actualiserModeles`, `bin/orch-worker.js`).
 
 Commencer par une vérification, avant tout code : ce que `query()` du SDK agent rend
 quand OmniRoute répond 429 ou 503 (message d'erreur texte ? code ? en-têtes ?). Le SDK
@@ -243,12 +247,21 @@ claude.ai, le CLI ajoutait les connecteurs du compte (Gmail, Drive, Notion…) �
 d'écriture hors périmètre. `strictMcpConfig` avec `mcpServers: {}` les retire (0,0016 $).
 Ça concernait aussi les agents de pipeline sur le worker PC.
 
+Deuxième tranche, faite le 2026-09-25 (moteur `1c477be`, `9f81dcd`) :
+
+- Serveur MCP `cockpit-read` dans le processus du runner : `list_runs`, `get_run`,
+  `get_step_log` (journal lisible, 200 lignes et 20 000 caractères au plus, filtre par mot) et
+  `get_state`. Aucun outil n'écrit. Un journal resté sur le PC est signalé comme tel.
+- Bouton « Expliquer cette étape » dans le détail d'une étape : ouvre `/demander` avec la
+  question pré-remplie, jamais envoyée sans clic.
+- Vérifié en réel : pour citer le test en échec, le chat a lu le journal par `get_step_log`
+  (0,014 $ la réponse, haiku).
+
 Reste pour les tranches suivantes :
 
-- Outils MCP `cockpit-read` à la place de l'instantané, pour lire un log d'étape à la demande.
 - `vault-search` et le contexte `_context/` du projet sélectionné (question ouverte 2 de la spec).
-- Boutons « expliquer cette étape » depuis le panneau d'un run, qui pré-remplissent le fil.
 - Pousser les messages par le flux SSE au lieu de relire le fil chaque seconde.
+- Lire les journaux des étapes exécutées sur le PC (aujourd'hui : signalés absents du NAS).
 - Le sélecteur multi-modèles du chat reste différé : tant qu'OmniRoute dépend du PC, Claude
   est le seul backend du mode permanent. Aucun modèle OmniRoute n'est substitué quand le PC dort.
 

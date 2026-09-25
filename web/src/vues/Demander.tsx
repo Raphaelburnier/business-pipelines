@@ -36,7 +36,12 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
   const liste = useCharge((s) => s.fils(), [tourListe]);
   const [fil, setFil] = useState<FilDetaille | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [question, setQuestion] = useState("");
+  // Une question pré-remplie par un autre écran (« Expliquer cette étape ») : lue une fois,
+  // puis retirée de l'adresse pour qu'un rechargement ne la remette pas.
+  const [question, setQuestion] = useState(() => new URLSearchParams(window.location.search).get("question") ?? "");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("question")) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const [envoi, setEnvoi] = useState(false);
   const bas = useRef<HTMLDivElement>(null);
 
