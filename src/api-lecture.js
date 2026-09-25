@@ -204,7 +204,7 @@ function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRu
     return vues;
   };
 
-  const projet = ({ id, nom, categorie, homeMachine, pipelines, aFiche }) => {
+  const projet = ({ id, nom, categorie, homeMachine, pipelines, aFiche, url = null }) => {
     const runsDuProjet = parProjet.get(id) || [];
     const dernier = runsDuProjet[0] || null;
     const approbations = runsDuProjet
@@ -219,6 +219,7 @@ function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRu
       pipelines,
       etat: etatDuProjet(dernier),
       aFiche,
+      url,
       dernierRun: dernier ? { id: dernier.id, statut: dernier.status, debut: dernier.started_at } : null,
       approbationsEnAttente: approbations,
     };
@@ -232,6 +233,7 @@ function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRu
       homeMachine: f.homeMachine,
       pipelines: f.pipelines.map((p) => p.extends),
       aFiche: true,
+      url: f.url ?? null,
     })
   );
   const connus = new Set(projets.map((p) => p.id));

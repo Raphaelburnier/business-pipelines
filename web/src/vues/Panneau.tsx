@@ -77,6 +77,18 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
           )}
         </dl>
       </div>
+      {projet.url && (
+        // Un vrai lien, pas un bouton : il s'ouvre dans un nouvel onglet au clic du milieu et
+        // se partage comme une adresse.
+        <a
+          href={projet.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg border border-accent px-3 py-2 text-center text-sm font-semibold text-accent hover:bg-accent hover:text-white"
+        >
+          Ouvrir l’app ↗
+        </a>
+      )}
       {projet.aFiche && projet.pipelines.length > 0 && (
         <div>
           <Titre>Lancer</Titre>

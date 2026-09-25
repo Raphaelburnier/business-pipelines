@@ -4,12 +4,18 @@
   "business": "outils-perso",
   "homeMachine": "nas",
   "repo": "/git/steam-tierlist.git",
+  "url": "/steam/",
   "pipelines": [
     {
       "extends": "improve-app@1",
       "spec": "improvement.json",
-      "overrides": { "nodes": {} },
-      "budget": { "usdPerRun": 3, "usdPerMonth": 15 }
+      "overrides": {
+        "nodes": {}
+      },
+      "budget": {
+        "usdPerRun": 3,
+        "usdPerMonth": 15
+      }
     }
   ]
 }
