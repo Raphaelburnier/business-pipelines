@@ -1,16 +1,27 @@
 {
   "project_name": "steam-tierlist",
-  "task": "Choisir et livrer une amélioration utile et visible de Steam TierList après avoir audité son état actuel.",
-  "priorities": [
-    "utilisabilité sur téléphone",
-    "gestion claire des erreurs Steam",
-    "fiabilité de la sauvegarde locale",
-    "couverture de test des comportements critiques"
+  "task": "Run 2 sur 2 : l'app se construit sur le catalogue Steam complet, et tout ce qui dépend d'un compte Steam disparaît. La barre de recherche interroge le catalogue du serveur, un clic ajoute le jeu au pool, et la tierlist se sauvegarde sans compte.",
+  "details": {
+    "etat_de_depart": "Le serveur sert déjà GET /steam/api/catalogue/search?q=&limit= (réponse { total, synchroniseLe, jeux: [{ appid, name }] }) et /status, avec des tests node:test dans server/test/. Le front charge encore la bibliothèque d'un compte (useSteamLibrary, SearchBar avec autocomplétion de profil, routes /steam/api/steam/games, /resolve, /profile).",
+    "recherche_front": "SearchBar devient une recherche dans le catalogue : saisie, attente de 250 ms après la dernière frappe, 2 caractères minimum, appel à `${base}/api/catalogue/search?q=...&limit=20`, liste de résultats avec le nom et une petite image, clic ou Entrée pour ajouter le jeu au pool. Un jeu déjà dans le pool ou dans un tier n'est pas ajouté deux fois. Les erreurs du serveur (503 sans clé, 400, réseau) s'affichent en clair dans la barre.",
+    "jeu": "Un jeu est { appid, name, img_url, img_fallback_url } avec img_url = https://cdn.akamai.steamstatic.com/steam/apps/<appid>/library_600x900.jpg (la base que le serveur utilise déjà) et img_fallback_url = .../<appid>/header.jpg, calculées côté client par une petite fonction. GameCard garde son repli d'image actuel.",
+    "sauvegarde": "La tierlist ne dépend plus d'un compte : une seule clé localStorage `tierlist_catalogue` qui garde tierConfig, les tiers et le pool avec les objets jeux complets { appid, name } (les URL d'image se recalculent). Restaurée au chargement. Les anciennes sauvegardes par compte (`tierlist_<steamId>`) ne sont pas migrées : elles ne gardaient que des appid, sans les noms.",
+    "retraits": "Supprimer server/routes/steam.js et son montage, client/src/hooks/useSteamLibrary.js, client/src/utils/steamHelpers.js et l'autocomplétion de profil. Retirer node-fetch du serveur s'il n'est plus utilisé. Mettre à jour le README : plus de pseudo ni de bibliothèque publique, la clé Steam sert au catalogue.",
+    "pertinence": "Côté serveur, classer les résultats en trois groupes avant l'ordre alphabétique : le nom commence par q, puis un mot du nom commence par q, puis le nom contient q. Exemple : pour « witcher », « GWENT: The Witcher Card Game » passe avant « Chrome Switcher ». Garder l'index normalisé précalculé de services/catalogue.js (recherche en quelques dizaines de ms sur 190 000 noms). Ajouter les tests correspondants.",
+    "hors_perimetre": "Pas de prix, pas de promos, pas de roue de la fortune nouvelle, pas de compte utilisateur. Roulette, export PNG et glisser-déposer restent tels quels."
+  },
+  "acceptance_criteria": [
+    "npm test passe : build du client, contrôles de syntaxe et tous les tests node:test",
+    "aucune route ni aucun fichier du front ne dépend plus d'un compte Steam (games, resolve, profile, useSteamLibrary, steamHelpers retirés)",
+    "rechercher « witcher » renvoie les noms dont un mot commence par witcher avant ceux qui le contiennent au milieu d'un mot",
+    "un jeu choisi dans la recherche apparaît dans le pool, une seule fois, et la tierlist survit à un rechargement de la page",
+    "les tests n'effectuent aucun appel réseau"
   ],
   "constraints": [
     "une seule amélioration cohérente par run",
     "conserver React, Vite, Express et le chemin public /steam/",
-    "ne jamais lire ni afficher server/.env",
+    "ne jamais lire ni afficher server/.env, ni écrire la clé dans un journal ou une réponse",
+    "aucune dépendance nouvelle",
     "ne pas ajouter de compte utilisateur, de base de données ou de nouveau secret",
     "npm test doit rester vert"
   ]

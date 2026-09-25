@@ -252,12 +252,12 @@ export function etatA(t0: number, ecoule: number): EtatMaquette {
     return r ? { id: r.id, statut: r.statut, debut: r.debut } : null;
   };
   const projets: ProjetTopologie[] = [
-    { id: "marketing-tcg", nom: "Marketing TCG", categorie: "marketing", homeMachine: "pc", machines: ["pc", "nas"], pipelines: ["marketing@1"], etat: statutRejoue === "running" ? "actif" : "attente", aFiche: true, dernierRun: dernier(rejoue.id), approbationsEnAttente: approbations.length },
-    { id: "vitrine", nom: "Vitrine", categorie: "marketing", homeMachine: "pc", machines: ["pc"], pipelines: ["marketing@1"], etat: "inactif", aFiche: true, dernierRun: null, approbationsEnAttente: 0 },
-    { id: "storia", nom: "Storia", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "inactif", aFiche: true, dernierRun: dernier("run-adhoc"), approbationsEnAttente: 0 },
-    { id: "tcg-generator", nom: "TCG generator", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@2"], etat: "erreur", aFiche: true, dernierRun: dernier("run-echec"), approbationsEnAttente: 0 },
-    { id: "otp-relay", nom: "Relais OTP", categorie: "infra-perso", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "attente", aFiche: true, dernierRun: dernier("run-quota"), approbationsEnAttente: 0 },
-    { id: "backups", nom: "Sauvegardes", categorie: "infra-perso", homeMachine: "nas", machines: ["nas"], pipelines: ["sauvegarde@1"], etat: "pause", aFiche: true, dernierRun: dernier("run-pause"), approbationsEnAttente: 0 },
+    { id: "marketing-tcg", nom: "Marketing TCG", categorie: "marketing", homeMachine: "pc", machines: ["pc", "nas"], pipelines: ["marketing@1"], etat: statutRejoue === "running" ? "actif" : "attente", aFiche: true, url: null, dernierRun: dernier(rejoue.id), approbationsEnAttente: approbations.length },
+    { id: "vitrine", nom: "Vitrine", categorie: "marketing", homeMachine: "pc", machines: ["pc"], pipelines: ["marketing@1"], etat: "inactif", aFiche: true, url: null, dernierRun: null, approbationsEnAttente: 0 },
+    { id: "storia", nom: "Storia", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "inactif", aFiche: true, url: "/storia/", dernierRun: dernier("run-adhoc"), approbationsEnAttente: 0 },
+    { id: "tcg-generator", nom: "TCG generator", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@2"], etat: "erreur", aFiche: true, url: null, dernierRun: dernier("run-echec"), approbationsEnAttente: 0 },
+    { id: "otp-relay", nom: "Relais OTP", categorie: "infra-perso", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "attente", aFiche: true, url: null, dernierRun: dernier("run-quota"), approbationsEnAttente: 0 },
+    { id: "backups", nom: "Sauvegardes", categorie: "infra-perso", homeMachine: "nas", machines: ["nas"], pipelines: ["sauvegarde@1"], etat: "pause", aFiche: true, url: null, dernierRun: dernier("run-pause"), approbationsEnAttente: 0 },
   ];
 
   const topologie: Topologie = {

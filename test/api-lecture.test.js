@@ -161,10 +161,12 @@ test("la topologie range les projets par catégorie, avec leurs machines réelle
   assert.strictEqual(marketing.etat, "attente", "un run en attente de décision colore le projet");
   assert.strictEqual(marketing.approbationsEnAttente, 1);
   assert.strictEqual(marketing.aFiche, true);
+  assert.strictEqual(marketing.url, null, "sans url dans la fiche, pas de lien vers une app");
 
   // Un projet connu par ses runs seulement apparaît quand même, marqué comme tel.
   const orphelin = topo.projets.find((p) => p.id === "orphelin");
   assert.strictEqual(orphelin.aFiche, false);
+  assert.strictEqual(orphelin.url, null);
   assert.strictEqual(orphelin.categorie, "sans fiche");
 
   // Une fiche illisible est nommée, elle ne fait pas tomber la vue.

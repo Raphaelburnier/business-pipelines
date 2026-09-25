@@ -8,7 +8,15 @@ FROM node:22.23-alpine
 # le renvoie vers celui du système, installé ici. Sans ça les outils de recherche d'un agent
 # échouent un par un, ce qui ressemble à un agent qui ne trouve rien plutôt qu'à une image
 # mal construite.
-RUN apk add --no-cache git openssh-client ripgrep
+# bash : sans lui, l'outil Bash de Claude Code refuse de démarrer (« No suitable shell
+# found ») et un agent ne peut lancer aucune commande, pas même les tests.
+RUN apk add --no-cache bash git openssh-client ripgrep
+ENV SHELL=/bin/bash
+# Les dépôts de projets montés appartiennent à admindunas, le runner tourne en root. Git
+# refuse alors de pousser (« dubious ownership »). Les variables GIT_CONFIG_* du compose ne
+# suffisent pas : git les efface pour le sous-processus qui reçoit un push local. Seule une
+# configuration système ou globale atteint ce sous-processus.
+RUN git config --system --add safe.directory /git/steam-tierlist.git
 ENV USE_BUILTIN_RIPGREP=0
 
 WORKDIR /app
