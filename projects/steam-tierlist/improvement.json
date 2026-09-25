@@ -1,27 +1,27 @@
 {
   "project_name": "steam-tierlist",
-  "task": "Run 1 sur 2 : le serveur tient le catalogue complet des jeux Steam et le sert en recherche. Ajouter un module serveur qui télécharge la liste des jeux, la garde en mémoire et dans un fichier cache, la rafraîchit une fois par jour, et une route de recherche. Le front ne change pas dans ce run : les fonctions liées à un compte restent en place, elles seront retirées au run 2.",
+  "task": "Run 2 sur 2 : l'app se construit sur le catalogue Steam complet, et tout ce qui dépend d'un compte Steam disparaît. La barre de recherche interroge le catalogue du serveur, un clic ajoute le jeu au pool, et la tierlist se sauvegarde sans compte.",
   "details": {
-    "source": "GET https://api.steampowered.com/IStoreService/GetAppList/v1/ avec key=process.env.STEAM_API_KEY, include_games=true, include_dlc=false, include_software=false, include_videos=false, include_hardware=false, max_results=50000, et last_appid pour la page suivante. Réponse : { response: { apps: [{ appid, name, last_modified, price_change_number }], have_more_results, last_appid } }. Boucler tant que have_more_results est vrai. Environ 50 000 jeux et 5 Mo par page.",
-    "stockage": "Ne garder que { appid, name } par jeu, triés par appid. Cache disque dans server/data/catalogue.json (dossier à créer au besoin, ajouté au .gitignore), avec la date de la dernière synchronisation.",
-    "cycle": "Au démarrage : charger le cache s'il existe, puis synchroniser si le cache a plus de 24 h ou n'existe pas. Ensuite une synchronisation toutes les 24 h. Une synchronisation en échec garde le catalogue précédent et journalise l'erreur, sans faire tomber le serveur. Deux synchronisations ne tournent jamais en même temps. Sans STEAM_API_KEY, le serveur démarre quand même et la route répond 503 avec un message clair.",
-    "route": "GET /steam/api/catalogue/search?q=<texte>&limit=<n> : recherche insensible à la casse et aux accents sur le nom, les noms qui commencent par q avant ceux qui le contiennent, limit par défaut 20 et plafonné à 50, q de 2 caractères minimum sinon 400. Réponse : { total, synchroniseLe, jeux: [{ appid, name }] }. GET /steam/api/catalogue/status : { total, synchroniseLe, enCours }.",
-    "tests": "Ajouter de vrais tests avec node:test (aucune dépendance nouvelle) et les brancher dans npm test en plus de l'existant. Couvrir la pagination (fetch simulé : deux pages puis have_more_results=false), le filtrage appid+name, la recherche (casse, accents, ordre, limite, q trop court), l'échec de synchronisation qui garde l'ancien catalogue, et l'absence de clé. Les tests n'appellent jamais Steam.",
-    "hors_perimetre": "Aucun changement dans client/. Ne pas retirer les routes games, resolve et profile dans ce run. Pas de prix, pas de promos, pas d'images.",
-    "cle": "STEAM_API_KEY existe déjà dans l'environnement du conteneur en production : ce n'est pas un nouveau secret. Le run ne la voit pas et n'en a pas besoin, les tests simulent fetch."
+    "etat_de_depart": "Le serveur sert déjà GET /steam/api/catalogue/search?q=&limit= (réponse { total, synchroniseLe, jeux: [{ appid, name }] }) et /status, avec des tests node:test dans server/test/. Le front charge encore la bibliothèque d'un compte (useSteamLibrary, SearchBar avec autocomplétion de profil, routes /steam/api/steam/games, /resolve, /profile).",
+    "recherche_front": "SearchBar devient une recherche dans le catalogue : saisie, attente de 250 ms après la dernière frappe, 2 caractères minimum, appel à `${base}/api/catalogue/search?q=...&limit=20`, liste de résultats avec le nom et une petite image, clic ou Entrée pour ajouter le jeu au pool. Un jeu déjà dans le pool ou dans un tier n'est pas ajouté deux fois. Les erreurs du serveur (503 sans clé, 400, réseau) s'affichent en clair dans la barre.",
+    "jeu": "Un jeu est { appid, name, img_url, img_fallback_url } avec img_url = https://cdn.akamai.steamstatic.com/steam/apps/<appid>/library_600x900.jpg (la base que le serveur utilise déjà) et img_fallback_url = .../<appid>/header.jpg, calculées côté client par une petite fonction. GameCard garde son repli d'image actuel.",
+    "sauvegarde": "La tierlist ne dépend plus d'un compte : une seule clé localStorage `tierlist_catalogue` qui garde tierConfig, les tiers et le pool avec les objets jeux complets { appid, name } (les URL d'image se recalculent). Restaurée au chargement. Les anciennes sauvegardes par compte (`tierlist_<steamId>`) ne sont pas migrées : elles ne gardaient que des appid, sans les noms.",
+    "retraits": "Supprimer server/routes/steam.js et son montage, client/src/hooks/useSteamLibrary.js, client/src/utils/steamHelpers.js et l'autocomplétion de profil. Retirer node-fetch du serveur s'il n'est plus utilisé. Mettre à jour le README : plus de pseudo ni de bibliothèque publique, la clé Steam sert au catalogue.",
+    "pertinence": "Côté serveur, classer les résultats en trois groupes avant l'ordre alphabétique : le nom commence par q, puis un mot du nom commence par q, puis le nom contient q. Exemple : pour « witcher », « GWENT: The Witcher Card Game » passe avant « Chrome Switcher ». Garder l'index normalisé précalculé de services/catalogue.js (recherche en quelques dizaines de ms sur 190 000 noms). Ajouter les tests correspondants.",
+    "hors_perimetre": "Pas de prix, pas de promos, pas de roue de la fortune nouvelle, pas de compte utilisateur. Roulette, export PNG et glisser-déposer restent tels quels."
   },
   "acceptance_criteria": [
-    "npm test lance les nouveaux tests node:test et passe",
-    "les tests n'effectuent aucun appel réseau",
-    "le serveur démarre sans STEAM_API_KEY et la recherche répond alors 503",
-    "une synchronisation en échec n'efface pas le catalogue en mémoire ni le cache disque",
-    "server/data/ est ignoré par git"
+    "npm test passe : build du client, contrôles de syntaxe et tous les tests node:test",
+    "aucune route ni aucun fichier du front ne dépend plus d'un compte Steam (games, resolve, profile, useSteamLibrary, steamHelpers retirés)",
+    "rechercher « witcher » renvoie les noms dont un mot commence par witcher avant ceux qui le contiennent au milieu d'un mot",
+    "un jeu choisi dans la recherche apparaît dans le pool, une seule fois, et la tierlist survit à un rechargement de la page",
+    "les tests n'effectuent aucun appel réseau"
   ],
   "constraints": [
     "une seule amélioration cohérente par run",
     "conserver React, Vite, Express et le chemin public /steam/",
     "ne jamais lire ni afficher server/.env, ni écrire la clé dans un journal ou une réponse",
-    "aucune dépendance nouvelle : fetch et node:test sont fournis par Node",
+    "aucune dépendance nouvelle",
     "ne pas ajouter de compte utilisateur, de base de données ou de nouveau secret",
     "npm test doit rester vert"
   ]

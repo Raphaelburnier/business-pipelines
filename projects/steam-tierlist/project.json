@@ -7,7 +7,7 @@
   "url": "/steam/",
   "pipelines": [
     {
-      "extends": "improve-app@1",
+      "extends": "improve-app@2",
       "spec": "improvement.json",
       "overrides": {
         "nodes": {}
