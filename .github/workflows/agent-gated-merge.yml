@@ -1,0 +1,246 @@
+name: Auto-merge for internal agent PRs
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to diagnose or merge"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  gate-and-merge:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
+      DISPATCH_PR: ${{ inputs.pr_number }}
+    steps:
+      - name: Evaluate gates and merge
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_number=""
+          sha=""
+          ci_state="not checked"
+          sensitive_files="none"
+          gate="event"
+
+          refuse() {
+            local reason="$1"
+            {
+              echo "## Gated merge decision: refused"
+              echo
+              echo "- **PR:** ${pr_number:-unresolved}"
+              echo "- **HEAD SHA:** ${sha:-unresolved}"
+              echo "- **Gate:** $gate"
+              echo "- **Reason:** $reason"
+              echo "- **CI:** $ci_state"
+              echo "- **Sensitive files:** $sensitive_files"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Refused: gate=$gate reason=$reason"
+            exit 0
+          }
+
+          command -v gh >/dev/null || { gate="runner"; refuse "gh is unavailable"; }
+          command -v jq >/dev/null || { gate="runner"; refuse "jq is unavailable"; }
+
+          repo_json="$(gh api "repos/$REPOSITORY")" || {
+            gate="repository"
+            refuse "repository metadata could not be read"
+          }
+          default_branch="$(jq -r '.default_branch // empty' <<<"$repo_json")"
+          [[ -n "$default_branch" ]] || {
+            gate="repository"
+            refuse "default branch could not be determined"
+          }
+
+          event="$(cat "$GITHUB_EVENT_PATH")"
+          case "$EVENT_NAME" in
+            workflow_run)
+              [[ "$(jq -r '.workflow_run.name // empty' <<<"$event")" == "CI" ]] || {
+                gate="workflow identity"
+                refuse "workflow_run was not produced by the exact CI workflow"
+              }
+              [[ "$(jq '[.workflow_run.pull_requests[]?.number] | unique | length' <<<"$event")" == "1" ]] || {
+                gate="PR resolution"
+                refuse "workflow_run does not identify exactly one pull request"
+              }
+              pr_number="$(jq -r '[.workflow_run.pull_requests[]?.number] | unique | .[0]' <<<"$event")"
+              sha="$(jq -r '.workflow_run.head_sha // empty' <<<"$event")"
+              ;;
+            workflow_dispatch)
+              pr_number="${DISPATCH_PR:-}"
+              [[ "$pr_number" =~ ^[0-9]+$ ]] || {
+                gate="PR resolution"
+                refuse "workflow_dispatch requires a numeric pr_number"
+              }
+              ;;
+            *)
+              refuse "unsupported event"
+              ;;
+          esac
+
+          pr="$(gh api "repos/$REPOSITORY/pulls/$pr_number")" || {
+            gate="PR metadata"
+            refuse "pull request metadata could not be read"
+          }
+          state="$(jq -r '.state // empty' <<<"$pr")"
+          if [[ "$state" != "open" ]]; then
+            if [[ "$state" == "closed" && "$(jq -r '.merged' <<<"$pr")" == "true" ]]; then
+              echo "PR $pr_number is already merged; no action required." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            gate="PR state"
+            refuse "pull request is not open"
+          fi
+          [[ "$(jq -r '.draft' <<<"$pr")" == "false" ]] || {
+            gate="PR state"
+            refuse "pull request is draft"
+          }
+          [[ "$(jq -r '.base.ref // empty' <<<"$pr")" == "$default_branch" ]] || {
+            gate="base branch"
+            refuse "base branch is not the repository default branch"
+          }
+          [[ "$(jq -r '.head.repo.full_name // empty' <<<"$pr")" == "$REPOSITORY" ]] || {
+            gate="repository boundary"
+            refuse "pull request is from a fork or another repository"
+          }
+
+          head_ref="$(jq -r '.head.ref // empty' <<<"$pr")"
+          case "$head_ref" in
+            codex/*|claude/*|agent/*|automation/*) ;;
+            *) gate="source branch"; refuse "source branch is outside the trusted prefixes" ;;
+          esac
+
+          current_pr_sha="$(jq -r '.head.sha // empty' <<<"$pr")"
+          event_sha="${sha:-$current_pr_sha}"
+          [[ "$event_sha" == "$current_pr_sha" ]] || {
+            gate="HEAD snapshot"
+            refuse "event HEAD does not match the current PR HEAD"
+          }
+          sha="$event_sha"
+
+          base_commit="$(gh api "repos/$REPOSITORY/commits/$default_branch")" || {
+            gate="base branch"
+            refuse "default branch commit could not be read"
+          }
+          base_sha="$(jq -r '.sha // empty' <<<"$base_commit")"
+          base_committed_at="$(jq -r '.commit.committer.date // empty' <<<"$base_commit")"
+          [[ -n "$base_sha" && -n "$base_committed_at" ]] || {
+            gate="base branch"
+            refuse "default branch snapshot is incomplete"
+          }
+
+          ci_runs="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100")" || {
+            gate="CI"
+            refuse "CI workflow runs could not be read"
+          }
+          latest_ci="$(jq -c --arg sha "$sha" '
+            [.workflow_runs[]
+              | select(.name == "CI" and .head_sha == $sha and .event == "pull_request")]
+            | sort_by(.run_number, .run_attempt)
+            | last // {}
+          ' <<<"$ci_runs")"
+          ci_state="$(jq -r 'if .status == "completed" then (.conclusion // "unknown") else (.status // "missing") end' <<<"$latest_ci")"
+          ci_created_at="$(jq -r '.created_at // empty' <<<"$latest_ci")"
+          [[ "$ci_state" == "success" ]] || {
+            gate="CI"
+            refuse "latest exact-head pull-request CI conclusion is not success"
+          }
+          [[ -n "$ci_created_at" && ( "$ci_created_at" > "$base_committed_at" || "$ci_created_at" == "$base_committed_at" ) ]] || {
+            gate="CI base"
+            refuse "latest exact-head CI predates the current default-branch commit"
+          }
+
+          threads="$(gh api graphql -f query='query($owner:String!, $name:String!, $number:Int!) { repository(owner:$owner, name:$name) { pullRequest(number:$number) { reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } } } } }' -F owner="${REPOSITORY%%/*}" -F name="${REPOSITORY##*/}" -F number="$pr_number")" || {
+            gate="review threads"
+            refuse "review thread state could not be read"
+          }
+          [[ "$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$threads")" == "false" ]] || {
+            gate="review threads"
+            refuse "more than 100 review threads exist"
+          }
+          [[ "$(jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' <<<"$threads")" == "0" ]] || {
+            gate="review threads"
+            refuse "unresolved review threads remain"
+          }
+
+          files="$(gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files" --jq '.[].filename')" || {
+            gate="changed files"
+            refuse "changed files could not be read"
+          }
+          while IFS= read -r path; do
+            lower="${path,,}"
+            case "$lower" in
+              .github/workflows/*|.github/actions/*|.github/dependabot.yml|.github/copilot-instructions.md|*/codeowners|codeowners|agents.md|*/agents.md|claude.md|*/claude.md|*.sql|*/migrations/*|migrations/*|dockerfile*|*/dockerfile*|docker-compose*|*/docker-compose*|vercel.json|*/vercel.json|.env|.env.*|*/.env|*/.env.*|*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*/infra/*|infra/*|*/infrastructure/*|infrastructure/*|*/terraform/*|terraform/*|*.tf|*.tfvars|*/deploy/*|deploy/*|*/deployment/*)
+                sensitive_files="$sensitive_files, $path"
+                ;;
+            esac
+          done <<<"$files"
+          [[ "$sensitive_files" == "none" ]] || {
+            gate="sensitive files"
+            refuse "sensitive changed paths are not eligible"
+          }
+
+          current="$(gh api "repos/$REPOSITORY/pulls/$pr_number")" || {
+            gate="final PR snapshot"
+            refuse "pull request could not be re-read"
+          }
+          [[ "$(jq -r '.head.sha // empty' <<<"$current")" == "$sha" ]] || {
+            gate="final HEAD"
+            refuse "HEAD changed after validation"
+          }
+          [[ "$(gh api "repos/$REPOSITORY/commits/$default_branch" --jq '.sha // empty')" == "$base_sha" ]] || {
+            gate="final base branch"
+            refuse "base branch changed after validation; wait for fresh CI"
+          }
+
+          mergeable="$(jq -r 'if .mergeable == null then "unknown" else (.mergeable | tostring) end' <<<"$current")"
+          for attempt in 1 2 3; do
+            [[ "$mergeable" != "unknown" ]] && break
+            sleep 5
+            current="$(gh api "repos/$REPOSITORY/pulls/$pr_number")" || {
+              gate="mergeability"
+              refuse "mergeability could not be re-read"
+            }
+            mergeable="$(jq -r 'if .mergeable == null then "unknown" else (.mergeable | tostring) end' <<<"$current")"
+          done
+          [[ "$mergeable" == "true" ]] || {
+            gate="mergeability"
+            refuse "pull request is not mergeable without conflicts (state=$mergeable)"
+          }
+          [[ "$(jq -r '.head.sha // empty' <<<"$current")" == "$sha" ]] || {
+            gate="final HEAD"
+            refuse "HEAD changed during the mergeability check"
+          }
+          [[ "$(gh api "repos/$REPOSITORY/commits/$default_branch" --jq '.sha // empty')" == "$base_sha" ]] || {
+            gate="final base branch"
+            refuse "base branch changed during the mergeability check"
+          }
+
+          merge_response="$(gh api --method PUT "repos/$REPOSITORY/pulls/$pr_number/merge" -f merge_method=squash -f sha="$sha" 2>&1)" || {
+            gate="merge"
+            refuse "REST squash merge failed: $merge_response"
+          }
+          {
+            echo "## Gated merge decision: merged"
+            echo
+            echo "- **PR:** $pr_number"
+            echo "- **HEAD SHA:** $sha"
+            echo "- **CI:** $ci_state"
+            echo "- **External reviews:** advisory; unresolved threads still block"
+            echo "- **Sensitive files:** none"
+            echo "- **Merge:** REST squash with the validated SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
