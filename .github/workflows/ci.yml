@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out business-pipelines
+        uses: actions/checkout@v4
+        with:
+          path: business-pipelines
+          fetch-depth: 2
+
+      - name: Verify tested merge uses the current base
+        working-directory: business-pipelines
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_base="$(git rev-parse HEAD^1)"
+          git fetch --no-tags --depth=1 origin "refs/heads/${GITHUB_BASE_REF}"
+          current_base="$(git rev-parse FETCH_HEAD)"
+          [[ "$tested_base" == "$current_base" ]] || {
+            echo "The pull-request merge ref is stale (tested=$tested_base current=$current_base)." >&2
+            exit 1
+          }
+
+      - name: Check out the private engine read-only
+        uses: actions/checkout@v4
+        with:
+          repository: Raphaelburnier/agent-orchestrator
+          ref: master
+          path: agent-orchestrator
+          ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install engine dependencies
+        working-directory: agent-orchestrator
+        run: npm ci
+
+      - name: Install cockpit dependencies
+        working-directory: business-pipelines
+        run: npm ci
+
+      - name: Install web dependencies
+        working-directory: business-pipelines/web
+        run: npm ci
+
+      - name: Run server tests
+        working-directory: business-pipelines
+        run: npm test
+
+      - name: Run web tests and typecheck
+        working-directory: business-pipelines
+        run: npm run web:test
+
+      - name: Build web application
+        working-directory: business-pipelines/web
+        run: npm run build
