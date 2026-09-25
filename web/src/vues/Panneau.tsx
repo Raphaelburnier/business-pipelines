@@ -5,10 +5,11 @@
 // ensuite ; chaque bouton n'apparaît que lorsque son chemin serveur existe réellement.
 import { useMemo, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
-import { VIDE, depuis, duree, jetons, usd } from "../format";
+import { VIDE, depuis, duree, jetons, mot, usd } from "../format";
 import type { Etape, Llm, RunDetaille } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
+import { naviguer } from "../navigation";
 import { SelecteurModele } from "./SelecteurModele";
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
@@ -202,12 +203,14 @@ function PanneauRun({ id }: { id: string }) {
         </ul>
       </div>
 
-      {etape && <DetailEtape etape={etape} />}
+      {etape && <DetailEtape etape={etape} runId={run.id} />}
     </>
   );
 }
 
-function DetailEtape({ etape }: { etape: Etape }) {
+function DetailEtape({ etape, runId }: { etape: Etape; runId: string }) {
+  // La question est pré-remplie, jamais envoyée : rien ne part sans le clic de Raphaël.
+  const question = `Explique l'étape « ${etape.noeud} » (étape ${etape.id}) du run ${runId} : ce qu'elle a fait, et pourquoi elle se termine en « ${mot(etape.statut)} ».`;
   const lignes: Array<[string, string]> = [
     ["agent", etape.agent ?? VIDE],
     ["modèle", etape.llm ? `${etape.llm.via}:${etape.llm.model}` : VIDE],
@@ -230,6 +233,13 @@ function DetailEtape({ etape }: { etape: Etape }) {
           </div>
         ))}
       </dl>
+      <button
+        type="button"
+        onClick={() => naviguer(`/demander?question=${encodeURIComponent(question)}`)}
+        className="mt-2 rounded-lg border border-trait px-2 py-1 text-xs font-semibold text-accent hover:border-accent"
+      >
+        Expliquer cette étape
+      </button>
     </div>
   );
 }

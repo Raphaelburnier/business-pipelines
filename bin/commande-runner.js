@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-const { EventStore, chat } = require("agent-orchestrator");
+const { EventStore, chat, cockpitRead } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -60,9 +60,27 @@ function contexteCockpit(store) {
   };
 }
 
+// Les outils du chat lisent par les mêmes fonctions que l'API : le chat voit ce que voit
+// l'écran, jamais plus.
+function outilsCockpit(store) {
+  return cockpitRead.serveurCockpitRead({
+    store,
+    runs: ({ projet, statut, limite }) => api.runs(store, { projet, statut, limite }),
+    run: (id) => api.run(store, id),
+    etat: () => ({ machines: api.machines(store), usage: api.usage(store) }),
+  });
+}
+
 async function repondre(store, commande) {
   const { threadId, responseMessageId } = commande.payload;
-  return chat.repondreChat({ store, threadId, responseMessageId, contexte: contexteCockpit(store), modele: MODELE_CHAT });
+  return chat.repondreChat({
+    store,
+    threadId,
+    responseMessageId,
+    contexte: contexteCockpit(store),
+    modele: MODELE_CHAT,
+    outils: await outilsCockpit(store),
+  });
 }
 
 // Deux files dans le même processus : un run tient sa boucle pendant des minutes, une
