@@ -9,6 +9,11 @@ FROM node:22.23-alpine
 # échouent un par un, ce qui ressemble à un agent qui ne trouve rien plutôt qu'à une image
 # mal construite.
 RUN apk add --no-cache git openssh-client ripgrep
+# Les dépôts de projets montés appartiennent à admindunas, le runner tourne en root. Git
+# refuse alors de pousser (« dubious ownership »). Les variables GIT_CONFIG_* du compose ne
+# suffisent pas : git les efface pour le sous-processus qui reçoit un push local. Seule une
+# configuration système ou globale atteint ce sous-processus.
+RUN git config --system --add safe.directory /git/steam-tierlist.git
 ENV USE_BUILTIN_RIPGREP=0
 
 WORKDIR /app
