@@ -1,0 +1,40 @@
+# Vaultwarden sur le NAS, joint par Tailscale uniquement.
+#
+# Serveur compatible Bitwarden : les applis officielles (téléphone, extension, bureau) s'y
+# connectent en mode « auto-hébergé ». Le chiffrement se fait dans l'appli, le serveur ne
+# voit que des coffres chiffrés.
+#
+# Même schéma que le cockpit : écoute sur la boucle locale de l'hôte, Tailscale termine le
+# TLS et relaie. Rien n'est publié sur le LAN ni sur Internet.
+#
+# Se déploie à part du cockpit, dans /volume1/docker/vaultwarden : les deux n'ont rien à
+# partager, et un rebuild du cockpit ne doit jamais toucher au coffre.
+
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    ports:
+      # Loopback seulement. 4600 est le cockpit, 4700 le tcg-generator.
+      - "127.0.0.1:4800:80"
+    networks:
+      - coffre
+    volumes:
+      # Base SQLite, pièces jointes, clés RSA du serveur. C'est ce dossier qui se sauvegarde.
+      - ./data:/data
+    # ADMIN_TOKEN et le réglage des inscriptions. Gabarit : vaultwarden.env.example.
+    env_file:
+      - vaultwarden.env
+    environment:
+      # Port distinct du cockpit : origine distincte, donc aucun droit sur ses écritures.
+      # Les applis exigent HTTPS, que `tailscale serve` fournit avec un vrai certificat.
+      - DOMAIN=https://nas.tail8296f6.ts.net:8443
+      # Sans ça, les journaux ne voient que l'adresse du relais Tailscale.
+      - IP_HEADER=X-Forwarded-For
+      - INVITATIONS_ALLOWED=false
+      - SHOW_PASSWORD_HINT=false
+      - TZ=Europe/Paris
+
+networks:
+  coffre:

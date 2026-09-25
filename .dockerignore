@@ -34,3 +34,6 @@ specs/*.env
 
 *.log
 *.tmp
+
+# Services du NAS déployés à part : rien à faire dans l'image du cockpit.
+nas
