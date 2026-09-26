@@ -94,6 +94,23 @@ function requete(port, chemin, entetes = {}) {
   });
 }
 
+// Lit un flux SSE jusqu'à ce que le serveur le ferme (ou 5 s au plus).
+function lireFlux(port, chemin) {
+  return new Promise((resoudre, rejeter) => {
+    const req = http.get({ host: "127.0.0.1", port, path: chemin, headers: { host: `127.0.0.1:${port}` } }, (res) => {
+      let recu = "";
+      res.setEncoding("utf-8");
+      res.on("data", (d) => (recu += d));
+      res.on("end", () => resoudre(recu));
+    });
+    req.on("error", rejeter);
+    req.setTimeout(5000, () => {
+      req.destroy();
+      rejeter(new Error("flux jamais refermé"));
+    });
+  });
+}
+
 function poster(port, chemin, corps, entetes = {}) {
   const brut = JSON.stringify(corps);
   return new Promise((resoudre, rejeter) => {
@@ -178,6 +195,16 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const verificationChat = new EventStore(bac.base);
     assert.deepStrictEqual(verificationChat.commandes({ statut: "pending" }).map((c) => c.kind), ["chat.respond"]);
     verificationChat.prendreCommande({ kinds: ["chat.respond"] });
+
+    // Le flux du fil envoie le fil tant que la réponse s'écrit, puis `fin`, et se referme.
+    const flux = lireFlux(PORT, `/api/chat/${filCree.id}/flux`);
+    await new Promise((r) => setTimeout(r, 400));
+    const reponseEnCours = filCree.messages[1].id;
+    verificationChat.majMessageChat(reponseEnCours, { content: "Parce que verify a échoué.", status: "complete" });
+    const recu = await flux;
+    assert.match(recu, /event: fil\n/);
+    assert.match(recu, /Parce que verify a échoué\./);
+    assert.match(recu, /event: fin\n/, "le flux se ferme une fois la réponse terminée");
     verificationChat.fermer();
 
     const lancement = await poster(PORT, "/api/runs", { projectId: "steam-tierlist" });
@@ -207,6 +234,9 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const avecQuery = await requete(PORT, "/?v=2");
     const attendu = fs.existsSync(path.join(RACINE, "web", "dist", "index.html")) ? 200 : 503;
     assert.strictEqual(avecQuery.code, attendu, "/?v=2 doit être traité comme /");
+    for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi"]) {
+      assert.strictEqual((await requete(PORT, route)).code, attendu, `${route} doit servir le front`);
+    }
 
     // Le front : construit, il est servi à la racine et sur les pages de détail. L'ancien
     // /app redirige sans garder deux architectures concurrentes.

@@ -31,6 +31,18 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     fils: chat.fils,
     fil: chat.fil,
     poser: chat.poser,
+    ecouterFil(id, surFil, surFin) {
+      const minuterie = setInterval(async () => {
+        const fil = await chat.fil(id);
+        if (!fil) return;
+        surFil(fil);
+        if (!fil.messages.some((m) => m.role === "assistant" && (m.statut === "queued" || m.statut === "streaming"))) {
+          clearInterval(minuterie);
+          surFin();
+        }
+      }, 250);
+      return () => clearInterval(minuterie);
+    },
     lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.

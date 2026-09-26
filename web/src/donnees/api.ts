@@ -66,6 +66,36 @@ export function sourceApi(): Source {
         throw err;
       }
     },
+    ecouterFil(id, surFil, surFin) {
+      // Le flux se ferme de lui-même en fin de réponse. S'il tombe avant, la relecture
+      // prend le relais : une réponse ne reste jamais figée à l'écran.
+      let arrete = false;
+      let minuterie: ReturnType<typeof setInterval> | null = null;
+      const flux = new EventSource(`/api/chat/${encodeURIComponent(id)}/flux`);
+      const finir = () => {
+        arrete = true;
+        flux.close();
+        if (minuterie) clearInterval(minuterie);
+        surFin();
+      };
+      flux.addEventListener("fil", (m: MessageEvent<string>) => surFil(JSON.parse(m.data) as FilDetaille));
+      flux.addEventListener("fin", finir);
+      flux.onerror = () => {
+        if (arrete || minuterie) return;
+        flux.close();
+        minuterie = setInterval(async () => {
+          const fil = await lire<FilDetaille>(`/api/chat/${encodeURIComponent(id)}`).catch(() => null);
+          if (!fil || arrete) return;
+          surFil(fil);
+          if (!fil.messages.some((m) => m.role === "assistant" && (m.statut === "queued" || m.statut === "streaming"))) finir();
+        }, 1000);
+      };
+      return () => {
+        arrete = true;
+        flux.close();
+        if (minuterie) clearInterval(minuterie);
+      };
+    },
     poser: (contenu, filId = null) =>
       ecrire<FilDetaille>(filId ? `/api/chat/${encodeURIComponent(filId)}/messages` : "/api/chat", { contenu }),
     async lancerRun(projectId, pipelineIndex = 0, llm = null) {

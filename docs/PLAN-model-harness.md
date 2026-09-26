@@ -257,11 +257,23 @@ Deuxième tranche, faite le 2026-09-25 (moteur `1c477be`, `9f81dcd`) :
 - Vérifié en réel : pour citer le test en échec, le chat a lu le journal par `get_step_log`
   (0,014 $ la réponse, haiku).
 
+Troisième tranche, faite le 2026-09-26 :
+
+- `GET /api/chat/<id>/flux` (`src/flux-chat.js`) : flux SSE propre au fil, sondé toutes les
+  250 ms côté serveur, envoyé seulement quand le fil change, refermé par le serveur une fois
+  la réponse finie. Le front l'écoute pendant une réponse et revient à la relecture chaque
+  seconde si le flux tombe. Vérifié dans un navigateur réel : une connexion par réponse.
+- Correctif : `/demander` n'était pas dans la liste des routes du front servies par le
+  cockpit. L'URL directe et le rechargement rendaient 404 ; la maquette sous Vite le masquait.
+
 Reste pour les tranches suivantes :
 
-- `vault-search` et le contexte `_context/` du projet sélectionné (question ouverte 2 de la spec).
-- Pousser les messages par le flux SSE au lieu de relire le fil chaque seconde.
+- `vault-search` et le contexte `_context/` du projet sélectionné. Préalables : le miroir du
+  vault sur le NAS (§7.6, pas construit) et la décision de Raphaël sur les dossiers envoyés à
+  Claude (question ouverte 2 de la spec).
 - Lire les journaux des étapes exécutées sur le PC (aujourd'hui : signalés absents du NAS).
+- Un seul réglage du modèle du chat : le cockpit affiche `COCKPIT_CHAT_MODELE` et le runner
+  l'applique, chacun depuis son environnement. Les deux valent `sonnet` par défaut.
 - Le sélecteur multi-modèles du chat reste différé : tant qu'OmniRoute dépend du PC, Claude
   est le seul backend du mode permanent. Aucun modèle OmniRoute n'est substitué quand le PC dort.
 

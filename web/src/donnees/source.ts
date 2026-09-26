@@ -29,6 +29,8 @@ export interface Source {
   fils(): Promise<ListeFils>;
   fil(id: string): Promise<FilDetaille | null>;
   poser(contenu: string, filId?: string | null): Promise<FilDetaille>;
+  /** Suit un fil pendant qu'une réponse s'écrit ; `surFin` quand plus rien n'est en cours. Rend l'arrêt. */
+  ecouterFil(id: string, surFil: (fil: FilDetaille) => void, surFin: () => void): () => void;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }
