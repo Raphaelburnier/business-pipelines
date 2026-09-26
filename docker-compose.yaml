@@ -111,6 +111,27 @@ services:
     depends_on:
       - tailscale-whois
 
+  # Publie les runs réussis : pousse les branches agent/… des dépôts du NAS vers GitHub et
+  # ouvre leur PR ; ramène aussi la branche par défaut de GitHub dans le dépôt du NAS
+  # (décision du 2026-09-27, option B). Seul service qui détient un jeton GitHub : il ne
+  # fait tourner aucun agent, contrairement au runner, dont les agents ont Bash.
+  publieur:
+    build: .
+    container_name: business_publieur
+    restart: always
+    command: ["node", "bin/publieur.js"]
+    volumes:
+      - ./projects:/app/projects:ro
+      - ./etat:/app/etat
+      - /volume1/docker/git:/git
+    environment:
+      - NODE_ENV=production
+      - PUBLIEUR_ETAT=/app/etat/publications.json
+    env_file:
+      - ./specs/publieur.env
+    networks:
+      - business
+
   # Le runner exécute du code produit par des agents : lui monter le socket LocalAPI de
   # Tailscale lui donnerait bien plus que `whois`. Ce relais séparé possède le socket mais
   # n'expose qu'une lecture d'identité sur 127.0.0.1.
