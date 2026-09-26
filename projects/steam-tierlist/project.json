@@ -5,6 +5,8 @@
   "homeMachine": "nas",
   "repo": "/git/steam-tierlist.git",
   "url": "/steam/",
+  "publier": true,
+  "github": "Raphaelburnier/steam_tierList",
   "pipelines": [
     {
       "extends": "improve-app@3",
