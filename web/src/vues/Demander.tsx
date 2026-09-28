@@ -14,7 +14,7 @@ const enCours = (fil: FilDetaille | null) => !!fil?.messages.some((m) => m.role 
 
 function Bulle({ message }: { message: MessageChat }) {
   if (message.role === "user") {
-    return <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm bg-accent px-3 py-2 text-sm text-white">{message.contenu}</div>;
+    return <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm bg-accent px-3 py-2 text-sm text-sur-accent">{message.contenu}</div>;
   }
   return (
     <div className={`mr-auto max-w-[92%] whitespace-pre-wrap break-words rounded-xl rounded-bl-sm border px-3 py-2 text-sm ${message.statut === "failed" ? "border-danger bg-danger-fond text-danger" : "border-trait bg-carte"}`}>
@@ -101,7 +101,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className={`flex min-h-0 flex-col gap-2 rounded-xl border border-trait bg-surface p-3 ${filId ? "hidden lg:flex" : ""}`}>
-        <button type="button" onClick={() => aller("/demander")} className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white">
+        <button type="button" onClick={() => aller("/demander")} className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-sur-accent">
           Nouvelle question
         </button>
         <Titre compteur={liste.donnees?.fils.length}>Conversations</Titre>
@@ -173,7 +173,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
             aria-label="Question au cockpit"
             className="min-h-[2.75rem] min-w-0 flex-1 resize-none rounded-lg border border-trait bg-carte px-3 py-2 text-sm"
           />
-          <button type="submit" disabled={!peutEnvoyer} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <button type="submit" disabled={!peutEnvoyer} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-sur-accent disabled:opacity-50">
             {envoi ? "Envoi…" : "Envoyer"}
           </button>
         </form>
