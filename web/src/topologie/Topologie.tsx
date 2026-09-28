@@ -10,6 +10,7 @@ import { useCharge, useHorloge } from "../donnees/contexte";
 import { CLASSES_TON, depuis, mot, ton, vivant } from "../format";
 import type { Topologie as DonneesTopologie } from "../types";
 import { Erreur } from "../ui";
+import { Kpis } from "../vues/Kpis";
 import { disposer, pliable, type NoeudDispose } from "./disposition";
 
 export type Selection = { type: "projet"; id: string } | { type: "machine"; id: string } | { type: "run"; id: string };
@@ -37,30 +38,33 @@ function ecrirePlis(plis: ReadonlySet<string>) {
 
 type DonneesNoeud = NoeudDispose & { maintenant: number; selectionne: boolean };
 
+/** PC ou NAS : la forme distingue la machine même sans la couleur (angles vifs contre arrondis). */
+function genreMachine(n: NoeudDispose): "pc" | "nas" | "" {
+  const m = n.machine?.machine ?? n.categorie?.machine ?? n.projet?.homeMachine;
+  if (!m) return "";
+  return /nas/i.test(m) ? "nas" : "pc";
+}
+
 function NoeudCockpit({ data }: NodeProps<Node<DonneesNoeud>>) {
   const n = data;
   const etat = n.projet?.etat ?? n.machine?.etat ?? n.maitre?.etat ?? null;
   const c = etat ? CLASSES_TON[ton(etat)] : CLASSES_TON.doux;
-  const bordure = n.selectionne ? "border-accent ring-2 ring-accent/60" : c.bordure;
+  const genre = n.type === "maitre" ? "maitre" : n.type === "categorie" ? "categorie" : genreMachine(n);
+  const attente = (n.projet?.approbationsEnAttente ?? 0) > 0 || n.projet?.etat === "attente";
 
   return (
     <div
-      className={`flex h-full w-full flex-col justify-center rounded-xl border-2 bg-carte px-3 text-left shadow-sm ${bordure}`}
+      className={`ao-noeud ${genre} ${attente ? "attente" : ""} ${n.selectionne ? "selectionne" : ""}`}
       title={pliable(n.type) ? "Double-clic pour plier ou déplier" : undefined}
     >
-      <Handle type="target" position={Position.Top} className="!h-1 !w-1 !border-0 !bg-trait" />
+      <Handle type="target" position={Position.Top} className="!h-1 !w-1 !border-0 !bg-trait-fort" />
       <div className="flex items-center gap-2">
-        {etat && <span className={`h-2 w-2 shrink-0 rounded-full ${c.plein} ${vivant(etat) ? "pulse-douce" : ""}`} />}
-        <span className="truncate text-sm font-semibold">
-          {n.maitre?.nom ?? n.machine?.nom ?? n.machine?.machine ?? n.categorie?.nom ?? n.projet?.nom}
-        </span>
-        {(n.projet || n.machine) && <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-accent">ouvrir →</span>}
-        {n.plie && n.masques > 0 && (
-          <span className="ml-auto rounded-full bg-fond px-1.5 text-[10px] font-bold text-douce">+{n.masques}</span>
-        )}
+        {etat && n.type !== "maitre" && <span className={`h-2 w-2 shrink-0 rounded-full ${c.plein} ${vivant(etat) ? "pulse-douce" : ""}`} />}
+        <span className="nom">{n.maitre?.nom ?? n.machine?.nom ?? n.machine?.machine ?? n.categorie?.nom ?? n.projet?.nom}</span>
+        {n.plie && n.masques > 0 && <span className="ml-auto font-mono text-[10px] text-douce">+{n.masques}</span>}
       </div>
-      <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-douce">
-        {n.type === "maitre" && <span>orchestrateur</span>}
+      <div className="sous">
+        {n.type === "maitre" && <span>orchestrateur · {mot(n.maitre!.etat)}</span>}
         {n.machine && (
           <>
             <span className={c.texte}>{mot(n.machine.etat)}</span>
@@ -75,13 +79,18 @@ function NoeudCockpit({ data }: NodeProps<Node<DonneesNoeud>>) {
         {n.projet && (
           <>
             <span className={c.texte}>{mot(n.projet.etat)}</span>
-            {n.projet.machines.length > 1 && <span className="rounded bg-fond px-1 text-[10px]">multi-machine</span>}
-            {n.projet.approbationsEnAttente > 0 && <span className="text-alerte">{n.projet.approbationsEnAttente} décision</span>}
+            <span>{n.projet.pipelines[0] ?? "sans pipeline"}</span>
+            {n.projet.machines.length > 1 && <span>multi-machine</span>}
             {!n.projet.aFiche && <span className="text-alerte">sans fiche</span>}
           </>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!h-1 !w-1 !border-0 !bg-trait" />
+      {attente && n.projet && (
+        <span className="badge alerte" title={`${n.projet.approbationsEnAttente} décision(s) en attente`}>
+          {n.projet.approbationsEnAttente || "!"}
+        </span>
+      )}
+      <Handle type="source" position={Position.Bottom} className="!h-1 !w-1 !border-0 !bg-trait-fort" />
     </div>
   );
 }
@@ -90,6 +99,9 @@ const TYPES_NOEUDS = { cockpit: NoeudCockpit };
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 1.2;
+// La barre KPI flotte en haut du canevas, la légende en bas : l'arbre se cadre entre les deux.
+const HAUT_LIBRE = 64;
+const BAS_LIBRE = 40;
 
 type Point = { x: number; y: number };
 type DonneesArete = { points?: Point[] };
@@ -170,22 +182,29 @@ function Arbre({
         (selection?.type === "projet" && n.projet?.id === selection.id) || (selection?.type === "machine" && n.machine?.machine === selection.id),
     },
   }));
-  // Les pointillés ne veulent dire qu'une chose : l'autre machine d'un projet multi-machine.
-  // L'animation native de React Flow dessine elle aussi en pointillés, ce qui confondait une
-  // arête active avec une arête multi-machine : l'activité passe donc par la couleur et une
-  // pulsation du trait (classe `arete-active`), jamais par des tirets.
-  const aretes: Edge<DonneesArete>[] = disposition.aretes.map((a) => ({
-    id: a.id,
-    source: a.source,
-    target: a.cible,
-    ...(a.points ? { type: "chemin", data: { points: a.points } } : {}),
-    className: a.animee ? "arete-active" : undefined,
-    style: {
-      stroke: a.animee ? "var(--color-accent)" : a.pointillee ? "var(--color-douce)" : "var(--color-trait)",
-      strokeWidth: a.animee ? 2 : 1.5,
-      ...(a.pointillee ? { strokeDasharray: "6 4" } : {}),
-    },
-  }));
+  // La grammaire des arêtes (AgenticOS) : jaune en tirets animés quand un run circule, rose
+  // en pointillé fin quand le projet attend une décision, pointillé gris vers l'autre machine
+  // d'un projet multi-machine, trait plein au repos. Couleur ET motif diffèrent à chaque fois.
+  const parId = new Map(disposition.noeuds.map((n) => [n.id, n]));
+  const aretes: Edge<DonneesArete>[] = disposition.aretes.map((a) => {
+    const cible = parId.get(a.cible)?.projet;
+    const attente = !a.animee && !!cible && (cible.etat === "attente" || cible.approbationsEnAttente > 0);
+    const style = a.animee
+      ? { stroke: "var(--color-accent)", strokeWidth: 1.75, strokeDasharray: "6 6" }
+      : attente
+        ? { stroke: "var(--color-givre)", strokeWidth: 1.75, strokeDasharray: "2 5" }
+        : a.pointillee
+          ? { stroke: "var(--color-trait-fort)", strokeWidth: 1.25, strokeDasharray: "2 4", opacity: 0.7 }
+          : { stroke: "var(--color-trait-fort)", strokeWidth: 1.25 };
+    return {
+      id: a.id,
+      source: a.source,
+      target: a.cible,
+      ...(a.points ? { type: "chemin", data: { points: a.points } } : {}),
+      className: a.animee ? "arete-active" : attente ? "arete-attente" : undefined,
+      style,
+    };
+  });
 
   // Le cadrage est calculé ici, pas confié au `fitView` de React Flow : celui-ci dépend de
   // mesures du DOM qui n'arrivaient pas toujours, et le téléphone gardait un zoom qui coupait
@@ -209,7 +228,7 @@ function Arbre({
     const marge = 16;
     const zoom = Math.min(
       (zone.largeur - 2 * marge) / disposition.largeur,
-      (zone.hauteur - 2 * marge) / disposition.hauteur,
+      (zone.hauteur - HAUT_LIBRE - BAS_LIBRE) / disposition.hauteur,
       ZOOM_MAX
     );
     const echelle = Math.max(zoom, ZOOM_MIN);
@@ -217,7 +236,7 @@ function Arbre({
       x: Math.max(marge, (zone.largeur - disposition.largeur * echelle) / 2),
       // Collé en haut plutôt que centré : sur un téléphone en hauteur, un arbre centré laisse
       // la moitié de l'écran vide au-dessus de lui.
-      y: marge,
+      y: HAUT_LIBRE,
       zoom: echelle,
     });
   }, [zone, disposition.largeur, disposition.hauteur, setViewport]);
@@ -259,7 +278,7 @@ function Arbre({
         }}
         onPaneClick={() => onSelection(null)}
       >
-        <Background gap={24} size={1} color="var(--color-trait)" />
+        <Background gap={24} size={1} color="var(--color-trait-fort)" />
       </ReactFlow>
 
       {menu && (
@@ -336,10 +355,16 @@ export function Topologie({ selection, onSelection }: { selection: Selection | n
           ))}
         </div>
       )}
-      <div className="min-h-0 flex-1 rounded-xl border border-trait bg-surface">
+      <div className="ao-canevas min-h-0 flex-1">
+        <Kpis flottant />
         <ReactFlowProvider>
           <Arbre topologie={donnees} selection={selection} onSelection={onSelection} />
         </ReactFlowProvider>
+        <div className="ao-legende-graphe" aria-hidden="true">
+          <span><i className="run" />en cours</span>
+          <span><i className="wait" />à valider</span>
+          <span><i className="multi" />autre machine</span>
+        </div>
       </div>
     </div>
   );

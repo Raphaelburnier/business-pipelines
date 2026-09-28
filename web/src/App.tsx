@@ -1,11 +1,16 @@
 // Le cockpit principal. Les vues ont de vraies URL : un nœud du graphe ouvre une page
 // partageable, et le bouton Retour du navigateur ramène exactement où l'opérateur était.
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { FournisseurSource } from "./donnees/contexte";
+import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
+import { mot } from "./format";
+import { Icone, type NomIcone } from "./icones";
+import { useTheme } from "./theme";
+import type { EtatMachine, Machine } from "./types";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
-import { Barre } from "./vues/Barre";
 import { Demander } from "./vues/Demander";
+import { EnCours } from "./vues/EnCours";
+import { Kpis } from "./vues/Kpis";
 import { Panneau } from "./vues/Panneau";
 
 type Route =
@@ -45,67 +50,163 @@ function useNavigation() {
   return { route, aller };
 }
 
-function Lien({ href, actif, aller, children }: { href: string; actif: boolean; aller: (href: string) => void; children: ReactNode }) {
+function Lien({ href, actif, aller, icone, compte, children }: { href: string; actif: boolean; aller: (href: string) => void; icone: NomIcone; compte?: number; children: string }) {
   const ouvrir = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     aller(href);
   };
   return (
-    <a href={href} onClick={ouvrir} aria-current={actif ? "page" : undefined} className="nav-lien">
-      <span className="nav-point" aria-hidden="true" />
-      {children}
+    <a href={href} onClick={ouvrir} aria-current={actif ? "page" : undefined} title={children}>
+      <Icone nom={icone} />
+      <span className="ao-txt">{children}</span>
+      {compte !== undefined && compte > 0 && <span className="ao-compte ao-txt">{compte}</span>}
     </a>
   );
 }
 
+const CLASSE_MACHINE: Record<EtatMachine, string> = { online: "ok", busy: "run", waking: "run", sleeping: "veille", offline: "hs", error: "hs" };
+
+/** L'état des machines dans la barre du haut : un point (rond PC, carré NAS) et son mot. */
+function Machines({ machines }: { machines: Machine[] }) {
+  return (
+    <>
+      {machines.map((m) => (
+        <span key={m.machine} className={`ao-machine ${/nas/i.test(m.machine) ? "nas" : ""} ${CLASSE_MACHINE[m.etat]}`} title={`${m.nom ?? m.machine} : ${mot(m.etat)}`}>
+          <i aria-hidden="true" />
+          {m.machine}
+          <span>{mot(m.etat)}</span>
+        </span>
+      ))}
+    </>
+  );
+}
+
+// Cyberpunk n'a que A–Z a–z : les titres de vue s'écrivent sans accents ni chiffres.
+function titreDe(route: Route): string {
+  if (route.type === "graph") return "Accueil";
+  if (route.type === "agents") return "Agents";
+  if (route.type === "demander") return "Demander";
+  if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
+  return "Introuvable";
+}
+
 function Coquille() {
   const { route, aller } = useNavigation();
-  const ouvrir = useCallback((selection: Selection) => aller(chemin(selection)), [aller]);
-  const titre =
-    route.type === "graph" ? "Carte des opérations" : route.type === "agents" ? "Agents et étapes" : route.type === "demander" ? "Demander au cockpit" : route.type === "detail" ? "Détail opérationnel" : "Page inconnue";
+  const { source, connecte } = useSource();
+  const { theme, basculer } = useTheme();
+  const [ouvert, setOuvert] = useState(false);
+  const { donnees: topo } = useCharge((s) => s.topologie(), []);
+  const { donnees: usage } = useCharge((s) => s.usage(), []);
+  const decisions = topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0;
+
+  // Sur téléphone, le tiroir se referme dès qu'on a choisi une destination.
+  const naviguer = useCallback(
+    (href: string) => {
+      if (window.matchMedia("(max-width: 720px)").matches) setOuvert(false);
+      aller(href);
+    },
+    [aller]
+  );
+  const ouvrir = useCallback((selection: Selection) => naviguer(chemin(selection)), [naviguer]);
 
   return (
-    <div className="cockpit-shell">
-      <aside className="cockpit-nav">
-        <a href="/" onClick={(e) => { e.preventDefault(); aller("/"); }} className="marque-cockpit" aria-label="Cockpit, accueil">
-          <span className="marque-signal" aria-hidden="true" />
-          <span><b>ORCH</b><small>control</small></span>
-        </a>
-        <nav className="nav-bus" aria-label="Navigation principale">
-          <Lien href="/" actif={route.type === "graph"} aller={aller}>Graphe</Lien>
-          <Lien href="/agents" actif={route.type === "agents"} aller={aller}>Agents</Lien>
-          <Lien href="/demander" actif={route.type === "demander"} aller={aller}>Demander</Lien>
-          <a href="/decisions" className="nav-lien"><span className="nav-point" aria-hidden="true" />Décisions</a>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""}`}>
+      <aside className="ao-rail" id="menu-principal">
+        <div className="ao-marque">
+          <button
+            type="button"
+            className="ao-bouton-icone"
+            onClick={() => setOuvert((o) => !o)}
+            aria-expanded={ouvert}
+            aria-controls="menu-principal"
+            aria-label={ouvert ? "Replier le menu" : "Ouvrir le menu"}
+            title={ouvert ? "Replier le menu" : "Ouvrir le menu"}
+          >
+            <Icone nom={ouvert ? "fermer" : "menu"} />
+          </button>
+          <b>AgenticOS</b>
+        </div>
+        <nav className="ao-nav" aria-label="Navigation principale">
+          <Lien href="/" actif={route.type === "graph"} aller={naviguer} icone="graphe">
+            Accueil
+          </Lien>
+          <Lien href="/agents" actif={route.type === "agents"} aller={naviguer} icone="agent" compte={usage?.runsActifs}>
+            Agents
+          </Lien>
+          <Lien href="/demander" actif={route.type === "demander"} aller={naviguer} icone="demander">
+            Demander
+          </Lien>
+          {/* Les décisions sont une autre page servie par le cockpit : un vrai lien, rechargement compris. */}
+          <a href="/decisions" title="Décisions">
+            <Icone nom="decision" />
+            <span className="ao-txt">Décisions</span>
+            {decisions > 0 && <span className="ao-compte ao-txt alerte">{decisions}</span>}
+          </a>
         </nav>
-        <div className="nav-legende">NAS · tailnet</div>
+        <span className="ao-danger" aria-hidden="true" />
+        <div className="ao-pied">
+          <div className="ao-nav">
+            <button
+              type="button"
+              className="ao-theme"
+              aria-pressed={theme === "jour"}
+              onClick={basculer}
+              title={theme === "jour" ? "Passer en Night City" : "Passer en Night City · Jour"}
+            >
+              <Icone nom={theme === "jour" ? "lune" : "soleil"} />
+              <span className="ao-txt">{theme === "jour" ? "Nuit" : "Jour"}</span>
+            </button>
+          </div>
+          <span className="ao-legende ao-txt">NAS · tailnet</span>
+        </div>
       </aside>
 
-      <div className="cockpit-corps">
-        <header className="cockpit-entete">
-          <div>
-            <div className="sur-titre">Agent orchestrateur</div>
-            <h1>{titre}</h1>
+      <div className="ao-centre">
+        <header className="ao-haut">
+          <button type="button" className="ao-bouton-icone ao-burger" onClick={() => setOuvert(true)} aria-controls="menu-principal" aria-expanded={ouvert} aria-label="Ouvrir le menu">
+            <Icone nom="menu" />
+          </button>
+          <h1>{titreDe(route)}</h1>
+          <span className="ao-code" aria-hidden="true">
+            SYS//AOS
+          </span>
+          <div className="ao-sys">
+            {source.nom === "maquette" && <span className="bg-alerte-fond px-2 py-0.5 font-mono text-[11px] uppercase text-alerte">maquette</span>}
+            <Machines machines={topo?.machines ?? []} />
+            <span className={`ao-machine ${connecte ? "ok" : "hs"}`} title={connecte ? "Flux d'événements connecté" : "Flux d'événements interrompu"}>
+              <i className={connecte ? "pulse-douce" : ""} aria-hidden="true" />
+              <span>{connecte ? "en direct" : "flux coupé"}</span>
+            </span>
           </div>
-          <div className="cockpit-mesures"><Barre /></div>
         </header>
 
-        <main className="cockpit-contenu">
+        <main className="ao-contenu">
           {route.type === "graph" && <Topologie selection={null} onSelection={(selection) => selection && ouvrir(selection)} />}
+          {(route.type === "agents" || route.type === "detail") && (
+            <div className="mb-4">
+              <Kpis />
+            </div>
+          )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
-          {route.type === "demander" && <Demander filId={route.filId} aller={aller} />}
+          {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
           {route.type === "detail" && (
-            <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => aller("/")} />
+            <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />
           )}
           {route.type === "inconnue" && (
             <section className="page-vide">
-              <div className="sur-titre">404</div>
-              <h2>Cette page n’existe pas.</h2>
-              <button type="button" onClick={() => aller("/")}>Revenir au graphe</button>
+              <div className="font-mono text-[11px] uppercase tracking-widest text-douce">404</div>
+              <h2>Introuvable</h2>
+              <p className="text-douce">Cette page n’existe pas.</p>
+              <button type="button" className="mt-2 bg-accent px-4 py-2 text-sm font-semibold text-sur-accent" onClick={() => naviguer("/")}>
+                Revenir au graphe
+              </button>
             </section>
           )}
         </main>
       </div>
+
+      <EnCours />
     </div>
   );
 }

@@ -87,7 +87,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
           href={projet.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-lg border border-accent px-3 py-2 text-center text-sm font-semibold text-accent hover:bg-accent hover:text-white"
+          className="rounded-lg border border-accent px-3 py-2 text-center text-sm font-semibold text-accent hover:bg-accent hover:text-sur-accent"
         >
           Ouvrir l’app ↗
         </a>
@@ -103,7 +103,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
                 type="button"
                 disabled={lancement === "sending" || lancement === "sent"}
                 onClick={() => lancer(index)}
-                className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-sur-accent disabled:opacity-60"
               >
                 {lancement === "sending" ? "Envoi…" : lancement === "sent" ? "Run demandé" : `Lancer ${pipeline}`}
               </button>

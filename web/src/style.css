@@ -1,192 +1,363 @@
 @import "tailwindcss";
 
-/* Une console d'exploitation froide et lisible : givre, encre et signal turquoise. Le rail
-   reprend la forme d'un bus de messages, l'objet propre à cet orchestrateur. */
+/* AgenticOS, direction Night City : la palette Cyberpunk 2077, des angles coupés et une
+   seule couleur de signal. Jaune = vivant, rose = ce qui attend Raphaël, cyan = PC,
+   violet = NAS. Les noms Tailwind d'avant sont gardés : toutes les vues suivent le thème
+   sans connaître ses valeurs. Référence : l'artefact « AgenticOS » (design system). */
+
+@font-face { font-family: "Cyberpunk"; src: url("./assets/fonts/Cyberpunk.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Rajdhani"; src: url("./assets/fonts/Rajdhani-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Rajdhani"; src: url("./assets/fonts/Rajdhani-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Rajdhani"; src: url("./assets/fonts/Rajdhani-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Rajdhani"; src: url("./assets/fonts/Rajdhani-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Share Tech Mono"; src: url("./assets/fonts/ShareTechMono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
 @theme {
-  --color-fond: #eaf0f1;
-  --color-surface: #f8fbfa;
-  --color-carte: #ffffff;
-  --color-encre: #142126;
-  --color-douce: #52646b;
-  --color-trait: #cbd6d8;
-  --color-accent: #087b83;
-  --color-bleu: #315b7c;
-  --color-ok: #2f6b3f;
-  --color-ok-fond: #e4efe3;
-  --color-danger: #a8362a;
-  --color-danger-fond: #f8e4e0;
-  --color-alerte: #7d5510;
-  --color-alerte-fond: #f6ebd5;
-  --font-titre: "Arial Narrow", "Roboto Condensed", "Aptos Narrow", sans-serif;
+  /* Night City (nuit), le thème par défaut. */
+  --color-fond: #272932;
+  --color-surface: #1e1f27;
+  --color-carte: #2f313b;
+  --color-encre: #d1c5c0;
+  --color-douce: #aea4a0;
+  --color-trait: #3d404d;
+  --color-trait-fort: #7a7e92;
+  --color-accent: #fdf500;
+  --color-sur-accent: #272932;
+  --color-accent-doux: #46441a;
+  --color-bleu: #37ebf3;
+  --color-pc: #37ebf3;
+  --color-nas: #a78be6;
+  --color-ok: #1ac5b0;
+  --color-ok-fond: #1b3a3c;
+  --color-danger: #ff6b78;
+  --color-danger-fond: #3d1c24;
+  --color-alerte: #f07cc4;
+  --color-alerte-fond: #3d2439;
+  --color-sang: #710000;
+  --color-givre: #e455ae;
+  --color-argent: #d1c5c0;
+  --color-citron: #fdf500;
+  --color-raisin: #272932;
+
+  --font-sans: "Rajdhani", system-ui, sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --font-titre: "Cyberpunk", "Rajdhani", sans-serif;
+
+  /* Pas d'arrondis en Night City : seules les pastilles (rounded-full) restent rondes. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+
+  --ombre-pop: 0 0 0 1px rgba(253, 245, 0, 0.25), 0 10px 28px rgba(0, 0, 0, 0.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-fond: #0b1418;
-    --color-surface: #111e23;
-    --color-carte: #17272d;
-    --color-encre: #edf7f6;
-    --color-douce: #9ab0b5;
-    --color-trait: #30454b;
-    --color-accent: #67d4d0;
-    --color-bleu: #8db6d2;
-    --color-ok: #5fd08a;
-    --color-ok-fond: #12301f;
-    --color-danger: #f58a7c;
-    --color-danger-fond: #39191a;
-    --color-alerte: #e0b04a;
-    --color-alerte-fond: #332708;
-    --font-titre: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }
+/* Night City · Jour : fond citron plein, le signal s'inverse (noir actif, texte jaune dessus),
+   comme les menus du jeu. Tous les textes tiennent au moins 5.5:1 sur le jaune. */
+:root[data-theme="jour"] {
+  --color-fond: #fdf500;
+  --color-surface: #fffbb8;
+  --color-carte: #fffde0;
+  --color-encre: #272932;
+  --color-douce: #57521f;
+  --color-trait: #e6dd3c;
+  --color-trait-fort: #7a7400;
+  --color-accent: #272932;
+  --color-sur-accent: #fdf500;
+  --color-accent-doux: #f2e600;
+  --color-bleu: #0b5d8c;
+  --color-pc: #0b5d8c;
+  --color-nas: #5b3aa3;
+  --color-ok: #0a6b5f;
+  --color-ok-fond: #dcf2b0;
+  --color-danger: #710000;
+  --color-danger-fond: #ffd6c4;
+  --color-alerte: #a3126f;
+  --color-alerte-fond: #ffd9ee;
+  --ombre-pop: 0 0 0 1px rgba(39, 41, 50, 0.35), 0 8px 20px rgba(39, 41, 50, 0.2);
 }
 
-html {
-  color-scheme: light dark;
-  width: 100%;
-  overflow: hidden;
-}
+html { color-scheme: dark; width: 100%; }
+:root[data-theme="jour"] { color-scheme: light; }
 
 body {
   margin: 0;
   width: 100%;
-  overflow: hidden;
   background-color: var(--color-fond);
   color: var(--color-encre);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 500 15px/20px var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-.cockpit-shell {
-  display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr);
-  min-height: 100dvh;
-  width: 100vw;
-  overflow: hidden;
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Les chiffres, identifiants et étapes : en mono, tabulaires. */
+.font-mono, .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Un bouton primaire (fond accent) a le coin bas droit coupé, en capitales espacées. */
+button.bg-accent, a.bg-accent, .ao-coupe {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  text-transform: uppercase;
+  letter-spacing: .06em;
 }
-.cockpit-nav {
-  position: relative;
+
+/* ---------- Coquille : rail | centre | en cours ---------- */
+.ao-shell {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 280px;
+  height: 100dvh;
+  overflow: hidden;
+  transition: grid-template-columns .2s ease;
+}
+.ao-shell.ouvert { grid-template-columns: 240px minmax(0, 1fr) 280px; }
+
+.ao-rail {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
   border-right: 1px solid var(--color-trait);
   background: var(--color-surface);
-  padding: 1.1rem .85rem;
+  padding: 12px 8px;
 }
-.marque-cockpit {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  color: var(--color-encre);
-  text-decoration: none;
-}
-.marque-cockpit > span:last-child { display: flex; flex-direction: column; line-height: 1; }
-.marque-cockpit b { font-family: var(--font-titre); font-size: 1.25rem; letter-spacing: .12em; }
-.marque-cockpit small { margin-top: .2rem; color: var(--color-douce); font: 600 .62rem/1 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
-.marque-signal {
-  width: .72rem;
-  height: .72rem;
-  border: 2px solid var(--color-accent);
-  border-radius: 50%;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
-}
-.nav-bus {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: .35rem;
-  margin-top: 2rem;
-  padding-left: .25rem;
-}
-.nav-bus::before {
-  position: absolute;
-  top: .8rem;
-  bottom: .8rem;
-  left: .58rem;
-  width: 1px;
-  background: var(--color-trait);
-  content: "";
-}
-.nav-lien {
-  position: relative;
-  display: flex;
-  min-height: 2.55rem;
-  align-items: center;
-  gap: .72rem;
-  border-radius: .5rem;
-  padding: .55rem .55rem;
+.ao-marque { display: flex; align-items: center; gap: 12px; height: 40px; margin-bottom: 12px; white-space: nowrap; }
+.ao-marque b { font: 400 17px/1 var(--font-titre); letter-spacing: .04em; color: var(--color-accent); transition: opacity .15s; }
+.ao-shell:not(.ouvert) .ao-marque b, .ao-shell:not(.ouvert) .ao-txt { opacity: 0; }
+.ao-txt { transition: opacity .15s; }
+
+.ao-bouton-icone {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--color-douce);
-  font-size: .82rem;
-  font-weight: 700;
+  cursor: pointer;
+}
+.ao-bouton-icone:hover { border-color: var(--color-trait-fort); color: var(--color-encre); }
+.ao-bouton-icone[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
+
+.ao-nav { display: flex; flex-direction: column; gap: 2px; }
+.ao-nav a, .ao-nav .ao-theme {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  color: var(--color-douce);
+  font-weight: 600;
   text-decoration: none;
+  white-space: nowrap;
 }
-.nav-lien:hover, .nav-lien[aria-current="page"] { background: var(--color-fond); color: var(--color-encre); }
-.nav-lien:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.nav-point { z-index: 1; width: .45rem; height: .45rem; flex: none; border: 1px solid var(--color-douce); border-radius: 50%; background: var(--color-surface); }
-.nav-lien[aria-current="page"] .nav-point { border-color: var(--color-accent); background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent); }
-.nav-legende { margin-top: auto; color: var(--color-douce); font: 600 .62rem/1 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
-.cockpit-corps { display: grid; min-width: 0; min-height: 100dvh; grid-template-rows: auto minmax(0, 1fr); }
-.cockpit-entete { display: flex; align-items: end; gap: 2rem; border-bottom: 1px solid var(--color-trait); padding: .85rem 1.2rem; background: color-mix(in srgb, var(--color-surface) 88%, transparent); }
-.cockpit-entete h1 { margin: .1rem 0 0; font-family: var(--font-titre); font-size: clamp(1.35rem, 2vw, 1.8rem); letter-spacing: -.015em; }
-.sur-titre { color: var(--color-accent); font: 700 .64rem/1.2 ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
-.cockpit-mesures { min-width: 0; flex: 1; }
-.cockpit-contenu { min-width: 0; min-height: 0; padding: .85rem; }
-.detail-page { width: min(100%, 72rem); margin-inline: auto; }
-.page-vide { width: min(100%, 34rem); margin: 12vh auto 0; border: 1px solid var(--color-trait); border-radius: .75rem; background: var(--color-surface); padding: 2rem; }
-.page-vide h2 { font-family: var(--font-titre); }
-.page-vide button { border: 0; border-radius: .5rem; background: var(--color-accent); color: white; padding: .7rem 1rem; font-weight: 700; }
+.ao-nav a:hover, .ao-nav .ao-theme:hover { background: var(--color-carte); color: var(--color-encre); }
+.ao-nav .ao-theme { width: 100%; border: 0; background: transparent; font: 600 15px/1 var(--font-sans); cursor: pointer; }
+.ao-nav a[aria-current="page"] {
+  background: var(--color-accent);
+  color: var(--color-sur-accent);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+.ao-nav .ao-compte { margin-left: auto; font: 400 11px/1 var(--font-mono); }
+.ao-nav a:not([aria-current="page"]) .ao-compte.alerte { color: var(--color-alerte); }
 
-@media (max-width: 720px) {
-  .cockpit-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .cockpit-nav { width: 100vw; max-width: 100vw; flex-direction: row; align-items: center; gap: .7rem; overflow: hidden; border-right: 0; border-bottom: 1px solid var(--color-trait); padding: calc(.7rem + env(safe-area-inset-top)) .75rem .7rem; }
-  .marque-cockpit small, .nav-legende, .nav-bus::before { display: none; }
-  .nav-bus { min-width: 0; flex: 1; flex-direction: row; justify-content: flex-end; gap: .1rem; margin: 0; padding: 0; }
-  .nav-lien { min-height: 2.25rem; gap: .38rem; padding: .45rem .5rem; font-size: .75rem; }
-  .nav-point { width: .36rem; height: .36rem; }
-  .cockpit-corps { width: 100vw; min-width: 0; min-height: 0; height: calc(100dvh - 4.35rem); overflow: hidden; }
-  .cockpit-entete { display: block; padding: .65rem .85rem; }
-  .cockpit-mesures { margin-top: .5rem; }
-  .cockpit-contenu { padding: .55rem; }
-}
+.ao-danger { display: block; flex: none; height: 6px; margin: auto 6px 8px; background: repeating-linear-gradient(-45deg, var(--color-citron) 0 5px, var(--color-raisin) 5px 10px); opacity: .85; }
+.ao-pied { display: flex; flex-direction: column; gap: 4px; }
+.ao-pied .ao-legende { padding: 0 12px; font: 400 10px/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); white-space: nowrap; }
 
-@media (max-width: 480px) {
-  .cockpit-nav { gap: .35rem; }
-  .marque-cockpit { gap: 0; }
-  .marque-signal, .nav-point { display: none; }
-  .marque-cockpit b { font-size: 1rem; letter-spacing: .08em; }
-  .nav-bus { justify-content: flex-end; }
-  .nav-lien { flex: 0 0 auto; min-height: 2rem; padding: .38rem .4rem; font-size: .68rem; }
-}
+.ao-centre { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 16px; padding: 0 24px 24px; }
+.ao-haut { display: flex; flex: none; align-items: center; gap: 12px; height: 56px; border-bottom: 1px solid var(--color-accent); }
+.ao-haut h1 { margin: 0; font: 400 26px/30px var(--font-titre); letter-spacing: .02em; color: var(--color-accent); text-shadow: 2px 0 0 var(--color-sang); white-space: nowrap; }
+:root[data-theme="jour"] .ao-haut h1 { text-shadow: 2px 0 0 var(--color-givre); }
+.ao-haut h1:hover { animation: ao-glitch .32s steps(2) 1; }
+.ao-code { font: 400 10px/1 var(--font-mono); letter-spacing: .12em; color: var(--color-douce); opacity: .8; }
+.ao-sys { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.ao-machine { display: inline-flex; align-items: center; gap: 6px; font: 400 11px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--color-douce); white-space: nowrap; }
+.ao-machine i { width: 8px; height: 8px; border-radius: 999px; background: var(--color-douce); }
+.ao-machine.nas i { border-radius: 2px; }
+.ao-machine.ok i { background: var(--color-ok); }
+.ao-machine.run i { background: var(--color-accent); }
+.ao-machine.veille i { background: var(--color-bleu); }
+.ao-machine.hs i { background: var(--color-danger); }
+.ao-burger { display: none; }
+.ao-contenu { min-width: 0; min-height: 0; flex: 1; }
 
-/* Une étape qui tourne respire. Discrètement, et jamais pour quelqu'un qui a demandé
-   moins d'animation. */
-@media (prefers-reduced-motion: no-preference) {
-  .pulse-douce {
-    animation: pulse-douce 2s ease-in-out infinite;
-  }
+/* ---------- Canevas du graphe ---------- */
+.ao-canevas {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-trait-fort);
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 24px));
+  background:
+    linear-gradient(var(--color-accent), var(--color-accent)) right 10px bottom 10px / 16px 2px no-repeat,
+    linear-gradient(var(--color-accent), var(--color-accent)) right 10px bottom 10px / 2px 16px no-repeat,
+    linear-gradient(var(--color-trait-fort), var(--color-trait-fort)) left 10px top 10px / 10px 1px no-repeat,
+    linear-gradient(var(--color-trait-fort), var(--color-trait-fort)) left 10px top 10px / 1px 10px no-repeat,
+    var(--color-surface);
 }
-@keyframes pulse-douce {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
+/* Languette jaune du coin coupé. */
+.ao-canevas::before { content: ""; position: absolute; top: 0; right: 0; z-index: 2; width: 34px; height: 34px; background: linear-gradient(225deg, var(--color-accent) 0 12px, transparent 12px); pointer-events: none; }
+/* Lignes de balayage à peine visibles. */
+.ao-canevas::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--color-encre) 4%, transparent) 0 1px, transparent 1px 4px); }
+.ao-legende-graphe { position: absolute; right: 16px; bottom: 12px; z-index: 3; display: flex; flex-wrap: wrap; gap: 12px; pointer-events: none; font: 400 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.ao-legende-graphe span { display: inline-flex; align-items: center; gap: 6px; }
+.ao-legende-graphe i { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--color-trait-fort); }
+.ao-legende-graphe i.run { border-top: 2px dashed var(--color-accent); }
+.ao-legende-graphe i.wait { border-top: 2px dotted var(--color-givre); }
+.ao-legende-graphe i.multi { border-top: 2px dotted var(--color-trait-fort); }
 
-/* React Flow sur les couleurs du cockpit : son thème clair par défaut détonnerait dans le
-   mode sombre, et ses contrôles ne servent à rien sur un arbre qu'on ne déplace pas. */
+/* ---------- KPI : une barre discrète, en haut à gauche du graphe ---------- */
+.ao-kpis {
+  display: flex;
+  max-width: 100%;
+  align-items: stretch;
+  overflow-x: auto;
+  border: 1px solid var(--color-trait-fort);
+  border-top: 2px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-carte) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  scrollbar-width: none;
+}
+.ao-kpis.flottant { position: absolute; top: 12px; left: 12px; z-index: 3; max-width: calc(100% - 60px); }
+.ao-kpi { position: relative; display: flex; flex: none; align-items: baseline; gap: 6px; padding: 7px 12px 9px; white-space: nowrap; }
+.ao-kpi + .ao-kpi { border-left: 1px solid var(--color-trait); }
+.ao-kpi:hover { background: var(--color-carte); }
+.ao-kpi .k { font: 400 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
+.ao-kpi .v { font: 400 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-encre); }
+.ao-kpi .v.accent { color: var(--color-accent); }
+.ao-kpi .barre { position: absolute; right: 12px; bottom: 3px; left: 12px; height: 2px; overflow: hidden; background: var(--color-trait); }
+.ao-kpi .barre i { display: block; height: 100%; background: var(--color-accent); }
+.ao-kpi .barre.alerte i { background: var(--color-alerte); }
+.ao-kpi .barre.danger i { background: var(--color-danger); }
+
+/* ---------- En cours : une ligne par run, le détail au clic ---------- */
+.ao-encours { position: relative; display: flex; min-height: 0; flex-direction: column; border-left: 1px solid var(--color-trait); background: var(--color-surface); }
+.ao-encours > header { display: flex; flex: none; align-items: center; gap: 8px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--color-trait); }
+.ao-encours > header h2 { margin: 0; font: 400 19px/24px var(--font-titre); letter-spacing: .04em; color: var(--color-accent); }
+.ao-encours > header .n { font: 400 11px/1 var(--font-mono); color: var(--color-douce); }
+.ao-encours ul { position: relative; z-index: 1; display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; margin: 0; padding: 8px; overflow: auto; list-style: none; }
+/* Piste de circuit en filigrane au pied du panneau. */
+.ao-encours::after {
+  content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 120px; pointer-events: none; background: var(--color-trait-fort); opacity: .35;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 120' fill='none' stroke='%23000' stroke-width='1.5'%3E%3Cpath d='M0 100h60l20-20h70l12 12h118M0 112h40l14-14h40M120 80V40l16-16h60l20 20h64M200 120v-18l10-10h70M90 120V96'/%3E%3Ccircle cx='150' cy='80' r='3'/%3E%3Ccircle cx='196' cy='24' r='3'/%3E%3Ccircle cx='94' cy='98' r='3'/%3E%3Ccircle cx='210' cy='92' r='3'/%3E%3C/svg%3E") bottom right / 280px 120px no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 120' fill='none' stroke='%23000' stroke-width='1.5'%3E%3Cpath d='M0 100h60l20-20h70l12 12h118M0 112h40l14-14h40M120 80V40l16-16h60l20 20h64M200 120v-18l10-10h70M90 120V96'/%3E%3Ccircle cx='150' cy='80' r='3'/%3E%3Ccircle cx='196' cy='24' r='3'/%3E%3Ccircle cx='94' cy='98' r='3'/%3E%3Ccircle cx='210' cy='92' r='3'/%3E%3C/svg%3E") bottom right / 280px 120px no-repeat;
+}
+.ao-ligne { position: relative; }
+.ao-ligne > button { display: flex; width: 100%; height: 40px; align-items: center; gap: 10px; padding: 0 10px; border: 0; background: transparent; color: var(--color-encre); font: 600 14px/1 var(--font-sans); text-align: left; cursor: pointer; }
+.ao-ligne > button:hover { background: var(--color-carte); }
+.ao-ligne > button:focus-visible { outline-offset: -2px; }
+.ao-ligne .point { width: 8px; height: 8px; flex: none; border-radius: 999px; background: var(--color-douce); }
+.ao-ligne.run .point { border-radius: 0; background: var(--color-accent); box-shadow: 0 0 6px var(--color-accent); transform: rotate(45deg); animation: ao-pouls 1.6s ease-in-out infinite; }
+.ao-ligne.wait .point { border-radius: 0; background: var(--color-alerte); transform: rotate(45deg); }
+.ao-ligne.pause .point { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-douce); }
+.ao-ligne.err .point { background: var(--color-danger); }
+.ao-ligne .ttl { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ao-ligne .r { flex: none; font: 400 11px/1 var(--font-mono); color: var(--color-douce); }
+.ao-ligne .r.alerte { color: var(--color-alerte); }
+.ao-ligne .filet { position: absolute; top: 36px; right: 10px; left: 28px; height: 2px; overflow: hidden; }
+.ao-ligne .filet i { display: block; height: 100%; background: var(--color-trait-fort); }
+.ao-ligne.run .filet i { background: var(--color-accent); }
+.ao-ligne.wait .filet i { background: var(--color-alerte); }
+.ao-ligne.ouverte { background: var(--color-carte); box-shadow: inset 0 0 0 1px var(--color-trait-fort), inset 0 2px 0 var(--color-accent); }
+.ao-ligne.wait.ouverte { box-shadow: inset 0 0 0 1px var(--color-givre), inset 0 2px 0 var(--color-givre); }
+.ao-ligne.ouverte .filet { display: none; }
+.ao-detail { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px 28px; }
+.ao-detail .meta { display: flex; flex-wrap: wrap; gap: 0 8px; font: 400 12px/16px var(--font-mono); color: var(--color-douce); }
+.ao-etapes { display: flex; gap: 3px; }
+.ao-etapes i { height: 4px; flex: 1; background: var(--color-trait); }
+.ao-etapes i.fait { background: var(--color-douce); }
+.ao-etapes i.maintenant { background: var(--color-accent); }
+.ao-ligne.wait .ao-etapes i.maintenant { background: var(--color-alerte); }
+.ao-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.ao-btn { display: inline-flex; height: 32px; align-items: center; gap: 4px; padding: 0 12px; border: 1px solid var(--color-trait-fort); background: transparent; color: var(--color-encre); font: 600 13px/1 var(--font-sans); letter-spacing: .06em; text-decoration: none; text-transform: uppercase; cursor: pointer; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); }
+.ao-btn:hover { background: var(--color-carte); }
+.ao-btn.primaire { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-sur-accent); }
+.ao-btn.primaire:hover { filter: brightness(1.08); }
+.ao-vide { padding: 16px 10px; font-size: 13px; color: var(--color-douce); }
+
+/* ---------- React Flow aux couleurs du cockpit ---------- */
 .react-flow {
   --xy-background-color: transparent;
-  --xy-edge-stroke: var(--color-trait);
+  --xy-edge-stroke: var(--color-trait-fort);
   --xy-node-background-color: transparent;
   --xy-node-border: none;
 }
-.react-flow__node-cockpit {
-  cursor: pointer;
+.react-flow__node-cockpit { cursor: pointer; }
+.react-flow__node-cockpit:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.arete-active .react-flow__edge-path { filter: drop-shadow(0 0 3px var(--color-accent)); animation: ao-flux .9s linear infinite; }
+.arete-attente .react-flow__edge-path { filter: drop-shadow(0 0 2px var(--color-givre)); }
+:root[data-theme="jour"] .arete-active .react-flow__edge-path { filter: none; }
+
+.ao-noeud { position: relative; display: flex; height: 100%; width: 100%; flex-direction: column; justify-content: center; gap: 2px; padding: 0 12px 0 16px; border: 1px solid var(--color-trait-fort); background: var(--color-carte); text-align: left; }
+.ao-noeud::before { content: ""; position: absolute; top: -1px; bottom: -1px; left: -1px; width: 3px; background: var(--color-trait-fort); }
+.ao-noeud.pc::before { background: var(--color-pc); }
+.ao-noeud.nas { border-radius: 4px; }
+.ao-noeud.nas::before { border-radius: 4px 0 0 4px; background: var(--color-nas); }
+.ao-noeud.maitre { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-sur-accent); }
+.ao-noeud.maitre::before { display: none; }
+.ao-noeud.maitre .sous { color: var(--color-sur-accent); opacity: .8; }
+.ao-noeud.categorie { border-style: dashed; background: var(--color-surface); }
+.ao-noeud.categorie::before { display: none; }
+.ao-noeud.attente { border-color: var(--color-givre); }
+.ao-noeud.selectionne, .react-flow__node-cockpit:hover .ao-noeud:not(.maitre) { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.ao-noeud .nom { overflow: hidden; font: 700 15px/20px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
+.ao-noeud .sous { display: flex; gap: 8px; overflow: hidden; font: 400 11px/14px var(--font-mono); color: var(--color-douce); white-space: nowrap; }
+.ao-noeud .badge { position: absolute; top: -9px; right: -9px; min-width: 18px; height: 18px; padding: 0 5px; border: 2px solid var(--color-surface); background: var(--color-accent); color: var(--color-sur-accent); font: 400 10px/14px var(--font-mono); text-align: center; }
+.ao-noeud .badge.alerte { background: var(--color-givre); color: var(--color-raisin); }
+
+/* ---------- Animations ---------- */
+@keyframes ao-pouls { 50% { opacity: .25; } }
+@keyframes ao-flux { to { stroke-dashoffset: -12; } }
+@keyframes ao-glitch {
+  0% { text-shadow: 2px 0 0 var(--color-sang); transform: none; }
+  25% { text-shadow: -3px 0 0 var(--color-pc), 3px 0 0 var(--color-givre); transform: translateX(1px) skewX(-6deg); }
+  50% { text-shadow: 3px 0 0 var(--color-pc), -2px 0 0 var(--color-sang); transform: translateX(-2px); clip-path: inset(10% 0 35% 0); }
+  75% { text-shadow: -2px 0 0 var(--color-givre); transform: translateX(1px); clip-path: none; }
+  100% { text-shadow: 2px 0 0 var(--color-sang); transform: none; }
 }
-.react-flow__node-cockpit:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-douce { animation: ao-pouls 2s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ao-shell { transition: none; }
+  .ao-ligne.run .point, .arete-active .react-flow__edge-path, .ao-haut h1:hover { animation: none !important; }
 }
 
-/* Une arête active respire, sans tirets : les tirets sont réservés au multi-machine. */
-@media (prefers-reduced-motion: no-preference) {
-  .arete-active .react-flow__edge-path {
-    animation: pulse-douce 1.6s ease-in-out infinite;
-  }
+/* ---------- Pages hors graphe ---------- */
+.detail-page { width: min(100%, 72rem); margin-inline: auto; }
+.page-vide { width: min(100%, 34rem); margin: 12vh auto 0; border: 1px solid var(--color-trait-fort); background: var(--color-surface); padding: 2rem; }
+.page-vide h2 { font-family: var(--font-titre); font-weight: 400; color: var(--color-accent); }
+
+/* ---------- Tablette : En cours passe sous le contenu ---------- */
+@media (max-width: 1100px) {
+  .ao-shell, .ao-shell.ouvert { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: auto; min-height: 100dvh; overflow: visible; }
+  .ao-shell.ouvert { grid-template-columns: 240px minmax(0, 1fr); }
+  .ao-rail { position: sticky; top: 0; grid-row: 1 / span 2; height: 100dvh; }
+  .ao-centre { min-height: 100dvh; }
+  .ao-contenu { min-height: 70dvh; }
+  .ao-encours { grid-column: 2; border-top: 1px solid var(--color-trait); border-left: 0; }
+  .ao-encours ul { max-height: none; }
+}
+
+/* ---------- Téléphone (via Tailscale) : le menu devient un tiroir en superposition ---------- */
+@media (max-width: 720px) {
+  .ao-shell, .ao-shell.ouvert { grid-template-columns: minmax(0, 1fr); }
+  .ao-rail { position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: 240px; box-shadow: var(--ombre-pop); transform: translateX(-100%); transition: transform .2s ease; }
+  .ao-shell.ouvert .ao-rail { transform: none; }
+  .ao-shell .ao-marque b, .ao-shell .ao-txt { opacity: 1; }
+  .ao-burger { display: inline-grid; }
+  .ao-encours { grid-column: 1; }
+  .ao-centre { padding: env(safe-area-inset-top) 12px 12px; }
+  .ao-haut { gap: 8px; }
+  .ao-haut h1 { font-size: 22px; }
+  .ao-code, .ao-machine span { display: none; }
+  .ao-kpis.flottant { right: 12px; max-width: none; }
+  .ao-contenu { min-height: 55dvh; }
 }

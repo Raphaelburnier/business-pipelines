@@ -10,7 +10,7 @@ export function Etat({ etat, compact = false }: { etat: Etat; compact?: boolean 
   const c = CLASSES_TON[ton(etat)];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${c.texte} ${c.fond} ${c.bordure}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap border px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide ${c.texte} ${c.fond} ${c.bordure}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${c.plein} ${vivant(etat) ? "pulse-douce" : ""}`} />
       {!compact && mot(etat)}
