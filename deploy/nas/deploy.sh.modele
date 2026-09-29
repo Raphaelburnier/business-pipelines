@@ -40,9 +40,36 @@ ln -sf "$ENV" "$STAGE/specs/deploiement.env"
 ln -sf "$BUSINESS/specs/workers.json" "$STAGE/specs/workers.json"
 ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
 
+# L'état vit dans ces dossiers, et un déploiement n'y touche jamais : ni la sauvegarde ni la
+# restauration ne les incluent. Archiver l'event store pendant qu'un service y écrit faisait
+# échouer tar (« file changed as we read it », première livraison depuis le cockpit, le
+# 2026-09-29) ; et restaurer cette copie en cas d'échec aurait remplacé l'état vivant par un
+# instantané plus ancien, peut-être incohérent.
+est_etat() {
+  case "$1" in
+    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|passer-abonnement.sh) return 0 ;;
+  esac
+  return 1
+}
+# Retire le code en place, garde l'état.
+vider_code() {
+  find "$BUSINESS" -mindepth 1 -maxdepth 1 -print | while IFS= read -r entree; do
+    est_etat "$(basename "$entree")" || rm -rf "$entree"
+  done
+}
+
 ANCIENNE_COCKPIT=$($DOCKER inspect business_cockpit --format '{{.Image}}')
 ANCIENNE_RUNNER=$($DOCKER inspect business_runner --format '{{.Image}}')
-tar -czf "$BACKUP" -C /volume1/docker business-pipelines
+ANCIENNE_WHOIS=$($DOCKER inspect business_tailscale_whois --format '{{.Image}}')
+ANCIENNE_PUBLIEUR=$($DOCKER inspect business_publieur --format '{{.Image}}')
+# Le code seulement : mêmes noms que est_etat, à garder d'accord.
+tar -czf "$BACKUP" -C /volume1/docker \
+  --exclude=business-pipelines/approvals --exclude=business-pipelines/specs \
+  --exclude=business-pipelines/logs --exclude=business-pipelines/runs \
+  --exclude=business-pipelines/workspace --exclude=business-pipelines/workspaces \
+  --exclude=business-pipelines/etat --exclude=business-pipelines/ai-studio-data \
+  --exclude=business-pipelines/passer-abonnement.sh \
+  business-pipelines
 
 SWITCHED=0
 rollback() {
@@ -52,12 +79,17 @@ rollback() {
   if [ "$SWITCHED" -eq 1 ]; then
     echo "Échec après la bascule ; restauration du cockpit et du runner précédents..." >&2
     $DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1
-    rm -rf "$BUSINESS"
+    # Le code d'avant revient ; l'état en service n'est pas touché.
+    vider_code
     tar -xzf "$BACKUP" -C /volume1/docker
+    # Les quatre services arrêtés reviennent sur leurs images d'avant : seuls le cockpit et le
+    # runner étaient relancés, le relais d'identité et le publieur restaient arrêtés.
     $DOCKER tag "$ANCIENNE_COCKPIT" business-pipelines-cockpit
     $DOCKER tag "$ANCIENNE_RUNNER" business-pipelines-runner
+    $DOCKER tag "$ANCIENNE_WHOIS" business-pipelines-tailscale-whois
+    $DOCKER tag "$ANCIENNE_PUBLIEUR" business-pipelines-publieur
     cd "$BUSINESS" || exit "$code"
-    $DOCKER compose up -d --no-build cockpit runner
+    $DOCKER compose up -d --no-build cockpit runner tailscale-whois publieur
   else
     echo "Échec avant la bascule ; rien n'a été remplacé." >&2
   fi
@@ -72,12 +104,7 @@ $DOCKER compose build cockpit runner tailscale-whois publieur
 echo "Bascule..."
 SWITCHED=1
 $DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || true
-find "$BUSINESS" -mindepth 1 -maxdepth 1 -print | while IFS= read -r entree; do
-  case "$(basename "$entree")" in
-    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|passer-abonnement.sh) ;;
-    *) rm -rf "$entree" ;;
-  esac
-done
+vider_code
 tar -xzf "$ARCHIVE" -C "$BUSINESS"
 mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
