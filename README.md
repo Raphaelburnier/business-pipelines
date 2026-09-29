@@ -42,6 +42,15 @@ Les références sont conservées dès cette phase mais ne sont pas injectées d
 le workflow avant les identity providers de Phase 2. Le plan et les limites détaillés sont
 dans [`docs/PLAN-ai-instagram-studio.md`](docs/PLAN-ai-instagram-studio.md).
 
+Avant la première livraison : vérifier dans DSM que `/volume1/IAstudio` existe, puis
+ajouter `COMFYUI_URL=http://192.168.1.26:8188` dans le fichier persistant
+`/volume1/docker/business-pipelines/specs/cockpit.env` (sans écraser les autres réglages).
+La livraison prend uniquement les commits fusionnés dans `origin/main` : la branche
+AI Studio doit donc passer par une PR et une fusion explicite, car elle modifie Docker
+et le script de déploiement. Après livraison, vérifier `/api/ai-studio/status` depuis
+le Cockpit, choisir un checkpoint proposé par ComfyUI, puis générer et valider une seule
+image de test avant de lancer un batch.
+
 Pipelines business bâtis sur [`agent-orchestrator`](../agent-orchestrator), et le cockpit
 qui tranche leurs approbations.
 
