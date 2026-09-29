@@ -169,7 +169,7 @@ const ENTETE_TAILNET = { Host: TAILNET, "Tailscale-User-Login": "destrobi28@gmai
 const JSON_LOCAL = { "Content-Type": "application/json", Origin: `http://127.0.0.1:${PORT}` };
 
 test("la page locale signe du compte configuré et ne demande plus de nom à taper", async () => {
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   assert.ok(r.corps.includes("raph-poste"), "la page annonce sous quel nom elle signera");
   assert.ok(!/id="par"/.test(r.corps), "le champ texte libre a disparu : il laissait écrire n'importe quel nom");
@@ -189,7 +189,7 @@ test("le nom du tailnet sans relais ne montre même pas les prix", async () => {
 });
 
 test("par le relais, la page signe de l'identité du tailnet", async () => {
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.strictEqual(r.code, 200);
   assert.ok(r.corps.includes("destrobi28@gmail.com"));
   assert.ok(!r.corps.includes("raph-poste"), "le canal tailnet ne doit pas retomber sur l'identité locale");
@@ -293,12 +293,12 @@ test("un store illisible répond, nomme le fichier, et ne tue pas le cockpit", a
   const base = store.cheminBase(bacCourant.dir);
   for (const f of [base, `${base}-wal`, `${base}-shm`]) fs.rmSync(f, { force: true });
   fs.writeFileSync(base, "pas une base SQLite");
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 500, "une base corrompue est une réponse, pas un arrêt");
   assert.ok(r.corps.includes(store.FICHIER), "le message doit dire quel fichier réparer");
 
   fs.rmSync(base, { force: true });
-  const apres = await demander({ chemin: "/decisions" });
+  const apres = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(apres.code, 200, "le cockpit doit avoir survécu à la requête précédente");
 });
 
@@ -307,7 +307,7 @@ const dossierAvecUnderscore = async () => {
   // underscores en supposant que le dossier tenait en un seul segment. Avec un dossier en
   // deux segments, l'identifiant reconstruit désignait une AUTRE action du plan, ou aucune.
   // Une décision partait alors sur un changement de prix qui n'avait pas été lu.
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   assert.ok(r.corps.includes('data-action="prix_001"'), "l'identifiant doit voyager entier, dans un attribut");
 
@@ -324,7 +324,7 @@ dossierAvecUnderscore.forme = { dossier: "ajustement_prix", actionId: "prix_001"
 test("un underscore dans le nom du dossier n'envoie plus la décision à la mauvaise action", dossierAvecUnderscore);
 
 const donneesHostiles = async () => {
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   // Un prix de départ à zéro ne donne pas une remise de l'infini : sans la garde, la page
   // affichait « Infinity % » là où on lit un pourcentage pour décider.
@@ -339,7 +339,7 @@ donneesHostiles.forme = { valeur: { de: 0, vers: 12, devise: "USD" }, justificat
 test("un prix de départ nul et une apostrophe de modèle ne passent pas dans la page", donneesHostiles);
 
 test("la page des prix ne se met pas en cache et ne se devine pas par reniflage de type", async () => {
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.entetes["cache-control"], "no-store", "des marges et une adresse mail n'ont rien à faire dans un cache");
   assert.strictEqual(r.entetes["x-content-type-options"], "nosniff");
   const api = await demander({ chemin: "/api/etat" });
@@ -352,7 +352,7 @@ test("l'application s'installe par le relais : manifeste, worker et icône répo
     assert.strictEqual(r.code, 200, `${chemin} a répondu ${r.code}`);
     assert.strictEqual(r.entetes["cache-control"], "no-store", `${chemin} sans durcissement`);
   }
-  const page = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const page = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.ok(page.corps.includes('rel="manifest"'), "la page ne déclare pas son manifeste");
   assert.ok(page.corps.includes("serviceWorker.register"), "la page n'enregistre pas le worker");
 });
@@ -385,7 +385,7 @@ function ecrireApps(dir, contenu) {
 test("le bandeau d'accueil compte ce qui attend et mène aux décisions", async () => {
   // Ce qu'on vient chercher en ouvrant la page, avant tout le reste : est-ce qu'une
   // décision attend. Le compte doit être celui des actions, pas celui des dossiers.
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   assert.ok(/class="bandeau bandeau--attente"/.test(r.corps), "pas de bandeau d'attente");
   assert.ok(/href="#decisions"/.test(r.corps), "le bandeau ne mène pas aux décisions");
@@ -402,7 +402,7 @@ test("sans rien à décider, la page le dit une fois et n'offre pas d'enregistre
   store.lireBoite(vide);
   await monter({ APPROVALS_DIR: vide });
 
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   assert.ok(/class="bandeau bandeau--calme"/.test(r.corps), "le calme doit se dire, pas se taire");
   assert.strictEqual(
@@ -424,7 +424,7 @@ test("un module sans adresse est une fiche, jamais un lien vers nulle part", asy
     }),
   });
 
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.ok(/module module--en-ligne/.test(r.corps), "l'état en ligne n'est pas rendu");
   assert.ok(/module module--en-cours/.test(r.corps), "l'état en cours n'est pas rendu");
 
@@ -442,7 +442,7 @@ test("l'attente se lit en durée, et l'instant exact reste accessible", async ()
   const ilYATroisHeures = new Date(Date.now() - 3 * 3600e3).toISOString();
   await monter({}, { depuis: ilYATroisHeures });
 
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.ok(/en attente depuis <span title="[^"]+">3\.0 h<\/span>/.test(r.corps), "durée non rendue");
   assert.ok(r.corps.includes(ilYATroisHeures), "l'instant exact doit rester recoupable");
 });
@@ -453,7 +453,7 @@ test("une date illisible s'affiche telle quelle plutôt que de rendre « NaN h �
   demonter();
   await monter({}, { depuis: "pas une date" });
 
-  const r = await demander({ chemin: "/decisions" });
+  const r = await demander({ chemin: "/decisions/pipelines" });
   assert.strictEqual(r.code, 200);
   assert.ok(r.corps.includes("pas une date"), "la valeur reçue devrait être affichée");
   assert.ok(!/NaN/.test(r.corps), "un calcul sur une non-date a fui dans la page");
@@ -468,7 +468,7 @@ test("ajouter une app se voit au rafraîchissement, sans redémarrer le cockpit"
   const dir = bacApps({ apps: [{ nom: "premiere", url: "http://192.168.1.18:4700" }] });
   await monter({ COCKPIT_APPS_DIR: dir });
 
-  const avant = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const avant = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.ok(avant.corps.includes("premiere"));
   assert.ok(!avant.corps.includes("seconde"));
 
@@ -480,13 +480,13 @@ test("ajouter une app se voit au rafraîchissement, sans redémarrer le cockpit"
     ],
   });
 
-  const apres = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const apres = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.ok(apres.corps.includes("seconde"), "la nouvelle app n'apparaît qu'après redémarrage");
 
   // Et le retrait aussi : une app supprimée doit disparaître, sinon le panneau enverrait
   // vers une page morte en donnant l'air d'être à jour.
   ecrireApps(dir, { apps: [{ nom: "seconde", url: "http://192.168.1.18:4701" }] });
-  const retire = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const retire = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.ok(!retire.corps.includes("premiere"), "l'app retirée est encore affichée");
 });
 
@@ -499,7 +499,7 @@ test("un registre cassé après coup n'emporte pas la page qui décide", async (
 
   fs.writeFileSync(path.join(dir, "cockpit-apps.json"), "{ édité de travers");
 
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.strictEqual(r.code, 200, "un registre cassé en cours de route a fait tomber la page");
   assert.ok(/Registre illisible/.test(r.corps), "le défaut est passé sous silence");
   assert.ok(r.corps.includes("Enregistrer les décisions"), "le formulaire de décision a disparu");
@@ -513,10 +513,10 @@ test("le panneau d'apps s'affiche, et il est derrière la même identité que le
     }),
   });
 
-  const anonyme = await demander({ chemin: "/decisions", entetes: { Host: TAILNET } });
+  const anonyme = await demander({ chemin: "/decisions/pipelines", entetes: { Host: TAILNET } });
   assert.strictEqual(anonyme.code, 403, "la liste des apps se lit sans identité prouvée");
 
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.strictEqual(r.code, 200);
   assert.ok(r.corps.includes("tcg-generator"), "l'app déclarée n'apparaît pas");
   assert.ok(r.corps.includes("http://192.168.1.18:4700"), "l'adresse n'apparaît pas");
@@ -534,7 +534,7 @@ test("un nom d'app hostile est échappé comme le reste du texte de la page", as
     }),
   });
 
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.strictEqual(r.code, 200);
   assert.ok(!r.corps.includes("<script>alert(1)</script>"), "balise rendue telle quelle");
   assert.ok(r.corps.includes("&lt;script&gt;"), "le nom devrait apparaître échappé");
@@ -548,7 +548,7 @@ test("un registre fautif nomme le défaut et ne tue pas la page qui décide", as
 
   // Le panneau est un confort, décider est la raison d'être de la page. La seconde ne doit
   // pas tomber avec le premier, et le défaut ne doit pas se taire non plus.
-  const r = await demander({ chemin: "/decisions", entetes: ENTETE_TAILNET });
+  const r = await demander({ chemin: "/decisions/pipelines", entetes: ENTETE_TAILNET });
   assert.strictEqual(r.code, 200, "un registre fautif a empêché la page de servir");
   assert.ok(/Registre illisible/.test(r.corps), "le défaut du registre est passé sous silence");
   assert.ok(!r.corps.includes("javascript:alert(1)"), "l'entrée refusée est quand même rendue");

@@ -47,6 +47,7 @@ const acces = require("../src/acces");
 const pwa = require("../src/pwa");
 const apps = require("../src/apps");
 const api = require("../src/api-lecture");
+const apiLivraison = require("../src/api-livraison");
 const flux = require("../src/flux");
 const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
@@ -93,6 +94,13 @@ const APPS_DIR = ENV.COCKPIT_APPS_DIR || path.join(RACINE, "specs");
 // Le front buildé (web/dist). Absent, la racine le dit : un 404 muet laisserait croire
 // à une route cassée alors qu'il manque une commande de build.
 const WEB = ENV.COCKPIT_WEB_DIR || path.join(RACINE, "web", "dist");
+// La livraison depuis le cockpit (docs/SPEC-livraison.md) : la proposition que le livreur
+// écrit à côté de l'event store, et qui a le droit de livrer, tenu sur le NAS seulement.
+const LIVRAISON_PROPOSITION = path.join(
+  ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"),
+  "livraison.json"
+);
+const LIVRAISON_AUTORISES = ENV.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
 
 // Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
 // tire les catégories et les projets.
@@ -748,7 +756,10 @@ async function traiter(req, res) {
   // Le cockpit React est l'entrée principale. Les objets ont une vraie route afin qu'un
   // clic dans le graphe ouvre une page partageable ; l'ancien /app reste un alias.
   const chemin = req.url.split("?")[0];
+  // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
+  // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/decisions" || chemin === "/decisions/" ||
     chemin === "/demander" || chemin.startsWith("/demander/") ||
     chemin === "/ai-studio" || chemin.startsWith("/ai-studio/") ||
     chemin.startsWith("/projects/") || chemin.startsWith("/runs/") || chemin.startsWith("/machines/") ||
@@ -775,10 +786,59 @@ async function traiter(req, res) {
     return res.end(r.corps);
   }
 
-  if (req.method === "GET" && (chemin === "/decisions" || chemin === "/decisions/")) {
+  if (req.method === "GET" && (chemin === "/decisions/pipelines" || chemin === "/decisions/pipelines/")) {
     const html = page(cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }), qui);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...DURCISSEMENT });
     return res.end(html);
+  }
+
+  // ---- livraison du cockpit (docs/SPEC-livraison.md, §6) ----
+  if (req.method === "GET" && chemin === "/api/livraison") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(
+      res,
+      200,
+      apiLivraison.etat({ store: magasinOuvert, propositionFichier: LIVRAISON_PROPOSITION, autorisesFichier: LIVRAISON_AUTORISES, qui })
+    );
+  }
+
+  // Le cockpit ne livre rien : il dépose une commande signée que le service livreur prend.
+  // Mêmes contrôles d'écriture que pour un run, plus l'identité tailnet autorisée.
+  if (req.method === "POST" && chemin === "/api/livraisons") {
+    if (!acces.origineAutorisee(req.headers, PORTEE)) {
+      return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    }
+    const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (type !== "application/json") {
+      return json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
+    }
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    let brut = "";
+    for await (const morceau of req) {
+      brut += morceau;
+      if (brut.length > 20_000) return json(res, 413, { erreur: "corps trop gros" });
+    }
+    let demande;
+    try {
+      demande = JSON.parse(brut);
+    } catch {
+      return json(res, 400, { erreur: "JSON illisible" });
+    }
+    try {
+      const commande = apiLivraison.demander({
+        store: magasinOuvert,
+        demande,
+        propositionFichier: LIVRAISON_PROPOSITION,
+        autorisesFichier: LIVRAISON_AUTORISES,
+        qui,
+      });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) {
+      if (err instanceof apiLivraison.RefusLivraison) return json(res, err.code, { erreur: err.message });
+      return json(res, 400, { erreur: err.message });
+    }
   }
 
   if (req.method === "GET" && req.url === "/api/etat") {

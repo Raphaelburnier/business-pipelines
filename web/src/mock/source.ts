@@ -5,12 +5,14 @@
 import type { Evenement } from "../types";
 import type { FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
+import { livraisonMaquette } from "./livraison";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
 
 export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(), pasMs = 500 } = {}): Source {
   const etat = () => etatA(t0, maintenant() - t0);
   const chat = chatMaquette(maintenant);
+  const livraison = livraisonMaquette(maintenant);
 
   return {
     nom: "maquette",
@@ -44,6 +46,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
       return () => clearInterval(minuterie);
     },
     lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
+    livraison: livraison.livraison,
+    livrer: livraison.livrer,
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.
       let dernier = etat().evenements.at(-1)?.id ?? 0;

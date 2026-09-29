@@ -36,6 +36,9 @@ function aDroite(run: Run, genre: Genre, faites: number): { texte: string; alert
 export function EnCours() {
   const maintenant = useHorloge(5000);
   const { donnees, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
+  // Une livraison du cockpit en cours se suit aussi d'ici ; le détail est sur Décisions.
+  const { donnees: livraison } = useCharge((s) => s.livraison(), []);
+  const livraisonEnCours = livraison?.enCours ?? null;
   const [ouverte, setOuverte] = useState<string | null | undefined>(undefined);
 
   const lignes = useMemo(
@@ -56,12 +59,21 @@ export function EnCours() {
     <aside className="ao-encours" aria-label="En cours">
       <header>
         <h2>En cours</h2>
-        <span className="n">{lignes.length}</span>
+        <span className="n">{lignes.length + (livraisonEnCours ? 1 : 0)}</span>
       </header>
       {erreur && <p className="ao-vide text-danger">{erreur}</p>}
       {!erreur && !donnees && <p className="ao-vide">Lecture des runs…</p>}
       {donnees && !lignes.length && <p className="ao-vide">Rien ne tourne. Lance un run depuis un projet du graphe.</p>}
       <ul>
+        {livraisonEnCours && (
+          <li className="ao-ligne run">
+            <button type="button" onClick={() => naviguer("/decisions")} title="Suivre la livraison sur Décisions">
+              <span className="point" aria-hidden="true" />
+              <span className="ttl">livraison du cockpit</span>
+              <span className="r">{livraisonEnCours.etape ?? "en file"}</span>
+            </button>
+          </li>
+        )}
         {lignes.map(({ run, genre }) => {
           const faites = run.etapes.parStatut.succeeded ?? 0;
           const total = run.etapes.total;
