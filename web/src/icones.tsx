@@ -27,6 +27,14 @@ const TRACES = {
       <path d="M7 5l1.5-2h7L17 5M6 9h1" />
     </>
   ),
+  systeme: (
+    <>
+      <rect x="3" y="3" width="6" height="6" />
+      <rect x="15" y="3" width="6" height="6" />
+      <rect x="9" y="15" width="6" height="6" />
+      <path d="M6 9v3h12V9M12 12v3" />
+    </>
+  ),
   decision: <path d="M5 12.5 9.5 17 19 7" />,
   soleil: (
     <>

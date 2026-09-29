@@ -15,6 +15,7 @@ import { Kpis } from "./vues/Kpis";
 import { Panneau } from "./vues/Panneau";
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 
+const Systeme = lazy(() => import("./systeme/Systeme").then((module) => ({ default: module.Systeme })));
 const AIStudio = lazy(() => import("./ai-studio/AIStudio").then((module) => ({ default: module.AIStudio })));
 
 type Route =
@@ -22,6 +23,7 @@ type Route =
   | { type: "agents" }
   | { type: "demander"; filId: string | null }
   | { type: "decisions" }
+  | { type: "systeme" }
   | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
@@ -31,6 +33,7 @@ function lireRoute(): Route {
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
+  if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
     if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
@@ -109,6 +112,7 @@ function titreDe(route: Route): string {
   if (route.type === "demander") return "Demander";
   if (route.type === "decisions") return "Decisions";
   if (route.type === "ai-studio") return "AI Studio";
+  if (route.type === "systeme") return "Systeme";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
   return "Introuvable";
 }
@@ -136,7 +140,7 @@ function Coquille() {
   const ouvrir = useCallback((selection: Selection) => naviguer(chemin(selection)), [naviguer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "ai-studio" ? "sans-encours" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "ai-studio" || route.type === "systeme" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -164,6 +168,9 @@ function Coquille() {
           </Lien>
           <Lien href="/ai-studio" actif={route.type === "ai-studio"} aller={naviguer} icone="studio">
             AI Studio
+          </Lien>
+          <Lien href="/systeme" actif={route.type === "systeme"} aller={naviguer} icone="systeme">
+            Système
           </Lien>
           <Lien href="/decisions" actif={route.type === "decisions"} aller={naviguer} icone="decision" compte={decisions} alerte>
             Décisions
@@ -216,6 +223,7 @@ function Coquille() {
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
           {route.type === "decisions" && <Decisions />}
+          {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement de la carte…</p></section>}><Systeme /></Suspense>}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
             <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />
@@ -233,7 +241,7 @@ function Coquille() {
         </main>
       </div>
 
-      {route.type !== "ai-studio" && <EnCours />}
+      {route.type !== "ai-studio" && route.type !== "systeme" && <EnCours />}
     </div>
   );
 }
