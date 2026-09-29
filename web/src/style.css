@@ -518,3 +518,57 @@ details.ao-liv-depot { display: block; }
   .ao-liv-etapes li span { display: none; }
   .ao-liv-depot ul { padding-left: 0; }
 }
+
+/* ---------- Tablette et téléphone : chaque page à sa hauteur (audit du 2026-09-29) ----------
+   Étirer le contenu sur toute la hauteur de l'écran laissait des cadres vides (Agents, Run)
+   et repoussait « En cours » sous le pli. Le contenu prend sa hauteur naturelle ; seul le
+   graphe, qui n'en a pas, reçoit une hauteur fixe. */
+@media (max-width: 1100px) {
+  /* Le rail sort de la grille : fixe à gauche, le contenu décalé de sa largeur. Tant qu'il y
+     était, collant et haut de tout l'écran, sa hauteur se répartissait dans les rangées et
+     creusait un vide sous le contenu. La grille ne tient plus que le contenu et « En cours ». */
+  .ao-shell, .ao-shell.ouvert, .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    padding-left: 64px;
+    transition: padding-left .2s ease;
+  }
+  .ao-shell.ouvert, .ao-shell.sans-encours.ouvert { padding-left: 240px; }
+  .ao-rail { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: 64px; height: auto; transition: width .2s ease; }
+  .ao-shell.ouvert .ao-rail { width: 240px; }
+  .ao-encours { grid-column: 1; }
+  /* Menu ouvert, le contenu rétrécit : l'état système se replie au lieu de déborder. */
+  .ao-sys { min-width: 0; overflow: hidden; }
+  .ao-centre { min-height: 0; }
+  .ao-contenu { min-height: 0; flex: none; }
+  .ao-contenu > .flex.h-full, .ao-contenu > section.h-full { height: auto; }
+  .ao-canevas { flex: none; height: clamp(380px, 62dvh, 700px); }
+  /* Le tableau des étapes ne coupe plus ses mots : il défile dans son cadre si besoin. */
+  .ao-contenu table :is(th, td) { white-space: nowrap; }
+}
+@media (max-width: 720px) {
+  /* Téléphone : le rail est un tiroir superposé, le contenu prend toute la largeur. */
+  .ao-shell, .ao-shell.ouvert, .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert { padding-left: 0; }
+  .ao-rail, .ao-shell.ouvert .ao-rail { width: 240px; }
+  .ao-canevas { height: clamp(340px, 58dvh, 560px); }
+  .ao-haut { gap: 8px; }
+  .ao-haut h1 { overflow: hidden; font-size: 20px; text-overflow: clip; }
+  .ao-sys { min-width: 0; flex-shrink: 1; gap: 8px; overflow: hidden; }
+  .ao-sys > span:first-child.bg-alerte-fond { padding: 2px 6px; font-size: 10px; }
+}
+
+/* Cibles tactiles : 40 px de haut au moins sur tablette et téléphone. Les barres de la
+   timeline d'un run, positionnées en absolu, gardent leur hauteur. */
+@media (max-width: 1100px), (pointer: coarse) {
+  .ao-contenu :is(button:not(.absolute), select, a.ao-btn, summary),
+  .ao-liv :is(summary, .ao-btn) {
+    min-height: 40px;
+  }
+}
+.ao-liv-historique summary { display: flex; align-items: center; }
+.ao-liv-versions { margin: 0; font: 400 12px/1.4 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
+/* Les barres de la frise d'un run, trop fines pour un doigt : plus hautes sur écran tactile. */
+@media (max-width: 1100px), (pointer: coarse) {
+  .ao-contenu .relative.h-4, .ao-contenu .relative.h-4 > button.absolute { height: 28px; line-height: 28px; }
+}

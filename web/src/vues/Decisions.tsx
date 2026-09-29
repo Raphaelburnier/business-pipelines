@@ -188,7 +188,13 @@ function CarteLivraison() {
 
       {issueRecente && <Issue livraison={issueRecente} />}
 
-      {propo && !enCours && (
+      {/* Rien à livrer : une ligne, la version en production. Les trois dépôts « à jour »
+          n'apprenaient rien et faisaient passer la carte pour une décision en attente. */}
+      {propo && !enCours && !propo.disponible && (
+        <p className="ao-liv-versions">{DEPOTS.map((d) => `${d.nom} ${court(propo.enProduction[d.cle])}`).join(" · ")}</p>
+      )}
+
+      {propo && propo.disponible && !enCours && (
         <div className="ao-liv-bloc">
           {DEPOTS.map((d) => (
             <Commits
