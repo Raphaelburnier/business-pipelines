@@ -58,6 +58,18 @@ RUN npm --prefix web run build \
  && npm run web:test \
  && npm test
 
+# ---- Livreur (docs/SPEC-livraison.md) ----
+#
+# Sa propre image, pour que le client Docker n'entre que là : le runner fait tourner des
+# agents qui ont Bash. GNU tar pour des archives identiques à celles de bin/livrer.sh, curl
+# pour le contrôle de santé de deploy.sh. Le front n'y sert à rien : il n'est pas copié.
+# Cet étage reste AVANT l'image servie : le dernier étage est celui que construisent les
+# services sans `target`.
+FROM base AS livreur
+RUN apk add --no-cache docker-cli docker-cli-compose curl tar
+COPY . .
+CMD ["node", "bin/livreur.js"]
+
 # ---- Image servie ----
 FROM base
 COPY . .

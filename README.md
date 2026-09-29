@@ -164,7 +164,21 @@ arriver, refuse de continuer si `/volume1` est en lecture seule, vérifie l'empr
 l'archive une fois déposée, puis lance `deploy.sh` (tiré de `deploy/nas/deploy.sh.modele`) :
 sauvegarde, construction des images, bascule, et retour à l'ancienne version si le cockpit ne
 repart pas. Le front se construit et les tests tournent pendant la construction de l'image,
-sur le NAS : un test qui échoue arrête tout avant la bascule. Le mot de passe sudo reste demandé à chaque
+sur le NAS : un test qui échoue arrête tout avant la bascule.
+
+### Le livreur
+
+Le service `livreur` fait la même livraison depuis le NAS, sur une commande validée dans le
+cockpit par une identité tailnet autorisée (`docs/SPEC-livraison.md`). Il tient le socket
+Docker, n'écoute rien, et ne construit que des commits des miroirs que le publieur tient dans
+`/volume1/docker/git/systeme`. `deploy.sh` ne le recrée jamais ; sa mise à jour est manuelle :
+
+```bash
+bin/livrer.sh --livreur    # reconstruit et redémarre le livreur depuis le code en place sur le NAS
+```
+
+Qui peut livrer vit dans `specs/livraison.json` sur le NAS, jamais dans le dépôt (gabarit :
+`specs/livraison.json.example`). Absent, personne ne livre. Le mot de passe sudo reste demandé à chaque
 fois : les agents fusionnent seuls, la mise en production reste une décision.
 
 ## Ce qui a été retiré

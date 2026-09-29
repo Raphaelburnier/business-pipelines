@@ -30,6 +30,11 @@ approvals/*.plan.json
 # rien de secret non plus et reste hors du dépôt. Le gabarit, lui, est suivi.
 specs/cockpit-apps.json
 
+# Qui a le droit de livrer depuis le cockpit (docs/SPEC-livraison.md). Tenu sur le NAS
+# seulement : suivi dans le dépôt, une PR d'agent fusionnée automatiquement pourrait s'y
+# ajouter. Le gabarit, lui, est suivi.
+specs/livraison.json
+
 # Secrets : jamais commités.
 # Un .env par spec (specs/marketing.json → specs/marketing.env) : un jeu de clés par périmètre.
 .env
