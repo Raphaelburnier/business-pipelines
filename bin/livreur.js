@@ -5,6 +5,7 @@
 // etat/livraison.json, que le cockpit affiche. Et prendre les commandes `livraison.start`,
 // une à la fois, pour les exécuter : vérifier, préparer la release, lancer deploy.sh, raconter
 // chaque étape dans l'event store, qui les relaie au cockpit par son flux.
+const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { EventStore } = require("agent-orchestrator");
@@ -140,11 +141,27 @@ async function livrer(store, commande) {
   console.log(`Livreur : ${BUSINESS}, miroirs dans ${MIROIRS_DIR}${abandonnees ? `, ${abandonnees} livraison(s) interrompue(s) passée(s) en échec` : ""}`);
 
   let prochaineProposition = 0;
+  // Un déploiement réécrit .release, y compris par bin/livrer.sh, sans passer par ce service :
+  // la proposition se recalcule aussitôt, sinon le cockpit proposerait encore pendant une
+  // minute la version qui vient d'être déployée.
+  const versionEnPlace = () => {
+    try {
+      return fs.statSync(path.join(BUSINESS, ".release")).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  let releaseVue = versionEnPlace();
   try {
     while (!arret) {
       const commande = store.prendreCommande({ kinds: [livreur.KIND] });
       if (commande) {
         store.terminerCommande(commande.id, await livrer(store, commande));
+        prochaineProposition = 0;
+      }
+      const release = versionEnPlace();
+      if (release !== releaseVue) {
+        releaseVue = release;
         prochaineProposition = 0;
       }
       if (Date.now() >= prochaineProposition) {
