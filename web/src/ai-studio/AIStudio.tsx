@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
 import { aiStudioApi } from "./api";
 import type { CharacterProfile, ComfyStatus, Generation } from "./types";
 
@@ -368,19 +368,37 @@ function Champ({ label, name, placeholder, required, type = "text", defaultValue
   return <label className="studio-field"><span>{label}</span><input name={name} type={type} placeholder={placeholder} required={required} defaultValue={defaultValue} min={min} max={max} step={step} /></label>;
 }
 function CheckpointField({ label, defaultValue, required }: { label: string; defaultValue?: string; required?: boolean }) {
-  const listeId = useId();
-  const [checkpoints, setCheckpoints] = useState<string[]>([]);
+  const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
   const [erreur, setErreur] = useState(false);
+  const [selection, setSelection] = useState(defaultValue || "");
+  useEffect(() => setSelection(defaultValue || ""), [defaultValue]);
   useEffect(() => {
     let actif = true;
     aiStudioApi.checkpoints().then((noms) => { if (actif) setCheckpoints(noms); })
       .catch(() => { if (actif) setErreur(true); });
     return () => { actif = false; };
   }, []);
-  return <label className="studio-field"><span>{label}</span>
-    <input name="checkpoint" list={listeId} defaultValue={defaultValue} placeholder="Sélectionner un modèle ComfyUI" required={required} />
-    <datalist id={listeId}>{checkpoints.map((nom) => <option key={nom} value={nom} />)}</datalist>
-    <small>{erreur ? "ComfyUI indisponible : saisir le nom exact du checkpoint." : checkpoints.length ? `${checkpoints.length} checkpoint(s) détecté(s) sur le PC.` : "Chargement des modèles ComfyUI…"}</small>
+  const saisieManuelle = erreur || (checkpoints !== null && checkpoints.length === 0);
+  const modeleAbsent = checkpoints !== null && checkpoints.length > 0 && !!selection && !checkpoints.includes(selection);
+  let aide = "Recherche des modèles dans ComfyUI…";
+  if (erreur) aide = "Liste indisponible : saisissez le nom exact du modèle.";
+  else if (checkpoints?.length === 0) aide = "Aucun modèle détecté : installez un checkpoint ou rafraîchissez ComfyUI.";
+  else if (modeleAbsent) aide = "Ce modèle n’est plus détecté sur le PC. Choisissez-en un autre.";
+  else if (checkpoints) aide = `${checkpoints.length} modèle${checkpoints.length > 1 ? "s" : ""} détecté${checkpoints.length > 1 ? "s" : ""} sur le PC.`;
+  return <label className="studio-field studio-checkpoint-field"><span>{label}</span>
+    {saisieManuelle ? (
+      <input name="checkpoint" value={selection} onChange={(event) => setSelection(event.target.value)} placeholder="Nom exact du checkpoint ComfyUI" required={required} />
+    ) : (
+      <div className="studio-checkpoint-control">
+        <select name="checkpoint" value={selection} onChange={(event) => setSelection(event.target.value)} required={required}>
+          <option value="">{checkpoints === null ? "Chargement des modèles…" : "Choisir un modèle installé"}</option>
+          {selection && (checkpoints === null || modeleAbsent) && <option value={selection}>{selection}{modeleAbsent ? " · non détecté" : ""}</option>}
+          {checkpoints?.map((nom) => <option key={nom} value={nom}>{nom}</option>)}
+        </select>
+        <span className="studio-checkpoint-source" aria-hidden="true">PC</span>
+      </div>
+    )}
+    <small role="status">{aide}</small>
   </label>;
 }
 function Select({ label, name, options, defaultValue }: { label: string; name: string; options: string[]; defaultValue?: string }) {
