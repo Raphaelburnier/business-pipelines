@@ -8,6 +8,7 @@ import { useTheme } from "./theme";
 import type { EtatMachine, Machine } from "./types";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
+import { Decisions } from "./vues/Decisions";
 import { Demander } from "./vues/Demander";
 import { EnCours } from "./vues/EnCours";
 import { Kpis } from "./vues/Kpis";
@@ -20,6 +21,7 @@ type Route =
   | { type: "graph" }
   | { type: "agents" }
   | { type: "demander"; filId: string | null }
+  | { type: "decisions" }
   | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
@@ -28,6 +30,7 @@ function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
+  if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
     if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
@@ -67,7 +70,7 @@ function useNavigation() {
   return { route, aller };
 }
 
-function Lien({ href, actif, aller, icone, compte, children }: { href: string; actif: boolean; aller: (href: string) => void; icone: NomIcone; compte?: number; children: string }) {
+function Lien({ href, actif, aller, icone, compte, alerte = false, children }: { href: string; actif: boolean; aller: (href: string) => void; icone: NomIcone; compte?: number; alerte?: boolean; children: string }) {
   const ouvrir = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -77,7 +80,7 @@ function Lien({ href, actif, aller, icone, compte, children }: { href: string; a
     <a href={href} onClick={ouvrir} aria-current={actif ? "page" : undefined} title={children}>
       <Icone nom={icone} />
       <span className="ao-txt">{children}</span>
-      {compte !== undefined && compte > 0 && <span className="ao-compte ao-txt">{compte}</span>}
+      {compte !== undefined && compte > 0 && <span className={`ao-compte ao-txt ${alerte ? "alerte" : ""}`}>{compte}</span>}
     </a>
   );
 }
@@ -104,6 +107,7 @@ function titreDe(route: Route): string {
   if (route.type === "graph") return "Accueil";
   if (route.type === "agents") return "Agents";
   if (route.type === "demander") return "Demander";
+  if (route.type === "decisions") return "Decisions";
   if (route.type === "ai-studio") return "AI Studio";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
   return "Introuvable";
@@ -116,7 +120,10 @@ function Coquille() {
   const [ouvert, setOuvert] = useState(false);
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const { donnees: usage } = useCharge((s) => s.usage(), []);
-  const decisions = topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0;
+  const { donnees: livraison } = useCharge((s) => s.livraison(), []);
+  // Ce qui attend Raphaël : les approbations des pipelines, et une livraison possible.
+  const decisions =
+    (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) + (livraison?.proposition?.disponible && !livraison.enCours ? 1 : 0);
 
   // Sur téléphone, le tiroir se referme dès qu'on a choisi une destination.
   const naviguer = useCallback(
@@ -158,12 +165,9 @@ function Coquille() {
           <Lien href="/ai-studio" actif={route.type === "ai-studio"} aller={naviguer} icone="studio">
             AI Studio
           </Lien>
-          {/* Les décisions sont une autre page servie par le cockpit : un vrai lien, rechargement compris. */}
-          <a href="/decisions" title="Décisions">
-            <Icone nom="decision" />
-            <span className="ao-txt">Décisions</span>
-            {decisions > 0 && <span className="ao-compte ao-txt alerte">{decisions}</span>}
-          </a>
+          <Lien href="/decisions" actif={route.type === "decisions"} aller={naviguer} icone="decision" compte={decisions} alerte>
+            Décisions
+          </Lien>
         </nav>
         <span className="ao-danger" aria-hidden="true" />
         <div className="ao-pied">
@@ -211,6 +215,7 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
+          {route.type === "decisions" && <Decisions />}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
             <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />

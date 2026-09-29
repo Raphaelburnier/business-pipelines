@@ -255,7 +255,10 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     // Un ancien lien vers la maquette doit encore ouvrir la maquette.
     const maquette = await requete(PORT, "/app/?source=maquette");
     assert.strictEqual(maquette.entetes.location, "/?source=maquette");
-    assert.strictEqual((await requete(PORT, "/decisions")).code, 200);
+    // /decisions est une page du front (carte Livraison) ; les approbations des pipelines
+    // ont déménagé sous /decisions/pipelines (docs/SPEC-livraison.md, §8).
+    assert.strictEqual((await requete(PORT, "/decisions")).code, app.code);
+    assert.strictEqual((await requete(PORT, "/decisions/pipelines")).code, 200);
   } finally {
     cockpit.kill();
   }
@@ -314,7 +317,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/", "/app", "/ai-studio", "/decisions"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/api/livraison", "/", "/app", "/ai-studio", "/decisions", "/decisions/pipelines"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);

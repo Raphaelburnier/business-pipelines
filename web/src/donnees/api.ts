@@ -1,5 +1,5 @@
 // La source réelle : l'API REST du cockpit et son flux SSE (§10).
-import type { Evenement, FilDetaille, ListeFils, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
+import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
 import type { FiltreRuns, Source } from "./source";
 
 class ErreurApi extends Error {
@@ -101,6 +101,11 @@ export function sourceApi(): Source {
     async lancerRun(projectId, pipelineIndex = 0, llm = null) {
       const corps = llm ? { projectId, pipelineIndex, llmOverrides: { "*": llm } } : { projectId, pipelineIndex };
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", corps);
+      return reponse.commande;
+    },
+    livraison: () => lire<ReponseLivraison>("/api/livraison"),
+    async livrer(cible) {
+      const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/livraisons", cible);
       return reponse.commande;
     },
     ecouter(surEvenement, surConnexion, runId) {

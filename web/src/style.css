@@ -474,3 +474,47 @@ button.bg-accent, a.bg-accent, .ao-coupe {
   .studio-contact-sheet { grid-template-columns: 1fr; }.studio-shot-frame { aspect-ratio: 4 / 5; }
   .studio-section-head { align-items: flex-start; flex-direction: column; }.studio-section-head .ao-btn { align-self: stretch; justify-content: center; }
 }
+
+/* ---------- Décisions : la carte Livraison (docs/SPEC-livraison.md, §5) ---------- */
+.ao-liv { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+.ao-liv > header { display: flex; align-items: center; gap: 12px; }
+.ao-liv > header h2 { margin: 0; font: 400 20px/24px var(--font-titre); letter-spacing: .04em; color: var(--color-accent); }
+.ao-liv-etat { margin-left: auto; padding: 3px 8px; border: 1px solid var(--color-trait-fort); font: 400 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.ao-liv-etat.dispo { border-color: var(--color-alerte); color: var(--color-alerte); }
+.ao-liv-etat.encours { border-color: var(--color-accent); color: var(--color-accent); }
+.ao-liv-bloc { display: flex; flex-direction: column; gap: 10px; }
+.ao-liv-depot { border-bottom: 1px solid var(--color-trait); padding: 6px 0; }
+.ao-liv-depot, .ao-liv-depot > summary { display: flex; align-items: center; gap: 10px; }
+details.ao-liv-depot { display: block; }
+.ao-liv-depot > summary { cursor: pointer; list-style: none; }
+.ao-liv-depot > summary::-webkit-details-marker { display: none; }
+.ao-liv-depot .nom { min-width: 5.5rem; font-weight: 700; }
+.ao-liv-depot ul { margin: 6px 0 2px; padding-left: 5.5rem; list-style: none; font-size: 13px; line-height: 20px; }
+.ao-liv-etapes { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.ao-liv-etapes li { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; font: 400 10px/1.2 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--color-douce); }
+.ao-liv-etapes li i { height: 4px; background: var(--color-trait); }
+.ao-liv-etapes li.fait i { background: var(--color-douce); }
+.ao-liv-etapes li.maintenant { color: var(--color-accent); }
+.ao-liv-etapes li.maintenant i { background: var(--color-accent); box-shadow: 0 0 6px var(--color-accent); }
+.ao-liv-etapes li.echec { color: var(--color-danger); }
+.ao-liv-etapes li.echec i { background: var(--color-danger); }
+.ao-liv-etapes li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ao-liv-journal { max-height: 10rem; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--color-trait); background: var(--color-fond); font: 400 12px/18px var(--font-mono); color: var(--color-douce); white-space: pre-wrap; }
+.ao-liv-redemarrage { margin: 0; padding: 10px 12px; border: 1px dashed var(--color-accent); color: var(--color-accent); font: 400 12px/1.4 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; }
+.ao-liv-issue { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-left: 3px solid var(--color-ok); background: var(--color-ok-fond); }
+.ao-liv-issue.ok strong { color: var(--color-ok); }
+.ao-liv-issue.err { border-left-color: var(--color-danger); background: var(--color-danger-fond); }
+.ao-liv-issue.err strong { color: var(--color-danger); }
+.ao-liv-confirmation { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--color-accent); background: var(--color-carte); }
+.ao-liv-confirmation p { margin: 0; }
+.ao-liv-historique summary { cursor: pointer; font: 400 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.ao-liv-historique ul { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.ao-liv-historique li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ao-liv-pastille { padding: 2px 6px; border: 1px solid currentColor; font: 400 10px/1 var(--font-mono); text-transform: uppercase; }
+.ao-liv-pastille.ok { color: var(--color-ok); }
+.ao-liv-pastille.err { color: var(--color-danger); }
+.ao-btn:disabled { cursor: default; opacity: .6; }
+@media (max-width: 720px) {
+  .ao-liv-etapes li span { display: none; }
+  .ao-liv-depot ul { padding-left: 0; }
+}

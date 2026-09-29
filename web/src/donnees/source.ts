@@ -7,7 +7,7 @@
 // Le flux ne porte pas l'état, il dit qu'il a changé : une vue recharge ce qu'elle affiche à
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
-import type { Evenement, FilDetaille, ListeFils, Llm, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage } from "../types";
+import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 
 export interface FiltreRuns {
   project?: string;
@@ -31,6 +31,10 @@ export interface Source {
   poser(contenu: string, filId?: string | null): Promise<FilDetaille>;
   /** Suit un fil pendant qu'une réponse s'écrit ; `surFin` quand plus rien n'est en cours. Rend l'arrêt. */
   ecouterFil(id: string, surFil: (fil: FilDetaille) => void, surFin: () => void): () => void;
+  /** La livraison du cockpit : proposition du livreur, livraison en cours, historique. */
+  livraison(): Promise<ReponseLivraison>;
+  /** Dépose une commande de livraison des trois SHA proposés ; le livreur l'exécute. */
+  livrer(cible: VersionsLivraison): Promise<{ id: string; statut: string }>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }
