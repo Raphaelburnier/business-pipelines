@@ -10,8 +10,11 @@ const ETAT = process.env.PUBLIEUR_ETAT || path.join(RACINE, "etat", "publication
 const INTERVALLE = Number(process.env.PUBLIEUR_INTERVALLE_MS || 60000);
 const JETON = process.env.GITHUB_TOKEN_PUBLIEUR || "";
 // Les miroirs des dépôts système, que le livreur lit sans jeton (docs/SPEC-livraison.md, §4.1).
+// Leur propre jeton, en lecture seule : celui du dessus écrit, et un jeton GitHub donne les
+// mêmes droits à tous ses dépôts. Jamais de repli sur lui : sans jeton de miroirs, pas de miroirs.
 const MIROIRS = publieur.miroirsSysteme(process.env.PUBLIEUR_MIROIRS);
 const MIROIRS_DIR = process.env.PUBLIEUR_MIROIRS_DIR || "/git/systeme";
+const JETON_MIROIRS = process.env.GITHUB_TOKEN_MIROIRS || "";
 
 if (!JETON) {
   console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
@@ -20,6 +23,11 @@ if (!JETON) {
 
 const git = publieur.gitAvec({ jeton: JETON });
 const api = publieur.apiAvec({ fetchImpl: fetch, jeton: JETON });
+const gitMiroirs = JETON_MIROIRS ? publieur.gitAvec({ jeton: JETON_MIROIRS }) : null;
+const apiMiroirs = JETON_MIROIRS ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_MIROIRS }) : null;
+if (MIROIRS.length && !JETON_MIROIRS) {
+  console.error("GITHUB_TOKEN_MIROIRS absent : les miroirs ne sont pas tenus. Voir specs/publieur.env.example.");
+}
 let arret = false;
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => (arret = true));
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,9 +50,9 @@ async function passage() {
     }
   }
   publieur.ecrireEtat(ETAT, etat);
-  for (const miroir of MIROIRS) {
+  for (const miroir of gitMiroirs ? MIROIRS : []) {
     try {
-      await publieur.tenirMiroir({ miroir, dossier: MIROIRS_DIR, git, api, journal: (ligne) => console.log(ligne) });
+      await publieur.tenirMiroir({ miroir, dossier: MIROIRS_DIR, git: gitMiroirs, api: apiMiroirs, journal: (ligne) => console.log(ligne) });
     } catch (err) {
       // Un jeton qui ne lit pas ce dépôt, ou le réseau : signalé, retenté au passage suivant.
       console.error(`miroir ${miroir.nom} : ${String(err.message).split("\n")[0]}`);
