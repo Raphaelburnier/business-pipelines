@@ -10,7 +10,11 @@ FROM node:22.23-alpine AS base
 # mal construite.
 # bash : sans lui, l'outil Bash de Claude Code refuse de démarrer (« No suitable shell
 # found ») et un agent ne peut lancer aucune commande, pas même les tests.
-RUN apk add --no-cache bash git openssh-client ripgrep
+# tar : GNU tar, pas celui de BusyBox. Le livreur construit ses archives avec --owner et
+# --group, que BusyBox ignore ; et ses tests tournent dans l'étage de vérification, qui part
+# de cette base. Installé seulement dans l'étage livreur, il manquait aux tests : le build du
+# 2026-09-29 a échoué là, avant la bascule.
+RUN apk add --no-cache bash git openssh-client ripgrep tar
 ENV SHELL=/bin/bash
 # Les dépôts de projets montés appartiennent à admindunas, le runner tourne en root. Git
 # refuse alors de pousser (« dubious ownership »). Les variables GIT_CONFIG_* du compose ne
@@ -61,12 +65,12 @@ RUN npm --prefix web run build \
 # ---- Livreur (docs/SPEC-livraison.md) ----
 #
 # Sa propre image, pour que le client Docker n'entre que là : le runner fait tourner des
-# agents qui ont Bash. GNU tar pour des archives identiques à celles de bin/livrer.sh, curl
-# pour le contrôle de santé de deploy.sh. Le front n'y sert à rien : il n'est pas copié.
+# agents qui ont Bash. curl pour le contrôle de santé de deploy.sh ; GNU tar vient de la
+# base. Le front n'y sert à rien : il n'est pas copié.
 # Cet étage reste AVANT l'image servie : le dernier étage est celui que construisent les
 # services sans `target`.
 FROM base AS livreur
-RUN apk add --no-cache docker-cli docker-cli-compose curl tar
+RUN apk add --no-cache docker-cli docker-cli-compose curl
 COPY . .
 CMD ["node", "bin/livreur.js"]
 
