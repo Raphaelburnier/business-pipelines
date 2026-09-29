@@ -257,7 +257,7 @@ function Historique({ livraisons, maintenant }: { livraisons: ReponseLivraison["
   );
 }
 
-export function Decisions() {
+export function Decisions({ aller }: { aller: (destination: string) => void }) {
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const approbations = topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0;
   return (
@@ -272,10 +272,9 @@ export function Decisions() {
         </header>
         <p className="text-douce">Les arbitrages des pipelines (marketing et autres) se tranchent sur leur page.</p>
         <div className="ao-actions">
-          {/* Une autre page servie par le cockpit : un vrai lien, rechargement compris. */}
-          <a className="ao-btn" href="/decisions/pipelines">
+          <button type="button" className="ao-btn" onClick={() => aller("/decisions/pipelines")}>
             Ouvrir les approbations
-          </a>
+          </button>
         </div>
       </section>
     </div>
