@@ -10,8 +10,9 @@
 #
 # Une release est l'export exact de trois têtes de branche, jamais d'un dossier de travail :
 # business-pipelines (origin/main), le moteur agent-orchestrator (origin/master) dans
-# .moteur, le registre agent-registry (origin/main), plus le front buildé dans web/dist.
-# Un fichier non commité ne peut donc pas partir en production par accident.
+# .moteur, et le registre agent-registry (origin/main). Un fichier non commité ne peut donc
+# pas partir en production par accident. Le front se construit, et les tests tournent, dans
+# l'image sur le NAS : une release qui ne passe pas ses tests s'arrête avant la bascule.
 #
 # Le NAS n'a pas git : l'archive y arrive par SSH, avec un deploy.sh tiré de
 # deploy/nas/deploy.sh.modele. C'est lui qui sauvegarde, bascule et restaure en cas
@@ -104,14 +105,6 @@ mkdir -p "$stage/.moteur" "$stage/agent-registry"
 git -C "$RACINE" archive origin/main | tar -x -C "$stage"
 git -C "$MOTEUR" archive origin/master | tar -x -C "$stage/.moteur"
 git -C "$REGISTRE" archive origin/main | tar -x -C "$stage/agent-registry"
-
-# Seul vite construit ici : le typecheck a déjà tourné dans la CI de la PR, et il demande
-# les dépendances du moteur, qui ne sont pas dans l'export.
-echo "Build du front…"
-npm --prefix "$stage/web" ci --silent --no-audit --no-fund </dev/null
-(cd "$stage/web" && npx --no-install vite build --logLevel warn </dev/null)
-rm -rf "$stage/web/node_modules"
-[[ -f "$stage/web/dist/index.html" ]] || arreter "le build du front n'a pas produit web/dist/index.html"
 
 # Ce fichier suit l'archive jusque dans le dossier du cockpit : la prochaine livraison le
 # relit pour dire ce qui tourne et ce qui va changer.

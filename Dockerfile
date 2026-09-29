@@ -1,7 +1,7 @@
 # Version mineure épinglée : le store des approbations utilise `node:sqlite`, disponible sans
 # option seulement depuis Node 22.13. Une image `node:22-alpine` plus ancienne restée en cache
 # sur le NAS ferait tomber le cockpit au premier accès à la base.
-FROM node:22.23-alpine
+FROM node:22.23-alpine AS base
 
 # Le SDK d'agents lance le CLI Claude Code en sous-processus, et ce CLI embarque un ripgrep
 # lié à la glibc. Alpine est sur musl, donc ce binaire ne s'exécute pas. USE_BUILTIN_RIPGREP=0
@@ -43,7 +43,27 @@ RUN cd /agent-orchestrator && npm install --omit=dev
 COPY package*.json ./
 RUN npm install --omit=dev
 
+# ---- Vérification : le front se construit et les tests passent, ou l'image n'existe pas ----
+#
+# Le front était construit sur le PC avant chaque livraison : le NAS ne pouvait rien livrer
+# seul, et une page servie pouvait venir d'un dossier de travail. Il se construit ici, dans
+# la même image que ce qu'il appelle. Les tests tournent au même endroit : une image dont un
+# test échoue n'est jamais produite, donc deploy.sh s'arrête avant la bascule, sans rien
+# avoir touché à l'installation en place (docs/SPEC-livraison.md, §4.5).
+FROM base AS verification
+COPY web/package*.json web/
+RUN npm --prefix web ci --no-audit --no-fund
 COPY . .
+RUN npm --prefix web run build \
+ && npm run web:test \
+ && npm test
+
+# ---- Image servie ----
+FROM base
+COPY . .
+# Seul le résultat du build entre dans l'image, pas ses 200 Mo de dépendances. Cette copie
+# est aussi ce qui oblige l'étage de vérification à tourner : sans elle, BuildKit le sauterait.
+COPY --from=verification /app/web/dist/ web/dist/
 
 EXPOSE 4600
 

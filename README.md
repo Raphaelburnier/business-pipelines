@@ -158,12 +158,13 @@ bin/livrer.sh --local      # construit seulement, dans ~/releases
 ```
 
 La release est l'export des têtes de `origin/main` (ce dépôt), `origin/master`
-(agent-orchestrator, dans `.moteur`) et `origin/main` (agent-registry), avec le front buildé :
-rien de ce qui n'est pas poussé ne part. Le script affiche ce qui tourne sur le NAS et les
-commits qui vont y arriver, refuse de continuer si `/volume1` est en lecture seule, vérifie
-l'empreinte de l'archive une fois déposée, puis lance `deploy.sh` (tiré de
-`deploy/nas/deploy.sh.modele`) : sauvegarde, construction des images, bascule, et retour à
-l'ancienne version si le cockpit ne repart pas. Le mot de passe sudo reste demandé à chaque
+(agent-orchestrator, dans `.moteur`) et `origin/main` (agent-registry) : rien de ce qui n'est
+pas poussé ne part. Le script affiche ce qui tourne sur le NAS et les commits qui vont y
+arriver, refuse de continuer si `/volume1` est en lecture seule, vérifie l'empreinte de
+l'archive une fois déposée, puis lance `deploy.sh` (tiré de `deploy/nas/deploy.sh.modele`) :
+sauvegarde, construction des images, bascule, et retour à l'ancienne version si le cockpit ne
+repart pas. Le front se construit et les tests tournent pendant la construction de l'image,
+sur le NAS : un test qui échoue arrête tout avant la bascule. Le mot de passe sudo reste demandé à chaque
 fois : les agents fusionnent seuls, la mise en production reste une décision.
 
 ## Ce qui a été retiré
