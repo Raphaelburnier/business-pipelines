@@ -52,6 +52,8 @@ const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
 const apiChat = require("../src/api-chat");
 const fluxChat = require("../src/flux-chat");
+const { AIStudioService } = require("../src/ai-studio/service");
+const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -105,7 +107,7 @@ const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
 
 // Le corps JSON d'une écriture du front, avec les contrôles de POST /api/runs : origine du
 // cockpit, JSON seul, 20 ko au plus. Rend `null` après avoir répondu en cas de refus.
-async function corpsJson(req, res) {
+async function corpsJson(req, res, maximum = 20_000) {
   if (!acces.origineAutorisee(req.headers, PORTEE)) {
     json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
     return null;
@@ -118,7 +120,7 @@ async function corpsJson(req, res) {
   let brut = "";
   for await (const morceau of req) {
     brut += morceau;
-    if (brut.length > 20_000) {
+    if (brut.length > maximum) {
       json(res, 413, { erreur: "corps trop gros" });
       return null;
     }
@@ -684,6 +686,34 @@ function json(res, code, corps) {
   res.end(t);
 }
 
+// AI Studio partage le serveur, l'identité Tailscale et les contrôles d'origine du
+// Cockpit. Seul ce service backend parle à ComfyUI ; le navigateur ne voit jamais son URL.
+let AI_STUDIO = null;
+let erreurAIStudio = null;
+try {
+  AI_STUDIO = new AIStudioService({
+    storageRoot: ENV.AI_STUDIO_STORAGE_ROOT || path.join(RACINE, "ai-studio-data"),
+    archiveRoot: ENV.AI_STUDIO_ARCHIVE_ROOT || path.join(RACINE, "ai-studio-archive"),
+    templatesDir: path.join(RACINE, "workflows", "ai-studio"),
+    comfyuiUrl: ENV.COMFYUI_URL || "http://comfyui:8188",
+    maxConcurrent: Number(ENV.AI_STUDIO_MAX_CONCURRENT_JOBS || 2),
+  });
+} catch (err) {
+  erreurAIStudio = err.message;
+  console.error(`AI Studio indisponible : ${err.message}`);
+}
+const traiterAIStudioActif = AI_STUDIO
+  ? creerRouteurAIStudio({ service: AI_STUDIO, json, corpsJson, durcissement: DURCISSEMENT })
+  : null;
+async function traiterAIStudio(req, res) {
+  if (!req.url.startsWith("/api/ai-studio")) return false;
+  if (!traiterAIStudioActif) {
+    json(res, 503, { erreur: `stockage AI Studio indisponible : ${erreurAIStudio}` });
+    return true;
+  }
+  return traiterAIStudioActif(req, res);
+}
+
 async function traiter(req, res) {
   // Défense contre le rebinding DNS : un nom d'hôte que je n'ai pas prévu ne parle pas au
   // serveur, même s'il résout vers 127.0.0.1.
@@ -720,6 +750,7 @@ async function traiter(req, res) {
   const chemin = req.url.split("?")[0];
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
     chemin === "/demander" || chemin.startsWith("/demander/") ||
+    chemin === "/ai-studio" || chemin.startsWith("/ai-studio/") ||
     chemin.startsWith("/projects/") || chemin.startsWith("/runs/") || chemin.startsWith("/machines/") ||
     chemin.startsWith("/assets/");
   if (req.method === "GET" && (chemin === "/app" || chemin.startsWith("/app/"))) {
@@ -753,6 +784,8 @@ async function traiter(req, res) {
   if (req.method === "GET" && req.url === "/api/etat") {
     return json(res, 200, cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }));
   }
+
+  if (await traiterAIStudio(req, res)) return undefined;
 
   // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
   // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans

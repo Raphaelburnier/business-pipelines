@@ -1,4 +1,7 @@
 node_modules/
+web/node_modules
+ai-studio-data/
+ai-studio-archive/
 runs/
 *.log
 

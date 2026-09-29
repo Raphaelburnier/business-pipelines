@@ -35,6 +35,10 @@ services:
       # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
       - ./etat:/app/etat
       - ./projects:/app/projects:ro
+      # Profils, références et jobs en cours.
+      - ${AI_STUDIO_WORK_PATH:-./ai-studio-data}:/data/ai-studio-work
+      # Seules les générations terminées et validées sont archivées ici.
+      - ${AI_STUDIO_ARCHIVE_PATH:-./ai-studio-archive}:/data/ai-studio-archive
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
@@ -54,6 +58,10 @@ services:
       # sur le LAN.
       - COCKPIT_HOTE=0.0.0.0
       - COCKPIT_CONTENEUR=1
+      - AI_STUDIO_STORAGE_ROOT=/data/ai-studio-work
+      - AI_STUDIO_ARCHIVE_ROOT=/data/ai-studio-archive
+      - AI_STUDIO_MAX_CONCURRENT_JOBS=${AI_STUDIO_MAX_CONCURRENT_JOBS:-2}
+      - COMFYUI_URL=${COMFYUI_URL:-http://comfyui:8188}
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que

@@ -1,5 +1,46 @@
 # business-pipelines
 
+## AI Instagram Studio — Phase 1
+
+Le Cockpit expose désormais `/ai-studio` : profils de personnages, références, génération
+batch via ComfyUI, file durable, galerie, inspector, export du workflow exact et
+regénération avec paramètres avancés.
+
+Configuration locale :
+
+```env
+COMFYUI_URL=http://127.0.0.1:8188
+AI_STUDIO_STORAGE_ROOT=./ai-studio-data
+AI_STUDIO_ARCHIVE_ROOT=./ai-studio-archive
+AI_STUDIO_MAX_CONCURRENT_JOBS=2
+```
+
+En Docker/NAS, `AI_STUDIO_WORK_PATH` porte les profils, références et jobs en cours.
+`AI_STUDIO_ARCHIVE_PATH` désigne le partage où seules les générations réussies **et
+validées dans l'Inspector** sont archivées avec `image`, `metadata.json` et
+`workflow.json`. Définir dans le `.env`
+utilisé par Docker Compose :
+
+```env
+COMFYUI_URL=http://192.168.1.26:8188
+AI_STUDIO_WORK_PATH=./ai-studio-data
+AI_STUDIO_ARCHIVE_PATH=/volume1/IAstudio
+```
+
+L'adresse du PC a été vérifiée depuis le NAS et le conteneur le 2026-09-29 ; elle est
+propre au réseau de cette installation et peut changer sans réservation DHCP.
+Le navigateur ne contacte jamais ComfyUI : les appels passent par le backend du Cockpit.
+L'archive suit `IAstudio/<projet>/<profil>/YYYY/MM/<generation>/`. Une génération non
+validée reste dans la galerie et dans les données de travail. Si le partage est
+indisponible après validation, le Cockpit conserve celle-ci et retente l'archivage.
+
+Le template livré, `portrait_realistic_v1`, attend le nom exact d’un checkpoint présent
+dans ComfyUI. Le formulaire interroge `/object_info/CheckpointLoaderSimple` côté backend pour
+proposer les checkpoints disponibles ; si ComfyUI est éteint, la saisie manuelle reste possible.
+Les références sont conservées dès cette phase mais ne sont pas injectées dans
+le workflow avant les identity providers de Phase 2. Le plan et les limites détaillés sont
+dans [`docs/PLAN-ai-instagram-studio.md`](docs/PLAN-ai-instagram-studio.md).
+
 Pipelines business bâtis sur [`agent-orchestrator`](../agent-orchestrator), et le cockpit
 qui tranche leurs approbations.
 
@@ -542,4 +583,3 @@ finirait par diverger de la base le jour où un événement manque.
 L'event store se monte dans le conteneur (`./etat:/app/etat`, `ORCH_EVENT_STORE`). Une base
 absente ou illisible n'empêche pas de décider : la page d'approbation n'en dépend pas, et
 les routes de runs répondent alors 503 en le disant.
-
