@@ -226,18 +226,30 @@ function ecouter(port, entetes = {}) {
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Attendre une condition plutôt qu'une durée. Une attente fixe de 120 ms passait sur le poste
+// et dans la CI, mais pas dans le build de l'image sur le NAS, sous charge (le 2026-09-29) :
+// « reçu 0 ». Le plafond est large ; un test qui passe n'attend que le nécessaire.
+async function attendreQue(condition, plafondMs = 5000) {
+  const fin = Date.now() + plafondMs;
+  while (!condition() && Date.now() < fin) await attendre(20);
+}
+// Après la condition, le temps de voir arriver un doublon s'il y en avait un.
+const MARGE_DOUBLON = 150;
+
 test("le flux envoie l'historique puis ce qui arrive ensuite", async () => {
   const { store } = bac();
   const runId = runComplet(store);
+  const historique = store.evenements({ runId }).length;
   const serveur = await serveurDeFlux(store, { runId });
   const { recu, requete } = ecouter(serveur.address().port);
 
-  await attendre(120);
+  await attendreQue(() => recu.length >= historique);
   const avant = recu.length;
   store.emettre({ type: "step.progress", runId, payload: { texte: "pendant l'écoute" } });
-  await attendre(200);
+  await attendreQue(() => recu.length > avant);
+  await attendre(MARGE_DOUBLON);
 
-  assert.ok(avant >= 2, `l'historique du run devait arriver, reçu ${avant}`);
+  assert.ok(historique >= 2 && avant === historique, `l'historique du run devait arriver (${historique}), reçu ${avant}`);
   assert.strictEqual(recu.length, avant + 1, "l'événement écrit pendant l'écoute arrive, une seule fois");
   assert.strictEqual(recu[recu.length - 1].type, "step.progress");
   // Les identifiants sont ceux de la base : c'est ce qui rend la reprise exacte.
@@ -250,20 +262,21 @@ test("le flux envoie l'historique puis ce qui arrive ensuite", async () => {
 test("une reconnexion reprend après le dernier événement reçu, sans trou ni doublon", async () => {
   const { store } = bac();
   const runId = runComplet(store);
+  const historique = store.evenements({ runId }).length;
   const serveur = await serveurDeFlux(store, { runId });
   const port = serveur.address().port;
 
   const premier = ecouter(port);
-  await attendre(120);
+  await attendreQue(() => premier.recu.length >= historique);
   const dernierId = premier.recu[premier.recu.length - 1].id;
   premier.requete.destroy();
 
   // Ce qui s'écrit pendant que personne n'écoute ne doit pas se perdre.
   store.emettre({ type: "step.finished", runId, payload: { pendant: "la coupure" } });
-  await attendre(50);
 
   const second = ecouter(port, { "Last-Event-ID": String(dernierId) });
-  await attendre(200);
+  await attendreQue(() => second.recu.length >= 1);
+  await attendre(MARGE_DOUBLON);
 
   assert.deepStrictEqual(
     second.recu.map((e) => e.type),
