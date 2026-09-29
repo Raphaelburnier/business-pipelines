@@ -149,6 +149,23 @@ npm test                 # 128 vérifications, sans réseau ni credentials
 Les tests du stage `approval` tournent sur un pipeline neutre, `test/fixtures/approbation.json`,
 et ne dépendent d'aucun domaine.
 
+## Livrer sur le NAS
+
+```bash
+bin/livrer.sh              # construit, dépose, déploie : une question, puis le mot de passe sudo du NAS
+bin/livrer.sh --preparer   # dépose sans déployer, et affiche la commande de bascule
+bin/livrer.sh --local      # construit seulement, dans ~/releases
+```
+
+La release est l'export des têtes de `origin/main` (ce dépôt), `origin/master`
+(agent-orchestrator, dans `.moteur`) et `origin/main` (agent-registry), avec le front buildé :
+rien de ce qui n'est pas poussé ne part. Le script affiche ce qui tourne sur le NAS et les
+commits qui vont y arriver, refuse de continuer si `/volume1` est en lecture seule, vérifie
+l'empreinte de l'archive une fois déposée, puis lance `deploy.sh` (tiré de
+`deploy/nas/deploy.sh.modele`) : sauvegarde, construction des images, bascule, et retour à
+l'ancienne version si le cockpit ne repart pas. Le mot de passe sudo reste demandé à chaque
+fois : les agents fusionnent seuls, la mise en production reste une décision.
+
 ## Ce qui a été retiré
 
 Le 2026-09-16, tout ce qui concernait eBay : les pipelines `veille-ebay`, `ajustement-prix`
