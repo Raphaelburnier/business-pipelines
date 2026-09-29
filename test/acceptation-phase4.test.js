@@ -98,6 +98,12 @@ function lire(port, chemin) {
 }
 
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+// Une condition plutôt qu'une durée : le build de l'image, sur le NAS et sous charge, est bien
+// plus lent que le poste (un test du flux y a échoué le 2026-09-29 sur une attente fixe).
+async function attendreQue(condition, plafondMs = 10000) {
+  const fin = Date.now() + plafondMs;
+  while (!condition() && Date.now() < fin) await attendre(50);
+}
 
 test("un run lancé hors du cockpit apparaît dans le flux et dans l'API, pendant qu'il tourne", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acceptation4-"));
@@ -143,7 +149,7 @@ test("un run lancé hors du cockpit apparaît dans le flux et dans l'API, pendan
 
     // Le flux tenait la connexion pendant tout le run : ce qu'il a reçu est ce que le
     // cockpit aurait affiché en direct.
-    await attendre(1400);
+    await attendreQue(() => ["script.start", "node.done"].every((t) => flux.recu.some((e) => e.type === t)));
     const types = flux.recu.map((e) => e.type);
     assert.ok(types.includes("script.start"), `le flux devait voir le début d'une étape, reçu : ${types.join(", ")}`);
     assert.ok(types.includes("node.done"), "le flux devait voir un nœud se terminer");
