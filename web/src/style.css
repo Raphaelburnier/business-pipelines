@@ -405,6 +405,11 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .studio-field input, .studio-field select { min-height: 42px; }
 .studio-field textarea, .studio-prompt textarea { resize: vertical; }
 .studio-field input:focus, .studio-field select:focus, .studio-field textarea:focus, .studio-prompt textarea:focus { border-color: var(--color-accent); outline: 1px solid var(--color-accent); }
+.studio-checkpoint-control { position: relative; min-width: 0; }
+.studio-checkpoint-control select { appearance: none; padding-right: 69px; }
+.studio-checkpoint-source { position: absolute; inset: 1px 1px 1px auto; display: flex; align-items: center; gap: 9px; border-left: 1px solid var(--color-trait); background: var(--color-carte); padding: 0 12px; color: var(--color-pc); font: 400 11px/1 var(--font-mono); pointer-events: none; }
+.studio-checkpoint-source::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.studio-checkpoint-control:focus-within .studio-checkpoint-source { border-left-color: var(--color-accent); color: var(--color-accent); }
 .studio-alert { grid-column: 1 / -1; border-left: 3px solid var(--color-danger); background: var(--color-danger-fond); padding: 11px 13px; color: var(--color-danger); }
 .studio-empty { display: flex; min-height: 140px; flex-direction: column; place-content: center; place-items: center; gap: 5px; border: 1px dashed var(--color-trait-fort); padding: 24px; color: var(--color-douce); text-align: center; }
 .studio-empty b { color: var(--color-encre); font-size: 17px; }
