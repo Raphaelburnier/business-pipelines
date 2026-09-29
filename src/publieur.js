@@ -89,6 +89,46 @@ function ramenerParDefaut({ git, depot, url, branche }) {
 }
 
 /**
+ * Les dépôts système dont le NAS tient un miroir : ce que le livreur a le droit de livrer
+ * (docs/SPEC-livraison.md, §4.1). Lus dans `PUBLIEUR_MIROIRS`, sous la forme
+ * `nom=proprietaire/depot,…`. Un nom sert de dossier : il est contrôlé comme tel.
+ * @param {string|undefined} texte
+ * @returns {{ nom: string, github: string }[]}
+ */
+function miroirsSysteme(texte) {
+  const miroirs = [];
+  for (const entree of String(texte || "").split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [nom, github] = entree.split("=").map((x) => (x || "").trim());
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(nom) || !DEPOT_GITHUB.test(github || "")) {
+      throw new Error(`PUBLIEUR_MIROIRS : entrée invalide « ${entree} » (attendu nom=proprietaire/depot)`);
+    }
+    miroirs.push({ nom, github });
+  }
+  return miroirs;
+}
+
+/**
+ * Tient à jour le miroir d'un dépôt système : dépôt nu créé au besoin, branche par défaut de
+ * GitHub ramenée en avance rapide, et HEAD pointé sur elle. Le livreur lit HEAD pour savoir
+ * ce qu'est « la branche par défaut » sans avoir de jeton pour le demander à GitHub.
+ */
+async function tenirMiroir({ miroir, dossier, git, api, url = `https://github.com/${miroir.github}.git`, journal = () => {} }) {
+  const depot = path.join(dossier, `${miroir.nom}.git`);
+  if (!fs.existsSync(path.join(depot, "HEAD"))) {
+    fs.mkdirSync(depot, { recursive: true });
+    git(["init", "-q", "--bare", depot]);
+    journal(`${miroir.nom} : miroir créé dans ${depot}`);
+  }
+  const infos = await api("GET", `/repos/${miroir.github}`);
+  const branche = infos.default_branch;
+  const retour = ramenerParDefaut({ git, depot, url, branche });
+  git(["--git-dir", depot, "symbolic-ref", "HEAD", `refs/heads/${branche}`]);
+  if (retour.statut === "avance") journal(`${miroir.nom} : ${branche} ramené à ${retour.apres.slice(0, 7)}`);
+  if (retour.statut === "diverge") journal(`${miroir.nom} : le miroir a divergé de GitHub, rien n'est écrasé`);
+  return retour;
+}
+
+/**
  * Le titre et le corps de la PR, tirés de ce que les agents ont écrit sur la branche du
  * run : l'objectif du plan, les changements faits, le verdict.
  */
@@ -213,6 +253,8 @@ module.exports = {
   gitAvec,
   apiAvec,
   ramenerParDefaut,
+  miroirsSysteme,
+  tenirMiroir,
   descriptionPR,
   publierProjet,
   lireEtat,

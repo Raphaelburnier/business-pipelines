@@ -16,7 +16,8 @@ ENV=$BUSINESS/specs/deploiement.env
 BACKUPS=/volume1/docker/business-pipelines-backups
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP=$BACKUPS/business-pipelines-before-@RELEASE@-$STAMP.tar.gz
-DOCKER=/usr/local/bin/docker
+# Le binaire de DSM sur l'hôte ; le livreur, dans son conteneur, pose DOCKER=/usr/bin/docker.
+DOCKER=${DOCKER:-/usr/local/bin/docker}
 export COMPOSE_PROJECT_NAME=business-pipelines
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -81,7 +82,9 @@ tar -xzf "$ARCHIVE" -C "$BUSINESS"
 mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
-chown -R admindunas:users "$BUSINESS"
+# admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
+# livreur, ces noms n'existent pas.
+chown -R 1026:100 "$BUSINESS"
 
 cd "$BUSINESS"
 $DOCKER compose up -d --no-build cockpit runner tailscale-whois publieur

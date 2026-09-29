@@ -7,6 +7,7 @@
 #   bin/livrer.sh --local      construit l'archive ici seulement
 #   bin/livrer.sh --oui        sans question de confirmation
 #   bin/livrer.sh --forcer     même si la production est déjà à jour
+#   bin/livrer.sh --livreur    reconstruit et redémarre le service livreur, seul
 #
 # Une release est l'export exact de trois têtes de branche, jamais d'un dossier de travail :
 # business-pipelines (origin/main), le moteur agent-orchestrator (origin/master) dans
@@ -39,13 +40,25 @@ for argument in "$@"; do
     --local) mode=local ;;
     --oui) oui=1 ;;
     --forcer) forcer=1 ;;
-    -h | --help) sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --livreur) mode=livreur ;;
+    -h | --help) sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Option inconnue : $argument" >&2; exit 2 ;;
   esac
 done
 
 etape() { printf '\n\033[1;33m» %s\033[0m\n' "$*"; }
 arreter() { echo "Arrêt : $*" >&2; exit 1; }
+
+# Le livreur ne se livre pas lui-même (docs/SPEC-livraison.md, §3.6) : sa mise à jour est
+# celle-ci, à la main. Il se construit depuis le code déjà livré dans $BUSINESS, jamais depuis
+# ce poste. Pas de mot de passe : le compte a droit à `sudo -n` sur le seul binaire docker.
+if [[ "$mode" == livreur ]]; then
+  etape "Livreur : construction et redémarrage depuis la version en place sur le NAS"
+  ssh -n -o BatchMode=yes "$NAS" "cd $BUSINESS && sudo -n /usr/local/bin/docker compose build livreur \
+    && sudo -n /usr/local/bin/docker compose up -d livreur && sleep 5 \
+    && sudo -n /usr/local/bin/docker logs --tail 20 business_livreur"
+  exit 0
+fi
 
 for depot in "$RACINE" "$MOTEUR" "$REGISTRE"; do
   [[ -d "$depot/.git" || -f "$depot/.git" ]] || arreter "dépôt introuvable : $depot (MOTEUR= et REGISTRE= pour les indiquer)"
@@ -55,9 +68,16 @@ etape "Lecture des têtes de branche"
 git -C "$RACINE" fetch -q origin main
 git -C "$MOTEUR" fetch -q origin master
 git -C "$REGISTRE" fetch -q origin main
-cockpit="$(git -C "$RACINE" rev-parse --short=7 origin/main)"
-moteur="$(git -C "$MOTEUR" rev-parse --short=7 origin/master)"
-registre="$(git -C "$REGISTRE" rev-parse --short=7 origin/main)"
+# .release garde les SHA complets : c'est ce que le livreur compare. Les formes courtes ne
+# servent qu'à l'affichage et au nom de l'archive.
+cockpit_sha="$(git -C "$RACINE" rev-parse origin/main)"
+moteur_sha="$(git -C "$MOTEUR" rev-parse origin/master)"
+registre_sha="$(git -C "$REGISTRE" rev-parse origin/main)"
+cockpit="${cockpit_sha:0:7}"
+moteur="${moteur_sha:0:7}"
+registre="${registre_sha:0:7}"
+# Un SHA de .release, court (livraisons d'avant) ou complet, rendu complet quand le dépôt le connaît.
+complet() { git -C "$1" rev-parse --verify --quiet "$2^{commit}" 2>/dev/null || echo "$2"; }
 version="cockpit $cockpit · moteur $moteur · registre $registre"
 echo "À livrer : $version"
 
@@ -78,8 +98,9 @@ if [[ "$mode" != local ]]; then
   if [[ -z "$cockpit_prod" ]]; then
     echo "En production : inconnu (release antérieure à bin/livrer.sh)"
   else
-    echo "En production : cockpit $cockpit_prod · moteur $moteur_prod · registre $registre_prod"
-    if [[ "$cockpit_prod $moteur_prod $registre_prod" == "$cockpit $moteur $registre" && "$forcer" -eq 0 ]]; then
+    echo "En production : cockpit ${cockpit_prod:0:7} · moteur ${moteur_prod:0:7} · registre ${registre_prod:0:7}"
+    en_prod="$(complet "$RACINE" "$cockpit_prod") $(complet "$MOTEUR" "$moteur_prod") $(complet "$REGISTRE" "$registre_prod")"
+    if [[ "$en_prod" == "$cockpit_sha $moteur_sha $registre_sha" && "$forcer" -eq 0 ]]; then
       echo "La production est déjà à jour. Rien à livrer (--forcer pour relivrer)."
       exit 0
     fi
@@ -109,9 +130,9 @@ git -C "$REGISTRE" archive origin/main | tar -x -C "$stage/agent-registry"
 # Ce fichier suit l'archive jusque dans le dossier du cockpit : la prochaine livraison le
 # relit pour dire ce qui tourne et ce qui va changer.
 cat >"$stage/.release" <<EOF
-cockpit=$cockpit
-moteur=$moteur
-registre=$registre
+cockpit=$cockpit_sha
+moteur=$moteur_sha
+registre=$registre_sha
 construite=$(date -Iseconds)
 EOF
 
