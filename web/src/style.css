@@ -573,6 +573,35 @@ details.ao-liv-depot { display: block; }
 }
 .ao-liv-historique summary { display: flex; align-items: center; }
 .ao-liv-versions { margin: 0; font: 400 12px/1.4 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
+
+/* ---------- Approbations : plans gelés et arbitrages opérateur ---------- */
+.ao-approbation > header > div { min-width: 0; }
+.ao-approbation > header h2 { overflow-wrap: anywhere; }
+.ao-approbation > header p { margin: 3px 0 0; overflow-wrap: anywhere; }
+.ao-approbation-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ao-approbation-action { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-carte); }
+.ao-approbation-action > header { display: flex; align-items: flex-start; gap: 10px; }
+.ao-approbation-action h3 { margin: 0; font-size: 15px; text-transform: uppercase; }
+.ao-approbation-action header p, .ao-approbation-action > p { margin: 0; }
+.ao-approbation-action .ao-liv-pastille { margin-left: auto; }
+.ao-approbation-rapport { padding-left: 10px; border-left: 2px solid var(--color-accent); }
+.ao-approbation-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--color-trait); }
+.ao-approbation-choix legend { width: 100%; padding: 0; font: 400 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.ao-approbation-choix label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ao-approbation-choix input { accent-color: var(--color-accent); }
+.ao-approbation-note, .ao-approbation-reponse { display: flex; flex-basis: 100%; flex-direction: column; gap: 5px; font-size: 13px; }
+.ao-approbation-note textarea, .ao-approbation-reponse textarea { width: 100%; resize: vertical; }
+.ao-approbation-note-lue { margin: 0; padding-left: 10px; border-left: 2px solid var(--color-douce); color: var(--color-douce); }
+.ao-approbation-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.ao-approbation-modules article { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-carte); }
+.ao-approbation-modules h3, .ao-approbation-modules p { margin: 0; }
+.ao-approbation-modules .ao-btn { align-self: flex-start; margin-top: auto; }
+@media (max-width: 720px) {
+  .ao-approbation-action { padding: 10px; }
+  .ao-approbation-choix { align-items: stretch; }
+  .ao-approbation-choix > label, .ao-approbation-choix .ao-btn { min-height: 40px; }
+  .ao-approbation-modules { grid-template-columns: 1fr; }
+}
 /* Les barres de la frise d'un run, trop fines pour un doigt : plus hautes sur écran tactile. */
 @media (max-width: 1100px), (pointer: coarse) {
   .ao-contenu .relative.h-4, .ao-contenu .relative.h-4 > button.absolute { height: 28px; line-height: 28px; }

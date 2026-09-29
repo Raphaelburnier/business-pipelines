@@ -8,6 +8,7 @@
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
+import type { DemandeDecision, ReponseApprobations, ReponseDecision } from "./decisions";
 
 export interface FiltreRuns {
   project?: string;
@@ -35,6 +36,10 @@ export interface Source {
   livraison(): Promise<ReponseLivraison>;
   /** Dépose une commande de livraison des trois SHA proposés ; le livreur l'exécute. */
   livrer(cible: VersionsLivraison): Promise<{ id: string; statut: string }>;
+  /** Plans métier en attente d'un arbitrage opérateur. */
+  approbations(): Promise<ReponseApprobations>;
+  /** Enregistre les arbitrages liés à l'empreinte du plan lu. */
+  decider(demande: DemandeDecision): Promise<ReponseDecision>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }

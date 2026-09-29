@@ -8,6 +8,7 @@ import { useTheme } from "./theme";
 import type { EtatMachine, Machine } from "./types";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
+import { Approbations } from "./vues/Approbations";
 import { Decisions } from "./vues/Decisions";
 import { Demander } from "./vues/Demander";
 import { EnCours } from "./vues/EnCours";
@@ -24,6 +25,7 @@ type Route =
   | { type: "demander"; filId: string | null }
   | { type: "decisions" }
   | { type: "systeme" }
+  | { type: "approbations" }
   | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
@@ -32,6 +34,7 @@ function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
+  if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
@@ -111,6 +114,7 @@ function titreDe(route: Route): string {
   if (route.type === "agents") return "Agents";
   if (route.type === "demander") return "Demander";
   if (route.type === "decisions") return "Decisions";
+  if (route.type === "approbations") return "Approbations";
   if (route.type === "ai-studio") return "AI Studio";
   if (route.type === "systeme") return "Systeme";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
@@ -172,7 +176,7 @@ function Coquille() {
           <Lien href="/systeme" actif={route.type === "systeme"} aller={naviguer} icone="systeme">
             Système
           </Lien>
-          <Lien href="/decisions" actif={route.type === "decisions"} aller={naviguer} icone="decision" compte={decisions} alerte>
+          <Lien href="/decisions" actif={route.type === "decisions" || route.type === "approbations"} aller={naviguer} icone="decision" compte={decisions} alerte>
             Décisions
           </Lien>
         </nav>
@@ -222,7 +226,8 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
-          {route.type === "decisions" && <Decisions />}
+          {route.type === "decisions" && <Decisions aller={naviguer} />}
+          {route.type === "approbations" && <Approbations />}
           {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement de la carte…</p></section>}><Systeme /></Suspense>}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
