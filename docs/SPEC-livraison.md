@@ -261,17 +261,17 @@ POST /api/livraisons         # { cockpit, moteur, registre } → 202 { commande 
 
 ---
 
-## 8. Questions ouvertes
+## 8. Décisions du 2026-09-29
 
-1. **Adresse des approbations des pipelines** une fois `/decisions` repris par React.
-   Recommandation : `/decisions/pipelines`, avec `/decisions` qui garde un lien visible vers
-   elle, et le `POST /api/decider` inchangé.
-2. **Rétention** des releases et sauvegardes sur le NAS : chaque livraison ajoute environ 1 Mo
-   de release et une sauvegarde tar complète. Recommandation : le livreur garde les 5 dernières
-   de chaque et supprime les plus anciennes.
-3. **Statut CI** : faut-il aussi exiger que la PR qui a produit la tête de `main` ait une CI
-   verte (API GitHub, donc le publieur) ? Recommandation : non pour l'instant, les tests du
-   build (§4.5) jouent ce rôle sans jeton de plus.
+Spec validée par Raphaël, avec les trois recommandations :
+
+1. **Approbations des pipelines** : servies sous `/decisions/pipelines` une fois `/decisions`
+   repris par React ; `/decisions` y garde un lien visible ; `POST /api/decider` inchangé.
+2. **Rétention** : le livreur garde les 5 dernières releases et les 5 dernières sauvegardes
+   sur le NAS, et supprime les plus anciennes (environ 1 Mo de release et une sauvegarde tar
+   complète par livraison).
+3. **Statut CI** : pas d'exigence de CI verte côté GitHub pour l'instant. Les tests lancés par
+   le build de l'image (§4.5) tiennent ce rôle, sans jeton de plus.
 
 ## 9. Hors scope
 
