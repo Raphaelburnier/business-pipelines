@@ -1,5 +1,56 @@
 # business-pipelines
 
+## AI Instagram Studio — Phase 1
+
+Le Cockpit expose désormais `/ai-studio` : profils de personnages, références, génération
+batch via ComfyUI, file durable, galerie, inspector, export du workflow exact et
+regénération avec paramètres avancés.
+
+Configuration locale :
+
+```env
+COMFYUI_URL=http://127.0.0.1:8188
+AI_STUDIO_STORAGE_ROOT=./ai-studio-data
+AI_STUDIO_ARCHIVE_ROOT=./ai-studio-archive
+AI_STUDIO_MAX_CONCURRENT_JOBS=2
+```
+
+En Docker/NAS, `./ai-studio-data` porte les profils, références et jobs en cours ; le
+script de livraison le conserve entre les mises à jour. Le partage DSM `/volume1/IAstudio`
+est la destination d'archive par défaut, surchargeable avec `AI_STUDIO_ARCHIVE_PATH` dans
+l'environnement de Docker Compose. Seules les générations réussies **et validées dans
+l'Inspector** y sont archivées avec `image`, `metadata.json` et `workflow.json`.
+
+Dans le fichier persistant `specs/cockpit.env` du NAS, définir l'adresse du PC :
+
+```env
+COMFYUI_URL=http://192.168.1.26:8188
+```
+
+Le script de livraison conserve `specs/`, contrairement au `.env` racine. L'adresse du PC
+a été vérifiée depuis le NAS et le conteneur le 2026-09-29 ; elle est propre au réseau de
+cette installation et peut changer sans réservation DHCP.
+Le navigateur ne contacte jamais ComfyUI : les appels passent par le backend du Cockpit.
+L'archive suit `IAstudio/<projet>/<profil>/YYYY/MM/<generation>/`. Une génération non
+validée reste dans la galerie et dans les données de travail. Si le partage est
+indisponible après validation, le Cockpit conserve celle-ci et retente l'archivage.
+
+Le template livré, `portrait_realistic_v1`, attend le nom exact d’un checkpoint présent
+dans ComfyUI. Le formulaire interroge `/object_info/CheckpointLoaderSimple` côté backend pour
+proposer les checkpoints disponibles ; si ComfyUI est éteint, la saisie manuelle reste possible.
+Les références sont conservées dès cette phase mais ne sont pas injectées dans
+le workflow avant les identity providers de Phase 2. Le plan et les limites détaillés sont
+dans [`docs/PLAN-ai-instagram-studio.md`](docs/PLAN-ai-instagram-studio.md).
+
+Avant la première livraison : vérifier dans DSM que `/volume1/IAstudio` existe, puis
+ajouter `COMFYUI_URL=http://192.168.1.26:8188` dans le fichier persistant
+`/volume1/docker/business-pipelines/specs/cockpit.env` (sans écraser les autres réglages).
+La livraison prend uniquement les commits fusionnés dans `origin/main` : la branche
+AI Studio doit donc passer par une PR et une fusion explicite, car elle modifie Docker
+et le script de déploiement. Après livraison, vérifier `/api/ai-studio/status` depuis
+le Cockpit, choisir un checkpoint proposé par ComfyUI, puis générer et valider une seule
+image de test avant de lancer un batch.
+
 Pipelines business bâtis sur [`agent-orchestrator`](../agent-orchestrator), et le cockpit
 qui tranche leurs approbations.
 
@@ -574,4 +625,3 @@ finirait par diverger de la base le jour où un événement manque.
 L'event store se monte dans le conteneur (`./etat:/app/etat`, `ORCH_EVENT_STORE`). Une base
 absente ou illisible n'empêche pas de décider : la page d'approbation n'en dépend pas, et
 les routes de runs répondent alors 503 en le disant.
-

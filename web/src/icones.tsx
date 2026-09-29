@@ -20,6 +20,13 @@ const TRACES = {
     </>
   ),
   demander: <path d="M4 5h16v11H9l-5 4z" />,
+  studio: (
+    <>
+      <rect x="3" y="5" width="18" height="14" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M7 5l1.5-2h7L17 5M6 9h1" />
+    </>
+  ),
   decision: <path d="M5 12.5 9.5 17 19 7" />,
   soleil: (
     <>

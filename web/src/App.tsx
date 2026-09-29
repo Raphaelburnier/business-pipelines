@@ -1,6 +1,6 @@
 // Le cockpit principal. Les vues ont de vraies URL : un nœud du graphe ouvre une page
 // partageable, et le bouton Retour du navigateur ramène exactement où l'opérateur était.
-import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
 import { mot } from "./format";
 import { Icone, type NomIcone } from "./icones";
@@ -12,11 +12,15 @@ import { Demander } from "./vues/Demander";
 import { EnCours } from "./vues/EnCours";
 import { Kpis } from "./vues/Kpis";
 import { Panneau } from "./vues/Panneau";
+import type { AIStudioPage } from "./ai-studio/AIStudio";
+
+const AIStudio = lazy(() => import("./ai-studio/AIStudio").then((module) => ({ default: module.AIStudio })));
 
 type Route =
   | { type: "graph" }
   | { type: "agents" }
   | { type: "demander"; filId: string | null }
+  | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
 
@@ -25,6 +29,19 @@ function lireRoute(): Route {
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
+  if (morceaux[0] === "ai-studio") {
+    if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
+    if (morceaux[1] === "profiles" && morceaux[2]) {
+      const tab = morceaux[3] || "gallery";
+      if (["gallery", "generate", "references", "settings"].includes(tab)) {
+        return { type: "ai-studio", studio: { page: "profile", id: decodeURIComponent(morceaux[2]), tab: tab as "gallery" | "generate" | "references" | "settings" } };
+      }
+    }
+    if (morceaux[1] === "generations" && morceaux[2] && morceaux.length === 3) {
+      return { type: "ai-studio", studio: { page: "generation", id: decodeURIComponent(morceaux[2]) } };
+    }
+    return { type: "inconnue" };
+  }
   const correspondances: Record<string, Selection["type"]> = { projects: "projet", runs: "run", machines: "machine" };
   const type = correspondances[morceaux[0] ?? ""];
   if (type && morceaux[1]) return { type: "detail", selection: { type, id: decodeURIComponent(morceaux[1]) } as Selection };
@@ -87,6 +104,7 @@ function titreDe(route: Route): string {
   if (route.type === "graph") return "Accueil";
   if (route.type === "agents") return "Agents";
   if (route.type === "demander") return "Demander";
+  if (route.type === "ai-studio") return "AI Studio";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
   return "Introuvable";
 }
@@ -111,7 +129,7 @@ function Coquille() {
   const ouvrir = useCallback((selection: Selection) => naviguer(chemin(selection)), [naviguer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "ai-studio" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -136,6 +154,9 @@ function Coquille() {
           </Lien>
           <Lien href="/demander" actif={route.type === "demander"} aller={naviguer} icone="demander">
             Demander
+          </Lien>
+          <Lien href="/ai-studio" actif={route.type === "ai-studio"} aller={naviguer} icone="studio">
+            AI Studio
           </Lien>
           {/* Les décisions sont une autre page servie par le cockpit : un vrai lien, rechargement compris. */}
           <a href="/decisions" title="Décisions">
@@ -190,6 +211,7 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
+          {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
             <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />
           )}
@@ -206,7 +228,7 @@ function Coquille() {
         </main>
       </div>
 
-      <EnCours />
+      {route.type !== "ai-studio" && <EnCours />}
     </div>
   );
 }

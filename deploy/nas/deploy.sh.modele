@@ -74,12 +74,12 @@ SWITCHED=1
 $DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || true
 find "$BUSINESS" -mindepth 1 -maxdepth 1 -print | while IFS= read -r entree; do
   case "$(basename "$entree")" in
-    approvals|specs|logs|runs|workspace|workspaces|etat|passer-abonnement.sh) ;;
+    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|passer-abonnement.sh) ;;
     *) rm -rf "$entree" ;;
   esac
 done
 tar -xzf "$ARCHIVE" -C "$BUSINESS"
-mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat"
+mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du

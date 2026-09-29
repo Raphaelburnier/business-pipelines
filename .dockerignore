@@ -26,6 +26,8 @@ workspace
 runs
 logs
 etat
+ai-studio-data
+ai-studio-archive
 workspaces
 agent-registry
 
