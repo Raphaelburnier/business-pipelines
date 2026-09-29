@@ -110,7 +110,9 @@ async function executerRun(commande) {
 
 async function demarrer() {
   const store = new EventStore(STORE);
-  const reprises = store.reprendreCommandesInterrompues();
+  // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
+  // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "chat.respond"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
