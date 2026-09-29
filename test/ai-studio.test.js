@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { AIStudioStore, RequeteInvalide } = require("../src/ai-studio/store");
 const { AIStudioService } = require("../src/ai-studio/service");
 
@@ -199,7 +200,15 @@ test("une livraison conserve le travail et monte le partage d'archive prévu", (
   const racine = path.join(__dirname, "..");
   const livraison = fs.readFileSync(path.join(racine, "deploy", "nas", "deploy.sh.modele"), "utf8");
   const compose = fs.readFileSync(path.join(racine, "docker-compose.yaml"), "utf8");
-  assert.match(livraison, /\bai-studio-data\|passer-abonnement\.sh\) ;;/);
+  // Le comportement, pas l'écriture : la fonction qui dit ce qu'une livraison garde est
+  // extraite du modèle et exécutée. `ai-studio-data` est de l'état, le code ne l'est pas.
+  const estEtat = livraison.match(/^est_etat\(\) \{\n[\s\S]*?\n\}$/m);
+  assert.ok(estEtat, "deploy.sh.modele doit définir est_etat()");
+  const garde = (nom) => spawnSync("sh", ["-c", `${estEtat[0]}\nest_etat "$1"`, "sh", nom]).status === 0;
+  assert.strictEqual(garde("ai-studio-data"), true, "une livraison doit garder ai-studio-data");
+  assert.strictEqual(garde("src"), false, "le code, lui, est remplacé");
+  // Et la sauvegarde d'avant bascule ne l'emporte pas : c'est de l'état, pas du code.
+  assert.match(livraison, /--exclude=business-pipelines\/ai-studio-data/);
   assert.match(livraison, /mkdir -p[^\n]*"\$BUSINESS\/ai-studio-data"/);
   assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
   assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
