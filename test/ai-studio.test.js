@@ -195,6 +195,16 @@ test("l'archive absente conserve la validation et reprend après redémarrage", 
   reprise.fermer();
 });
 
+test("une livraison conserve le travail et monte le partage d'archive prévu", () => {
+  const racine = path.join(__dirname, "..");
+  const livraison = fs.readFileSync(path.join(racine, "deploy", "nas", "deploy.sh.modele"), "utf8");
+  const compose = fs.readFileSync(path.join(racine, "docker-compose.yaml"), "utf8");
+  assert.match(livraison, /\bai-studio-data\|passer-abonnement\.sh\) ;;/);
+  assert.match(livraison, /mkdir -p[^\n]*"\$BUSINESS\/ai-studio-data"/);
+  assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
+  assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
+});
+
 (async () => {
   let echecs = 0;
   for (const { nom, fn } of tests) {

@@ -38,7 +38,7 @@ services:
       # Profils, références et jobs en cours.
       - ${AI_STUDIO_WORK_PATH:-./ai-studio-data}:/data/ai-studio-work
       # Seules les générations terminées et validées sont archivées ici.
-      - ${AI_STUDIO_ARCHIVE_PATH:-./ai-studio-archive}:/data/ai-studio-archive
+      - ${AI_STUDIO_ARCHIVE_PATH:-/volume1/IAstudio}:/data/ai-studio-archive
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
@@ -61,7 +61,6 @@ services:
       - AI_STUDIO_STORAGE_ROOT=/data/ai-studio-work
       - AI_STUDIO_ARCHIVE_ROOT=/data/ai-studio-archive
       - AI_STUDIO_MAX_CONCURRENT_JOBS=${AI_STUDIO_MAX_CONCURRENT_JOBS:-2}
-      - COMFYUI_URL=${COMFYUI_URL:-http://comfyui:8188}
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
@@ -135,10 +134,42 @@ services:
     environment:
       - NODE_ENV=production
       - PUBLIEUR_ETAT=/app/etat/publications.json
+      # Miroirs des dépôts système, lus sans jeton par le livreur (docs/SPEC-livraison.md).
+      - PUBLIEUR_MIROIRS=business-pipelines=Raphaelburnier/business-pipelines,agent-orchestrator=Raphaelburnier/agent-orchestrator,agent-registry=Raphaelburnier/agent-registry
+      - PUBLIEUR_MIROIRS_DIR=/git/systeme
     env_file:
       - ./specs/publieur.env
     networks:
       - business
+
+  # Met en production la version du cockpit que Raphaël valide dans le cockpit
+  # (docs/SPEC-livraison.md). Seul service qui tient le socket Docker, donc root sur le NAS :
+  # en échange, il n'écoute rien, ne reçoit ni jeton ni clé dans son environnement, ne fait
+  # tourner aucun agent, et ne construit que des commits des miroirs fusionnés sur leur
+  # branche par défaut. Il monte le dossier du cockpit, specs/ compris : avec le socket il
+  # pourrait de toute façon tout lire, ce montage ne lui donne rien de plus. deploy.sh ne le
+  # recrée jamais : il ne
+  # se livre pas lui-même, sa mise à jour passe par `bin/livrer.sh --livreur`.
+  livreur:
+    build:
+      context: .
+      target: livreur
+    container_name: business_livreur
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mêmes chemins que sur l'hôte : deploy.sh et `docker compose` y résolvent les chemins
+      # du compose, que le démon Docker lit ensuite sur l'hôte.
+      - /volume1/docker/business-pipelines:/volume1/docker/business-pipelines
+      - /volume1/docker/releases:/volume1/docker/releases
+      - /volume1/docker/business-pipelines-backups:/volume1/docker/business-pipelines-backups
+      - /volume1/docker/git/systeme:/git/systeme:ro
+    environment:
+      - NODE_ENV=production
+      - ORCH_EVENT_STORE=/volume1/docker/business-pipelines/etat/events.sqlite
+      - DOCKER=/usr/bin/docker
+    # deploy.sh contrôle le cockpit sur 127.0.0.1:4600, publié sur la boucle locale de l'hôte.
+    network_mode: host
 
   # Le runner exécute du code produit par des agents : lui monter le socket LocalAPI de
   # Tailscale lui donnerait bien plus que `whois`. Ce relais séparé possède le socket mais

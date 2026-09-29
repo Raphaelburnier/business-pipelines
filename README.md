@@ -15,20 +15,21 @@ AI_STUDIO_ARCHIVE_ROOT=./ai-studio-archive
 AI_STUDIO_MAX_CONCURRENT_JOBS=2
 ```
 
-En Docker/NAS, `AI_STUDIO_WORK_PATH` porte les profils, références et jobs en cours.
-`AI_STUDIO_ARCHIVE_PATH` désigne le partage où seules les générations réussies **et
-validées dans l'Inspector** sont archivées avec `image`, `metadata.json` et
-`workflow.json`. Définir dans le `.env`
-utilisé par Docker Compose :
+En Docker/NAS, `./ai-studio-data` porte les profils, références et jobs en cours ; le
+script de livraison le conserve entre les mises à jour. Le partage DSM `/volume1/IAstudio`
+est la destination d'archive par défaut, surchargeable avec `AI_STUDIO_ARCHIVE_PATH` dans
+l'environnement de Docker Compose. Seules les générations réussies **et validées dans
+l'Inspector** y sont archivées avec `image`, `metadata.json` et `workflow.json`.
+
+Dans le fichier persistant `specs/cockpit.env` du NAS, définir l'adresse du PC :
 
 ```env
 COMFYUI_URL=http://192.168.1.26:8188
-AI_STUDIO_WORK_PATH=./ai-studio-data
-AI_STUDIO_ARCHIVE_PATH=/volume1/IAstudio
 ```
 
-L'adresse du PC a été vérifiée depuis le NAS et le conteneur le 2026-09-29 ; elle est
-propre au réseau de cette installation et peut changer sans réservation DHCP.
+Le script de livraison conserve `specs/`, contrairement au `.env` racine. L'adresse du PC
+a été vérifiée depuis le NAS et le conteneur le 2026-09-29 ; elle est propre au réseau de
+cette installation et peut changer sans réservation DHCP.
 Le navigateur ne contacte jamais ComfyUI : les appels passent par le backend du Cockpit.
 L'archive suit `IAstudio/<projet>/<profil>/YYYY/MM/<generation>/`. Une génération non
 validée reste dans la galerie et dans les données de travail. Si le partage est
@@ -189,6 +190,38 @@ npm test                 # 128 vérifications, sans réseau ni credentials
 
 Les tests du stage `approval` tournent sur un pipeline neutre, `test/fixtures/approbation.json`,
 et ne dépendent d'aucun domaine.
+
+## Livrer sur le NAS
+
+```bash
+bin/livrer.sh              # construit, dépose, déploie : une question, puis le mot de passe sudo du NAS
+bin/livrer.sh --preparer   # dépose sans déployer, et affiche la commande de bascule
+bin/livrer.sh --local      # construit seulement, dans ~/releases
+```
+
+La release est l'export des têtes de `origin/main` (ce dépôt), `origin/master`
+(agent-orchestrator, dans `.moteur`) et `origin/main` (agent-registry) : rien de ce qui n'est
+pas poussé ne part. Le script affiche ce qui tourne sur le NAS et les commits qui vont y
+arriver, refuse de continuer si `/volume1` est en lecture seule, vérifie l'empreinte de
+l'archive une fois déposée, puis lance `deploy.sh` (tiré de `deploy/nas/deploy.sh.modele`) :
+sauvegarde, construction des images, bascule, et retour à l'ancienne version si le cockpit ne
+repart pas. Le front se construit et les tests tournent pendant la construction de l'image,
+sur le NAS : un test qui échoue arrête tout avant la bascule.
+
+### Le livreur
+
+Le service `livreur` fait la même livraison depuis le NAS, sur une commande validée dans le
+cockpit par une identité tailnet autorisée (`docs/SPEC-livraison.md`). Il tient le socket
+Docker, n'écoute rien, et ne construit que des commits des miroirs que le publieur tient dans
+`/volume1/docker/git/systeme`. `deploy.sh` ne le recrée jamais ; sa mise à jour est manuelle :
+
+```bash
+bin/livrer.sh --livreur    # reconstruit et redémarre le livreur depuis le code en place sur le NAS
+```
+
+Qui peut livrer vit dans `specs/livraison.json` sur le NAS, jamais dans le dépôt (gabarit :
+`specs/livraison.json.example`). Absent, personne ne livre. Le mot de passe sudo reste demandé à chaque
+fois : les agents fusionnent seuls, la mise en production reste une décision.
 
 ## Ce qui a été retiré
 

@@ -1,0 +1,121 @@
+#!/bin/sh
+# Bascule du cockpit sur la release @RELEASE@ (@VERSION@).
+#
+# Modèle rempli par bin/livrer.sh : ne pas lancer tel quel. Le script livré sur le NAS
+# vérifie l'empreinte de l'archive, sauvegarde l'installation en place, construit les
+# images, bascule, et restaure l'ancienne version si le cockpit ne repart pas.
+# Steam TierList n'est pas concerné. À exécuter une fois :
+#   sudo sh /volume1/docker/releases/@RELEASE@/deploy.sh
+set -eu
+
+BUSINESS=/volume1/docker/business-pipelines
+RELEASE=/volume1/docker/releases/@RELEASE@
+STAGE=$RELEASE/business-pipelines
+ARCHIVE=$RELEASE/@ARCHIVE@
+ENV=$BUSINESS/specs/deploiement.env
+BACKUPS=/volume1/docker/business-pipelines-backups
+STAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP=$BACKUPS/business-pipelines-before-@RELEASE@-$STAMP.tar.gz
+# Le binaire de DSM sur l'hôte ; le livreur, dans son conteneur, pose DOCKER=/usr/bin/docker.
+DOCKER=${DOCKER:-/usr/local/bin/docker}
+export COMPOSE_PROJECT_NAME=business-pipelines
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Cette bascule doit être lancée avec sudo." >&2
+  exit 1
+fi
+for requis in "$BUSINESS" "$ARCHIVE" "$ENV" "$BUSINESS/specs/workers.json" "$BUSINESS/specs/publieur.env" "$DOCKER"; do
+  [ -e "$requis" ] || { echo "Élément requis absent : $requis" >&2; exit 1; }
+done
+echo "@SHA256@  $ARCHIVE" | sha256sum -c -
+# Le runner s'authentifie par l'abonnement (jeton) ou, à défaut, par une clé API.
+grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=' "$ENV" || { echo "Ni jeton ni clé dans $ENV" >&2; exit 1; }
+
+umask 077
+rm -rf "$STAGE"
+mkdir -p "$BACKUPS" "$STAGE"
+tar -xzf "$ARCHIVE" -C "$STAGE"
+mkdir -p "$STAGE/specs"
+ln -sf "$ENV" "$STAGE/specs/deploiement.env"
+ln -sf "$BUSINESS/specs/workers.json" "$STAGE/specs/workers.json"
+ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
+
+ANCIENNE_COCKPIT=$($DOCKER inspect business_cockpit --format '{{.Image}}')
+ANCIENNE_RUNNER=$($DOCKER inspect business_runner --format '{{.Image}}')
+tar -czf "$BACKUP" -C /volume1/docker business-pipelines
+
+SWITCHED=0
+rollback() {
+  code=$?
+  trap - EXIT HUP INT TERM
+  set +e
+  if [ "$SWITCHED" -eq 1 ]; then
+    echo "Échec après la bascule ; restauration du cockpit et du runner précédents..." >&2
+    $DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1
+    rm -rf "$BUSINESS"
+    tar -xzf "$BACKUP" -C /volume1/docker
+    $DOCKER tag "$ANCIENNE_COCKPIT" business-pipelines-cockpit
+    $DOCKER tag "$ANCIENNE_RUNNER" business-pipelines-runner
+    cd "$BUSINESS" || exit "$code"
+    $DOCKER compose up -d --no-build cockpit runner
+  else
+    echo "Échec avant la bascule ; rien n'a été remplacé." >&2
+  fi
+  exit "$code"
+}
+trap rollback EXIT HUP INT TERM
+
+echo "Construction des images..."
+cd "$STAGE"
+$DOCKER compose build cockpit runner tailscale-whois publieur
+
+echo "Bascule..."
+SWITCHED=1
+$DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || true
+find "$BUSINESS" -mindepth 1 -maxdepth 1 -print | while IFS= read -r entree; do
+  case "$(basename "$entree")" in
+    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|passer-abonnement.sh) ;;
+    *) rm -rf "$entree" ;;
+  esac
+done
+tar -xzf "$ARCHIVE" -C "$BUSINESS"
+mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data"
+# deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
+# tous le 2026-09-26. Ses droits sont seulement vérifiés.
+# admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
+# livreur, ces noms n'existent pas.
+chown -R 1026:100 "$BUSINESS"
+
+cd "$BUSINESS"
+$DOCKER compose up -d --no-build cockpit runner tailscale-whois publieur
+
+tentative=0
+while [ "$tentative" -lt 45 ]; do
+  if curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:4600/ >/dev/null && \
+     [ "$($DOCKER inspect business_runner --format '{{.State.Running}}')" = "true" ] && \
+     [ "$($DOCKER inspect business_tailscale_whois --format '{{.State.Running}}')" = "true" ] && \
+     [ "$($DOCKER inspect business_publieur --format '{{.State.Running}}')" = "true" ]; then
+    break
+  fi
+  tentative=$((tentative + 1))
+  sleep 1
+done
+if [ "$tentative" -ge 45 ]; then
+  $DOCKER logs --tail 60 business_cockpit >&2 || true
+  $DOCKER logs --tail 60 business_runner >&2 || true
+  $DOCKER logs --tail 60 business_tailscale_whois >&2 || true
+  $DOCKER logs --tail 60 business_publieur >&2 || true
+  exit 1
+fi
+# L'image doit porter les deux correctifs dont les runs dépendent.
+$DOCKER exec business_runner sh -c 'command -v bash >/dev/null && git config --system --get-all safe.directory | grep -qx "/app/workspaces/\*"'
+[ "$(stat -c %a "$ENV")" = "600" ] || { echo "Attention : $ENV n'est pas en 600." >&2; }
+[ "$(stat -c %a "$BUSINESS/specs/publieur.env")" = "600" ] || { echo "Attention : specs/publieur.env n'est pas en 600." >&2; }
+# Le premier passage du publieur : il doit avoir lu le dépôt GitHub sans erreur.
+sleep 8
+$DOCKER logs business_publieur 2>&1 | tail -5
+
+$DOCKER ps --filter name=business_ --format '{{.Names}} : {{.Status}}'
+curl -fsS -o /dev/null -w 'Cockpit local : HTTP %{http_code}\n' http://127.0.0.1:4600/
+trap - EXIT HUP INT TERM
+echo "Déploiement terminé. Sauvegarde : $BACKUP"

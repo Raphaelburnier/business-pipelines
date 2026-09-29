@@ -6,9 +6,10 @@
 #
 # Les fichiers de configuration arrivent par un montage en lecture seule, à l'exécution.
 node_modules
-# Les dépendances de build du front pèsent 200 Mo et ne servent qu'à produire web/dist,
-# qui lui doit entrer dans l'image : c'est la page que le cockpit sert.
+# Le front se construit dans l'image (étage `verification` du Dockerfile). Un web/dist
+# construit sur un poste n'y entre plus : seul celui de ce build, testé, est servi.
 web/node_modules
+web/dist
 .git
 .gitignore
 # Les définitions d'agents sont du code : le lanceur les lit dans .claude/agents, et sans
@@ -25,6 +26,8 @@ workspace
 runs
 logs
 etat
+ai-studio-data
+ai-studio-archive
 workspaces
 agent-registry
 
