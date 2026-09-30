@@ -259,7 +259,11 @@ function Historique({ livraisons, maintenant }: { livraisons: ReponseLivraison["
 
 export function Decisions({ aller }: { aller: (destination: string) => void }) {
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
-  const approbations = topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0;
+  const { donnees: boite } = useCharge((s) => s.approbations(), []);
+  // Deux sources : les approbations des runs, et les plans métier gelés de la boîte
+  // (marketing et autres). Ne compter que les premières affichait « rien en attente » avec un
+  // plan marketing à trancher.
+  const approbations = (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) + (boite?.etat.decidables ?? 0);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 overflow-y-auto">
       <CarteLivraison />

@@ -2,8 +2,8 @@
 // serveur vérifie toujours son empreinte avant d'écrire la trace signée.
 import { useMemo, useState } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
+import { attente, lireAction } from "../donnees/decisions";
 import type { Decision, DossierApprobation } from "../donnees/decisions";
-import { depuis } from "../format";
 import { Erreur, Vide } from "../ui";
 
 type BrouillonAction = { decision: Decision["decision"] | null; motif: string };
@@ -11,16 +11,6 @@ type Brouillon = Record<string, BrouillonAction>;
 
 function brouillonDu(dossier: DossierApprobation): Brouillon {
   return Object.fromEntries(dossier.actions.map((action) => [action.id, { decision: action.decision, motif: action.note ?? "" }]));
-}
-
-function texteValeur(valeur: unknown): string | null {
-  if (valeur === undefined) return null;
-  if (typeof valeur === "string") return valeur;
-  try {
-    return JSON.stringify(valeur, null, 2);
-  } catch {
-    return "Valeur illisible";
-  }
 }
 
 function Fraicheur({ dossier }: { dossier: DossierApprobation }) {
@@ -41,20 +31,30 @@ function Fraicheur({ dossier }: { dossier: DossierApprobation }) {
 }
 
 function ActionPlan({ action, brouillon, modifier, verrouille }: { action: DossierApprobation["actions"][number]; brouillon: BrouillonAction; modifier: (prochain: Partial<BrouillonAction>) => void; verrouille: boolean }) {
-  const valeur = texteValeur(action.valeur);
+  // Une question se lit d'abord, son rapport l'explique ; un changement de prix se lit en
+  // écart chiffré. Le JSON brut ne reste que pour une forme que la page ne connaît pas.
+  const lecture = lireAction(action);
   return (
     <article className="ao-approbation-action">
       <header>
         <div>
-          <h3>{action.type}</h3>
-          {action.cible && <p className="font-mono text-douce">{action.cible}</p>}
+          <h3>{lecture.forme === "question" ? lecture.question : action.type}</h3>
+          {action.cible && (lecture.forme !== "question" || lecture.question !== action.cible) && <p className="font-mono text-douce">{action.cible}</p>}
+          <p className="font-mono text-[11px] text-douce">{action.id}</p>
         </div>
         {action.decision && <span className={`ao-liv-pastille ${action.decision === "approuve" ? "ok" : "err"}`}>{action.decision === "approuve" ? "approuvée" : "refusée"}</span>}
       </header>
-      {action.question && <p>{action.question}</p>}
-      {action.justification && <p className="text-douce">{action.justification}</p>}
-      {valeur && <pre className="ao-liv-journal">{valeur}</pre>}
-      {action.rapport && <p className="ao-approbation-rapport">{action.rapport}</p>}
+      {lecture.forme === "prix" && <p className="ao-approbation-ecart">{lecture.ecart}</p>}
+      {lecture.forme === "brut"
+        ? lecture.lignes.map((ligne, i) => <pre key={i} className="ao-liv-journal">{ligne}</pre>)
+        : lecture.lignes.length > 0 && (
+            <div className="ao-approbation-rapport">
+              {lecture.lignes.map((ligne, i) => (
+                <p key={i}>{ligne}</p>
+              ))}
+            </div>
+          )}
+      {lecture.forme === "question" && action.justification && <p className="text-douce">{action.justification}</p>}
       {action.sources && action.sources.length > 0 && <p className="font-mono text-[11px] text-douce">Sources : {action.sources.join(" · ")}</p>}
       {!verrouille && (
         <fieldset className="ao-approbation-choix">
@@ -145,7 +145,7 @@ function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharge
       <header>
         <div>
           <h2 id={`titre-${dossier.dossier}`}>{dossier.dossier}</h2>
-          <p className="font-mono text-[11px] text-douce">Plan {dossier.empreinte} · reçu il y a {depuis(dossier.depuis)}</p>
+          <p className="font-mono text-[11px] text-douce">Plan {dossier.empreinte} · en attente depuis <span title={dossier.depuis}>{attente(dossier.depuis)}</span></p>
         </div>
         {dossier.tranche ? <span className="ao-liv-etat">tranché</span> : dossier.reponse_posee ? <span className="ao-liv-etat encours">consigne envoyée</span> : <span className="ao-liv-etat dispo">à trancher</span>}
       </header>
@@ -220,7 +220,8 @@ export function Approbations() {
       {donnees?.modules.erreur && <Erreur>{donnees.modules.erreur}</Erreur>}
       {donnees && donnees.modules.apps.length > 0 && (
         <section className="ao-liv" aria-labelledby="titre-modules">
-          <header><h2 id="titre-modules">Modules liés</h2></header>
+          {/* Cyberpunk n'a que A–Z a–z : un titre sans accent. */}
+          <header><h2 id="titre-modules">Modules</h2></header>
           <div className="ao-approbation-modules">
             {donnees.modules.apps.map((module) => (
               <article key={module.nom}>

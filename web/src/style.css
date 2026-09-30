@@ -484,6 +484,9 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-liv { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
 .ao-liv > header { display: flex; align-items: center; gap: 12px; }
 .ao-liv > header h2 { margin: 0; font: 400 20px/24px var(--font-titre); letter-spacing: .04em; color: var(--color-accent); }
+/* Un nom de dossier est un identifiant (tirets, chiffres) : Cyberpunk, qui n'a que A–Z a–z,
+   le rendait en morceaux. Il passe en Rajdhani, comme les noms de nœuds du graphe. */
+.ao-approbation > header h2 { font: 700 18px/24px var(--font-sans); letter-spacing: 0; overflow-wrap: anywhere; }
 .ao-liv-etat { margin-left: auto; padding: 3px 8px; border: 1px solid var(--color-trait-fort); font: 400 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
 .ao-liv-etat.dispo { border-color: var(--color-alerte); color: var(--color-alerte); }
 .ao-liv-etat.encours { border-color: var(--color-accent); color: var(--color-accent); }
@@ -585,6 +588,10 @@ details.ao-liv-depot { display: block; }
 .ao-approbation-action header p, .ao-approbation-action > p { margin: 0; }
 .ao-approbation-action .ao-liv-pastille { margin-left: auto; }
 .ao-approbation-rapport { padding-left: 10px; border-left: 2px solid var(--color-accent); }
+.ao-approbation-action .ao-approbation-rapport { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 14px; }
+.ao-approbation-action .ao-approbation-rapport p { margin: 0; }
+/* L'écart d'un changement de prix se lit d'un coup d'œil : c'est lui qu'on tranche. */
+.ao-approbation-ecart { margin: 0; font: 400 22px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-accent); }
 .ao-approbation-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--color-trait); }
 .ao-approbation-choix legend { width: 100%; padding: 0; font: 400 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
 .ao-approbation-choix label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
