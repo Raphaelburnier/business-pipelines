@@ -219,3 +219,110 @@
 .sy-zoom .react-flow__controls-button:last-child { border-bottom-width: 1px; }
 .sy-zoom .react-flow__controls-button:hover { background: var(--color-accent); color: var(--color-sur-accent); fill: var(--color-sur-accent); }
 .sy-zoom .react-flow__controls-button svg { fill: currentColor; }
+
+/* ---------- Carte lisible (2026-09-30) ----------
+   Des sections et des cartes à taille de lecture, au lieu d'un schéma réduit à 7 px. */
+.sy-archi-principal { display: flex; min-width: 0; flex-direction: column; gap: 14px; }
+.sy-cote { position: sticky; top: 12px; }
+.sy-zone-bloc { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border: 1px solid var(--color-trait); border-left: 4px solid var(--color-trait-fort); background: color-mix(in srgb, var(--color-surface) 80%, transparent); }
+.sy-zone-bloc.interfaces { border-left-color: var(--color-givre); }
+.sy-zone-bloc.nas { border-left-color: var(--color-nas); }
+.sy-zone-bloc.pc { border-left-color: var(--color-pc); }
+.sy-zone-bloc.cloud { border-left-color: var(--color-trait-fort); }
+.sy-zone-bloc > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.sy-zone-bloc > header h3 { margin: 0; font: 400 20px/1 var(--font-titre); letter-spacing: .04em; color: var(--color-encre); }
+.sy-zone-bloc.interfaces > header h3 { color: var(--color-givre); }
+.sy-zone-bloc.nas > header h3 { color: var(--color-nas); }
+.sy-zone-bloc.pc > header h3 { color: var(--color-pc); }
+.sy-zone-bloc > header span { font: 400 11px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.sy-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+
+/* Une brique : la forme dit le genre (humain coupé, moteur jaune, donnée en pointillé). */
+.sy-carte { position: relative; display: flex; min-height: 88px; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px 10px 14px; border: 1px solid var(--color-trait-fort); background: var(--color-carte); color: var(--color-encre); text-align: left; cursor: pointer; transition: opacity .15s, border-color .15s, box-shadow .15s; }
+.sy-carte::before { content: ""; position: absolute; top: -1px; bottom: -1px; left: -1px; width: 3px; background: var(--color-trait-fort); }
+.sy-carte.nas::before { background: var(--color-nas); }
+.sy-carte.pc::before { background: var(--color-pc); }
+.sy-carte.interfaces::before { background: var(--color-givre); }
+.sy-carte.humain { border-color: var(--color-givre); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); }
+.sy-carte.moteur { border: 2px solid var(--color-accent); }
+.sy-carte.donnee { border-style: dashed; background: var(--color-surface); }
+.sy-carte.externe { background: var(--color-surface); }
+.sy-carte.app { border-color: var(--color-ok); }
+.sy-carte:hover { border-color: var(--color-accent); }
+.sy-carte[aria-pressed="true"] { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent), 0 0 12px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+.sy-carte.eteinte { opacity: .32; }
+.sy-carte .haut { display: flex; width: 100%; align-items: center; gap: 6px; font: 400 10px/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
+.sy-carte .statut { margin-left: auto; padding: 1px 5px; background: var(--color-alerte-fond); color: var(--color-alerte); }
+.sy-carte .statut.arrete { background: var(--color-danger-fond); color: var(--color-danger); }
+.sy-carte strong { font: 700 16px/1.2 var(--font-sans); }
+.sy-carte .sous { font: 400 12px/1.35 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
+
+/* Un flux déroulé : une ligne par passage, de qui, par quoi, vers qui. */
+.sy-parcours { --sy-flux: var(--sy-lecture); padding: 14px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--sy-flux); background: var(--color-surface); }
+.sy-parcours.commande { --sy-flux: var(--sy-commande); }
+.sy-parcours.execution { --sy-flux: var(--sy-execution); }
+.sy-parcours.livraison { --sy-flux: var(--sy-livraison); }
+.sy-parcours.modeles { --sy-flux: var(--sy-modeles); }
+.sy-parcours.dev { --sy-flux: var(--sy-dev); }
+.sy-parcours header { margin-bottom: 10px; }
+.sy-parcours h3 { margin: 0; font: 700 18px/1.2 var(--font-sans); color: var(--sy-flux); }
+.sy-parcours header p { margin: 2px 0 0; color: var(--color-douce); }
+.sy-parcours ol { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sy-parcours li { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: 8px; }
+.sy-parcours .num { font: 400 12px/1 var(--font-mono); color: var(--color-douce); }
+.sy-parcours li button { min-height: 40px; padding: 6px 10px; border: 1px solid var(--color-trait); background: var(--color-carte); color: var(--color-encre); font: 600 14px/1.2 var(--font-sans); text-align: left; cursor: pointer; }
+.sy-parcours li button:hover, .sy-parcours li button[aria-pressed="true"] { border-color: var(--color-accent); }
+.sy-parcours .fleche { display: flex; align-items: center; gap: 8px; font: 400 12px/1.3 var(--font-mono); color: var(--color-douce); }
+.sy-parcours .fleche i { position: relative; flex: none; width: 28px; border-top: 2px solid var(--sy-flux); }
+.sy-parcours .fleche i::after { content: ""; position: absolute; top: -5px; right: -1px; border: 4px solid transparent; border-left: 6px solid var(--sy-flux); }
+.sy-parcours li.bloque .fleche { color: var(--color-danger); }
+.sy-parcours li.bloque .fleche i { border-top-style: dashed; border-top-color: var(--color-danger); }
+
+/* Fiche : liens entrants et sortants en toutes lettres. */
+.sy-fiche ul.liens { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--color-trait); list-style: none; }
+.sy-fiche ul.liens .sy-puce { display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; padding: 6px 8px; }
+.sy-fiche ul.liens .sens { font: 400 10px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.sy-fiche ul.liens em { grid-column: 2; }
+.sy-fiche ul.liens em.bloque { color: var(--color-danger); }
+
+/* Boucle d'un run : des étapes numérotées, les embranchements accrochés à leur départ. */
+.sy-boucle .sy-genres { margin: 12px 0; padding-top: 0; border-top: 0; }
+.sy-etapes { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: etape; }
+.sy-etape { position: relative; display: flex; flex-direction: column; gap: 4px; margin-left: 18px; padding: 12px 14px 14px 22px; border-left: 2px solid var(--color-trait-fort); }
+.sy-etape::before { content: ""; position: absolute; top: 18px; left: -7px; width: 12px; height: 12px; border: 2px solid var(--color-ok); background: var(--color-fond); transform: rotate(45deg); }
+.sy-etape.agent::before { border-color: var(--color-accent); }
+.sy-etape.humain::before { border-color: var(--color-givre); }
+.sy-etape.externe::before { border-color: var(--color-trait-fort); }
+.sy-etape .tete { display: flex; align-items: center; gap: 10px; }
+.sy-etape .num { font: 400 12px/1 var(--font-mono); color: var(--color-accent); }
+.sy-etape .genre { font: 400 10px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
+.sy-etape h3 { margin: 0; font: 700 18px/1.2 var(--font-sans); color: var(--color-encre); }
+.sy-etape .sous, .sy-branche .sous { font: 400 12px/1.35 var(--font-mono); color: var(--color-douce); }
+.sy-etape p { max-width: 80ch; margin: 2px 0 0; line-height: 1.4; }
+.sy-passage { align-self: flex-start; margin-bottom: 2px; padding: 1px 6px; border: 1px solid var(--sy-issue-suite); font: 400 11px/1.3 var(--font-mono); color: var(--color-douce); }
+.sy-passage.pass { border-color: var(--sy-issue-pass); color: var(--sy-issue-pass); }
+.sy-branche { max-width: 80ch; margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--sy-issue-suite); border-left: 3px solid var(--sy-issue-suite); background: var(--color-surface); }
+.sy-branche.fail { border-color: var(--sy-issue-fail); }
+.sy-branche.attente { border-color: var(--sy-issue-attente); }
+.sy-branche strong { display: block; font: 700 14px/1.3 var(--font-sans); }
+.sy-branche.fail strong { color: var(--sy-issue-fail); }
+.sy-branche.attente strong { color: var(--sy-issue-attente); }
+.sy-branche p { margin: 4px 0 0; font-size: 14px; line-height: 1.4; }
+
+@media (max-width: 1100px) {
+  .sy-cote { position: static; }
+}
+@media (max-width: 720px) {
+  .sy-cartes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sy-carte { min-height: 76px; padding: 8px 10px 8px 12px; }
+  .sy-carte strong { font-size: 15px; }
+  /* Un passage sur deux lignes : les deux briques côte à côte, le lien dessous. */
+  .sy-parcours li { grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr); }
+  .sy-parcours .fleche { grid-column: 2 / -1; grid-row: 2; }
+  .sy-etape { margin-left: 8px; padding-left: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sy-carte { transition: none; }
+}
+/* Un filtre non choisi reste lisible : grisé, il paraissait désactivé. */
+.sy-filtre[aria-pressed="false"] { opacity: 1; }

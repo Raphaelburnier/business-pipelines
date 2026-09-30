@@ -9,6 +9,7 @@ import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis } from "../format";
 import type { CommitLivraison, EtapeLivraison, Livraison, ReponseLivraison, VersionsLivraison } from "../types";
 import { Erreur } from "../ui";
+import { Approbations } from "./Approbations";
 
 const DEPOTS: Array<{ cle: keyof VersionsLivraison; nom: string }> = [
   { cle: "cockpit", nom: "cockpit" },
@@ -257,30 +258,18 @@ function Historique({ livraisons, maintenant }: { livraisons: ReponseLivraison["
   );
 }
 
-export function Decisions({ aller }: { aller: (destination: string) => void }) {
-  const { donnees: topo } = useCharge((s) => s.topologie(), []);
-  const { donnees: boite } = useCharge((s) => s.approbations(), []);
-  // Deux sources : les approbations des runs, et les plans métier gelés de la boîte
-  // (marketing et autres). Ne compter que les premières affichait « rien en attente » avec un
-  // plan marketing à trancher.
-  const approbations = (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) + (boite?.etat.decidables ?? 0);
+// Tout ce qui attend une décision de Raphaël, sur un seul écran : la livraison à gauche, les
+// approbations des pipelines à droite (retour du 2026-09-30 : des fenêtres plus denses, sans
+// aller-retour entre deux pages). Une seule colonne sur tablette et téléphone.
+export function Decisions() {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 overflow-y-auto">
-      <CarteLivraison />
-      <section className="ao-liv" aria-labelledby="titre-approbations">
-        <header>
-          <h2 id="titre-approbations">Approbations</h2>
-          <span className={`ao-liv-etat ${approbations ? "dispo" : ""}`}>
-            {approbations ? `${approbations} en attente` : "rien en attente"}
-          </span>
-        </header>
-        <p className="text-douce">Les arbitrages des pipelines (marketing et autres) se tranchent sur leur page.</p>
-        <div className="ao-actions">
-          <button type="button" className="ao-btn" onClick={() => aller("/decisions/pipelines")}>
-            Ouvrir les approbations
-          </button>
-        </div>
-      </section>
+    <div className="ao-decisions">
+      <div className="ao-decisions-colonne" aria-label="Livraison">
+        <CarteLivraison />
+      </div>
+      <div className="ao-decisions-colonne" aria-label="Approbations">
+        <Approbations integre />
+      </div>
     </div>
   );
 }

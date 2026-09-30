@@ -196,19 +196,20 @@ function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharge
   );
 }
 
-export function Approbations() {
+/** `integre` : dans une colonne de la page Décisions, sans largeur propre ni centrage. */
+export function Approbations({ integre = false }: { integre?: boolean }) {
   const [revision, setRevision] = useState(0);
   const { donnees, erreur } = useCharge((source) => source.approbations(), [revision]);
   const dossiers = donnees?.etat.dossiers ?? [];
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto">
+    <div className={integre ? "flex min-w-0 flex-col gap-4" : "mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto"}>
       <section className="ao-liv" aria-labelledby="titre-approbations">
         <header>
           <h2 id="titre-approbations">Approbations des pipelines</h2>
           {donnees && <span className={`ao-liv-etat ${donnees.etat.decidables ? "dispo" : ""}`}>{donnees.etat.decidables ? `${donnees.etat.decidables} à trancher` : "rien à trancher"}</span>}
         </header>
-        <p className="text-douce">Cette page permet de valider, refuser ou renvoyer un plan métier avant son exécution. Chaque écriture reste liée à l’empreinte du plan affiché.</p>
+        <p className="text-douce">Valider, refuser ou renvoyer un plan métier avant son exécution. Chaque écriture reste liée à l’empreinte du plan affiché.</p>
         {donnees && <p className="font-mono text-[11px] text-douce">Identité : {donnees.qui.nom ?? donnees.qui.par} · {donnees.qui.canal}</p>}
         {erreur && <Erreur>{erreur}</Erreur>}
         {!donnees && !erreur && <p className="text-douce">Lecture des approbations…</p>}
