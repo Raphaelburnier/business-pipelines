@@ -309,6 +309,34 @@ test("une livraison conserve le travail et monte le partage d'archive prévu", (
   assert.match(livraison, /mkdir -p[^\n]*"\$BUSINESS\/ai-studio-data"/);
   assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
   assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
+  assert.match(compose, /AI_STUDIO_MODELS_PATH:-\/volume1\/IA_Studio_Model/);
+});
+
+test("le livreur prépare la bascule sans exiger le montage NAS réservé au cockpit", () => {
+  const racine = temporaire();
+  const business = path.join(racine, "business");
+  const specs = path.join(business, "specs");
+  fs.mkdirSync(specs, { recursive: true });
+  for (const fichier of ["deploiement.env", "workers.json", "publieur.env"]) fs.writeFileSync(path.join(specs, fichier), "");
+  const archive = path.join(racine, "archive.tar.gz");
+  fs.writeFileSync(archive, "");
+
+  const livraison = fs.readFileSync(path.join(__dirname, "..", "deploy", "nas", "deploy.sh.modele"), "utf8");
+  const debut = livraison.indexOf('for requis in "$BUSINESS"');
+  const fin = livraison.indexOf('echo "@SHA256@', debut);
+  assert.ok(debut >= 0 && fin > debut, "le précontrôle de deploy.sh doit rester testable");
+  const resultat = spawnSync("sh", ["-c", `set -eu\n${livraison.slice(debut, fin)}`], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BUSINESS: business,
+      ARCHIVE: archive,
+      ENV: path.join(specs, "deploiement.env"),
+      DOCKER: process.execPath,
+      AI_STUDIO_MODELS_PATH: path.join(racine, "partage-visible-seulement-par-docker"),
+    },
+  });
+  assert.strictEqual(resultat.status, 0, resultat.stderr);
 });
 
 (async () => {
