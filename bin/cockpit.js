@@ -196,6 +196,7 @@ try {
   AI_STUDIO = new AIStudioService({
     storageRoot: ENV.AI_STUDIO_STORAGE_ROOT || path.join(RACINE, "ai-studio-data"),
     archiveRoot: ENV.AI_STUDIO_ARCHIVE_ROOT || path.join(RACINE, "ai-studio-archive"),
+    modelsRoot: ENV.AI_STUDIO_MODELS_ROOT || path.join(RACINE, "ai-studio-models"),
     templatesDir: path.join(RACINE, "workflows", "ai-studio"),
     comfyuiUrl: ENV.COMFYUI_URL || "http://comfyui:8188",
     maxConcurrent: Number(ENV.AI_STUDIO_MAX_CONCURRENT_JOBS || 2),
@@ -205,7 +206,8 @@ try {
   console.error(`AI Studio indisponible : ${err.message}`);
 }
 const traiterAIStudioActif = AI_STUDIO
-  ? creerRouteurAIStudio({ service: AI_STUDIO, json, corpsJson, durcissement: DURCISSEMENT })
+  ? creerRouteurAIStudio({ service: AI_STUDIO, json, corpsJson, durcissement: DURCISSEMENT,
+    origineAutorisee: (entetes) => acces.origineAutorisee(entetes, PORTEE) })
   : null;
 async function traiterAIStudio(req, res) {
   if (!req.url.startsWith("/api/ai-studio")) return false;

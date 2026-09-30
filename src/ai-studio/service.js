@@ -3,10 +3,12 @@ const { AIStudioStore, RequeteInvalide, generationId, idValide, slug } = require
 const { ComfyUIService } = require("./comfyui-service");
 const { WorkflowRepository, composerPrompts } = require("./workflows");
 const { GenerationQueue } = require("./queue");
+const { ModelLibrary } = require("./model-library");
 
 class AIStudioService {
-  constructor({ storageRoot, archiveRoot, templatesDir, comfyuiUrl, maxConcurrent = 2, fetchFn = fetch, pollIntervalMs = 1500 }) {
+  constructor({ storageRoot, archiveRoot, modelsRoot = `${storageRoot}/models`, templatesDir, comfyuiUrl, maxConcurrent = 2, fetchFn = fetch, pollIntervalMs = 1500 }) {
     this.store = new AIStudioStore(storageRoot, archiveRoot);
+    this.models = new ModelLibrary(modelsRoot);
     this.workflows = new WorkflowRepository({ templatesDir, storageDir: this.store.workflowsDir });
     this.comfyui = new ComfyUIService({ url: comfyuiUrl, fetchFn });
     this.queue = new GenerationQueue({ store: this.store, comfyui: this.comfyui, maxConcurrent, pollIntervalMs });

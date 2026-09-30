@@ -1,4 +1,4 @@
-import type { CharacterProfile, ComfyStatus, Generation, WorkflowManifest } from "./types";
+import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
 
 export class AIStudioApiError extends Error {
   readonly status: number;
@@ -29,6 +29,24 @@ function json<T>(url: string, method: "POST" | "PATCH", corps: unknown): Promise
 
 export const aiStudioApi = {
   status: () => requete<ComfyStatus>("/api/ai-studio/status"),
+  models: () => requete<ModelLibraryStatus>("/api/ai-studio/models"),
+  addModel: (file: File, category: string, progress: (percent: number) => void = () => {}) => new Promise<{ category: string; name: string; size: number; sha256: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/ai-studio/models?category=${encodeURIComponent(category)}&name=${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader("content-type", "application/octet-stream");
+    xhr.setRequestHeader("accept", "application/json");
+    xhr.upload.onprogress = (event) => { if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100)); };
+    xhr.onerror = () => reject(new Error("transfert du modèle vers le NAS interrompu"));
+    xhr.onload = () => {
+      let data: { erreur?: string; category?: string; name?: string; size?: number; sha256?: string };
+      try { data = JSON.parse(xhr.responseText); }
+      catch { reject(new Error("réponse du NAS illisible")); return; }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new AIStudioApiError(data.erreur || "import refusé", xhr.status));
+      } else resolve(data as { category: string; name: string; size: number; sha256: string });
+    };
+    xhr.send(file);
+  }),
   async checkpoints() {
     return (await requete<{ checkpoints: string[] }>("/api/ai-studio/checkpoints")).checkpoints;
   },
