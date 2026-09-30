@@ -114,3 +114,17 @@ export interface ComfyStatus {
   system: unknown;
   error: string | null;
 }
+
+export interface StudioModel {
+  category: string;
+  name: string;
+  size: number;
+  sha256: string | null;
+  installed: boolean | null;
+}
+
+export interface ModelLibraryStatus {
+  categories: string[];
+  models: StudioModel[];
+  comfy_available: boolean;
+}
