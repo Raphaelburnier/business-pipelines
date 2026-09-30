@@ -130,8 +130,13 @@ function Coquille() {
   const { donnees: usage } = useCharge((s) => s.usage(), []);
   const { donnees: livraison } = useCharge((s) => s.livraison(), []);
   // Ce qui attend Raphaël : les approbations des pipelines, et une livraison possible.
+  const { donnees: boite } = useCharge((s) => s.approbations(), []);
+  // Ce qui attend Raphaël : les approbations des runs, les plans métier de la boîte, et une
+  // livraison possible.
   const decisions =
-    (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) + (livraison?.proposition?.disponible && !livraison.enCours ? 1 : 0);
+    (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) +
+    (boite?.etat.decidables ?? 0) +
+    (livraison?.proposition?.disponible && !livraison.enCours ? 1 : 0);
 
   // Sur téléphone, le tiroir se referme dès qu'on a choisi une destination.
   const naviguer = useCallback(

@@ -255,10 +255,12 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     // Un ancien lien vers la maquette doit encore ouvrir la maquette.
     const maquette = await requete(PORT, "/app/?source=maquette");
     assert.strictEqual(maquette.entetes.location, "/?source=maquette");
-    // /decisions est une page du front (carte Livraison) ; les approbations des pipelines
-    // ont déménagé sous /decisions/pipelines (docs/SPEC-livraison.md, §8).
+    // /decisions (carte Livraison) et /decisions/pipelines (approbations, dans le front depuis
+    // #44) sont des pages du front : servies comme la racine, 503 tant qu'il n'est pas construit.
+    // La CI lance ces tests avant de construire le front ; attendre 200 ici ne passait qu'avec
+    // un web/dist laissé par un build précédent.
     assert.strictEqual((await requete(PORT, "/decisions")).code, app.code);
-    assert.strictEqual((await requete(PORT, "/decisions/pipelines")).code, 200);
+    assert.strictEqual((await requete(PORT, "/decisions/pipelines")).code, app.code);
   } finally {
     cockpit.kill();
   }
