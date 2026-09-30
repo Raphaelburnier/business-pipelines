@@ -613,3 +613,13 @@ details.ao-liv-depot { display: block; }
 @media (max-width: 1100px), (pointer: coarse) {
   .ao-contenu .relative.h-4, .ao-contenu .relative.h-4 > button.absolute { height: 28px; line-height: 28px; }
 }
+
+/* ---------- Décisions : livraison à gauche, approbations à droite (2026-09-30) ---------- */
+.ao-decisions { display: grid; width: 100%; max-width: 1600px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 16px; align-items: start; margin-inline: auto; }
+.ao-decisions-colonne { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
+/* La livraison reste sous les yeux quand on descend dans une longue liste d'approbations. */
+.ao-decisions-colonne:first-child { position: sticky; top: 12px; }
+@media (max-width: 1100px) {
+  .ao-decisions { grid-template-columns: minmax(0, 1fr); }
+  .ao-decisions-colonne:first-child { position: static; }
+}

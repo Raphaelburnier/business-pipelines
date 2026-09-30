@@ -8,7 +8,6 @@ import { useTheme } from "./theme";
 import type { EtatMachine, Machine } from "./types";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
-import { Approbations } from "./vues/Approbations";
 import { Decisions } from "./vues/Decisions";
 import { Demander } from "./vues/Demander";
 import { EnCours } from "./vues/EnCours";
@@ -113,8 +112,7 @@ function titreDe(route: Route): string {
   if (route.type === "graph") return "Accueil";
   if (route.type === "agents") return "Agents";
   if (route.type === "demander") return "Demander";
-  if (route.type === "decisions") return "Decisions";
-  if (route.type === "approbations") return "Approbations";
+  if (route.type === "decisions" || route.type === "approbations") return "Decisions";
   if (route.type === "ai-studio") return "AI Studio";
   if (route.type === "systeme") return "Systeme";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
@@ -149,7 +147,7 @@ function Coquille() {
   const ouvrir = useCallback((selection: Selection) => naviguer(chemin(selection)), [naviguer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "ai-studio" || route.type === "systeme" ? "sans-encours" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "ai-studio" || route.type === "systeme" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -231,8 +229,7 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
-          {route.type === "decisions" && <Decisions aller={naviguer} />}
-          {route.type === "approbations" && <Approbations />}
+          {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
           {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement de la carte…</p></section>}><Systeme /></Suspense>}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
@@ -251,7 +248,7 @@ function Coquille() {
         </main>
       </div>
 
-      {route.type !== "ai-studio" && route.type !== "systeme" && <EnCours />}
+      {route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "decisions" && route.type !== "approbations" && <EnCours />}
     </div>
   );
 }

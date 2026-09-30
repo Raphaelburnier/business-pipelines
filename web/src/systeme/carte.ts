@@ -1,5 +1,5 @@
 // La carte du système agentique, écrite à la main à partir du code et du vault (relevé du
-// 2026-09-29). Ce n'est pas une donnée vivante : l'état des runs et des machines reste dans la
+// 2026-09-29, revu le 2026-09-30). Ce n'est pas une donnée vivante : l'état des runs et des machines reste dans la
 // topologie. Quand une brique change de rôle, c'est ici qu'on la corrige.
 
 export type Zone = "interfaces" | "nas" | "pc" | "cloud";
@@ -134,6 +134,7 @@ export const BRIQUES: Brique[] = [
     faits: [
       "Routes de lecture : /api/topology, /api/runs, /api/machines, /api/usage, /api/stream (SSE)",
       "POST /api/runs : contrôle d'origine, JSON seul, 20 ko max, réponse 202 et commande run.start",
+      "Décisions : GET /api/livraison et POST /api/livraisons (livraison.start), GET /api/approbations et POST /api/decider",
       "Le flux SSE ne porte pas l'état, il dit qu'il a changé (rechargement au plus toutes les 600 ms)",
       "Vues : Accueil (topologie), Agents, Demander, AI Studio, Décisions, Système",
       "Refuse avant la file un run dont le modèle ou la machine est indisponible",
@@ -331,7 +332,9 @@ export const BRIQUES: Brique[] = [
     faits: [
       "Aucune clé de modèle ni jeton : il lit les miroirs en lecture seule",
       "Ne livre que des commits déjà fusionnés sur les branches par défaut",
-      "Étapes : vérifier, préparer, construire, sauvegarder, basculer, santé, restaurer",
+      "Étapes : vérifier, préparer, sauvegarder, construire, basculer, santé ; restaurer si la bascule échoue",
+      "Publie sa proposition dans etat/livraison.json, recalculée dès qu'une version part",
+      "Ne se livre jamais lui-même : sa mise à jour passe par bin/livrer.sh --livreur",
       "L'image construit le front et lance les tests : une image qui échoue n'existe pas",
       "Sauvegarde et restaure le code seulement, jamais l'état vivant",
     ],
@@ -388,24 +391,24 @@ export const BRIQUES: Brique[] = [
     resume: "Le remote principal des projets (dépôts bare) et les miroirs en lecture seule des trois dépôts système.",
     faits: [
       "Projets : steam-tierlist.git, marketing.git",
-      "Miroirs système : business-pipelines, agent-orchestrator, agent-registry",
+      "Miroirs système dans systeme/ : business-pipelines, agent-orchestrator, agent-registry, tenus par le publieur, lus par le livreur",
       "Le runner y pousse les checkpoints run/<id>",
     ],
   },
   {
     id: "publieur",
     titre: "Publieur",
-    sous: "seul jeton GitHub",
+    sous: "jetons GitHub · sans agent",
     zone: "nas",
     genre: "service",
     statut: "actif",
     x: C[3],
     y: R[3],
-    resume: "Sans agent, il est le seul à détenir un jeton GitHub. Il pousse les branches agent/ des runs réussis, ouvre la PR, puis ramène main de GitHub vers le NAS en avance rapide.",
+    resume: "Sans agent, il est le seul service à détenir des jetons GitHub. Il pousse les branches agent/ des runs réussis, ouvre la PR, ramène main de GitHub vers le NAS en avance rapide, et tient les miroirs des trois dépôts système.",
     faits: [
       "Jeton fine-grained : Contents et Pull requests, limité aux dépôts qui publient",
       "Un GITHUB_TOKEN de workflow ne déclencherait pas la CI, d'où ce jeton dédié",
-      "Jeton séparé en lecture seule pour les miroirs système (#38)",
+      "Second jeton, en lecture seule, pour les miroirs système (#38) : jamais de repli sur le jeton d'écriture",
       "Premier retour automatique de main sur le NAS le 2026-09-28 (Steam dd34688)",
     ],
     depuis: "2026-09-27",
@@ -430,7 +433,7 @@ export const BRIQUES: Brique[] = [
     ],
   },
   {
-    id: "miroirs",
+    id: "releases",
     titre: "Release du cockpit",
     sous: "/volume1/docker/releases",
     zone: "nas",
@@ -442,7 +445,8 @@ export const BRIQUES: Brique[] = [
     faits: [
       "Trois SHA notés dans .release à chaque livraison",
       "Sauvegardes sous /volume1/docker/business-pipelines-backups",
-      "Services recréés : cockpit, runner, tailscale-whois, publieur",
+      "Services recréés : cockpit, runner, tailscale-whois, publieur ; jamais le livreur",
+      "Cinq releases et cinq sauvegardes gardées, les plus anciennes supprimées",
     ],
   },
 
@@ -643,7 +647,8 @@ export const LIENS: Lien[] = [
   { de: "bare", vers: "apps", famille: "livraison", libelle: "mise en service" },
   { de: "bare", vers: "livreur", famille: "livraison", libelle: "miroirs ro" },
   { de: "eventstore", vers: "livreur", famille: "livraison", libelle: "livraison.start" },
-  { de: "livreur", vers: "miroirs", famille: "livraison", libelle: "deploy.sh" },
+  { de: "livreur", vers: "releases", famille: "livraison", libelle: "prépare · deploy.sh" },
+  { de: "livreur", vers: "cockpit", famille: "livraison", libelle: "bascule · proposition" },
   { de: "saas", vers: "apps", famille: "livraison", libelle: "deployer_projet" },
 
   // Modèles.
