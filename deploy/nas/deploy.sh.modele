@@ -27,8 +27,8 @@ fi
 for requis in "$BUSINESS" "$ARCHIVE" "$ENV" "$BUSINESS/specs/workers.json" "$BUSINESS/specs/publieur.env" "$DOCKER"; do
   [ -e "$requis" ] || { echo "Élément requis absent : $requis" >&2; exit 1; }
 done
-MODELS_PATH=${AI_STUDIO_MODELS_PATH:-/volume1/IA_Studio_Model}
-[ -d "$MODELS_PATH" ] || { echo "Partage de modèles absent : $MODELS_PATH" >&2; exit 1; }
+# Ne pas vérifier ici les volumes du cockpit : le livreur exécute aussi ce script
+# dans son propre conteneur, où le partage des modèles n'est pas monté.
 echo "@SHA256@  $ARCHIVE" | sha256sum -c -
 # Le runner s'authentifie par l'abonnement (jeton) ou, à défaut, par une clé API.
 grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=' "$ENV" || { echo "Ni jeton ni clé dans $ENV" >&2; exit 1; }
