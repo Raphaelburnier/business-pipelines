@@ -331,9 +331,7 @@ export function Approbations({ integre = false }: { integre?: boolean }) {
   const [dernier, setDernier] = useState<string | null>(null);
   const { donnees, erreur } = useCharge((source) => source.approbations(), [revision]);
   const cle = (d: DossierApprobation) => `${d.dossier}:${d.empreinte}`;
-  const tous = donnees?.etat.dossiers ?? [];
-  const dossiers = tous.filter((d) => !d.tranche && !d.reponse_posee && !traites.has(cle(d)));
-  const tranches = tous.filter((d) => d.tranche);
+  const dossiers = (donnees?.etat.dossiers ?? []).filter((d) => !d.tranche && !d.reponse_posee && !traites.has(cle(d)));
   const conseiller: EtatConseiller = donnees?.conseiller ?? { disponible: false, vuLe: null, modele: null, vault: null };
 
   return (
@@ -364,13 +362,6 @@ export function Approbations({ integre = false }: { integre?: boolean }) {
           }}
         />
       ))}
-
-      {tranches.length > 0 && (
-        <section className="ao-approbations-tranchees" aria-labelledby="titre-tranchees">
-          <header><h2 id="titre-tranchees">Tranchés récemment</h2><span>{tranches.length}</span></header>
-          {tranches.map((dossier) => <Dossier key={cle(dossier)} dossier={dossier} conseiller={conseiller} recharger={() => setRevision((courant) => courant + 1)} traite={() => undefined} />)}
-        </section>
-      )}
 
       {donnees?.modules.erreur && <Erreur>{donnees.modules.erreur}</Erreur>}
       {donnees && donnees.modules.apps.length > 0 && (
