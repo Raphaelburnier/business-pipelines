@@ -330,6 +330,7 @@ async function traiter(req, res) {
   // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/systeme" || chemin === "/systeme/" ||
     chemin === "/decisions" || chemin === "/decisions/" ||
     chemin === "/decisions/pipelines" || chemin === "/decisions/pipelines/" ||
     chemin === "/demander" || chemin.startsWith("/demander/") ||

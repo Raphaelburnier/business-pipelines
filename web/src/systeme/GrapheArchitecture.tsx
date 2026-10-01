@@ -108,22 +108,30 @@ function cotes(de: { x: number; y: number }, vers: { x: number; y: number }): [C
 }
 
 function Cadrage({ flux }: { flux: Famille | null }) {
-  const { fitView, getNodes } = useReactFlow();
+  const { setCenter, viewportInitialized } = useReactFlow();
 
   useEffect(() => {
+    if (!viewportInitialized) return;
     const ids = flux ? new Set(LIENS.filter((l) => l.famille === flux).flatMap((l) => [l.de, l.vers])) : null;
-    const minuterie = window.setTimeout(() => {
-      const noeuds = getNodes().filter((n) => n.type === "brique" && (!ids || ids.has(n.id)));
-      void fitView({
-        nodes: noeuds,
-        padding: flux ? 0.2 : 0.08,
-        duration: 420,
-        minZoom: flux ? 0.76 : 0.68,
-        maxZoom: flux ? 1.05 : 0.82,
-      });
-    }, 0);
-    return () => window.clearTimeout(minuterie);
-  }, [fitView, flux, getNodes]);
+    const frame = window.requestAnimationFrame(() => {
+      const noeuds = BRIQUES.filter((n) => !ids || ids.has(n.id));
+      if (!noeuds.length) return;
+      const gauche = Math.min(...noeuds.map((n) => n.x));
+      const haut = Math.min(...noeuds.map((n) => n.y));
+      const droite = Math.max(...noeuds.map((n) => n.x + LARGEUR_BRIQUE));
+      const bas = Math.max(...noeuds.map((n) => n.y + HAUTEUR_BRIQUE));
+      const canevas = document.querySelector<HTMLElement>(".sy-canevas .react-flow");
+      if (!canevas?.clientWidth || !canevas.clientHeight) return;
+      const marge = flux ? 0.2 : 0.08;
+      const zoom = Math.min(
+        (canevas.clientWidth * (1 - marge * 2)) / (droite - gauche),
+        (canevas.clientHeight * (1 - marge * 2)) / (bas - haut),
+        flux ? 1.05 : 0.82,
+      );
+      void setCenter((gauche + droite) / 2, (haut + bas) / 2, { zoom, duration: 420 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [flux, setCenter, viewportInitialized]);
 
   return null;
 }
@@ -169,6 +177,7 @@ function Graphe({ flux, selection, onSelection }: Props) {
         handles: poignees(LARGEUR_BRIQUE, HAUTEUR_BRIQUE),
         draggable: false,
         connectable: false,
+        zIndex: 2,
         data: {
           brique,
           selectionnee: brique.id === selection,
@@ -211,7 +220,7 @@ function Graphe({ flux, selection, onSelection }: Props) {
               height: active ? 18 : 14,
               color: lien.bloque ? "var(--color-danger)" : `var(--sy-${lien.famille})`,
             },
-            zIndex: active ? 3 : 1,
+            zIndex: active ? 1 : 0,
           },
         ];
       }),
