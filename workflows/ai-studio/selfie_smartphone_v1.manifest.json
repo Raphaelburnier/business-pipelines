@@ -1,0 +1,24 @@
+{
+  "id": "selfie_smartphone_v1",
+  "name": "Selfie smartphone",
+  "use_case": "Selfies pris au téléphone, format story",
+  "description": "Rend l’image comme un selfie pris à bout de bras avec la caméra frontale : regard dans l’objectif, légère déformation grand-angle, peau naturelle, rendu spontané. Le téléphone n’apparaît pas. Format 9:16 par défaut pour les stories ; passe en 4:5 pour le feed.",
+  "workflow": "selfie_smartphone_v1.json",
+  "version": 1,
+  "form_defaults": { "pose": "candid", "camera_angle": "high angle", "shot_type": "selfie", "lighting": "soft natural light", "style": "realistic Instagram lifestyle", "aspect_ratio": "9:16" },
+  "examples": { "prompt": "smiling selfie in a sunny street, wind in the hair", "scene": "Lisbon street, afternoon", "outfit": "white t-shirt, denim jacket" },
+  "parameters": {
+    "positive_prompt": { "type": "string", "required": true, "node": "6", "input": "text" },
+    "negative_prompt": { "type": "string", "default": "", "node": "7", "input": "text" },
+    "checkpoint": { "type": "string", "required": true, "node": "4", "input": "ckpt_name" },
+    "seed": { "type": "integer", "min": 0, "max": 2147483647, "node": "3", "input": "seed" },
+    "cfg": { "type": "number", "min": 1, "max": 15, "step": 0.1, "default": 5, "node": "3", "input": "cfg" },
+    "steps": { "type": "integer", "min": 1, "max": 150, "step": 1, "default": 28, "node": "3", "input": "steps" },
+    "sampler": { "type": "string", "enum": ["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde"], "default": "dpmpp_2m", "node": "3", "input": "sampler_name" },
+    "scheduler": { "type": "string", "enum": ["normal", "karras", "exponential", "sgm_uniform", "simple"], "default": "karras", "node": "3", "input": "scheduler" },
+    "denoise": { "type": "number", "min": 0, "max": 1, "step": 0.01, "default": 1, "node": "3", "input": "denoise" },
+    "width": { "type": "integer", "min": 256, "max": 4096, "step": 8, "default": 832, "node": "5", "input": "width" },
+    "height": { "type": "integer", "min": 256, "max": 4096, "step": 8, "default": 1040, "node": "5", "input": "height" },
+    "filename_prefix": { "type": "string", "required": true, "node": "9", "input": "filename_prefix" }
+  }
+}

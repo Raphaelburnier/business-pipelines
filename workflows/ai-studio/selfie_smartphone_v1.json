@@ -1,0 +1,144 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1,
+      "steps": 28,
+      "cfg": 5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "13",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "model.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1040,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "portrait photo",
+      "clip": [
+        "4",
+        1
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "low quality, deformed",
+      "clip": [
+        "4",
+        1
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "AIStudio/generation",
+      "images": [
+        "8",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Style fixe du workflow (positif)"
+    },
+    "inputs": {
+      "text": "smartphone front camera selfie, photo taken at arm length, subject looking into the lens, slight wide angle lens perspective, natural skin texture with pores, casual authentic moment, handheld phone photo, realistic Instagram story look",
+      "clip": [
+        "4",
+        1
+      ]
+    }
+  },
+  "11": {
+    "class_type": "ConditioningConcat",
+    "_meta": {
+      "title": "Prompt + style (positif)"
+    },
+    "inputs": {
+      "conditioning_to": [
+        "6",
+        0
+      ],
+      "conditioning_from": [
+        "10",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Style fixe du workflow (negatif)"
+    },
+    "inputs": {
+      "text": "professional studio photo, tripod shot, both hands visible holding nothing, visible phone in frame, extra arms, distorted hands, heavy retouching, plastic skin",
+      "clip": [
+        "4",
+        1
+      ]
+    }
+  },
+  "13": {
+    "class_type": "ConditioningConcat",
+    "_meta": {
+      "title": "Prompt + style (negatif)"
+    },
+    "inputs": {
+      "conditioning_to": [
+        "7",
+        0
+      ],
+      "conditioning_from": [
+        "12",
+        0
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
 import { aiStudioApi } from "./api";
-import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus } from "./types";
+import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
 
 export type AIStudioPage =
   | { page: "home" }
@@ -217,10 +217,20 @@ function ProfileStudio({ id, tab, aller }: { id: string; tab: "gallery" | "gener
   );
 }
 
+const WORKFLOW_PAR_DEFAUT = "portrait_realistic_v1";
+
 function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href: string) => void }) {
   const [advanced, setAdvanced] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowManifest[]>([]);
+  const [workflowId, setWorkflowId] = useState(WORKFLOW_PAR_DEFAUT);
+  useEffect(() => {
+    aiStudioApi.workflows().then(setWorkflows).catch((err) => setErreur(`Liste des workflows indisponible : ${message(err)}`));
+  }, []);
+  const workflow = workflows.find((w) => w.id === workflowId);
+  const defauts = workflow?.form_defaults ?? {};
+  const exemples = workflow?.examples ?? {};
   const soumettre = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -252,25 +262,28 @@ function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href:
 
   return (
     <form className="studio-generate" onSubmit={soumettre}>
+      <section className="studio-director-card studio-workflow-card">
+        <div className="studio-step"><span>01</span><div><b>Choisir le type de photo</b><small>Chaque workflow ajoute son propre style et pré-remplit le cadrage.</small></div></div>
+        <WorkflowPicker workflows={workflows} value={workflowId} onChange={setWorkflowId} />
+      </section>
       <section className="studio-director-card">
-        <div className="studio-step"><span>01</span><div><b>Décrire la prise</b><small>L’identité du profil est ajoutée séparément.</small></div></div>
-        <label className="studio-prompt"><textarea name="prompt" required rows={4} placeholder={`${profile.name} walking through Tokyo at night, full body, 3/4 view`} /></label>
-        <div className="studio-form-grid">
-          <Champ label="Scène" name="scene" placeholder="Tokyo night" />
-          <Champ label="Tenue" name="outfit" placeholder="Black streetwear" />
-          <Select label="Pose" name="pose" options={["walking", "standing", "sitting", "looking back", "candid"]} />
-          <Select label="Angle" name="camera_angle" options={["eye level", "front", "3/4 left", "3/4 right", "profile left", "profile right", "low angle", "high angle", "over shoulder"]} />
-          <Select label="Cadrage" name="shot_type" options={["full body", "medium shot", "close-up", "wide shot", "selfie", "mirror selfie"]} />
-          <Select label="Lumière" name="lighting" options={["soft natural light", "golden hour", "neon night", "studio softbox", "hard flash"]} />
-          <Select label="Style" name="style" options={["realistic Instagram lifestyle", "street photography", "luxury fashion", "cinematic portrait", "editorial"]} />
-          <Select label="Ratio" name="aspect_ratio" options={["4:5", "1:1", "9:16", "1.91:1"]} />
+        <div className="studio-step"><span>02</span><div><b>Décrire la prise</b><small>L’identité du profil est ajoutée séparément.</small></div></div>
+        <label className="studio-prompt"><textarea name="prompt" required rows={4} placeholder={`${profile.name} ${exemples.prompt ?? "walking through Tokyo at night, full body, 3/4 view"}`} /></label>
+        <div className="studio-form-grid" key={workflowId}>
+          <Champ label="Scène" name="scene" placeholder={exemples.scene ?? "Tokyo night"} />
+          <Champ label="Tenue" name="outfit" placeholder={exemples.outfit ?? "Black streetwear"} />
+          <Select label="Pose" name="pose" options={["walking", "standing", "sitting", "looking back", "candid"]} defaultValue={defauts.pose} />
+          <Select label="Angle" name="camera_angle" options={["eye level", "front", "3/4 left", "3/4 right", "profile left", "profile right", "low angle", "high angle", "over shoulder"]} defaultValue={defauts.camera_angle} />
+          <Select label="Cadrage" name="shot_type" options={["full body", "medium shot", "close-up", "wide shot", "selfie", "mirror selfie"]} defaultValue={defauts.shot_type} />
+          <Select label="Lumière" name="lighting" options={["soft natural light", "golden hour", "neon night", "studio softbox", "hard flash"]} defaultValue={defauts.lighting} />
+          <Select label="Style" name="style" options={["realistic Instagram lifestyle", "street photography", "luxury fashion", "cinematic portrait", "editorial"]} defaultValue={defauts.style} />
+          <Select label="Ratio" name="aspect_ratio" options={["4:5", "1:1", "9:16", "1.91:1"]} defaultValue={defauts.aspect_ratio} />
         </div>
       </section>
       <section className="studio-director-card">
-        <div className="studio-step"><span>02</span><div><b>Régler la série</b><small>Les images choisies seront archivées après validation.</small></div></div>
+        <div className="studio-step"><span>03</span><div><b>Régler la série</b><small>Les images choisies seront archivées après validation.</small></div></div>
         <div className="studio-controls">
           <label><span>Projet</span><input name="project_id" defaultValue={profile.project_id || profile.id} required /></label>
-          <label><span>Workflow</span><select name="workflow_id" defaultValue="portrait_realistic_v1"><option value="portrait_realistic_v1">Portrait realistic</option></select></label>
           <label><span>Images</span><select name="count" defaultValue="4">{[1, 2, 4, 6, 8].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label><span>Identity</span><input name="identity_strength" type="range" min="0" max="1" step="0.01" defaultValue="0" disabled title="Activé en Phase 2" /><small>Phase 2</small></label>
           <label><span>Créativité</span><input name="creativity" type="range" min="0" max="1" step="0.05" defaultValue="0.65" /></label>
@@ -279,9 +292,9 @@ function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href:
         <button type="button" className="studio-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced((v) => !v)}>{advanced ? "− Masquer les paramètres avancés" : "+ Paramètres avancés"}</button>
         {advanced && <AdvancedFields profile={profile} />}
       </section>
-      {!advanced && <AdvancedHidden profile={profile} />}
+      {!advanced && <AdvancedHidden profile={profile} workflow={workflow} />}
       {erreur && <Alerte>{erreur}</Alerte>}
-      <div className="studio-generate-action"><span><b>{profile.name}</b><small>portrait_realistic_v1 · {profile.default_resolution.width}×{profile.default_resolution.height}</small></span><button className="ao-btn primaire" disabled={occupe}>{occupe ? "Mise en file…" : "Générer"}</button></div>
+      <div className="studio-generate-action"><span><b>{profile.name}</b><small>{workflow?.name ?? workflowId} · ratio {defauts.aspect_ratio ?? profile.preferred_ratio}</small></span><button className="ao-btn primaire" disabled={occupe}>{occupe ? "Mise en file…" : "Générer"}</button></div>
     </form>
   );
 }
@@ -301,8 +314,22 @@ function AdvancedFields({ profile, settings }: { profile: CharacterProfile; sett
   </div>;
 }
 
-function AdvancedHidden({ profile }: { profile: CharacterProfile }) {
-  return <>{Object.entries({ checkpoint: profile.checkpoint, steps: 28, sampler: "dpmpp_2m", scheduler: "karras", denoise: 1 }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
+function WorkflowPicker({ workflows, value, onChange }: { workflows: WorkflowManifest[]; value: string; onChange: (id: string) => void }) {
+  const choisi = workflows.find((w) => w.id === value);
+  return <div className="studio-workflow-picker">
+    <label className="studio-field"><span>Workflow</span>
+      <select name="workflow_id" value={value} onChange={(event) => onChange(event.target.value)}>
+        {workflows.length === 0 && <option value={value}>{value}</option>}
+        {workflows.map((w) => <option key={w.id} value={w.id}>{w.use_case ? `${w.name} : ${w.use_case}` : w.name}</option>)}
+      </select>
+    </label>
+    {choisi && <p className="studio-workflow-description" aria-live="polite"><b>{choisi.use_case ?? choisi.name}.</b> {choisi.description}</p>}
+  </div>;
+}
+
+function AdvancedHidden({ profile, workflow }: { profile: CharacterProfile; workflow?: WorkflowManifest }) {
+  const defaut = (nom: string, repli: string | number) => workflow?.parameters[nom]?.default ?? repli;
+  return <>{Object.entries({ checkpoint: profile.checkpoint, steps: defaut("steps", 28), sampler: defaut("sampler", "dpmpp_2m"), scheduler: defaut("scheduler", "karras"), denoise: defaut("denoise", 1) }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
 }
 
 function References({ profile, onChange }: { profile: CharacterProfile; onChange: () => void }) {
