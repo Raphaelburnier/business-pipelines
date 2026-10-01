@@ -1,9 +1,23 @@
 // Les approbations de la maquette reproduisent la boîte métier du cockpit, distincte des
 // approbations liées aux runs. Elles restent modifiables pendant la session pour montrer
 // l'empreinte, la trace des décisions et la réponse libre.
-import type { DemandeDecision, DossierApprobation, ReponseApprobations, ReponseDecision } from "../donnees/decisions";
+import type {
+  DemandeDecision,
+  DossierApprobation,
+  EtatConseiller,
+  FilConseil,
+  ReponseApprobations,
+  ReponseDecision,
+} from "../donnees/decisions";
 
 const maintenant = "2026-09-29T18:00:00.000Z";
+
+const conseillerMaquette: EtatConseiller = {
+  disponible: false,
+  vuLe: "2026-09-29T17:58:20.000Z",
+  modele: "qwen3:8b",
+  vault: { fichiers: 482, synchroLe: "2026-09-29T17:42:01.000Z" },
+};
 
 function clone<T>(valeur: T): T {
   return structuredClone(valeur);
@@ -34,6 +48,16 @@ function dossiersInitiaux(): DossierApprobation[] {
           sources: ["brief-septembre.md", "budget-marketing.json"],
           decision: null,
           note: null,
+          conseil: {
+            classement: "probleme",
+            texte: "Le brief ne donne ni lien de validation de la vitrine ni date de disponibilité. La publication peut renvoyer vers une page incomplète.",
+            sources: [
+              { id: "V1", genre: "vault", titre: "Brief septembre", chemin: "notes/marketing/brief-septembre.md" },
+              { id: "R1", genre: "run", titre: "Vérification de la vitrine", run: "run-vitrine-20260929" },
+            ],
+            modele: "qwen3:8b",
+            le: "2026-09-29T17:42:10.000Z",
+          },
         },
         {
           id: "allouer-budget",
@@ -44,6 +68,13 @@ function dossiersInitiaux(): DossierApprobation[] {
           rapport: "Prévision : 35 à 60 visites qualifiées.",
           decision: null,
           note: null,
+          conseil: {
+            classement: "suggestion",
+            texte: "Ajouter un seuil d'arrêt mesurable, par exemple le coût par visite maximal, avant de lancer la campagne.",
+            sources: [{ id: "V1", genre: "vault", titre: "Budget marketing", chemin: "notes/marketing/budget.md" }],
+            modele: "qwen3:8b",
+            le: "2026-09-29T17:42:10.000Z",
+          },
         },
       ],
       tranche: false,
@@ -77,11 +108,79 @@ function dossiersInitiaux(): DossierApprobation[] {
       ],
       tranche: false,
     },
+    {
+      dossier: "catalogue-automne",
+      reponse_posee: null,
+      empreinte: "99b6e97c052d",
+      depuis: "2026-09-29T11:20:00.000Z",
+      appliquer_avec: "catalogue.json",
+      plan_absent: false,
+      fraicheur: {
+        reference: "2026-09-29T10:50:00.000Z",
+        age_heures: 7.17,
+        max_heures: 24,
+        verdict: "frais",
+      },
+      actions: [
+        {
+          id: "mettre-a-jour-prix",
+          type: "prix",
+          cible: "pack-démarrage",
+          valeur: { de: 12, vers: 9.9, devise: "CHF" },
+          justification: "Le prix suit la campagne d'automne validée.",
+          decision: "approuve",
+          note: "Application après la publication du catalogue.",
+          decision_par: "Raphaël",
+          decision_le: "2026-09-29T17:10:00.000Z",
+          decision_canal: "tailnet",
+        },
+      ],
+      tranche: true,
+      note_vault: "fait",
+    },
   ];
+}
+
+function filsInitiaux(): Map<string, FilConseil> {
+  return new Map([
+    [
+      "marketing-vitrine-septembre",
+      {
+        dossier: "marketing-vitrine-septembre",
+        conseiller: conseillerMaquette,
+        messages: [
+          {
+            id: 1,
+            auteur: "raphael",
+            par: "Raphaël",
+            texte: "Qu'est-ce qui manque avant de publier ?",
+            sources: [],
+            statut: "fait",
+            modele: null,
+            creeLe: "2026-09-29T17:40:05.000Z",
+          },
+          {
+            id: 2,
+            auteur: "conseiller",
+            par: null,
+            texte: "Le lien de la vitrine et sa date de disponibilité ne figurent pas dans le brief. Je ne peux pas vérifier que la campagne mènera vers une page prête.",
+            sources: [
+              { id: "V1", genre: "vault", titre: "Brief septembre", chemin: "notes/marketing/brief-septembre.md" },
+              { id: "R1", genre: "run", titre: "Vérification de la vitrine", run: "run-vitrine-20260929" },
+            ],
+            statut: "fait",
+            modele: "qwen3:8b",
+            creeLe: "2026-09-29T17:42:10.000Z",
+          },
+        ],
+      },
+    ],
+  ]);
 }
 
 export function approbationsMaquette() {
   const dossiers = dossiersInitiaux();
+  const fils = filsInitiaux();
 
   async function lecture(): Promise<ReponseApprobations> {
     return {
@@ -90,6 +189,7 @@ export function approbationsMaquette() {
         dossiers: clone(dossiers),
         decidables: dossiers.filter((dossier) => !dossier.plan_absent && !dossier.tranche).length,
       },
+      conseiller: clone(conseillerMaquette),
       modules: {
         apps: [
           {
@@ -112,6 +212,36 @@ export function approbationsMaquette() {
     };
   }
 
+  async function filConseil(dossier: string): Promise<FilConseil> {
+    return clone(
+      fils.get(dossier) ?? {
+        dossier,
+        conseiller: conseillerMaquette,
+        messages: [],
+      }
+    );
+  }
+
+  async function poserConseil(dossier: string, texte: string): Promise<FilConseil> {
+    if (!conseillerMaquette.disponible) throw new Error("Le conseiller est indisponible : PC endormi.");
+    const contenu = texte.trim();
+    if (!contenu) throw new Error("La question du conseiller est vide.");
+    const precedent = fils.get(dossier);
+    const fil: FilConseil = precedent ?? { dossier, conseiller: conseillerMaquette, messages: [] };
+    fil.messages.push({
+      id: fil.messages.length + 1,
+      auteur: "raphael",
+      par: "Raphaël",
+      texte: contenu,
+      sources: [],
+      statut: "fait",
+      modele: null,
+      creeLe: maintenant,
+    });
+    fils.set(dossier, fil);
+    return clone(fil);
+  }
+
   async function decider(demande: DemandeDecision): Promise<ReponseDecision> {
     const dossier = dossiers.find((candidat) => candidat.dossier === demande.dossier);
     if (!dossier) throw new Error(`aucun dossier "${demande.dossier}" en attente : rien à décider`);
@@ -125,23 +255,24 @@ export function approbationsMaquette() {
       if (!action) throw new Error(`action "${decision.action_id}" absente du plan gelé`);
       action.decision = decision.decision;
       action.note = decision.motif?.trim() || null;
-      return { ...decision, par: "destrobi28@gmail.com", canal: "local", le: maintenant };
+      action.decision_par = "Raphaël";
+      action.decision_le = maintenant;
+      action.decision_canal = "local";
+      return { ...decision, par: "Raphaël", canal: "local", le: maintenant };
     });
 
     const reponse = demande.reponse?.trim();
     if (reponse) {
-      dossier.reponse_posee = { consigne: reponse, par: "destrobi28@gmail.com", le: maintenant };
+      dossier.reponse_posee = { consigne: reponse, par: "Raphaël", le: maintenant };
     }
     dossier.tranche = !dossier.reponse_posee && dossier.actions.length > 0 && dossier.actions.every((action) => action.decision !== null);
 
     return {
       plan: dossier.empreinte,
       decisions,
-      ...(reponse
-        ? { reponse, reponse_par: "destrobi28@gmail.com", reponse_le: maintenant, reponse_canal: "local" }
-        : {}),
+      ...(reponse ? { reponse, reponse_par: "Raphaël", reponse_le: maintenant, reponse_canal: "local" } : {}),
     };
   }
 
-  return { lecture, decider };
+  return { lecture, filConseil, poserConseil, decider };
 }

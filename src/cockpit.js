@@ -96,6 +96,11 @@ function etat({ approvalsDir, pipelinesDir = null, maintenant = Date.now() }) {
         // La note posée avec la décision. Le champ s'appelle `motif` dans le registre
         // parce qu'il est né avec les refus ; il accompagne désormais toute décision.
         note: dejaPrises[a.id] && dejaPrises[a.id].motif ? dejaPrises[a.id].motif : null,
+        // Qui a tranché, quand et par où : le badge humain de l'écran, face à celui du
+        // conseiller. Lus du registre signé, jamais du corps d'une requête.
+        decision_par: dejaPrises[a.id] ? dejaPrises[a.id].par || null : null,
+        decision_le: dejaPrises[a.id] ? dejaPrises[a.id].le || null : null,
+        decision_canal: dejaPrises[a.id] ? dejaPrises[a.id].canal || null : null,
       })),
     };
   });

@@ -1,6 +1,6 @@
 // La source réelle : l'API REST du cockpit et son flux SSE (§10).
 import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
-import type { DemandeDecision, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { FiltreRuns, Source } from "./source";
 
 class ErreurApi extends Error {
@@ -111,6 +111,8 @@ export function sourceApi(): Source {
     },
     approbations: () => lire<ReponseApprobations>("/api/approbations"),
     decider: (demande: DemandeDecision) => ecrire<ReponseDecision>("/api/decider", demande),
+    filConseil: (dossier) => lire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}`),
+    poserConseil: (dossier, texte) => ecrire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}/messages`, { texte }),
     ecouter(surEvenement, surConnexion, runId) {
       // `EventSource` reconnecte seul et renvoie `Last-Event-ID` : une coupure ne perd rien,
       // le serveur reprend après le dernier événement reçu.

@@ -52,6 +52,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     livrer: livraison.livrer,
     approbations: approbations.lecture,
     decider: approbations.decider,
+    filConseil: approbations.filConseil,
+    poserConseil: approbations.poserConseil,
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.
       let dernier = etat().evenements.at(-1)?.id ?? 0;

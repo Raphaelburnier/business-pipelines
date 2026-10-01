@@ -29,6 +29,62 @@ export interface ActionApprobation {
   rapport?: string;
   decision: Decision["decision"] | null;
   note: string | null;
+  /** Qui a tranché, lu du registre signé : le badge humain. */
+  decision_par?: string | null;
+  decision_le?: string | null;
+  decision_canal?: string | null;
+  /** L'avis du conseiller, présent seulement quand il a quelque chose à dire. */
+  conseil?: ConseilAction | null;
+}
+
+// ---- Le conseiller (src/conseiller.js) ----
+
+export interface SourceConseil {
+  id: string;
+  genre: "vault" | "run";
+  titre: string;
+  chemin?: string;
+  run?: string;
+}
+
+export interface ConseilAction {
+  classement: "probleme" | "suggestion";
+  texte: string;
+  sources: SourceConseil[];
+  modele: string | null;
+  le: string;
+}
+
+export interface EtatConseiller {
+  /** L'agent du PC a battu dans les 90 dernières secondes. */
+  disponible: boolean;
+  vuLe: string | null;
+  modele: string | null;
+  vault: { fichiers: number; synchroLe: string | null } | null;
+  erreur?: string;
+}
+
+export interface MessageConseil {
+  id: number;
+  auteur: "raphael" | "conseiller";
+  par: string | null;
+  texte: string;
+  sources: SourceConseil[];
+  statut: "fait" | "en_attente" | "echec";
+  modele: string | null;
+  creeLe: string;
+}
+
+export interface FilConseil {
+  dossier: string;
+  conseiller: EtatConseiller;
+  messages: MessageConseil[];
+}
+
+/** « IA · qwen3 » : le nom court du modèle, sans taille ni quantification. */
+export function nomModele(modele: string | null | undefined): string {
+  if (!modele) return "IA";
+  return `IA · ${modele.split(":")[0]}`;
 }
 
 export interface FraicheurApprobation {
@@ -54,6 +110,8 @@ export interface DossierApprobation {
   fraicheur: FraicheurApprobation;
   actions: ActionApprobation[];
   tranche: boolean;
+  /** La note du vault d'un dossier tranché : en file, écrite par le PC, ou en échec. */
+  note_vault?: "a_faire" | "en_cours" | "fait" | "echec" | "abandonne" | null;
 }
 
 export interface EtatApprobations {
@@ -72,6 +130,7 @@ export interface ModuleCockpit {
 export interface ReponseApprobations {
   qui: { par: string; nom: string | null; canal: "local" | "tailnet" };
   etat: EtatApprobations;
+  conseiller?: EtatConseiller;
   modules: { apps: ModuleCockpit[]; erreur: string | null };
 }
 
