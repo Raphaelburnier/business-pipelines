@@ -475,6 +475,13 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .studio-controls input[name="project_id"] { flex: 1; min-width: 0; max-width: 240px; border: 1px solid var(--color-trait); border-radius: 0; background: var(--color-fond); padding: 8px 10px; color: var(--color-encre); font: 500 15px/20px var(--font-sans); }
 .studio-advanced-toggle { width: 100%; margin-top: 20px; border: 1px solid var(--color-trait); background: transparent; padding: 10px; color: var(--color-encre); text-align: left; cursor: pointer; }
 .studio-workflow-card { grid-column: 1 / -1; }
+.studio-danger { margin-top: 16px; border: 1px solid var(--color-danger); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.studio-danger h3, .studio-danger p { margin: 0; }
+.studio-danger small { color: var(--color-douce); }
+.studio-danger-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.studio-btn-danger { border-color: var(--color-danger); color: var(--color-danger); }
+.studio-nas-folder { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.studio-nas-folder b { font: 500 15px/20px var(--font-mono); }
 .studio-workflow-picker { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: end; gap: 10px 20px; }
 @media (max-width: 760px) { .studio-workflow-picker { grid-template-columns: 1fr; } }
 .studio-workflow-description { margin: 0; border-left: 2px solid var(--color-accent); padding: 8px 12px; color: var(--color-encre); font: 400 14px/1.5 var(--font-sans); }

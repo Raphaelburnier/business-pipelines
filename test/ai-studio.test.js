@@ -227,7 +227,7 @@ test("une génération batch traverse ComfyUI puis archive seulement l'image val
   assert.match(premiere.settings.positive_prompt, /SCENE: neon street/);
   assert.strictEqual(fs.existsSync(service.store.cheminImage(premiere.generation_id)), true);
   assert.strictEqual(fs.existsSync(service.store.cheminWorkflow(premiere.generation_id)), true);
-  const dossierArchive = path.join(archive, "tokyo-weekend", "luna", premiere.created_at.slice(0, 4), premiere.created_at.slice(5, 7), premiere.generation_id);
+  const dossierArchive = path.join(archive, "Luna", "tokyo-weekend", premiere.created_at.slice(0, 4), premiere.created_at.slice(5, 7), premiere.generation_id);
   assert.strictEqual(fs.existsSync(dossierArchive), false);
   assert.strictEqual(premiere.approved_at, null);
   service.approuver(premiere.generation_id);
@@ -237,7 +237,7 @@ test("une génération batch traverse ComfyUI puis archive seulement l'image val
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dossierArchive, "metadata.json"))).status, "completed");
   assert.ok(JSON.parse(fs.readFileSync(path.join(dossierArchive, "metadata.json"))).approved_at);
   const nonValidee = service.store.generation(creees[1].generation_id);
-  const archiveNonValidee = path.join(archive, "tokyo-weekend", "luna", nonValidee.created_at.slice(0, 4), nonValidee.created_at.slice(5, 7), nonValidee.generation_id);
+  const archiveNonValidee = path.join(archive, "Luna", "tokyo-weekend", nonValidee.created_at.slice(0, 4), nonValidee.created_at.slice(5, 7), nonValidee.generation_id);
   assert.strictEqual(fs.existsSync(archiveNonValidee), false);
   const workflow = JSON.parse(fs.readFileSync(service.store.cheminWorkflow(premiere.generation_id), "utf8"));
   assert.strictEqual(workflow["3"].inputs.seed, premiere.seed);

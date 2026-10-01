@@ -99,6 +99,21 @@ class AIStudioService {
     );
   }
 
+  // La file réécrit les métadonnées d'une génération qu'elle traite : on ne supprime
+  // qu'en dehors d'elle, sinon une écriture tardive échouerait sur un dossier effacé.
+  supprimerGeneration(id) {
+    if (this.queue.actifs.has(id)) throw new RequeteInvalide("archivage en cours : réessaie dans quelques secondes");
+    this.queue.attente = this.queue.attente.filter((x) => x !== id);
+    return this.store.supprimerGeneration(id);
+  }
+
+  supprimerProfil(id, { archive = false } = {}) {
+    const ids = new Set(this.store.generations({ profileId: id, limit: 500 }).map((g) => g.generation_id));
+    if ([...this.queue.actifs].some((x) => ids.has(x))) throw new RequeteInvalide("un archivage de ce profil est en cours : réessaie dans quelques secondes");
+    this.queue.attente = this.queue.attente.filter((x) => !ids.has(x));
+    return this.store.supprimerProfil(id, { archive });
+  }
+
   approuver(id) {
     const generation = this.store.approuverGeneration(id);
     if (!generation.archived_at) this.queue.ajouter(id, { persister: false });
