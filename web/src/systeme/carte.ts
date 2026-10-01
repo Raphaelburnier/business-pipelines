@@ -40,8 +40,8 @@ export interface ZoneCarte {
   hauteur: number;
 }
 
-export const LARGEUR_BRIQUE = 210;
-export const HAUTEUR_BRIQUE = 64;
+export const LARGEUR_BRIQUE = 230;
+export const HAUTEUR_BRIQUE = 74;
 
 export const ZONES: ZoneCarte[] = [
   { id: "interfaces", titre: "Interfaces", sous: "qui décide, qui code", x: 0, y: 0, largeur: 1770, hauteur: 130 },

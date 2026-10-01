@@ -1,5 +1,16 @@
 const crypto = require("crypto");
 
+const MODEL_LOADERS = Object.freeze({
+  checkpoints: ["CheckpointLoaderSimple", "ckpt_name"],
+  loras: ["LoraLoader", "lora_name"],
+  vae: ["VAELoader", "vae_name"],
+  controlnet: ["ControlNetLoader", "control_net_name"],
+  diffusion_models: ["UNETLoader", "unet_name"],
+  text_encoders: ["CLIPLoader", "clip_name"],
+  clip_vision: ["CLIPVisionLoader", "clip_name"],
+  upscale_models: ["UpscaleModelLoader", "model_name"],
+});
+
 class ComfyUIErreur extends Error {
   constructor(message, { code = null, cause = null } = {}) {
     super(message, { cause });
@@ -60,9 +71,16 @@ class ComfyUIService {
   }
 
   async checkpoints() {
-    const informations = await this.requete("/object_info/CheckpointLoaderSimple");
-    const choix = informations?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0];
-    if (!Array.isArray(choix)) throw new ComfyUIErreur("liste des checkpoints ComfyUI indisponible");
+    return this.modelNames("checkpoints");
+  }
+
+  async modelNames(categorie) {
+    const entree = MODEL_LOADERS[categorie];
+    if (!entree) throw new ComfyUIErreur("type de modèle ComfyUI inconnu");
+    const [node, input] = entree;
+    const informations = await this.requete(`/object_info/${node}`);
+    const choix = informations?.[node]?.input?.required?.[input]?.[0];
+    if (!Array.isArray(choix)) throw new ComfyUIErreur(`liste ComfyUI indisponible pour ${categorie}`);
     return choix.filter((nom) => typeof nom === "string" && nom.length > 0);
   }
 

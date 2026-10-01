@@ -3,8 +3,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { Readable } = require("stream");
 const { AIStudioStore, RequeteInvalide } = require("../src/ai-studio/store");
 const { AIStudioService } = require("../src/ai-studio/service");
+const { ComfyUIService } = require("../src/ai-studio/comfyui-service");
+const { ModelLibrary, MAX_MODEL_BYTES } = require("../src/ai-studio/model-library");
+const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
 const tests = [];
 const test = (nom, fn) => tests.push({ nom, fn });
@@ -12,6 +16,88 @@ const test = (nom, fn) => tests.push({ nom, fn });
 function temporaire() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "ai-studio-"));
 }
+
+function petitModele() {
+  const entete = Buffer.from(JSON.stringify({ test: { dtype: "F32", shape: [1], data_offsets: [0, 4] } }));
+  const longueur = Buffer.alloc(8);
+  longueur.writeBigUInt64LE(BigInt(entete.length));
+  return Buffer.concat([longueur, entete, Buffer.alloc(4)]);
+}
+
+test("la bibliothèque NAS accepte un safetensors, refuse chemins et collisions", async () => {
+  const library = new ModelLibrary(temporaire());
+  const contenu = petitModele();
+  const modele = await library.ajouter("checkpoints", "portrait.safetensors", Readable.from([contenu]));
+  assert.strictEqual(modele.size, contenu.length);
+  assert.match(modele.sha256, /^[a-f0-9]{64}$/);
+  assert.deepStrictEqual(library.liste(), [modele]);
+  assert.deepStrictEqual(fs.readFileSync(library.chemin("checkpoints", modele.name)), contenu);
+  assert.strictEqual(fs.statSync(library.chemin("checkpoints", modele.name)).mode & 0o777, 0o644);
+  await assert.rejects(library.ajouter("checkpoints", "portrait.safetensors", Readable.from([contenu])), RequeteInvalide);
+  await assert.rejects(library.ajouter("checkpoints", "PORTRAIT.safetensors", Readable.from([contenu])), RequeteInvalide);
+  const lent = Readable.from((async function* () { await new Promise((resolve) => setTimeout(resolve, 25)); yield contenu; })());
+  const premier = library.ajouter("checkpoints", "another.safetensors", lent);
+  await assert.rejects(library.ajouter("checkpoints", "ANOTHER.safetensors", Readable.from([contenu])), RequeteInvalide);
+  await premier;
+  const lora = await library.ajouter("loras", "portrait.safetensors", Readable.from([contenu]));
+  assert.strictEqual(lora.category, "loras");
+  await assert.rejects(library.ajouter("../checkpoints", "escape.safetensors", Readable.from([contenu])), RequeteInvalide);
+  await assert.rejects(library.ajouter("checkpoints", "../autre.safetensors", Readable.from([contenu])), RequeteInvalide);
+  await assert.rejects(library.ajouter("checkpoints", "CON.safetensors", Readable.from([contenu])), RequeteInvalide);
+  await assert.rejects(library.ajouter("checkpoints", "fake.safetensors", Readable.from([Buffer.from("not a model")])), RequeteInvalide);
+  const annonce = Readable.from([contenu]);
+  annonce.headers = { "content-length": String(MAX_MODEL_BYTES + 1) };
+  await assert.rejects(library.ajouter("checkpoints", "oversize.safetensors", annonce), RequeteInvalide);
+  assert.strictEqual(library.liste().length, 3);
+  assert.deepStrictEqual(fs.readdirSync(path.join(library.root, "checkpoints")).filter((nom) => nom.endsWith(".part")), []);
+});
+
+test("un dossier de catégorie lié ailleurs ne permet pas d'écrire hors du partage", async () => {
+  const racine = temporaire();
+  const ailleurs = temporaire();
+  fs.symlinkSync(ailleurs, path.join(racine, "loras"));
+  const library = new ModelLibrary(racine);
+  assert.deepStrictEqual(library.liste(), []);
+  await assert.rejects(library.ajouter("loras", "escape.safetensors", Readable.from([petitModele()])), RequeteInvalide);
+  assert.deepStrictEqual(fs.readdirSync(ailleurs), []);
+});
+
+test("l'API des modèles contrôle l'origine, importe et distingue NAS de ComfyUI", async () => {
+  const library = new ModelLibrary(temporaire());
+  const disponibles = { checkpoints: [], loras: [] };
+  let reponse;
+  const route = creerRouteurAIStudio({
+    service: { models: library, comfyui: { checkpoints: async () => disponibles.checkpoints, modelNames: async (category) => disponibles[category] || [] } },
+    json: (_res, code, corps) => { reponse = { code, corps }; },
+    corpsJson: () => { throw new Error("pas de JSON pour un modèle"); },
+    durcissement: {},
+    origineAutorisee: (headers) => headers.origin === "https://cockpit.test",
+  });
+  const requete = (method, url, origin = "https://cockpit.test") => {
+    const req = Readable.from([petitModele()]);
+    req.method = method; req.url = url;
+    req.headers = { origin, "content-type": "application/octet-stream" };
+    return req;
+  };
+  const res = {};
+  await route(requete("POST", "/api/ai-studio/models?category=checkpoints&name=x.safetensors", "https://autre.test"), res);
+  assert.strictEqual(reponse.code, 403);
+  await route(requete("POST", "/api/ai-studio/models?category=checkpoints&name=x.safetensors"), res);
+  assert.strictEqual(reponse.code, 201);
+  await route(requete("POST", "/api/ai-studio/models?category=loras&name=y.safetensors"), res);
+  assert.strictEqual(reponse.code, 201);
+  await route(requete("POST", "/api/ai-studio/models?category=../checkpoints&name=z.safetensors"), res);
+  assert.strictEqual(reponse.code, 400);
+  await route(requete("GET", "/api/ai-studio/models"), res);
+  assert.strictEqual(reponse.corps.models[0].installed, false);
+  assert.strictEqual(reponse.corps.models[1].installed, false);
+  assert.ok(reponse.corps.categories.includes("loras"));
+  disponibles.checkpoints.push("x.safetensors");
+  disponibles.loras.push("y.safetensors");
+  await route(requete("GET", "/api/ai-studio/models"), res);
+  assert.strictEqual(reponse.corps.models[0].installed, true);
+  assert.strictEqual(reponse.corps.models[1].installed, true);
+});
 
 function fauxComfy() {
   let numero = 0;
@@ -24,6 +110,9 @@ function fauxComfy() {
     if (u.pathname === "/system_stats") return Response.json({ system: { os: "test" }, devices: [] });
     if (u.pathname === "/object_info/CheckpointLoaderSimple") return Response.json({
       CheckpointLoaderSimple: { input: { required: { ckpt_name: [["realistic.safetensors", "portrait.safetensors"]] } } },
+    });
+    if (u.pathname === "/object_info/LoraLoader") return Response.json({
+      LoraLoader: { input: { required: { lora_name: [["character.safetensors"]] } } },
     });
     if (u.pathname === "/prompt" && options.method === "POST") {
       const corps = JSON.parse(options.body);
@@ -48,6 +137,14 @@ function fauxComfy() {
   };
   return { fetchFn, prompts, appels };
 }
+
+test("ComfyUI expose les catégories du NAS via les chargeurs de modèles", async () => {
+  const comfy = fauxComfy();
+  const service = new ComfyUIService({ url: "http://comfy.test:8188", fetchFn: comfy.fetchFn });
+  assert.deepStrictEqual(await service.checkpoints(), ["realistic.safetensors", "portrait.safetensors"]);
+  assert.deepStrictEqual(await service.modelNames("loras"), ["character.safetensors"]);
+  await assert.rejects(service.modelNames("../../history"), /type de modèle ComfyUI inconnu/);
+});
 
 async function attendre(predicate, maximumMs = 4000) {
   const debut = Date.now();
@@ -212,6 +309,34 @@ test("une livraison conserve le travail et monte le partage d'archive prévu", (
   assert.match(livraison, /mkdir -p[^\n]*"\$BUSINESS\/ai-studio-data"/);
   assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
   assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
+  assert.match(compose, /AI_STUDIO_MODELS_PATH:-\/volume1\/IA_Studio_Model/);
+});
+
+test("le livreur prépare la bascule sans exiger le montage NAS réservé au cockpit", () => {
+  const racine = temporaire();
+  const business = path.join(racine, "business");
+  const specs = path.join(business, "specs");
+  fs.mkdirSync(specs, { recursive: true });
+  for (const fichier of ["deploiement.env", "workers.json", "publieur.env"]) fs.writeFileSync(path.join(specs, fichier), "");
+  const archive = path.join(racine, "archive.tar.gz");
+  fs.writeFileSync(archive, "");
+
+  const livraison = fs.readFileSync(path.join(__dirname, "..", "deploy", "nas", "deploy.sh.modele"), "utf8");
+  const debut = livraison.indexOf('for requis in "$BUSINESS"');
+  const fin = livraison.indexOf('echo "@SHA256@', debut);
+  assert.ok(debut >= 0 && fin > debut, "le précontrôle de deploy.sh doit rester testable");
+  const resultat = spawnSync("sh", ["-c", `set -eu\n${livraison.slice(debut, fin)}`], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BUSINESS: business,
+      ARCHIVE: archive,
+      ENV: path.join(specs, "deploiement.env"),
+      DOCKER: process.execPath,
+      AI_STUDIO_MODELS_PATH: path.join(racine, "partage-visible-seulement-par-docker"),
+    },
+  });
+  assert.strictEqual(resultat.status, 0, resultat.stderr);
 });
 
 (async () => {

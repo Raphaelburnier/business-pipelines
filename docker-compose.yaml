@@ -39,6 +39,8 @@ services:
       - ${AI_STUDIO_WORK_PATH:-./ai-studio-data}:/data/ai-studio-work
       # Seules les générations terminées et validées sont archivées ici.
       - ${AI_STUDIO_ARCHIVE_PATH:-/volume1/IAstudio}:/data/ai-studio-archive
+      # Bibliothèque de modèles lue directement par Comfy Desktop sur le PC.
+      - ${AI_STUDIO_MODELS_PATH:-/volume1/IA_Studio_Model}:/data/ai-studio-models
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
@@ -60,6 +62,7 @@ services:
       - COCKPIT_CONTENEUR=1
       - AI_STUDIO_STORAGE_ROOT=/data/ai-studio-work
       - AI_STUDIO_ARCHIVE_ROOT=/data/ai-studio-archive
+      - AI_STUDIO_MODELS_ROOT=/data/ai-studio-models
       - AI_STUDIO_MAX_CONCURRENT_JOBS=${AI_STUDIO_MAX_CONCURRENT_JOBS:-2}
     # Pas d'`env_file` ici, délibérément : le cockpit ne reçoit AUCUNE clé Anthropic.
     # Il sert une page et écrit des décisions, il ne planifie rien. Lui donner de quoi

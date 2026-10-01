@@ -1,16 +1,43 @@
 const fs = require("fs");
 const path = require("path");
 const { RequeteInvalide, Introuvable } = require("./store");
+const { MODEL_CATEGORIES } = require("./model-library");
 
-function creerRouteurAIStudio({ service, json, corpsJson, durcissement }) {
+function creerRouteurAIStudio({ service, json, corpsJson, durcissement, origineAutorisee = () => true }) {
   return async function traiterAIStudio(req, res) {
     const url = new URL(req.url, "http://cockpit");
     if (!url.pathname.startsWith("/api/ai-studio")) return false;
-    const morceaux = url.pathname.slice("/api/ai-studio".length).split("/").filter(Boolean).map(decodeURIComponent);
 
     try {
+      const morceaux = url.pathname.slice("/api/ai-studio".length).split("/").filter(Boolean).map(decodeURIComponent);
       if (req.method === "GET" && morceaux.length === 1 && morceaux[0] === "status") {
         return fini(json(res, 200, await service.status()));
+      }
+      if (morceaux[0] === "models") {
+        if (req.method === "GET" && morceaux.length === 1) {
+          const models = service.models.liste();
+          const checkpoints = await service.comfyui.checkpoints().catch(() => null);
+          const noms = new Map([["checkpoints", checkpoints]]);
+          if (checkpoints !== null) {
+            await Promise.all([...new Set(models.map((model) => model.category))]
+              .filter((categorie) => categorie !== "checkpoints")
+              .map(async (categorie) => noms.set(categorie, await service.comfyui.modelNames(categorie).catch(() => null))));
+          }
+          return fini(json(res, 200, {
+            categories: MODEL_CATEGORIES,
+            models: models.map((model) => ({ ...model, installed: noms.get(model.category)?.includes(model.name) ?? null })),
+            comfy_available: checkpoints !== null,
+          }));
+        }
+        if (req.method === "POST" && morceaux.length === 1) {
+          if (!origineAutorisee(req.headers)) return fini(json(res, 403, { erreur: "origine refusée" }));
+          if (String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase() !== "application/octet-stream") {
+            return fini(json(res, 415, { erreur: "type de contenu refusé : application/octet-stream attendu" }));
+          }
+          const nom = url.searchParams.get("name");
+          const categorie = url.searchParams.get("category") || "checkpoints";
+          return fini(json(res, 201, await service.models.ajouter(categorie, nom, req)));
+        }
       }
       if (req.method === "GET" && morceaux.length === 1 && morceaux[0] === "checkpoints") {
         return fini(json(res, 200, { checkpoints: await service.comfyui.checkpoints() }));

@@ -12,6 +12,7 @@ Configuration locale :
 COMFYUI_URL=http://127.0.0.1:8188
 AI_STUDIO_STORAGE_ROOT=./ai-studio-data
 AI_STUDIO_ARCHIVE_ROOT=./ai-studio-archive
+AI_STUDIO_MODELS_ROOT=./ai-studio-models
 AI_STUDIO_MAX_CONCURRENT_JOBS=2
 ```
 
@@ -38,6 +39,26 @@ indisponible après validation, le Cockpit conserve celle-ci et retente l'archiv
 Le template livré, `portrait_realistic_v1`, attend le nom exact d’un checkpoint présent
 dans ComfyUI. Le formulaire interroge `/object_info/CheckpointLoaderSimple` côté backend pour
 proposer les checkpoints disponibles ; si ComfyUI est éteint, la saisie manuelle reste possible.
+
+### Bibliothèque de modèles NAS
+
+Le partage DSM `/volume1/IA_Studio_Model` est monté dans le conteneur du Cockpit
+(`AI_STUDIO_MODELS_PATH` permet de changer la source). Il reste séparé de
+`/volume1/IAstudio`, réservé aux générations validées. Dans Comfy Desktop sur Windows,
+ajouter `\\nas\IA_Studio_Model` comme dossier de modèles supplémentaire dans **Storage**.
+L'instance active lit ce partage directement ; les fichiers ne sont pas copiés sur le PC,
+et la génération utilise toujours son GPU.
+
+La carte **Bibliothèque de modèles** de `/ai-studio` importe plusieurs `.safetensors`
+(32 Gio maximum par fichier) dans le sous-dossier choisi : checkpoints, LoRA, VAE,
+ControlNet, modèles de diffusion, encodeurs texte, CLIP Vision ou upscale. L'API reçoit
+chaque fichier en flux, vérifie l'en-tête safetensors et l'empreinte SHA-256, et refuse
+les chemins, collisions et types inconnus. Un fichier copié manuellement sur le partage
+apparaît aussi dans le catalogue, même sans métadonnées SHA-256. Le statut « détecté »
+vient des chargeurs ComfyUI, pas de la seule présence du fichier sur le NAS.
+Après un import, rafraîchir ComfyUI (touche `R`) ou redémarrer l'instance si le modèle
+n'apparaît pas encore dans son chargeur.
+
 Les références sont conservées dès cette phase mais ne sont pas injectées dans
 le workflow avant les identity providers de Phase 2. Le plan et les limites détaillés sont
 dans [`docs/PLAN-ai-instagram-studio.md`](docs/PLAN-ai-instagram-studio.md).

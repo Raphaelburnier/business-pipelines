@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
 import { aiStudioApi } from "./api";
-import type { CharacterProfile, ComfyStatus, Generation } from "./types";
+import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
 
 export type AIStudioPage =
   | { page: "home" }
@@ -48,6 +48,7 @@ function StudioHome({ aller }: { aller: (href: string) => void }) {
       </section>
 
       {erreur && <Alerte>{erreur}</Alerte>}
+      <ModelManager />
       <div className="studio-section-head">
         <div><span className="studio-index">A</span><h3>Personnages</h3></div>
         <button type="button" className="ao-btn primaire" onClick={() => setCreation((v) => !v)}>{creation ? "Fermer" : "+ Créer un personnage"}</button>
@@ -74,6 +75,71 @@ function StudioHome({ aller }: { aller: (href: string) => void }) {
       {generations.length ? <ContactSheet generations={generations} aller={aller} /> : <Vide titre="Aucune prise" action="Les générations apparaîtront ici, y compris pendant leur traitement." />}
     </div>
   );
+}
+
+const MODEL_LABELS: Record<string, string> = {
+  checkpoints: "Checkpoints", loras: "LoRA", vae: "VAE", controlnet: "ControlNet",
+  diffusion_models: "Diffusion", text_encoders: "Encodeurs texte",
+  clip_vision: "CLIP Vision", upscale_models: "Upscale",
+};
+
+function ModelManager() {
+  const [catalogue, setCatalogue] = useState<ModelLibraryStatus | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [occupe, setOccupe] = useState(false);
+  const [progression, setProgression] = useState<string | null>(null);
+  const [rafraichit, setRafraichit] = useState(false);
+  const [categorie, setCategorie] = useState("checkpoints");
+  const charger = useCallback(async () => {
+    setRafraichit(true);
+    try {
+      setCatalogue(await aiStudioApi.models());
+      setErreur(null);
+    } catch (err) { setErreur(message(err)); }
+    finally { setRafraichit(false); }
+  }, []);
+  useEffect(() => { void charger(); }, [charger]);
+  useEffect(() => {
+    if (!catalogue?.comfy_available || !catalogue.models.some((m) => m.installed === false)) return;
+    const timer = setInterval(() => void charger(), 10_000);
+    return () => clearInterval(timer);
+  }, [catalogue, charger]);
+  const envoyer = async (event: ChangeEvent<HTMLInputElement>) => {
+    const fichiers = Array.from(event.target.files || []);
+    if (!fichiers.length) return;
+    setOccupe(true); setErreur(null);
+    try {
+      for (const [index, fichier] of fichiers.entries()) {
+        if (!fichier.name.toLowerCase().endsWith(".safetensors")) throw new Error(`${fichier.name} : fichier .safetensors attendu`);
+        setProgression(`${index + 1}/${fichiers.length} · ${fichier.name} · 0 %`);
+        await aiStudioApi.addModel(fichier, categorie, (percent) => setProgression(`${index + 1}/${fichiers.length} · ${fichier.name} · ${percent} %`));
+        await charger();
+      }
+    } catch (err) { setErreur(message(err)); }
+    finally { setOccupe(false); setProgression(null); event.target.value = ""; }
+  };
+  return <section className="studio-models studio-panel" aria-label="Bibliothèque de modèles">
+    <div className="studio-section-head">
+      <div><span className="studio-index">M</span><h3>Bibliothèque de modèles</h3></div>
+      <button type="button" className="ao-btn" onClick={() => void charger()} disabled={rafraichit}>{rafraichit ? "Vérification…" : "Rafraîchir"}</button>
+    </div>
+    <div className="studio-model-route" aria-label="Les modèles restent sur le NAS et sont lus par ComfyUI sur le PC">
+      <span><small>Stockage</small><b>NAS · IA_Studio_Model</b></span><i aria-hidden="true">→</i><span><small>Génération</small><b>PC · ComfyUI</b></span>
+    </div>
+    <p className="studio-note">Ajoutez des fichiers .safetensors au bon type de modèle. ComfyUI les lit directement sur le NAS ; le GPU du PC produit les images.</p>
+    <div className="studio-model-actions">
+      <label className="studio-field studio-model-category"><span>Type de modèle</span><select value={categorie} onChange={(event) => setCategorie(event.target.value)} disabled={occupe}>
+        {(catalogue?.categories || Object.keys(MODEL_LABELS)).map((type) => <option key={type} value={type}>{MODEL_LABELS[type] || type}</option>)}
+      </select></label>
+      <label className="ao-btn primaire studio-upload" aria-disabled={occupe}>{occupe ? "Import en cours…" : "+ Importer des modèles"}<input type="file" accept=".safetensors" multiple onChange={envoyer} disabled={occupe} /></label>
+    </div>
+    {progression && <p className="studio-model-upload-progress" role="status">Import NAS : {progression}</p>}
+    {erreur && <Alerte>{erreur}</Alerte>}
+    {catalogue?.models.length ? <div className="studio-model-list">{catalogue.models.map((model) => <div className="studio-model-row" key={`${model.category}/${model.name}`}>
+      <span className="studio-model-kind">{MODEL_LABELS[model.category] || model.category}</span><span className="studio-model-name" title={model.name}>{model.name}</span><small>{(model.size / 1024 ** 3).toFixed(2)} Gio</small>
+      <b className={model.installed ? "ready" : "pending"}>{model.installed ? "Détecté par ComfyUI" : !catalogue.comfy_available ? "ComfyUI hors ligne" : model.installed === false ? "Sur NAS · à rafraîchir" : "Sur NAS · non vérifié"}</b>
+    </div>)}</div> : <p className="studio-model-empty">Aucun modèle dans IA_Studio_Model. Choisissez son type, puis importez un fichier .safetensors.</p>}
+  </section>;
 }
 
 function CreateProfile({ onCree }: { onCree: (profile: CharacterProfile) => void }) {
@@ -151,10 +217,20 @@ function ProfileStudio({ id, tab, aller }: { id: string; tab: "gallery" | "gener
   );
 }
 
+const WORKFLOW_PAR_DEFAUT = "portrait_realistic_v1";
+
 function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href: string) => void }) {
   const [advanced, setAdvanced] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowManifest[]>([]);
+  const [workflowId, setWorkflowId] = useState(WORKFLOW_PAR_DEFAUT);
+  useEffect(() => {
+    aiStudioApi.workflows().then(setWorkflows).catch((err) => setErreur(`Liste des workflows indisponible : ${message(err)}`));
+  }, []);
+  const workflow = workflows.find((w) => w.id === workflowId);
+  const defauts = workflow?.form_defaults ?? {};
+  const exemples = workflow?.examples ?? {};
   const soumettre = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -186,25 +262,28 @@ function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href:
 
   return (
     <form className="studio-generate" onSubmit={soumettre}>
+      <section className="studio-director-card studio-workflow-card">
+        <div className="studio-step"><span>01</span><div><b>Choisir le type de photo</b><small>Chaque workflow ajoute son propre style et pré-remplit le cadrage.</small></div></div>
+        <WorkflowPicker workflows={workflows} value={workflowId} onChange={setWorkflowId} />
+      </section>
       <section className="studio-director-card">
-        <div className="studio-step"><span>01</span><div><b>Décrire la prise</b><small>L’identité du profil est ajoutée séparément.</small></div></div>
-        <label className="studio-prompt"><textarea name="prompt" required rows={4} placeholder={`${profile.name} walking through Tokyo at night, full body, 3/4 view`} /></label>
-        <div className="studio-form-grid">
-          <Champ label="Scène" name="scene" placeholder="Tokyo night" />
-          <Champ label="Tenue" name="outfit" placeholder="Black streetwear" />
-          <Select label="Pose" name="pose" options={["walking", "standing", "sitting", "looking back", "candid"]} />
-          <Select label="Angle" name="camera_angle" options={["eye level", "front", "3/4 left", "3/4 right", "profile left", "profile right", "low angle", "high angle", "over shoulder"]} />
-          <Select label="Cadrage" name="shot_type" options={["full body", "medium shot", "close-up", "wide shot", "selfie", "mirror selfie"]} />
-          <Select label="Lumière" name="lighting" options={["soft natural light", "golden hour", "neon night", "studio softbox", "hard flash"]} />
-          <Select label="Style" name="style" options={["realistic Instagram lifestyle", "street photography", "luxury fashion", "cinematic portrait", "editorial"]} />
-          <Select label="Ratio" name="aspect_ratio" options={["4:5", "1:1", "9:16", "1.91:1"]} />
+        <div className="studio-step"><span>02</span><div><b>Décrire la prise</b><small>L’identité du profil est ajoutée séparément.</small></div></div>
+        <label className="studio-prompt"><textarea name="prompt" required rows={4} placeholder={`${profile.name} ${exemples.prompt ?? "walking through Tokyo at night, full body, 3/4 view"}`} /></label>
+        <div className="studio-form-grid" key={workflowId}>
+          <Champ label="Scène" name="scene" placeholder={exemples.scene ?? "Tokyo night"} />
+          <Champ label="Tenue" name="outfit" placeholder={exemples.outfit ?? "Black streetwear"} />
+          <Select label="Pose" name="pose" options={["walking", "standing", "sitting", "looking back", "candid"]} defaultValue={defauts.pose} />
+          <Select label="Angle" name="camera_angle" options={["eye level", "front", "3/4 left", "3/4 right", "profile left", "profile right", "low angle", "high angle", "over shoulder"]} defaultValue={defauts.camera_angle} />
+          <Select label="Cadrage" name="shot_type" options={["full body", "medium shot", "close-up", "wide shot", "selfie", "mirror selfie"]} defaultValue={defauts.shot_type} />
+          <Select label="Lumière" name="lighting" options={["soft natural light", "golden hour", "neon night", "studio softbox", "hard flash"]} defaultValue={defauts.lighting} />
+          <Select label="Style" name="style" options={["realistic Instagram lifestyle", "street photography", "luxury fashion", "cinematic portrait", "editorial"]} defaultValue={defauts.style} />
+          <Select label="Ratio" name="aspect_ratio" options={["4:5", "1:1", "9:16", "1.91:1"]} defaultValue={defauts.aspect_ratio} />
         </div>
       </section>
       <section className="studio-director-card">
-        <div className="studio-step"><span>02</span><div><b>Régler la série</b><small>Les images choisies seront archivées après validation.</small></div></div>
+        <div className="studio-step"><span>03</span><div><b>Régler la série</b><small>Les images choisies seront archivées après validation.</small></div></div>
         <div className="studio-controls">
           <label><span>Projet</span><input name="project_id" defaultValue={profile.project_id || profile.id} required /></label>
-          <label><span>Workflow</span><select name="workflow_id" defaultValue="portrait_realistic_v1"><option value="portrait_realistic_v1">Portrait realistic</option></select></label>
           <label><span>Images</span><select name="count" defaultValue="4">{[1, 2, 4, 6, 8].map((n) => <option key={n}>{n}</option>)}</select></label>
           <label><span>Identity</span><input name="identity_strength" type="range" min="0" max="1" step="0.01" defaultValue="0" disabled title="Activé en Phase 2" /><small>Phase 2</small></label>
           <label><span>Créativité</span><input name="creativity" type="range" min="0" max="1" step="0.05" defaultValue="0.65" /></label>
@@ -213,9 +292,9 @@ function Generate({ profile, aller }: { profile: CharacterProfile; aller: (href:
         <button type="button" className="studio-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced((v) => !v)}>{advanced ? "− Masquer les paramètres avancés" : "+ Paramètres avancés"}</button>
         {advanced && <AdvancedFields profile={profile} />}
       </section>
-      {!advanced && <AdvancedHidden profile={profile} />}
+      {!advanced && <AdvancedHidden profile={profile} workflow={workflow} />}
       {erreur && <Alerte>{erreur}</Alerte>}
-      <div className="studio-generate-action"><span><b>{profile.name}</b><small>portrait_realistic_v1 · {profile.default_resolution.width}×{profile.default_resolution.height}</small></span><button className="ao-btn primaire" disabled={occupe}>{occupe ? "Mise en file…" : "Générer"}</button></div>
+      <div className="studio-generate-action"><span><b>{profile.name}</b><small>{workflow?.name ?? workflowId} · ratio {defauts.aspect_ratio ?? profile.preferred_ratio}</small></span><button className="ao-btn primaire" disabled={occupe}>{occupe ? "Mise en file…" : "Générer"}</button></div>
     </form>
   );
 }
@@ -235,8 +314,22 @@ function AdvancedFields({ profile, settings }: { profile: CharacterProfile; sett
   </div>;
 }
 
-function AdvancedHidden({ profile }: { profile: CharacterProfile }) {
-  return <>{Object.entries({ checkpoint: profile.checkpoint, steps: 28, sampler: "dpmpp_2m", scheduler: "karras", denoise: 1 }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
+function WorkflowPicker({ workflows, value, onChange }: { workflows: WorkflowManifest[]; value: string; onChange: (id: string) => void }) {
+  const choisi = workflows.find((w) => w.id === value);
+  return <div className="studio-workflow-picker">
+    <label className="studio-field"><span>Workflow</span>
+      <select name="workflow_id" value={value} onChange={(event) => onChange(event.target.value)}>
+        {workflows.length === 0 && <option value={value}>{value}</option>}
+        {workflows.map((w) => <option key={w.id} value={w.id}>{w.use_case ? `${w.name} : ${w.use_case}` : w.name}</option>)}
+      </select>
+    </label>
+    {choisi && <p className="studio-workflow-description" aria-live="polite"><b>{choisi.use_case ?? choisi.name}.</b> {choisi.description}</p>}
+  </div>;
+}
+
+function AdvancedHidden({ profile, workflow }: { profile: CharacterProfile; workflow?: WorkflowManifest }) {
+  const defaut = (nom: string, repli: string | number) => workflow?.parameters[nom]?.default ?? repli;
+  return <>{Object.entries({ checkpoint: profile.checkpoint, steps: defaut("steps", 28), sampler: defaut("sampler", "dpmpp_2m"), scheduler: defaut("scheduler", "karras"), denoise: defaut("denoise", 1) }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}</>;
 }
 
 function References({ profile, onChange }: { profile: CharacterProfile; onChange: () => void }) {
@@ -371,21 +464,22 @@ function CheckpointField({ label, defaultValue, required }: { label: string; def
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
   const [erreur, setErreur] = useState(false);
   const [selection, setSelection] = useState(defaultValue || "");
+  const [revision, setRevision] = useState(0);
   useEffect(() => setSelection(defaultValue || ""), [defaultValue]);
   useEffect(() => {
     let actif = true;
     aiStudioApi.checkpoints().then((noms) => { if (actif) setCheckpoints(noms); })
       .catch(() => { if (actif) setErreur(true); });
     return () => { actif = false; };
-  }, []);
+  }, [revision]);
   const saisieManuelle = erreur || (checkpoints !== null && checkpoints.length === 0);
   const modeleAbsent = checkpoints !== null && checkpoints.length > 0 && !!selection && !checkpoints.includes(selection);
   let aide = "Recherche des modèles dans ComfyUI…";
   if (erreur) aide = "Liste indisponible : saisissez le nom exact du modèle.";
   else if (checkpoints?.length === 0) aide = "Aucun modèle détecté : installez un checkpoint ou rafraîchissez ComfyUI.";
-  else if (modeleAbsent) aide = "Ce modèle n’est plus détecté sur le PC. Choisissez-en un autre.";
-  else if (checkpoints) aide = `${checkpoints.length} modèle${checkpoints.length > 1 ? "s" : ""} détecté${checkpoints.length > 1 ? "s" : ""} sur le PC.`;
-  return <label className="studio-field studio-checkpoint-field"><span>{label}</span>
+  else if (modeleAbsent) aide = "Ce modèle n’est plus détecté par ComfyUI. Choisissez-en un autre.";
+  else if (checkpoints) aide = `${checkpoints.length} modèle${checkpoints.length > 1 ? "s" : ""} détecté${checkpoints.length > 1 ? "s" : ""} par ComfyUI.`;
+  return <div className="studio-checkpoint-wrapper"><label className="studio-field studio-checkpoint-field"><span>{label}</span>
     {saisieManuelle ? (
       <input name="checkpoint" value={selection} onChange={(event) => setSelection(event.target.value)} placeholder="Nom exact du checkpoint ComfyUI" required={required} />
     ) : (
@@ -399,7 +493,7 @@ function CheckpointField({ label, defaultValue, required }: { label: string; def
       </div>
     )}
     <small role="status">{aide}</small>
-  </label>;
+  </label><button type="button" className="studio-checkpoint-refresh" onClick={() => { setErreur(false); setCheckpoints(null); setRevision((v) => v + 1); }}>↻ Rafraîchir les modèles ComfyUI</button></div>;
 }
 function Select({ label, name, options, defaultValue }: { label: string; name: string; options: string[]; defaultValue?: string }) {
   return <label className="studio-field"><span>{label}</span><select name={name} defaultValue={defaultValue || options[0]}>{options.map((o) => <option key={o}>{o}</option>)}</select></label>;
