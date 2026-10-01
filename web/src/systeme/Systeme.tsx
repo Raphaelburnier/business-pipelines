@@ -1,10 +1,6 @@
 // La carte du système agentique : ce qui tourne où, comment une décision devient un run, et
-// comment un run réussi arrive en production. Tout vient de carte.ts.
-//
-// Pas de grand schéma : 30 briques et 40 liens tracés sur une seule toile réduisaient le texte
-// à 7 px et croisaient tous les traits (retour de Raphaël, 2026-09-30). Les zones sont des
-// sections de cartes lisibles à toute taille d'écran ; choisir un flux le déroule pas à pas ;
-// une brique ouvre sa fiche, liens entrants et sortants écrits en toutes lettres.
+// comment un run réussi arrive en production. Tout vient de carte.ts. Le graphe garde les
+// briques à une taille de lecture et isole une famille de liaisons à la fois.
 import "./systeme.css";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -16,7 +12,6 @@ import {
   LIENS,
   OUVERTS,
   TRANSITIONS,
-  ZONES,
   type Brique,
   type Etape,
   type Famille,
@@ -24,6 +19,7 @@ import {
   type Statut,
   type ZoneCarte,
 } from "./carte";
+import { GrapheArchitecture } from "./GrapheArchitecture";
 
 type Onglet = "architecture" | "boucle" | "garde-fous" | "chronologie";
 
@@ -48,12 +44,12 @@ const MOT_GENRE_BRIQUE: Record<Brique["genre"], string> = {
 const PAR_ID = new Map(BRIQUES.map((b) => [b.id, b]));
 const FAMILLES_LISTE = Object.keys(FAMILLES) as Famille[];
 
-// Sur un écran étroit, la fiche vit sous les zones : on l'amène sous les yeux au clic.
+// Sur un téléphone, la fiche vit sous le graphe : on l'amène sous les yeux au clic.
 function useAmener(cle: string | null) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!cle || !ref.current) return;
-    if (window.matchMedia("(max-width: 1100px)").matches) ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.matchMedia("(max-width: 720px)").matches) ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [cle]);
   return ref;
 }
@@ -154,65 +150,46 @@ function Parcours({ famille, selection, onSelection }: { famille: Famille; selec
   );
 }
 
-function CarteBrique({ b, eteinte, choisie, onChoix }: { b: Brique; eteinte: boolean; choisie: boolean; onChoix: () => void }) {
-  return (
-    <button type="button" className={`sy-carte ${b.genre} ${b.zone} ${eteinte ? "eteinte" : ""}`} aria-pressed={choisie} onClick={onChoix}>
-      <span className="haut">
-        <span className={`point ${b.statut}`} aria-hidden="true" />
-        <span className="genre">{MOT_GENRE_BRIQUE[b.genre]}</span>
-        {b.statut !== "actif" && <span className={`statut ${b.statut}`}>{MOT_STATUT[b.statut]}</span>}
-      </span>
-      <strong>{b.titre}</strong>
-      <span className="sous">{b.sous}</span>
-    </button>
-  );
-}
-
 function Architecture() {
   const [flux, setFlux] = useState<Famille | null>(null);
   const [selection, setSelection] = useState<string | null>(null);
   const refFiche = useAmener(selection);
-  const dansFlux = new Set(flux ? LIENS.filter((l) => l.famille === flux).flatMap((l) => [l.de, l.vers]) : []);
 
   return (
     <div className="sy-archi">
       <div className="sy-filtres" role="group" aria-label="Flux à suivre">
         <span className="kicker">Flux</span>
         <button type="button" className="sy-filtre tout" aria-pressed={flux === null} onClick={() => setFlux(null)}>
-          Toutes les briques
+          Vue d'ensemble <small>{LIENS.length}</small>
         </button>
         {FAMILLES_LISTE.map((f) => (
           <button key={f} type="button" className={`sy-filtre ${f}`} aria-pressed={flux === f} onClick={() => setFlux(flux === f ? null : f)} title={FAMILLES[f].detail}>
             <i aria-hidden="true" />
             {FAMILLES[f].nom}
+            <small>{LIENS.filter((l) => l.famille === f).length}</small>
           </button>
         ))}
       </div>
       <div className="sy-archi-corps">
-        <div className="sy-archi-principal">
-          {flux && <Parcours famille={flux} selection={selection} onSelection={setSelection} />}
-          {ZONES.map((z) => (
-            <section key={z.id} className={`sy-zone-bloc ${z.id}`} aria-labelledby={`zone-${z.id}`}>
-              <header>
-                <h3 id={`zone-${z.id}`}>{z.titre}</h3>
-                <span>{z.sous}</span>
-              </header>
-              <div className="sy-cartes">
-                {BRIQUES.filter((b) => b.zone === z.id).map((b) => (
-                  <CarteBrique
-                    key={b.id}
-                    b={b}
-                    eteinte={flux !== null && !dansFlux.has(b.id)}
-                    choisie={selection === b.id}
-                    onChoix={() => setSelection(selection === b.id ? null : b.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+        <div className="sy-graphe-resume" aria-live="polite">
+          <span>
+            {flux
+              ? `${FAMILLES[flux].nom} · ${LIENS.filter((l) => l.famille === flux).length} liaisons isolées`
+              : `${BRIQUES.length} briques · ${LIENS.length} liaisons colorées`}
+          </span>
+          <small>Glisser pour explorer · molette ou pincement pour zoomer · cliquer une brique pour isoler ses voisins</small>
         </div>
-        <div className="sy-cote">
+        <div className="sy-canevas">
+          <GrapheArchitecture flux={flux} selection={selection} onSelection={setSelection} />
+        </div>
+        <div className={`sy-lecture-graphe ${flux ? "avec-parcours" : ""}`}>
           <Fiche id={selection} onSelection={setSelection} refFiche={refFiche} />
+          {flux ? (
+            <details className="sy-parcours-details">
+              <summary>Lire le trajet {FAMILLES[flux].nom.toLowerCase()} étape par étape</summary>
+              <Parcours famille={flux} selection={selection} onSelection={setSelection} />
+            </details>
+          ) : null}
         </div>
       </div>
     </div>
