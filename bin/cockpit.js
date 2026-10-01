@@ -152,12 +152,20 @@ async function lireCorpsJson(req, res, maximum, { controleOrigine }) {
     }
     morceaux.push(buffer);
   }
+  let corps;
   try {
-    return JSON.parse(Buffer.concat(morceaux).toString("utf8") || "{}");
+    corps = JSON.parse(Buffer.concat(morceaux).toString("utf8") || "{}");
   } catch {
     json(res, 400, { erreur: "JSON illisible" });
     return null;
   }
+  // `null` signifie « réponse déjà envoyée » pour les appelants : un corps `null` laisserait
+  // la requête ouverte sans réponse.
+  if (corps === null || typeof corps !== "object" || Array.isArray(corps)) {
+    json(res, 400, { erreur: "objet JSON attendu" });
+    return null;
+  }
+  return corps;
 }
 
 // Une écriture humaine est protégée contre les requêtes inter-sites. Le bearer de l'agent PC

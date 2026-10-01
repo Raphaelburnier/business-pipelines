@@ -206,15 +206,22 @@ function noteValide(note) {
   return { chemin, jour, dossier, marqueur, entree: note.entree, titre: String(note.titre || "Décisions des pipelines").slice(0, 160) };
 }
 
+function horsDe(racine, cible) {
+  const relatif = path.relative(racine, cible);
+  return relatif === ".." || relatif.startsWith(`..${path.sep}`) || path.isAbsolute(relatif);
+}
+
 function cheminDansVault(chemin) {
   const racine = fs.realpathSync(VAULT);
   const absolu = path.resolve(racine, chemin);
-  if (path.relative(racine, absolu).startsWith(`..${path.sep}`) || path.isAbsolute(path.relative(racine, absolu))) {
-    throw new Error(`chemin de note refusé : ${chemin}`);
-  }
+  if (horsDe(racine, absolu)) throw new Error(`chemin de note refusé : ${chemin}`);
+  // Un dossier du vault peut être un lien symbolique : on résout l'ancêtre existant avant de
+  // créer quoi que ce soit, sinon mkdir fabriquerait des répertoires hors du vault.
+  let existant = path.dirname(absolu);
+  while (!fs.existsSync(existant)) existant = path.dirname(existant);
+  if (horsDe(racine, fs.realpathSync(existant))) throw new Error(`parent de note hors vault : ${chemin}`);
   fs.mkdirSync(path.dirname(absolu), { recursive: true });
-  const parent = fs.realpathSync(path.dirname(absolu));
-  if (path.relative(racine, parent).startsWith(`..${path.sep}`) || path.isAbsolute(path.relative(racine, parent))) {
+  if (horsDe(racine, fs.realpathSync(path.dirname(absolu)))) {
     throw new Error(`parent de note hors vault : ${chemin}`);
   }
   if (fs.existsSync(absolu) && fs.lstatSync(absolu).isSymbolicLink()) throw new Error(`lien symbolique refusé : ${chemin}`);
@@ -224,23 +231,47 @@ function cheminDansVault(chemin) {
 async function ecrireNote(brute) {
   const note = noteValide(brute);
   if (!note) throw new Error("note du NAS refusée : forme ou destination invalide");
-  const sale = await git(["status", "--porcelain=v1", "--", note.chemin]);
-  if (sale.trim()) throw new Error(`note non écrite : ${note.chemin} contient déjà une modification humaine`);
   const absolu = cheminDansVault(note.chemin);
-  const avant = fs.existsSync(absolu) ? fs.readFileSync(absolu, "utf8") : `# ${note.titre}\n`;
+  const actuel = fs.existsSync(absolu) ? fs.readFileSync(absolu, "utf8") : null;
+  const sale = (await git(["status", "--porcelain=v1", "--", note.chemin])).trim() !== "";
+  // Un fichier modifié n'est accepté que s'il porte exactement notre écriture d'un essai
+  // interrompu (crash entre l'écriture et le commit) : on reprend alors le commit.
+  const commite = sale ? await git(["show", `HEAD:./${note.chemin}`]).catch(() => null) : actuel;
+  const apres = avecEntree(commite ?? `# ${note.titre}\n`, note);
+  if (sale && actuel !== apres) {
+    throw new Error(`note non écrite : ${note.chemin} contient déjà une modification humaine`);
+  }
+  // Déjà commitée par un essai dont le résultat n'a pas atteint le NAS.
+  if (!sale && actuel === apres) return (await git(["log", "-1", "--format=%H", "--", note.chemin])).trim();
+  if (!sale) remplacer(absolu, apres);
+  try {
+    await git(["add", "--", note.chemin]);
+    await git(["commit", "-m", `chore(vault): decision business-pipelines/${note.dossier}`, "--", note.chemin]);
+  } catch (err) {
+    // Sans ce retour arrière, le fichier resterait modifié et chaque essai suivant le
+    // prendrait pour une modification humaine.
+    await git(["reset", "-q", "--", note.chemin]).catch(() => undefined);
+    if (commite === null) fs.rmSync(absolu, { force: true });
+    else remplacer(absolu, commite);
+    throw err;
+  }
+  return (await git(["rev-parse", "HEAD"])).trim();
+}
+
+function avecEntree(avant, note) {
   const echappe = note.marqueur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const bloc = new RegExp(`<!-- ${echappe} -->[\\s\\S]*?<!-- /${echappe} -->`);
-  const apres = bloc.test(avant) ? avant.replace(bloc, () => note.entree) : `${avant.replace(/\n*$/, "\n")}\n${note.entree}\n`;
+  return bloc.test(avant) ? avant.replace(bloc, () => note.entree) : `${avant.replace(/\n*$/, "\n")}\n${note.entree}\n`;
+}
+
+function remplacer(absolu, contenu) {
   const temporaire = path.join(path.dirname(absolu), `.${path.basename(absolu)}.${process.pid}.tmp`);
   try {
-    fs.writeFileSync(temporaire, apres, { mode: 0o600 });
+    fs.writeFileSync(temporaire, contenu, { mode: 0o600 });
     fs.renameSync(temporaire, absolu);
   } finally {
     fs.rmSync(temporaire, { force: true });
   }
-  await git(["add", "--", note.chemin]);
-  await git(["commit", "-m", `chore(vault): decision business-pipelines/${note.dossier}`, "--", note.chemin]);
-  return (await git(["rev-parse", "HEAD"])).trim();
 }
 
 async function traiter(travail) {
