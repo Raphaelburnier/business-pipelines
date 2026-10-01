@@ -88,7 +88,7 @@ function ActionPlan({ action, brouillon, modifier, verrouille }: { action: Dossi
   );
 }
 
-function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharger: () => void }) {
+function Dossier({ dossier, recharger, traite }: { dossier: DossierApprobation; recharger: () => void; traite: (message: string) => void }) {
   const { source } = useSource();
   const initial = useMemo(() => brouillonDu(dossier), [dossier]);
   const [brouillon, setBrouillon] = useState<Brouillon>(initial);
@@ -132,6 +132,9 @@ function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharge
       const texte = resultat.reponse ? "Consigne enregistrée." : `${resultat.decisions.length} décision${resultat.decisions.length > 1 ? "s" : ""} enregistrée${resultat.decisions.length > 1 ? "s" : ""}.`;
       setSucces(texte);
       setConfirmation(false);
+      // Le dossier ne disparaît que s'il est réglé : une consigne, ou toutes les actions
+      // décidées. Une décision partielle laisse les actions restantes à trancher.
+      if (resultat.reponse || dossier.actions.every((a) => brouillon[a.id]?.decision)) traite(`${dossier.dossier} : ${texte}`);
       recharger();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : String(err));
@@ -177,7 +180,7 @@ function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharge
       )}
 
       {erreur && <Erreur>{erreur}</Erreur>}
-      {succes && <div className="ao-liv-issue ok" role="status"><strong>{succes}</strong><span>Le plan reste affiché jusqu’à ce que le pipeline reprenne la décision.</span></div>}
+      {succes && <div className="ao-liv-issue ok" role="status"><strong>{succes}</strong></div>}
       {!verrouille && peutEnvoyer && !confirmation && (
         <div className="ao-actions">
           <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>Enregistrer la décision</button>
@@ -199,16 +202,22 @@ function Dossier({ dossier, recharger }: { dossier: DossierApprobation; recharge
 /** `integre` : dans une colonne de la page Décisions, sans largeur propre ni centrage. */
 export function Approbations({ integre = false }: { integre?: boolean }) {
   const [revision, setRevision] = useState(0);
+  // Un dossier réglé quitte la liste dès l'envoi réussi, sans attendre la relecture : le
+  // serveur garde les dossiers tranchés pour relecture, la page ne les montre plus.
+  const [traites, setTraites] = useState<Set<string>>(new Set());
+  const [dernier, setDernier] = useState<string | null>(null);
   const { donnees, erreur } = useCharge((source) => source.approbations(), [revision]);
-  const dossiers = donnees?.etat.dossiers ?? [];
+  const cle = (d: DossierApprobation) => `${d.dossier}:${d.empreinte}`;
+  const dossiers = (donnees?.etat.dossiers ?? []).filter((d) => !d.tranche && !d.reponse_posee && !traites.has(cle(d)));
 
   return (
     <div className={integre ? "flex min-w-0 flex-col gap-4" : "mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto"}>
       <section className="ao-liv" aria-labelledby="titre-approbations">
         <header>
           <h2 id="titre-approbations">Approbations des pipelines</h2>
-          {donnees && <span className={`ao-liv-etat ${donnees.etat.decidables ? "dispo" : ""}`}>{donnees.etat.decidables ? `${donnees.etat.decidables} à trancher` : "rien à trancher"}</span>}
+          {donnees && <span className={`ao-liv-etat ${dossiers.length ? "dispo" : ""}`}>{dossiers.length ? `${dossiers.length} à trancher` : "rien à trancher"}</span>}
         </header>
+        {dernier && <div className="ao-liv-issue ok" role="status"><strong>{dernier}</strong></div>}
         <p className="text-douce">Valider, refuser ou renvoyer un plan métier avant son exécution. Chaque écriture reste liée à l’empreinte du plan affiché.</p>
         {donnees && <p className="font-mono text-[11px] text-douce">Identité : {donnees.qui.nom ?? donnees.qui.par} · {donnees.qui.canal}</p>}
         {erreur && <Erreur>{erreur}</Erreur>}
@@ -216,7 +225,17 @@ export function Approbations({ integre = false }: { integre?: boolean }) {
       </section>
 
       {donnees && !dossiers.length && <Vide>Aucun plan métier ne demande de décision.</Vide>}
-      {dossiers.map((dossier) => <Dossier key={`${dossier.dossier}:${dossier.empreinte}`} dossier={dossier} recharger={() => setRevision((courant) => courant + 1)} />)}
+      {dossiers.map((dossier) => (
+        <Dossier
+          key={cle(dossier)}
+          dossier={dossier}
+          recharger={() => setRevision((courant) => courant + 1)}
+          traite={(message) => {
+            setDernier(message);
+            setTraites((courant) => new Set(courant).add(cle(dossier)));
+          }}
+        />
+      ))}
 
       {donnees?.modules.erreur && <Erreur>{donnees.modules.erreur}</Erreur>}
       {donnees && donnees.modules.apps.length > 0 && (
