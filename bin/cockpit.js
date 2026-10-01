@@ -53,6 +53,8 @@ const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
 const apiChat = require("../src/api-chat");
 const fluxChat = require("../src/flux-chat");
+const conseiller = require("../src/conseiller");
+const { creerRouteurConseiller } = require("../src/api-conseiller");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -112,11 +114,24 @@ const VIA_PAR_MACHINE = catalogueModeles.lireViaParMachine(ENV.COCKPIT_VIA_MACHI
 // « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
 const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
 const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
+// Le conseiller des approbations (src/conseiller.js) : sa base à côté de l'event store, hors
+// de celle des approbations, et l'empreinte du jeton de l'agent du PC. Sans empreinte, les
+// routes de l'agent répondent 503 et l'écran dit « PC endormi ».
+const CONSEILLER_BASE =
+  ENV.CONSEILLER_BASE ||
+  path.join(ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"), "conseiller.sqlite");
+const CONSEILLER_JETON_SHA256 = (ENV.CONSEILLER_JETON_SHA256 || "").trim() || null;
+const ERREUR_CONFIGURATION_CONSEILLER = conseiller.erreurConfiguration({
+  base: CONSEILLER_BASE,
+  approvalsDir: APPROVALS,
+  jetonSha256: CONSEILLER_JETON_SHA256,
+});
+if (ERREUR_CONFIGURATION_CONSEILLER) console.error(`conseiller désactivé : ${ERREUR_CONFIGURATION_CONSEILLER}`);
 
 // Le corps JSON d'une écriture du front, avec les contrôles de POST /api/runs : origine du
 // cockpit, JSON seul, 20 ko au plus. Rend `null` après avoir répondu en cas de refus.
-async function corpsJson(req, res, maximum = 20_000) {
-  if (!acces.origineAutorisee(req.headers, PORTEE)) {
+async function lireCorpsJson(req, res, maximum, { controleOrigine }) {
+  if (controleOrigine && !acces.origineAutorisee(req.headers, PORTEE)) {
     json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
     return null;
   }
@@ -125,20 +140,46 @@ async function corpsJson(req, res, maximum = 20_000) {
     json(res, 415, { erreur: "type de contenu refusé : application/json attendu" });
     return null;
   }
-  let brut = "";
+  const morceaux = [];
+  let taille = 0;
   for await (const morceau of req) {
-    brut += morceau;
-    if (brut.length > maximum) {
+    const buffer = Buffer.isBuffer(morceau) ? morceau : Buffer.from(morceau);
+    taille += buffer.length;
+    if (taille > maximum) {
       json(res, 413, { erreur: "corps trop gros" });
+      req.resume();
       return null;
     }
+    morceaux.push(buffer);
   }
+  let corps;
   try {
-    return JSON.parse(brut || "{}");
+    corps = JSON.parse(Buffer.concat(morceaux).toString("utf8") || "{}");
   } catch {
     json(res, 400, { erreur: "JSON illisible" });
     return null;
   }
+  // `null` signifie « réponse déjà envoyée » pour les appelants : un corps `null` laisserait
+  // la requête ouverte sans réponse.
+  if (corps === null || typeof corps !== "object" || Array.isArray(corps)) {
+    json(res, 400, { erreur: "objet JSON attendu" });
+    return null;
+  }
+  return corps;
+}
+
+// Une écriture humaine est protégée contre les requêtes inter-sites. Le bearer de l'agent PC
+// est une autre preuve, sans origine navigateur : les deux protocoles ne se mélangent pas.
+function corpsJson(req, res, maximum = 20_000) {
+  return lireCorpsJson(req, res, maximum, { controleOrigine: true });
+}
+
+function corpsAgent(req, res, maximum = 200_000) {
+  if (req.headers.origin && !acces.origineAutorisee(req.headers, PORTEE)) {
+    json(res, 403, { erreur: "origine refusée pour l'agent" });
+    return Promise.resolve(null);
+  }
+  return lireCorpsJson(req, res, maximum, { controleOrigine: false });
 }
 
 let magasin = null;
@@ -218,6 +259,40 @@ async function traiterAIStudio(req, res) {
   return traiterAIStudioActif(req, res);
 }
 
+const etatApprobations = () => cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES });
+const traiterConseiller = creerRouteurConseiller({
+  base: CONSEILLER_BASE,
+  jetonSha256: CONSEILLER_JETON_SHA256,
+  json,
+  corpsJson,
+  corpsAgent,
+  erreurConfiguration: ERREUR_CONFIGURATION_CONSEILLER,
+  etatApprobations,
+  // Les derniers runs, contexte des avis. Sans event store, le conseiller travaille sans.
+  runs: () => {
+    const s = store();
+    return s ? api.runs(s, { limite: 8 }) : [];
+  },
+});
+
+// L'état des approbations avec ce que le conseiller en dit. Une base du conseiller illisible
+// ne doit jamais empêcher de décider : l'écran perd les avis, pas les boutons.
+function approbationsAvecConseil() {
+  const etat = etatApprobations();
+  if (ERREUR_CONFIGURATION_CONSEILLER) {
+    return {
+      etat,
+      conseiller: { disponible: false, vuLe: null, modele: null, vault: null, erreur: ERREUR_CONFIGURATION_CONSEILLER },
+    };
+  }
+  try {
+    return conseiller.enrichir(CONSEILLER_BASE, etat);
+  } catch (err) {
+    console.error(`conseiller illisible : ${err.message}`);
+    return { etat, conseiller: { disponible: false, vuLe: null, modele: null, vault: null, erreur: err.message } };
+  }
+}
+
 async function traiter(req, res) {
   // Défense contre le rebinding DNS : un nom d'hôte que je n'ai pas prévu ne parle pas au
   // serveur, même s'il résout vers 127.0.0.1.
@@ -287,11 +362,18 @@ async function traiter(req, res) {
   // boîte, et les modules. Un registre de modules fautif se nomme sans empêcher de décider :
   // le panneau est un confort, décider est la raison d'être de la page.
   if (req.method === "GET" && chemin === "/api/approbations") {
+    const { etat, conseiller: agent } = approbationsAvecConseil();
     return json(res, 200, {
       qui: { par: qui.par, nom: qui.nom ?? null, canal: qui.canal },
-      etat: cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }),
+      etat,
+      conseiller: agent,
       modules: registreApps(),
     });
+  }
+
+  // Le conseiller : l'agent du PC (jeton) et le fil de chaque dossier (identité tailnet).
+  if (chemin.startsWith("/api/conseiller/")) {
+    if (await traiterConseiller(req, res, chemin, qui)) return undefined;
   }
 
   // ---- livraison du cockpit (docs/SPEC-livraison.md, §6) ----
@@ -560,19 +642,46 @@ async function traiter(req, res) {
     try {
       // Champs nommés un par un, jamais étalés. Le corps ne choisit ni où on écrit, ni
       // quand, ni sous quel nom : il ne dit que ce qu'il décide.
-      return json(
-        res,
-        200,
-        cockpit.enregistrer({
-          approvalsDir: APPROVALS,
-          dossier: demande.dossier,
-          empreinte: demande.empreinte,
-          decisions: demande.decisions,
-          reponse: demande.reponse,
-          par: qui.par,
-          canal: qui.canal,
-        })
-      );
+      const registre = cockpit.enregistrer({
+        approvalsDir: APPROVALS,
+        dossier: demande.dossier,
+        empreinte: demande.empreinte,
+        decisions: demande.decisions,
+        reponse: demande.reponse,
+        par: qui.par,
+        canal: qui.canal,
+      });
+      // Une décision complète enlève parfois le dossier de la boîte avant cette seconde
+      // lecture. Le plan gelé et le registre viennent de l'écriture que nous venons de faire,
+      // ils suffisent à construire la note sans dépendre de cette boîte mutable.
+      try {
+        const plan = cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES }).dossiers.find((d) => d.dossier === demande.dossier);
+        if (plan && plan.tranche) conseiller.noter(CONSEILLER_BASE, plan);
+        else {
+          const gel = require("../src/store").lirePlan(APPROVALS, demande.dossier);
+          const toutesPrises = gel && (gel.actions || []).length > 0 && (gel.actions || []).every((action) =>
+            (registre.decisions || []).some((decision) => decision.action_id === action.id)
+          );
+          if (toutesPrises && !registre.reponse) {
+            const prises = new Map((registre.decisions || []).map((decision) => [decision.action_id, decision]));
+            conseiller.noter(CONSEILLER_BASE, {
+              dossier: demande.dossier,
+              empreinte: demande.empreinte,
+              appliquer_avec: null,
+              tranche: true,
+              actions: (gel.actions || []).map((action) => ({
+                ...action,
+                decision: prises.get(action.id)?.decision ?? null,
+                note: prises.get(action.id)?.motif ?? null,
+                decision_par: prises.get(action.id)?.par ?? null,
+              })),
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`note du vault non mise en file : ${err.message}`);
+      }
+      return json(res, 200, registre);
     } catch (err) {
       // Un refus est une réponse attendue, pas une panne : il se lit dans la page.
       if (err instanceof cockpit.Refus) return json(res, 409, { erreur: err.message });

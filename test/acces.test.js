@@ -8,6 +8,7 @@ const { spawn } = require("child_process");
 const acces = require("../src/acces");
 const cockpit = require("../src/cockpit");
 const store = require("../src/store");
+const crypto = require("crypto");
 
 const tests = [];
 function test(name, fn) {
@@ -167,6 +168,8 @@ function demonter() {
 
 const ENTETE_TAILNET = { Host: TAILNET, "Tailscale-User-Login": "destrobi28@gmail.com" };
 const JSON_LOCAL = { "Content-Type": "application/json", Origin: `http://127.0.0.1:${PORT}` };
+const JETON_CONSEILLER = "jeton-test-conseiller";
+const EMPREINTE_CONSEILLER = crypto.createHash("sha256").update(JETON_CONSEILLER).digest("hex");
 
 test("l’API d’approbations expose l’identité qui signera et le plan gelé", async () => {
   const r = await demander({ chemin: "/api/approbations" });
@@ -200,6 +203,49 @@ test("une décision prise depuis le téléphone est consignée avec son identit�
   const registre = bacCourant.registre();
   assert.strictEqual(registre.decisions[0].par, "destrobi28@gmail.com");
   assert.strictEqual(registre.decisions[0].canal, "tailnet");
+});
+
+async function protocoleAgentSansOrigin() {
+  demonter();
+  await monter({
+    CONSEILLER_JETON_SHA256: EMPREINTE_CONSEILLER,
+    CONSEILLER_BASE: path.join(bacCourant.dir, "conseiller.sqlite"),
+  });
+  const entetes = { Authorization: `Bearer ${JETON_CONSEILLER}`, "Content-Type": "application/json" };
+  const sansOrigine = await demander({
+    methode: "POST",
+    chemin: "/api/conseiller/battement",
+    entetes,
+    corps: JSON.stringify({ modele: "test" }),
+  });
+  assert.strictEqual(sansOrigine.code, 200, sansOrigine.corps);
+
+  const origineEtrangere = await demander({
+    methode: "POST",
+    chemin: "/api/conseiller/battement",
+    entetes: { ...entetes, Origin: "https://evil.example" },
+    corps: JSON.stringify({ modele: "test" }),
+  });
+  assert.strictEqual(origineEtrangere.code, 403, origineEtrangere.corps);
+}
+protocoleAgentSansOrigin.forme = {};
+test("le bearer de l’agent sans Origin est accepté, mais une Origin étrangère est refusée", protocoleAgentSansOrigin);
+
+test("un conseiller sans empreinte reste indisponible sans bloquer les approbations", async () => {
+  demonter();
+  await monter({ CONSEILLER_JETON_SHA256: "invalide" });
+  const lecture = await demander({ chemin: "/api/approbations" });
+  assert.strictEqual(lecture.code, 200, lecture.corps);
+  const reponse = JSON.parse(lecture.corps);
+  assert.strictEqual(reponse.conseiller.disponible, false);
+  assert.match(reponse.conseiller.erreur, /CONSEILLER_JETON_SHA256/);
+  const agent = await demander({
+    methode: "POST",
+    chemin: "/api/conseiller/battement",
+    entetes: { Authorization: `Bearer ${JETON_CONSEILLER}`, "Content-Type": "application/json" },
+    corps: JSON.stringify({ modele: "test" }),
+  });
+  assert.strictEqual(agent.code, 503, agent.corps);
 });
 
 test("une écriture venue d'un autre site est refusée", async () => {
@@ -313,6 +359,8 @@ function ecrireApps(dir, contenu) {
 test("les modules traversent l’API, et une fiche sans adresse reste non cliquable", async () => {
   demonter();
   await monter({
+    CONSEILLER_JETON_SHA256: EMPREINTE_CONSEILLER,
+    CONSEILLER_BASE: path.join(bacCourant.dir, "conseiller.sqlite"),
     COCKPIT_APPS_DIR: bacApps({
       modules: [
         { nom: "tcg-generator", url: "http://192.168.1.18:4700" },

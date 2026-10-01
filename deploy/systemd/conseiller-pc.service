@@ -1,0 +1,19 @@
+[Unit]
+Description=Conseiller local des approbations du cockpit
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/code/Raphaelburnier/business-pipelines
+# Créer ce fichier avec chmod 600 : il contient CONSEILLER_JETON.
+EnvironmentFile=%h/code/Raphaelburnier/business-pipelines/.env
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ExecStart=/usr/bin/node bin/conseiller-pc.js
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=default.target

@@ -641,6 +641,41 @@ details.ao-liv-depot { display: block; }
 .ao-approbation-modules article { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-carte); }
 .ao-approbation-modules h3, .ao-approbation-modules p { margin: 0; }
 .ao-approbation-modules .ao-btn { align-self: flex-start; margin-top: auto; }
+
+/* ---------- Conseiller : un avis est distinct de la décision humaine ---------- */
+.ao-decisions-action { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 5px; margin-left: auto; }
+.ao-auteur { display: inline-flex; align-items: center; min-height: 20px; padding: 3px 6px; border: 1px solid currentColor; font: 400 10px/1 var(--font-mono); letter-spacing: .04em; }
+.ao-auteur.ia { color: var(--color-accent); }
+.ao-auteur.humain { color: var(--color-ok); }
+.ao-auteur.indisponible { color: var(--color-danger); }
+.ao-conseiller-etat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ao-conseil { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--color-accent); background: var(--color-fond); }
+.ao-conseil.probleme { border-left-color: var(--color-danger); background: var(--color-danger-fond); }
+.ao-conseil.suggestion { border-left-color: var(--color-accent); }
+.ao-conseil > header { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.ao-conseil > header strong { font-size: 13px; }
+.ao-conseil.probleme > header strong { color: var(--color-danger); }
+.ao-conseil.suggestion > header strong { color: var(--color-accent); }
+.ao-conseil time, .ao-message time { margin-left: auto; font: 400 10px/1.3 var(--font-mono); color: var(--color-douce); }
+.ao-conseil > p, .ao-message > p { margin: 0; line-height: 1.5; }
+.ao-conseil-sources { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; font: 400 11px/1.4 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
+.ao-conseil-sources span { margin-right: 6px; color: var(--color-accent); }
+.ao-discussion { border: 1px solid var(--color-trait); background: var(--color-carte); }
+.ao-discussion > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 10px 12px; cursor: pointer; font: 400 12px/1.3 var(--font-mono); color: var(--color-douce); }
+.ao-discussion > summary::marker { color: var(--color-accent); }
+.ao-discussion-contenu { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; border-top: 1px solid var(--color-trait); }
+.ao-discussion-contenu > .text-douce { margin: 0; }
+.ao-message { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-left: 2px solid var(--color-trait-fort); background: var(--color-fond); }
+.ao-message.raphael { border-left-color: var(--color-ok); }
+.ao-message.conseiller { border-left-color: var(--color-accent); }
+.ao-message > header { display: flex; align-items: center; gap: 8px; }
+.ao-discussion-saisie { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.ao-discussion-saisie textarea { width: 100%; resize: vertical; }
+.ao-discussion-indisponible { margin: 0; padding: 8px 10px; border-left: 3px solid var(--color-danger); background: var(--color-danger-fond); color: var(--color-danger); font-size: 13px; }
+.ao-approbations-tranchees { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.ao-approbations-tranchees > header { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.ao-approbations-tranchees > header h2 { margin: 0; font: 400 14px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.ao-approbations-tranchees > header span { padding: 2px 6px; border: 1px solid var(--color-trait); font: 400 10px/1 var(--font-mono); color: var(--color-douce); }
 @media (max-width: 720px) {
   .ao-approbation-action { padding: 10px; }
   .ao-approbation-choix { align-items: stretch; }
