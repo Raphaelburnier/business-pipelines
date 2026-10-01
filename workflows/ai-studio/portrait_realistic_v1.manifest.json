@@ -1,9 +1,12 @@
 {
   "id": "portrait_realistic_v1",
   "name": "Portrait realistic",
-  "description": "Template texte-vers-image minimal pour portraits et scènes lifestyle. Les références ne sont pas encore injectées en Phase 1.",
+  "use_case": "Portraits et scènes lifestyle polyvalents",
+  "description": "Workflow généraliste : il applique ta description telle quelle, sans style imposé. À utiliser pour un portrait posé, une photo en extérieur ou tout ce qui ne rentre pas dans un workflow spécialisé.",
   "workflow": "portrait_realistic_v1.json",
   "version": 1,
+  "form_defaults": { "pose": "walking", "camera_angle": "eye level", "shot_type": "full body", "lighting": "soft natural light", "style": "realistic Instagram lifestyle", "aspect_ratio": "4:5" },
+  "examples": { "prompt": "walking through Tokyo at night, full body, 3/4 view", "scene": "Tokyo night", "outfit": "Black streetwear" },
   "parameters": {
     "positive_prompt": { "type": "string", "required": true, "node": "6", "input": "text" },
     "negative_prompt": { "type": "string", "default": "", "node": "7", "input": "text" },

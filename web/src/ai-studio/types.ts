@@ -99,11 +99,16 @@ export interface WorkflowParameter {
   input: string;
 }
 
+export type WorkflowFormField = "pose" | "camera_angle" | "shot_type" | "lighting" | "style" | "aspect_ratio";
+
 export interface WorkflowManifest {
   id: string;
   name: string;
+  use_case?: string;
   description: string;
   version: number;
+  form_defaults?: Partial<Record<WorkflowFormField, string>>;
+  examples?: Partial<Record<"prompt" | "scene" | "outfit", string>>;
   parameters: Record<string, WorkflowParameter>;
 }
 

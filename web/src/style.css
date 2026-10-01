@@ -474,6 +474,11 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .studio-controls { display: flex; flex-direction: column; gap: 16px; }.studio-controls > label { display: flex; align-items: center; gap: 10px; }.studio-controls label > span { width: 55px; }.studio-controls select { width: 90px; }.studio-controls input[type="range"] { flex: 1; accent-color: var(--color-accent); }.studio-controls small { color: var(--color-douce); }
 .studio-controls input[name="project_id"] { flex: 1; min-width: 0; max-width: 240px; border: 1px solid var(--color-trait); border-radius: 0; background: var(--color-fond); padding: 8px 10px; color: var(--color-encre); font: 500 15px/20px var(--font-sans); }
 .studio-advanced-toggle { width: 100%; margin-top: 20px; border: 1px solid var(--color-trait); background: transparent; padding: 10px; color: var(--color-encre); text-align: left; cursor: pointer; }
+.studio-workflow-card { grid-column: 1 / -1; }
+.studio-workflow-picker { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: end; gap: 10px 20px; }
+@media (max-width: 760px) { .studio-workflow-picker { grid-template-columns: 1fr; } }
+.studio-workflow-description { margin: 0; border-left: 2px solid var(--color-accent); padding: 8px 12px; color: var(--color-encre); font: 400 14px/1.5 var(--font-sans); }
+.studio-workflow-description b { font-weight: 600; }
 .studio-advanced-toggle:hover { border-color: var(--color-accent); }
 .studio-generate-action { grid-column: 1 / -1; position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 2px solid var(--color-accent); background: color-mix(in srgb, var(--color-surface) 94%, transparent); padding: 14px 16px; backdrop-filter: blur(8px); z-index: 3; }
 .studio-generate-action > span { display: flex; flex-direction: column; }.studio-generate-action small { color: var(--color-douce); font: 400 10px/1.2 var(--font-mono); }
