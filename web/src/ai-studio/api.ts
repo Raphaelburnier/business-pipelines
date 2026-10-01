@@ -19,7 +19,7 @@ async function requete<T>(url: string, options: RequestInit = {}): Promise<T> {
   return corps as T;
 }
 
-function json<T>(url: string, method: "POST" | "PATCH", corps: unknown): Promise<T> {
+function json<T>(url: string, method: "POST" | "PATCH" | "DELETE", corps: unknown): Promise<T> {
   return requete<T>(url, {
     method,
     headers: { "content-type": "application/json" },
@@ -69,6 +69,8 @@ export const aiStudioApi = {
   regenerate: (id: string, corps: unknown) => json<{ generations: Generation[] }>(`/api/ai-studio/generations/${encodeURIComponent(id)}/regenerate`, "POST", corps),
   approve: (id: string) => json<Generation>(`/api/ai-studio/generations/${encodeURIComponent(id)}/approve`, "POST", {}),
   cancel: (id: string) => json<Generation>(`/api/ai-studio/generations/${encodeURIComponent(id)}/cancel`, "POST", {}),
+  deleteGeneration: (id: string) => json<{ generation_id: string; profile_id: string; archive_deleted: boolean }>(`/api/ai-studio/generations/${encodeURIComponent(id)}`, "DELETE", {}),
+  deleteProfile: (id: string, archive: boolean) => json<{ id: string; archive_folder: string | null; archive_deleted: boolean }>(`/api/ai-studio/profiles/${encodeURIComponent(id)}`, "DELETE", { archive }),
   async addReference(profileId: string, file: File) {
     const data = await fichierBase64(file);
     return json<{ name: string; url: string }>(`/api/ai-studio/profiles/${encodeURIComponent(profileId)}/references`, "POST", {

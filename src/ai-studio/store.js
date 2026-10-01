@@ -76,6 +76,7 @@ class AIStudioStore {
         ON ai_generations(status, created_at ASC);
     `);
     this.reindexer();
+    this.assurerDossiersArchive();
   }
 
   fermer() {
@@ -131,6 +132,7 @@ class AIStudioStore {
         width: entierBorne(resolution.width, 832, 256, 4096, "largeur"),
         height: entierBorne(resolution.height, 1040, 256, 4096, "hauteur"),
       },
+      archive_folder: this.choisirDossierArchive(nom, id),
       created_at: maintenant,
       updated_at: maintenant,
     };
@@ -140,7 +142,61 @@ class AIStudioStore {
     fs.mkdirSync(sous(dossier, "favorites"), { recursive: true });
     ecrireJson(sous(dossier, "profile.json"), profil);
     this.indexerProfil(profil);
-    return { ...profil, references: [] };
+    const archive_error = this.creerDossierArchive(profil);
+    return { ...profil, references: [], ...(archive_error ? { archive_error } : {}) };
+  }
+
+  // Le dossier NAS porte le nom lisible du profil, figé à la création : renommer le
+  // profil ne déplace pas des photos déjà archivées.
+  choisirDossierArchive(nom, id) {
+    const pris = new Set(this.lireProfils().filter((p) => p.id !== id).map((p) => String(p.archive_folder || "").toLowerCase()));
+    const base = nomDossier(nom) || id;
+    return pris.has(base.toLowerCase()) ? `${base} (${id})` : base;
+  }
+
+  creerDossierArchive(profil) {
+    try {
+      fs.mkdirSync(sous(this.archiveRoot, profil.archive_folder), { recursive: true });
+      return null;
+    } catch (err) {
+      console.error(`AI Studio : dossier NAS de « ${profil.id} » non créé : ${err.message}`);
+      return `dossier NAS non créé : ${err.message}`;
+    }
+  }
+
+  assurerDossiersArchive() {
+    for (const profil of this.lireProfils()) {
+      if (!profil.archive_folder) {
+        profil.archive_folder = this.choisirDossierArchive(profil.name, profil.id);
+        ecrireJson(sous(this.cheminProfil(profil.id), "profile.json"), profil);
+      }
+      this.creerDossierArchive(profil);
+    }
+  }
+
+  lireProfils() {
+    if (!fs.existsSync(this.profilsDir)) return [];
+    return fs.readdirSync(this.profilsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && ID.test(e.name))
+      .map((e) => lireJson(sous(this.profilsDir, e.name, "profile.json")))
+      .filter(Boolean);
+  }
+
+  supprimerProfil(id, { archive = false } = {}) {
+    const profil = this.profil(id);
+    const actives = this.generations({ profileId: id, limit: 500 }).filter((g) => !ETATS_TERMINAUX.has(g.status));
+    if (actives.length) throw new RequeteInvalide(`${actives.length} génération(s) en cours : annule-les avant de supprimer le profil`);
+    if (archive && profil.archive_folder) {
+      try {
+        fs.rmSync(sous(this.archiveRoot, profil.archive_folder), { recursive: true, force: true });
+      } catch (err) {
+        throw new ArchiveIndisponible(`dossier NAS non supprimé : ${err.message}`, { cause: err });
+      }
+    }
+    fs.rmSync(this.cheminProfil(id), { recursive: true, force: true });
+    this.db.prepare("DELETE FROM ai_generations WHERE profile_id = ?").run(id);
+    this.db.prepare("DELETE FROM ai_profiles WHERE id = ?").run(id);
+    return { id, archive_folder: profil.archive_folder || null, archive_deleted: Boolean(archive && profil.archive_folder) };
   }
 
   modifierProfil(id, changements) {
@@ -322,9 +378,11 @@ class AIStudioStore {
     }
     if (generation.archived_at) return generation;
     const date = new Date(generation.created_at);
+    const profil = this.profil(generation.profile_id);
+    const projet = idValide(generation.project_id || generation.profile_id, "projet");
     const relatifArchive = path.join(
-      idValide(generation.project_id || generation.profile_id, "projet"),
-      idValide(generation.profile_id, "profil"),
+      profil.archive_folder || idValide(generation.profile_id, "profil"),
+      ...(projet === generation.profile_id ? [] : [projet]),
       String(date.getUTCFullYear()),
       String(date.getUTCMonth() + 1).padStart(2, "0"),
       id
@@ -377,6 +435,21 @@ class AIStudioStore {
     } catch (err) {
       throw new ArchiveIndisponible(`archivage NAS impossible : ${err.message}`, { cause: err });
     }
+  }
+
+  supprimerGeneration(id) {
+    const generation = this.generation(id);
+    if (!ETATS_TERMINAUX.has(generation.status)) throw new RequeteInvalide("génération en cours : annule-la avant de la supprimer");
+    if (generation.archive?.directory) {
+      try {
+        fs.rmSync(sous(this.archiveRoot, generation.archive.directory), { recursive: true, force: true });
+      } catch (err) {
+        throw new ArchiveIndisponible(`copie NAS non supprimée : ${err.message}`, { cause: err });
+      }
+    }
+    fs.rmSync(sous(this.racine, generation.storage.directory), { recursive: true, force: true });
+    this.db.prepare("DELETE FROM ai_generations WHERE id = ?").run(id);
+    return { generation_id: id, profile_id: generation.profile_id, archive_deleted: Boolean(generation.archive?.directory) };
   }
 
   cheminImage(id) {
@@ -440,6 +513,22 @@ class AIStudioStore {
   }
 }
 
+const NOMS_RESERVES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+// Nom de dossier lisible et sûr pour un partage SMB : ni séparateur, ni caractère
+// interdit par Windows, ni point ou espace final.
+function nomDossier(nom) {
+  const propre = String(nom || "")
+    .normalize("NFC")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 80)
+    .trim();
+  return NOMS_RESERVES.test(propre) ? "" : propre;
+}
+
 function trouverMetadata(racine) {
   const trouves = [];
   const visiter = (dossier) => {
@@ -490,6 +579,7 @@ module.exports = {
   ArchiveIndisponible,
   ETATS_TERMINAUX,
   slug,
+  nomDossier,
   idValide,
   sous,
   generationId,

@@ -19,6 +19,8 @@ export interface CharacterProfile {
   preferred_presets: string[];
   preferred_ratio: string;
   default_resolution: { width: number; height: number };
+  archive_folder?: string;
+  archive_error?: string;
   created_at: string;
   updated_at: string;
   references: ReferenceImage[];

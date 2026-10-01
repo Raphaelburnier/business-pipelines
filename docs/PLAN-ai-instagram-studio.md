@@ -86,7 +86,7 @@ temp/jobs/
 index.sqlite
 ```
 
-L'archive contient `<projet>/<profil>/YYYY/MM/<generation>/` avec
+L'archive contient `<nom du profil>/[<projet>/]YYYY/MM/<generation>/` avec
 `image.<ext>`, `metadata.json` et `workflow.json`. Chaque dossier est publié par
 renommage atomique après validation dans l'Inspector. Si le NAS est indisponible,
 l'image et la validation restent dans le volume de travail et l'archivage est repris.

@@ -32,7 +32,11 @@ Le script de livraison conserve `specs/`, contrairement au `.env` racine. L'adre
 a été vérifiée depuis le NAS et le conteneur le 2026-09-29 ; elle est propre au réseau de
 cette installation et peut changer sans réservation DHCP.
 Le navigateur ne contacte jamais ComfyUI : les appels passent par le backend du Cockpit.
-L'archive suit `IAstudio/<projet>/<profil>/YYYY/MM/<generation>/`. Une génération non
+Chaque profil a son dossier `IAstudio/<nom du profil>/`, créé avec le profil et figé
+ensuite. L'archive suit `IAstudio/<nom du profil>/[<projet>/]YYYY/MM/<generation>/` (le
+segment projet n'apparaît que s'il diffère du profil). Supprimer une génération efface
+aussi sa copie archivée ; supprimer un profil garde son dossier NAS, sauf demande
+explicite. Une génération non
 validée reste dans la galerie et dans les données de travail. Si le partage est
 indisponible après validation, le Cockpit conserve celle-ci et retente l'archivage.
 

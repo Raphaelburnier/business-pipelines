@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { RequeteInvalide, Introuvable } = require("./store");
+const { RequeteInvalide, Introuvable, ArchiveIndisponible } = require("./store");
 const { MODEL_CATEGORIES } = require("./model-library");
 
 function creerRouteurAIStudio({ service, json, corpsJson, durcissement, origineAutorisee = () => true }) {
@@ -59,6 +59,11 @@ function creerRouteurAIStudio({ service, json, corpsJson, durcissement, origineA
           if (!corps) return true;
           return fini(json(res, 200, service.store.modifierProfil(profileId, corps)));
         }
+        if (req.method === "DELETE" && morceaux.length === 2) {
+          const corps = await corpsJson(req, res);
+          if (!corps) return true;
+          return fini(json(res, 200, service.supprimerProfil(profileId, { archive: corps.archive === true })));
+        }
         if (morceaux[2] === "references") {
           if (req.method === "POST" && morceaux.length === 3) {
             const corps = await corpsJson(req, res, 17 * 1024 * 1024);
@@ -95,6 +100,11 @@ function creerRouteurAIStudio({ service, json, corpsJson, durcissement, origineA
         }
         const id = morceaux[1];
         if (req.method === "GET" && morceaux.length === 2) return fini(json(res, 200, service.store.generation(id)));
+        if (req.method === "DELETE" && morceaux.length === 2) {
+          const corps = await corpsJson(req, res);
+          if (!corps) return true;
+          return fini(json(res, 200, service.supprimerGeneration(id)));
+        }
         if (req.method === "GET" && morceaux[2] === "image") return fini(servirFichier(res, service.store.cheminImage(id), durcissement));
         if (req.method === "GET" && morceaux[2] === "workflow") {
           return fini(servirFichier(res, service.store.cheminWorkflow(id), durcissement, "application/json; charset=utf-8", `attachment; filename="${id}-workflow.json"`));
@@ -119,6 +129,7 @@ function creerRouteurAIStudio({ service, json, corpsJson, durcissement, origineA
     } catch (err) {
       if (err instanceof RequeteInvalide) return fini(json(res, 400, { erreur: err.message }));
       if (err instanceof Introuvable) return fini(json(res, 404, { erreur: err.message }));
+      if (err instanceof ArchiveIndisponible) return fini(json(res, 503, { erreur: err.message }));
       console.error("AI Studio :", err);
       return fini(json(res, 500, { erreur: `panne AI Studio : ${err.message}` }));
     }

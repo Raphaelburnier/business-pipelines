@@ -212,7 +212,7 @@ function ProfileStudio({ id, tab, aller }: { id: string; tab: "gallery" | "gener
       {tab === "gallery" && (generations.length ? <ContactSheet generations={generations} aller={aller} /> : <Vide titre="Galerie vide" action="Passez dans Generate pour préparer la première prise." />)}
       {tab === "generate" && <Generate profile={profile} aller={aller} />}
       {tab === "references" && <References profile={profile} onChange={charger} />}
-      {tab === "settings" && <Settings profile={profile} onChange={setProfile} />}
+      {tab === "settings" && <><Settings profile={profile} onChange={setProfile} /><SupprimerProfil profile={profile} aller={aller} /></>}
     </div>
   );
 }
@@ -366,6 +366,7 @@ function Settings({ profile, onChange }: { profile: CharacterProfile; onChange: 
     } catch (err) { setMessageEtat(message(err)); }
   };
   return <form className="studio-panel studio-settings" onSubmit={soumettre}>
+    {profile.archive_folder && <p className="studio-field wide studio-nas-folder"><span>Dossier NAS des photos validées</span><b>IAstudio/{profile.archive_folder}</b></p>}
     <Champ label="Nom" name="name" defaultValue={profile.name} required /><Champ label="Description" name="description" defaultValue={profile.description} />
     <Champ label="Projet par défaut" name="project_id" defaultValue={profile.project_id || profile.id} required />
     <CheckpointField label="Checkpoint" defaultValue={profile.checkpoint} required />
@@ -377,11 +378,34 @@ function Settings({ profile, onChange }: { profile: CharacterProfile; onChange: 
   </form>;
 }
 
+function SupprimerProfil({ profile, aller }: { profile: CharacterProfile; aller: (href: string) => void }) {
+  const [confirmation, setConfirmation] = useState(false);
+  const [archive, setArchive] = useState(false);
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const supprimer = async () => {
+    setOccupe(true); setErreur(null);
+    try { await aiStudioApi.deleteProfile(profile.id, archive); aller("/ai-studio"); }
+    catch (err) { setErreur(message(err)); setOccupe(false); }
+  };
+  return <section className="studio-panel studio-danger">
+    <h3>Supprimer le profil</h3>
+    <p>Efface {profile.name}, ses références et toutes ses générations du cockpit. Les générations en cours doivent être annulées avant.</p>
+    {profile.archive_folder && <label className="studio-check"><input type="checkbox" checked={archive} onChange={(event) => setArchive(event.target.checked)} /> Supprimer aussi le dossier NAS IAstudio/{profile.archive_folder} et les photos validées qu’il contient</label>}
+    {!archive && profile.archive_folder && <small>Le dossier NAS et les photos validées seront conservés.</small>}
+    {erreur && <Alerte>{erreur}</Alerte>}
+    {confirmation
+      ? <div className="studio-danger-actions"><button type="button" className="ao-btn studio-btn-danger" disabled={occupe} onClick={() => void supprimer()}>{occupe ? "Suppression…" : `Confirmer la suppression de ${profile.name}`}</button><button type="button" className="ao-btn" disabled={occupe} onClick={() => setConfirmation(false)}>Annuler</button></div>
+      : <button type="button" className="ao-btn studio-btn-danger" onClick={() => setConfirmation(true)}>Supprimer le profil</button>}
+  </section>;
+}
+
 function Inspector({ id, aller }: { id: string; aller: (href: string) => void }) {
   const [generation, setGeneration] = useState<Generation | null>(null);
   const [profile, setProfile] = useState<CharacterProfile | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [validationEnCours, setValidationEnCours] = useState(false);
+  const [suppression, setSuppression] = useState<"repos" | "confirmation" | "en cours">("repos");
   const charger = useCallback(async () => {
     try { const g = await aiStudioApi.generation(id); setGeneration(g); setProfile(await aiStudioApi.profile(g.profile_id)); setErreur(null); }
     catch (err) { setErreur(message(err)); }
@@ -401,6 +425,12 @@ function Inspector({ id, aller }: { id: string; aller: (href: string) => void })
       await charger();
     } catch (err) { setErreur(message(err)); }
     finally { setValidationEnCours(false); }
+  };
+
+  const supprimer = async () => {
+    setSuppression("en cours"); setErreur(null);
+    try { await aiStudioApi.deleteGeneration(generation.generation_id); aller(`/ai-studio/profiles/${generation.profile_id}`); }
+    catch (err) { setErreur(message(err)); setSuppression("repos"); }
   };
 
   const regenerer = async (event: FormEvent<HTMLFormElement>) => {
@@ -442,7 +472,12 @@ function Inspector({ id, aller }: { id: string; aller: (href: string) => void })
           <button type="button" className="ao-btn" onClick={() => void navigator.clipboard.writeText(JSON.stringify(generation.settings, null, 2))}>Copier les réglages</button>
           <a className="ao-btn" href={`/api/ai-studio/generations/${generation.generation_id}/workflow`} download>Télécharger le workflow</a>
           {!terminal && <button type="button" className="ao-btn" onClick={() => void aiStudioApi.cancel(generation.generation_id).then(charger)}>Annuler</button>}
+          {terminal && suppression === "repos" && <button type="button" className="ao-btn studio-btn-danger" onClick={() => setSuppression("confirmation")}>Supprimer</button>}
         </div>
+        {terminal && suppression !== "repos" && <div className="studio-danger studio-danger-inline" role="alert">
+          <p>L’image, ses réglages{generation.archived_at ? " et sa copie archivée sur le NAS" : ""} seront effacés définitivement.</p>
+          <div className="studio-danger-actions"><button type="button" className="ao-btn studio-btn-danger" disabled={suppression === "en cours"} onClick={() => void supprimer()}>{suppression === "en cours" ? "Suppression…" : "Confirmer la suppression"}</button><button type="button" className="ao-btn" disabled={suppression === "en cours"} onClick={() => setSuppression("repos")}>Garder l’image</button></div>
+        </div>}
         {terminal && <form className="studio-regenerate" onSubmit={regenerer}><h3>Regénérer / ajuster</h3><AdvancedFields profile={profile} settings={generation.settings} /><label className="studio-check"><input type="checkbox" name="same_seed" defaultChecked /> Conserver la seed</label><button className="ao-btn primaire">Créer la variante</button></form>}
       </section>
     </div>
