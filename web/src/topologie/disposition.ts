@@ -109,10 +109,9 @@ function etapesImportantes(run: RunDetailleAvecOutils): EtapeImportante[] {
     .sort((a, b) => Date.parse(parNom.get(a.nom)?.debut ?? "") - Date.parse(parNom.get(b.nom)?.debut ?? ""));
 }
 
-/** Place les deux machines et le maître au-dessus des projets, avec leurs jalons en petit. */
-export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [], colonnesSouhaitees = 1): Disposition {
+/** Arbre vertical : orchestrateur → machines → projets → étapes du dernier run. */
+export function disposer(topologie: Topologie, executions: ExecutionProjet[] = []): Disposition {
   const projets = topologie.projets.filter((projet) => projet.aFiche).slice().sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
-  const colonnes = Math.max(1, Math.min(projets.length || 1, 3, Math.floor(colonnesSouhaitees)));
   const executionParProjet = new Map(executions.map((execution) => [execution.projetId, execution.run]));
   const machinesParRole = new Map<"pc" | "nas", Machine>();
   for (const machine of topologie.machines) {
@@ -131,22 +130,33 @@ export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [
     });
   };
 
-  noeudMachine("pc", MARGE, 28);
-  noeudMachine("nas", MARGE + 190, 28);
+  const xPc = MARGE;
+  const xNas = MARGE + LARGEUR_GROUPE + ECART_GROUPE;
+  const yMachine = 132;
+  const yProjet = 238;
+  const pasProjet = 286;
+  const centrePc = xPc + LARGEUR_GROUPE / 2;
+  const centreNas = xNas + LARGEUR_GROUPE / 2;
+  const centreOrchestrateur = (centrePc + centreNas) / 2;
+
   noeuds.push({
-    id: idOrchestrateur, type: "orchestrateur", x: MARGE + 190, y: 112, largeur: 154, hauteur: 66,
+    id: idOrchestrateur, type: "orchestrateur", x: centreOrchestrateur - 77, y: 28, largeur: 154, hauteur: 66,
     maitre: topologie.maitre, sousTitre: `maître · ${topologie.maitre.nom}`,
   });
+  noeudMachine("pc", centrePc - 77, yMachine);
+  noeudMachine("nas", centreNas - 77, yMachine);
 
+  const indexParRole = new Map<"pc" | "nas", number>([["pc", 0], ["nas", 0]]);
   let hauteurProjets = 0;
-  for (let index = 0; index < projets.length; index += 1) {
-    const projet = projets[index]!;
-    const colonne = index % colonnes;
-    const rangee = Math.floor(index / colonnes);
+  for (const projet of projets) {
+    const role = /nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc";
+    const colonne = role === "pc" ? 0 : 1;
+    const rangee = indexParRole.get(role)!;
+    indexParRole.set(role, rangee + 1);
     const execution = executionParProjet.get(projet.id);
     const jalons = execution ? etapesImportantes(execution) : [];
-    const x = MARGE + colonne * (LARGEUR_GROUPE + ECART_GROUPE);
-    const y = 232 + rangee * 320;
+    const x = (colonne === 0 ? xPc : xNas);
+    const y = yProjet + rangee * pasProjet;
     noeuds.push({ id: idProjet(projet.id), type: "projet", x, y, largeur: LARGEUR_PROJET, hauteur: HAUTEUR_PROJET, projet });
     jalons.forEach((etape, i) => {
       noeuds.push({
@@ -159,10 +169,10 @@ export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [
     hauteurProjets = Math.max(hauteurProjets, y + HAUTEUR_PROJET + (jalons.length ? Math.ceil(jalons.length / 2) * (HAUTEUR_ETAPE + ECART_ETAPE_Y) + 20 : 0));
   }
 
-  const largeurProjets = projets.length ? colonnes * LARGEUR_GROUPE + (colonnes - 1) * ECART_GROUPE : 0;
+  const largeurProjets = 2 * LARGEUR_GROUPE + ECART_GROUPE;
   return {
     noeuds,
-    largeur: Math.max(MARGE * 2 + LARGEUR_GROUPE, MARGE * 2 + largeurProjets),
-    hauteur: Math.max(196, projets.length ? hauteurProjets + MARGE : 196),
+    largeur: MARGE * 2 + largeurProjets,
+    hauteur: Math.max(220, projets.length ? hauteurProjets + MARGE : yMachine + 66 + MARGE),
   };
 }

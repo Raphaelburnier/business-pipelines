@@ -210,6 +210,9 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-legende-graphe i.run { border-top: 2px dashed var(--color-accent); }
 .ao-legende-graphe i.wait { border-top: 2px dotted var(--color-givre); }
 .ao-legende-graphe i.multi { border-top: 2px dotted var(--color-trait-fort); }
+.ao-legende-graphe i.pc { border-color: var(--color-pc); border-top-style: dashed; }
+.ao-legende-graphe i.nas { border-color: var(--color-nas); border-top-style: dotted; }
+.ao-legende-graphe i.etape { border-color: var(--color-ok); border-top-style: dotted; }
 
 /* ---------- KPI : une barre discrète, en haut à gauche du graphe ---------- */
 .ao-kpis {
@@ -294,6 +297,16 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .arete-active .react-flow__edge-path { filter: drop-shadow(0 0 3px var(--color-accent)); animation: ao-flux .9s linear infinite; }
 .arete-attente .react-flow__edge-path { filter: drop-shadow(0 0 2px var(--color-givre)); }
 :root[data-theme="jour"] .arete-active .react-flow__edge-path { filter: none; }
+.ao-flux { transition: opacity .2s ease; }
+.ao-flux .react-flow__edge-path { transition: stroke-width .2s ease, filter .2s ease; }
+.ao-flux.actif .react-flow__edge-path { stroke-width: 3px; filter: drop-shadow(0 0 3px currentColor); }
+.ao-flux.estompe { opacity: .08 !important; }
+.ao-flux.attente .react-flow__edge-path { filter: drop-shadow(0 0 3px var(--color-givre)); }
+.ao-flux .react-flow__edge-text { fill: var(--color-encre); font: 10px var(--font-mono); letter-spacing: .04em; }
+.ao-flux .react-flow__edge-textbg { fill: var(--color-carte); fill-opacity: .96; stroke: var(--color-trait); stroke-width: 1px; }
+.ao-flux.pc .react-flow__edge-path { stroke-dasharray: 6 4; }
+.ao-flux.nas .react-flow__edge-path { stroke-dasharray: 2 4; }
+.ao-flux.etape .react-flow__edge-path { stroke-dasharray: 1 5; }
 
 .ao-noeud { position: relative; display: flex; height: 100%; width: 100%; flex-direction: column; justify-content: center; gap: 2px; padding: 0 12px 0 16px; border: 1px solid var(--color-trait-fort); background: var(--color-carte); text-align: left; }
 .ao-noeud.projet { cursor: pointer; gap: 8px; padding: 0 16px; border-radius: 2px; color: var(--color-encre); }
@@ -309,9 +322,9 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-noeud.etape .sous { font-size: 9px; }
 .ao-noeud.orchestrateur { border-color: var(--color-accent); background: var(--color-carte); color: var(--color-encre); }
 .ao-noeud.orchestrateur::before { background: var(--color-accent); }
-.ao-noeud.orchestrateur::before { background: var(--color-accent); }
 .ao-noeud.etape.text-alerte { border-color: var(--color-givre); }
 .ao-noeud.etape.text-danger { border-color: var(--color-danger); }
+.ao-noeud.estompe { opacity: .28; transition: opacity .2s ease; }
 .ao-noeud::before { content: ""; position: absolute; top: -1px; bottom: -1px; left: -1px; width: 3px; background: var(--color-trait-fort); }
 .ao-noeud.pc::before { background: var(--color-pc); }
 .ao-noeud.nas { border-radius: 4px; }
@@ -340,10 +353,11 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 }
 @media (prefers-reduced-motion: no-preference) {
   .pulse-douce { animation: ao-pouls 2s ease-in-out infinite; }
+  .ao-flux.actif .react-flow__edge-path { animation: ao-flux .9s linear infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ao-shell { transition: none; }
-  .ao-ligne.run .point, .arete-active .react-flow__edge-path, .ao-haut h1:hover { animation: none !important; }
+  .ao-ligne.run .point, .arete-active .react-flow__edge-path, .ao-flux .react-flow__edge-path, .ao-haut h1:hover { animation: none !important; }
 }
 
 /* ---------- Pages hors graphe ---------- */
