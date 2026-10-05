@@ -2,7 +2,7 @@
 //
 // Elles sont volontairement tordues : ce sont les cas où une implémentation naïve casse.
 // - Deux machines, dont le PC en veille au départ : il faut le voir se réveiller.
-// - Trois catégories, six projets, dont un seul sur les deux machines (arête en pointillés).
+// - Deux projets enregistrés sur des machines différentes, dont un sans run rejoué.
 // - Un projet sans aucun run, un run ad hoc terminé, un run en `waiting_quota`, un run en
 //   échec, un run en pause.
 // - Le run rejoué fait tout ce que fait un vrai run marketing : deux agents en parallèle,

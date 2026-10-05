@@ -300,6 +300,18 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-noeud.projet::before { width: 4px; background: var(--color-trait-fort); }
 .ao-noeud.projet.attente::before { background: var(--color-givre); }
 .ao-noeud.projet:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.ao-noeud.infrastructure { gap: 5px; padding: 0 10px 0 13px; border-radius: 2px; color: var(--color-encre); }
+.ao-noeud.infrastructure.clickable { cursor: pointer; }
+.ao-noeud.infrastructure:focus-visible, .ao-noeud.etape:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.ao-noeud.infrastructure .nom { font-size: 13px; }
+.ao-noeud.etape { gap: 4px; padding: 0 9px 0 12px; border-style: dashed; border-radius: 2px; background: var(--color-surface); color: var(--color-encre); cursor: pointer; }
+.ao-noeud.etape .nom { font-size: 12px; line-height: 16px; }
+.ao-noeud.etape .sous { font-size: 9px; }
+.ao-noeud.orchestrateur { border-color: var(--color-accent); background: var(--color-carte); color: var(--color-encre); }
+.ao-noeud.orchestrateur::before { background: var(--color-accent); }
+.ao-noeud.orchestrateur::before { background: var(--color-accent); }
+.ao-noeud.etape.text-alerte { border-color: var(--color-givre); }
+.ao-noeud.etape.text-danger { border-color: var(--color-danger); }
 .ao-noeud::before { content: ""; position: absolute; top: -1px; bottom: -1px; left: -1px; width: 3px; background: var(--color-trait-fort); }
 .ao-noeud.pc::before { background: var(--color-pc); }
 .ao-noeud.nas { border-radius: 4px; }
@@ -310,7 +322,7 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-noeud.categorie { border-style: dashed; background: var(--color-surface); }
 .ao-noeud.categorie::before { display: none; }
 .ao-noeud.attente { border-color: var(--color-givre); }
-.ao-noeud.selectionne, .react-flow__node-cockpit:hover .ao-noeud:not(.maitre) { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.ao-noeud.selectionne, .react-flow__node-cockpit:hover .ao-noeud:not(.maitre):not(.orchestrateur) { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
 .ao-noeud .nom { overflow: hidden; font: 700 15px/20px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
 .ao-noeud .sous { display: flex; gap: 8px; overflow: hidden; font: 400 11px/14px var(--font-mono); color: var(--color-douce); white-space: nowrap; }
 .ao-noeud .badge { position: absolute; top: -9px; right: -9px; min-width: 18px; height: 18px; padding: 0 5px; border: 2px solid var(--color-surface); background: var(--color-accent); color: var(--color-sur-accent); font: 400 10px/14px var(--font-mono); text-align: center; }
