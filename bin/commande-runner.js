@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-const { EventStore, chat, cockpitRead } = require("agent-orchestrator");
+const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWorkers, wol } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -16,6 +16,11 @@ const CODES_ATTENDUS = new Set([0, 75, 76, 77]);
 
 let arret = false;
 let enfant = null;
+// Le maître permanent (agent-orchestrator, src/maitre-distant.js) et son service. Null tant
+// qu'il n'écoute pas : un run lancé entre-temps ouvre alors son propre maître, comme avant.
+let maitre = null;
+let serviceMaitre = null;
+const REESSAI_MAITRE_MS = 30_000;
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function projet(projectId) {
@@ -26,22 +31,30 @@ function projet(projectId) {
   return fichier;
 }
 
-function lancer(commande) {
-  if (commande.kind !== "run.start") throw new Error(`commande non prise en charge : ${commande.kind}`);
-  const fichier = projet(commande.payload.projectId);
+// `reprendre` relance le run arrêté dans le dossier de travail du projet (`--resume`), avec
+// les mêmes choix de modèle.
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false } = {}) {
+  const fichier = projet(projectId);
+  // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
+  // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
   const args = [
     "/agent-orchestrator/bin/orch.js",
     "projet",
     fichier,
     "--pipeline",
-    String(commande.payload.pipelineIndex),
+    String(pipelineIndex),
     "--distribue",
+    "--handlers",
+    "src/stage-handlers.js",
   ];
-  for (const [noeud, llm] of Object.entries(commande.payload.llmOverrides || {})) {
+  if (reprendre) args.push("--resume");
+  for (const [noeud, llm] of Object.entries(llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);
   }
   return new Promise((resolve) => {
-    enfant = spawn(process.execPath, args, { cwd: RACINE, env: process.env, stdio: "inherit" });
+    // Avec le maître permanent en place, le run lui passe ses étapes au lieu d'ouvrir le port.
+    const env = maitre ? { ...process.env, ORCH_MAITRE_DISTANT: "1" } : process.env;
+    enfant = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
     enfant.on("error", (err) => resolve({ code: 1, erreur: err.message }));
     enfant.on("close", (code, signal) => {
       enfant = null;
@@ -102,24 +115,99 @@ async function boucle(store, kinds, executer) {
   }
 }
 
-async function executerRun(commande) {
-  const resultat = await lancer(commande);
-  if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: resultat };
+function issue(resultat, detail = {}) {
+  if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: { ...resultat, ...detail } };
   return { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` };
+}
+
+// Le pipeline et les modèles avec lesquels le run arrêté a été lancé. Le pipeline se lit
+// dans la fiche du projet (`extends` = la référence du run). Les modèles viennent de la
+// dernière commande `run.start` de ce projet : un projet n'a qu'un dossier de travail, donc
+// le run à reprendre est le dernier lancé.
+function lancementDe(store, run) {
+  const fiche = JSON.parse(fs.readFileSync(projet(run.project_id), "utf8"));
+  const index = (fiche.pipelines || []).findIndex((p) => p.extends === run.pipeline_ref);
+  const derniere = store
+    .commandes({ limite: 5000 })
+    .filter((c) => c.kind === "run.start" && c.payload.projectId === run.project_id)
+    .pop();
+  return {
+    projectId: run.project_id,
+    pipelineIndex: index >= 0 ? index : 0,
+    llmOverrides: (derniere && derniere.payload.llmOverrides) || {},
+  };
+}
+
+// Trancher puis reprendre (phase 5). La décision est écrite par `deciderApprobation`, qui
+// revérifie tout, sous la signature de la commande. Rejouée après un redémarrage du runner,
+// une décision déjà écrite par cette même commande n'est pas réécrite : seul le run reprend.
+async function deciderEtReprendre(store, commande) {
+  const { approbationId, decision, note = null, actions = [] } = commande.payload;
+  const a = store.approbation(approbationId);
+  if (!a) throw new Error(`approbation inconnue : ${approbationId}`);
+  const dejaEcrite = a.status === decision && a.par === commande.par;
+  if (!dejaEcrite) {
+    store.deciderApprobation(a.id, { decision, note, par: commande.par, canal: commande.canal, actions });
+    store.emettre({ type: "approval.decided", runId: a.run_id, payload: { node: a.node_id, decision, par: commande.par } });
+  }
+  const run = store.run(a.run_id);
+  if (!run) throw new Error(`run inconnu : ${a.run_id}`);
+  return issue(await lancer(lancementDe(store, run), { reprendre: true }), { runId: a.run_id, decision });
+}
+
+async function executerRun(store, commande) {
+  if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande);
+  return issue(await lancer(commande.payload));
+}
+
+// Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
+// le cockpit le voit en ligne avant d'en lancer un (décision du 2026-10-05). L'adresse
+// d'écoute (ORCH_MAITRE_HOTE, l'IP tailnet du NAS) peut manquer au démarrage du NAS, avant
+// Tailscale : le runner ne tombe pas pour autant, il réessaie, et ses autres files tournent.
+async function ouvrirMaitre(store) {
+  // Un moteur antérieur à agent-orchestrator#25 n'a pas de maître permanent : chaque run
+  // ouvre alors le sien, comme avant, au lieu de faire tomber le runner.
+  if (typeof Maitre !== "function" || typeof servirMaitre !== "function") {
+    console.error("moteur sans maître permanent : chaque run ouvre son propre maître");
+    return;
+  }
+  while (!arret && !maitre) {
+    const candidat = new Maitre({
+      store,
+      workers: lireWorkers(),
+      wol: ["0", "false", "no", "off"].includes(String(process.env.ORCH_REVEIL_MACHINE ?? "1").toLowerCase()) ? null : wol.pourMaitre(),
+    });
+    try {
+      await candidat.demarrer();
+      maitre = candidat;
+      // L'environnement que le run aurait chargé lui-même, rajouté ici : il ne passe jamais
+      // par la file, qui est écrite sur le disque.
+      serviceMaitre = servirMaitre({ store, maitre, env: envLoader.load(RACINE, "", process.env.ENV_FILE) });
+    } catch (err) {
+      await candidat.arreter().catch(() => undefined);
+      console.error(`maître permanent indisponible (${err.message}) : nouvel essai dans ${REESSAI_MAITRE_MS / 1000} s`);
+      await attendre(REESSAI_MAITRE_MS);
+    }
+  }
 }
 
 async function demarrer() {
   const store = new EventStore(STORE);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
-  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "chat.respond"] });
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "approval.decide", "chat.respond"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
-      boucle(store, ["run.start"], executerRun),
+      ouvrirMaitre(store),
+      // Les décisions passent dans la file des runs : elles en relancent un, et deux runs à
+      // la fois partageraient le dossier de travail.
+      boucle(store, ["run.start", "approval.decide"], (commande) => executerRun(store, commande)),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {
+    if (serviceMaitre) await serviceMaitre.arreter();
+    if (maitre) await maitre.arreter();
     store.fermer();
   }
 }

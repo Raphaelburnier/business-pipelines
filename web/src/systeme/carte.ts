@@ -308,12 +308,14 @@ export const BRIQUES: Brique[] = [
     statut: "partiel",
     x: C[2],
     y: R[2],
-    resume: "Le répartiteur : il envoie chaque étape au worker désigné par runsOn. Ce n'est pas un modèle, c'est du code. Aujourd'hui il écoute en loopback et les étapes tournent sur le NAS.",
+    resume: "Le répartiteur : il envoie chaque étape au worker désigné par runsOn. Ce n'est pas un modèle, c'est du code. Il vit dans le runner et garde le PC connecté entre deux runs ; un run lui passe ses étapes par la file de l'event store.",
     faits: [
       "Protocole : hello, heartbeat, event, step.result, sleep.request / step.dispatch, step.cancel, ack, refus",
+      "Permanent depuis le 2026-10-05 : ouvert par le runner, plus par chaque run (commandes step.dispatch, step.cancel)",
+      "L'environnement du run ne passe jamais par la file : le runner rajoute le sien",
       "Numéros de séquence acquittés et rejoués",
       "Refuse avant la file une tâche dont le worker est indisponible, sans Wake-on-LAN",
-      "Écoute 127.0.0.1 depuis le 2026-09-26 : Tailscale DSM n'a pas d'interface",
+      "Identité du PC : demande Tailscale en mode TUN sur le NAS (en userspace, tout arrive de 127.0.0.1)",
       "Écart acté comme provisoire : les runs tournent sur le NAS (runsOn: nas)",
     ],
     depuis: "2026-09-21",
@@ -460,12 +462,12 @@ export const BRIQUES: Brique[] = [
     statut: "partiel",
     x: P[0],
     y: R[0],
-    resume: "Le worker de calcul : il ouvre lui-même sa connexion vers le maître et exécute les étapes lourdes. Aujourd'hui le maître le refuse : derrière le relais DSM, son identité Tailscale ne se résout pas.",
+    resume: "Le worker de calcul : il ouvre lui-même sa connexion vers le maître permanent et exécute les étapes lourdes. Il attend le maître sans s'arrêter, et le cockpit le voit en ligne dès que le PC est allumé.",
     faits: [
       "Seul worker de calcul prévu ; le PC n'est jamais réveillé pour une tâche",
       "Veille Windows accordée seulement à l'inactivité (sleep.request / sleep.allowed)",
       "Les tâches OmniRoute n'ont le droit de tourner que sur lui",
-      "Bloqué depuis le 2026-09-26 : identité vue comme 127.0.0.1",
+      "Jeton changé le 2026-10-05 ; identité vérifiée par tailscale whois une fois le NAS en mode TUN",
     ],
     depuis: "2026-09-21",
   },
@@ -777,9 +779,9 @@ export const JALONS: Jalon[] = [
 ];
 
 export const OUVERTS: string[] = [
-  "Worker PC refusé par le maître : derrière le relais DSM, son identité Tailscale se lit 127.0.0.1",
+  "Worker PC : passer Tailscale du NAS en mode TUN, puis le maître écoute l'IP tailnet (ORCH_MAITRE_HOTE)",
   "Les runs tournent sur le NAS (runsOn: nas), écart provisoire à « le NAS décide, le PC calcule »",
-  "Phase 5 à finir : pause, reprise, stop, relance depuis une étape, approbation par commande, jauge de quota",
+  "Phase 5 à finir : pause, reprise, stop, relance depuis une étape, jauge de quota (l'approbation par commande est faite)",
   "Relier chaque commande à son run_id et afficher la raison d'un refus",
   "fingerprint ignore les fichiers commençant par un point : must_change aveugle sur .env ou .github/",
   "Saas-generator : vérification de déployabilité après assemble jamais écrite",

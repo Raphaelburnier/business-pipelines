@@ -180,7 +180,36 @@ handlers["verify-couverture"] = async (stage, ctx) => {
 // le registre devient périmé, et le tour suivant ne la réinjecte plus. Si ce tour échoue
 // avant de geler quoi que ce soit, rien n'a bougé : la consigne reste valable pour la
 // relance, et ce que l'opérateur a écrit n'est pas perdu.
+// Dans un pipeline en graphe (moteur agent-orchestrator), l'approbation vit dans l'event
+// store, pas dans la boîte : la consigne est la note d'une orientation (`oriented`) posée
+// sur le nœud `approval` du run précédent du même projet. Un run précédent approuvé, refusé
+// ou encore en attente n'en laisse aucune.
+function consigneDuGraphe(stage, ctx) {
+  const ecrire = (contenu) =>
+    fs.writeFileSync(path.join(ctx.workspaceDir, stage.output), JSON.stringify(contenu, null, 2));
+  const evenements = ctx.reporter && ctx.reporter.store;
+  const runId = ctx.reporter && ctx.reporter.runId;
+  const noeud = (ctx.pipeline.nodes || []).find((n) => n.type === "approval");
+  const courant = evenements && runId ? evenements.run(runId) : null;
+  if (!noeud || !courant) {
+    ecrire({ consigne: null, raison: "pas d'approbation à relire" });
+    return;
+  }
+  const precedent = evenements
+    .runs({ projectId: courant.project_id, limite: 20 })
+    .find((r) => r.id !== runId && String(r.started_at) <= String(courant.started_at));
+  const approbation = precedent ? evenements.approbationCourante(precedent.id, noeud.id, "decision") : null;
+  if (approbation && approbation.status === "oriented" && approbation.note) {
+    ecrire({ consigne: approbation.note, run: precedent.id, par: approbation.par });
+    ctx.reporter.event("consigne:reprise", { stage: stage.id, run: precedent.id, caracteres: approbation.note.length });
+    return;
+  }
+  ecrire({ consigne: null, raison: precedent ? "le run précédent n'a pas laissé de consigne" : "premier run du projet" });
+  ctx.reporter.event("consigne:aucune", { stage: stage.id });
+}
+
 handlers.consigne = async (stage, ctx) => {
+  if (ctx.pipeline && Array.isArray(ctx.pipeline.nodes) && !ctx.pipeline.stages) return consigneDuGraphe(stage, ctx);
   // Un stage qui ne lit pas les fichiers qu'écrit l'approbation ne trouverait jamais rien,
   // et chaque tour repartirait sans consigne sans que rien ne le signale. On le refuse
   // avant de payer le moindre agent.

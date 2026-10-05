@@ -3,6 +3,7 @@
 // l'empreinte, la trace des décisions et la réponse libre.
 import type {
   DemandeDecision,
+  DemandeDecisionRun,
   DossierApprobation,
   EtatConseiller,
   FilConseil,
@@ -178,8 +179,41 @@ function filsInitiaux(): Map<string, FilConseil> {
   ]);
 }
 
+// Une approbation de run du moteur (phase 5) : une rallonge de budget, tranchée par commande.
+function dossiersRuns(): DossierApprobation[] {
+  return [
+    {
+      dossier: "run:5b1e0c2a-6f3d-4b8e-9a71-2c4d5e6f7a80",
+      source: "run",
+      runId: "add85e8a-0000-4000-8000-000000000001",
+      approbationId: "5b1e0c2a-6f3d-4b8e-9a71-2c4d5e6f7a80",
+      nodeId: "budget-1",
+      reason: "budget",
+      projet: "steam-tierlist",
+      rapport: {
+        question: "Accorder une rallonge de budget à ce run ?",
+        resume: "plafond de 3 USD atteint après l'étape de tests",
+        changements: ["plafond relevé de 3 USD et 45 turns"],
+        implications: ["le run reprend là où il s'est arrêté, sans rejouer les étapes terminées"],
+        cout: "3.04 USD et 41 turns consommés",
+        risques: ["une boucle qui ne converge pas consommera aussi la rallonge"],
+        recommandation: "refuser si une étape tourne en rond, accorder si le travail avance",
+      },
+      reponse_posee: null,
+      empreinte: "budget-1",
+      depuis: "2026-09-29T17:20:00.000Z",
+      appliquer_avec: "improve-app@4",
+      plan_absent: false,
+      fraicheur: { reference: null, age_heures: null, max_heures: null, verdict: "inconnue" },
+      actions: [],
+      tranche: false,
+      decision_envoyee: false,
+    },
+  ];
+}
+
 export function approbationsMaquette() {
-  const dossiers = dossiersInitiaux();
+  const dossiers = [...dossiersInitiaux(), ...dossiersRuns()];
   const fils = filsInitiaux();
 
   async function lecture(): Promise<ReponseApprobations> {
@@ -274,5 +308,15 @@ export function approbationsMaquette() {
     };
   }
 
-  return { lecture, filConseil, poserConseil, decider };
+  async function deciderRun(approbationId: string, demande: DemandeDecisionRun): Promise<{ id: string; statut: string }> {
+    const dossier = dossiers.find((candidat) => candidat.approbationId === approbationId);
+    if (!dossier) throw new Error("approbation inconnue");
+    if (dossier.decision_envoyee) throw new Error("une décision est déjà partie pour cette approbation");
+    if (demande.decision === "oriented" && !demande.note?.trim()) throw new Error("une consigne ne peut pas être vide");
+    dossier.decision_envoyee = true;
+    dossier.tranche = true;
+    return { id: "commande-maquette", statut: "pending" };
+  }
+
+  return { lecture, filConseil, poserConseil, decider, deciderRun };
 }

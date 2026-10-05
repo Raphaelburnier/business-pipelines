@@ -111,6 +111,10 @@ export function sourceApi(): Source {
     },
     approbations: () => lire<ReponseApprobations>("/api/approbations"),
     decider: (demande: DemandeDecision) => ecrire<ReponseDecision>("/api/decider", demande),
+    async deciderRun(approbationId, demande) {
+      const reponse = await ecrire<{ commande: { id: string; statut: string } }>(`/api/approbations-runs/${encodeURIComponent(approbationId)}`, demande);
+      return reponse.commande;
+    },
     filConseil: (dossier) => lire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}`),
     poserConseil: (dossier, texte) => ecrire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}/messages`, { texte }),
     ecouter(surEvenement, surConnexion, runId) {
