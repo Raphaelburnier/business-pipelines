@@ -9,6 +9,12 @@
     {
       "extends": "marketing@1",
       "spec": "../../specs/marketing.json",
+      "overrides": {
+        "nodes": {
+          "consigne": { "runsOn": "nas" },
+          "couverture": { "runsOn": "nas" }
+        }
+      },
       "budget": { "usdPerRun": 2, "usdPerMonth": 20 }
     }
   ]
