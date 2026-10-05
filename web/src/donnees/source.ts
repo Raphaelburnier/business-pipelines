@@ -8,7 +8,7 @@
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
-import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 
 export interface FiltreRuns {
   project?: string;
@@ -40,6 +40,8 @@ export interface Source {
   approbations(): Promise<ReponseApprobations>;
   /** Enregistre les arbitrages liés à l'empreinte du plan lu. */
   decider(demande: DemandeDecision): Promise<ReponseDecision>;
+  /** Tranche l'approbation d'un run : le runner écrit la décision puis reprend le run. */
+  deciderRun(approbationId: string, demande: DemandeDecisionRun): Promise<{ id: string; statut: string }>;
   /** Le fil du conseiller sur un dossier, et y poser une question (refusée si le PC dort). */
   filConseil(dossier: string): Promise<FilConseil>;
   poserConseil(dossier: string, texte: string): Promise<FilConseil>;

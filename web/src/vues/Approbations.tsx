@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { attente, lireAction, nomModele } from "../donnees/decisions";
-import type { ConseilAction, Decision, DossierApprobation, EtatConseiller, FilConseil, SourceConseil } from "../donnees/decisions";
+import type { ConseilAction, Decision, DemandeDecisionRun, DossierApprobation, EtatConseiller, FilConseil, RapportApprobationRun, SourceConseil } from "../donnees/decisions";
 import { Erreur, Vide } from "../ui";
 
 type BrouillonAction = { decision: Decision["decision"] | null; motif: string };
@@ -137,6 +137,29 @@ function ActionPlan({ action, brouillon, modifier, verrouille }: { action: Dossi
   );
 }
 
+// Le rapport d'impact d'une approbation de run : une rallonge de budget, ou ce qu'un nœud
+// `approval` a demandé de peser. Chaque champ est facultatif, l'ordre est celui où on le lit.
+function RapportRun({ rapport }: { rapport: RapportApprobationRun }) {
+  const liste = (titre: string, valeurs?: string[]) =>
+    valeurs && valeurs.length > 0 ? (
+      <div>
+        <strong>{titre}</strong>
+        <ul>{valeurs.map((v, i) => <li key={i}>{v}</li>)}</ul>
+      </div>
+    ) : null;
+  return (
+    <div className="ao-approbation-rapport">
+      {rapport.question && <h3>{rapport.question}</h3>}
+      {rapport.resume && <p>{rapport.resume}</p>}
+      {liste("Changements", rapport.changements)}
+      {liste("Implications", rapport.implications)}
+      {rapport.cout && <p className="font-mono text-[12px]">Coût : {rapport.cout}</p>}
+      {liste("Risques", rapport.risques)}
+      {rapport.recommandation && <p className="text-douce">Recommandation : {rapport.recommandation}</p>}
+    </div>
+  );
+}
+
 function EtatConseillerBadge({ conseiller }: { conseiller: EtatConseiller }) {
   if (conseiller.disponible) return <span className="ao-auteur ia">{nomModele(conseiller.modele)} connecté</span>;
   const vu = dateLisible(conseiller.vuLe);
@@ -218,11 +241,29 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
 
+  // Une approbation de run sans actions (rallonge de budget) se tranche d'un seul choix.
+  const [verdictRun, setVerdictRun] = useState<"approved" | "rejected" | null>(null);
+  const run = dossier.source === "run";
+
   const verrouille = dossier.plan_absent || dossier.tranche || dossier.reponse_posee !== null;
   const decisions = Object.entries(brouillon)
     .filter(([, valeur]) => valeur.decision !== null)
     .map(([action_id, valeur]) => ({ action_id, decision: valeur.decision as Decision["decision"], ...(valeur.motif.trim() ? { motif: valeur.motif.trim() } : {}) }));
-  const peutEnvoyer = !verrouille && (decisions.length > 0 || Boolean(reponse.trim()));
+  // Le moteur n'accepte d'approuver un plan de run que si chaque action est tranchée : une
+  // décision partielle n'aurait nulle part où attendre la suite.
+  const toutTranche = dossier.actions.length > 0 && decisions.length === dossier.actions.length;
+  const demandeRun: DemandeDecisionRun | null = !run
+    ? null
+    : reponse.trim()
+      ? { decision: "oriented", note: reponse.trim() }
+      : dossier.actions.length === 0
+        ? verdictRun
+          ? { decision: verdictRun }
+          : null
+        : toutTranche
+          ? { decision: "approved", actions: decisions.map(({ motif, ...d }) => ({ ...d, ...(motif ? { note: motif } : {}) })) }
+          : null;
+  const peutEnvoyer = !verrouille && (run ? demandeRun !== null : decisions.length > 0 || Boolean(reponse.trim()));
 
   function modifier(actionId: string, prochain: Partial<BrouillonAction>): void {
     setConfirmation(false);
@@ -243,6 +284,14 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
     setEnvoi(true);
     setErreur(null);
     try {
+      if (run && dossier.approbationId && demandeRun) {
+        await source.deciderRun(dossier.approbationId, demandeRun);
+        const quoi = demandeRun.decision === "oriented" ? "Consigne envoyée" : demandeRun.decision === "rejected" ? "Refus envoyé" : "Décision envoyée";
+        setConfirmation(false);
+        traite(`${dossier.projet ?? "run"} · ${dossier.nodeId} : ${quoi}, le run reprend.`);
+        recharger();
+        return;
+      }
       const resultat = await source.decider({
         dossier: dossier.dossier,
         empreinte: dossier.empreinte,
@@ -267,14 +316,16 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
     <section className="ao-liv ao-approbation" aria-labelledby={`titre-${dossier.dossier}`}>
       <header>
         <div>
-          <h2 id={`titre-${dossier.dossier}`}>{dossier.dossier}</h2>
-          <p className="font-mono text-[11px] text-douce">Plan {dossier.empreinte} · en attente depuis <span title={dossier.depuis}>{attente(dossier.depuis)}</span></p>
+          <h2 id={`titre-${dossier.dossier}`}>{run ? `${dossier.projet ?? "run"} · ${dossier.nodeId}` : dossier.dossier}</h2>
+          <p className="font-mono text-[11px] text-douce">
+            {run ? `Run ${dossier.runId?.slice(0, 8)}` : `Plan ${dossier.empreinte}`} · en attente depuis <span title={dossier.depuis}>{attente(dossier.depuis)}</span>
+          </p>
         </div>
         {dossier.tranche ? <span className="ao-liv-etat">tranché</span> : dossier.reponse_posee ? <span className="ao-liv-etat encours">consigne envoyée</span> : <span className="ao-liv-etat dispo">à trancher</span>}
       </header>
 
       <div className="ao-approbation-meta">
-        <Fraicheur dossier={dossier} />
+        {run ? <span className="ao-liv-pastille">{dossier.reason === "budget" ? "rallonge de budget" : "approbation de run"}</span> : <Fraicheur dossier={dossier} />}
         {dossier.appliquer_avec && <span className="font-mono text-[11px] text-douce">Pipeline : {dossier.appliquer_avec}</span>}
         {dossier.tranche && dossier.note_vault && <span className={`ao-liv-pastille ${dossier.note_vault === "fait" ? "ok" : ""}`}>Note vault : {dossier.note_vault}</span>}
       </div>
@@ -288,7 +339,24 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
         </div>
       )}
 
-      {!dossier.plan_absent && dossier.actions.length === 0 && <Vide>Le plan ne contient aucune action à décider.</Vide>}
+      {dossier.rapport && <RapportRun rapport={dossier.rapport} />}
+      {!dossier.plan_absent && dossier.actions.length === 0 && !run && <Vide>Le plan ne contient aucune action à décider.</Vide>}
+      {run && dossier.actions.length === 0 && !verrouille && (
+        <fieldset className="ao-approbation-choix">
+          <legend>Décision pour ce run</legend>
+          <label>
+            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "approved"} onChange={() => { setConfirmation(false); setVerdictRun("approved"); }} />
+            {dossier.reason === "budget" ? "Accorder" : "Approuver"}
+          </label>
+          <label>
+            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "rejected"} onChange={() => { setConfirmation(false); setVerdictRun("rejected"); }} />
+            Refuser
+          </label>
+        </fieldset>
+      )}
+      {run && dossier.actions.length > 0 && !verrouille && !toutTranche && !reponse.trim() && decisions.length > 0 && (
+        <p className="text-[12px] text-douce">Trancher chaque action avant d’envoyer : le run reprend avec le plan entier.</p>
+      )}
       {dossier.actions.map((action) => (
         <ActionPlan key={action.id} action={action} brouillon={brouillon[action.id] ?? { decision: null, motif: "" }} modifier={(prochain) => modifier(action.id, prochain)} verrouille={verrouille} />
       ))}
@@ -311,7 +379,11 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
       )}
       {!verrouille && confirmation && (
         <div className="ao-liv-confirmation" role="group" aria-label={`Confirmer la décision pour ${dossier.dossier}`}>
-          <p>Enregistrer {decisions.length ? `${decisions.length} décision${decisions.length > 1 ? "s" : ""}` : "la consigne"} pour ce plan gelé ?</p>
+          <p>
+            {run
+              ? `Envoyer ${demandeRun?.decision === "oriented" ? "la consigne" : demandeRun?.decision === "rejected" ? "le refus" : "la décision"} ? Le run reprend aussitôt.`
+              : `Enregistrer ${decisions.length ? `${decisions.length} décision${decisions.length > 1 ? "s" : ""}` : "la consigne"} pour ce plan gelé ?`}
+          </p>
           <div className="ao-actions">
             <button type="button" className="ao-btn primaire" disabled={envoi} onClick={envoyer}>{envoi ? "Envoi…" : "Confirmer"}</button>
             <button type="button" className="ao-btn" disabled={envoi} onClick={() => setConfirmation(false)}>Annuler</button>
