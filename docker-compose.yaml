@@ -140,9 +140,14 @@ services:
       - ./projects:/app/projects:ro
       - ./etat:/app/etat
       - /volume1/docker/git:/git
+      # Qui peut fusionner une PR depuis le cockpit : la liste de ceux qui livrent, relue à
+      # chaque commande `github.merge`. Ce fichier seul, en lecture.
+      - ./specs/livraison.json:/app/specs/livraison.json:ro
     environment:
       - NODE_ENV=production
       - PUBLIEUR_ETAT=/app/etat/publications.json
+      # La file des fusions demandées depuis le cockpit (src/pull-requests.js).
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
       # Miroirs des dépôts système, lus sans jeton par le livreur (docs/SPEC-livraison.md).
       - PUBLIEUR_MIROIRS=business-pipelines=Raphaelburnier/business-pipelines,agent-orchestrator=Raphaelburnier/agent-orchestrator,agent-registry=Raphaelburnier/agent-registry
       - PUBLIEUR_MIROIRS_DIR=/git/systeme

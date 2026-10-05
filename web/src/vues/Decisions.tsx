@@ -9,6 +9,8 @@ import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis } from "../format";
 import type { CommitLivraison, EtapeLivraison, Livraison, ReponseLivraison, VersionsLivraison } from "../types";
 import { Erreur } from "../ui";
+import { nomCourt, prsDeLaLivraison } from "../donnees/pullRequests";
+import type { EtatPullRequests, PrLivree, PullRequestOuverte } from "../donnees/pullRequests";
 import { Approbations } from "./Approbations";
 
 const DEPOTS: Array<{ cle: keyof VersionsLivraison; nom: string }> = [
@@ -110,6 +112,9 @@ function CarteLivraison() {
   const maintenant = useHorloge(5000);
   const [tic, setTic] = useState(0);
   const { donnees, erreur } = useCharge((s) => s.livraison(), [tic]);
+  // Le relevé des PR nomme la livraison. Sans lui (publieur sans jeton), la carte reste celle
+  // d'avant : les commits suffisent pour livrer.
+  const { donnees: relevePR } = useCharge((s) => s.pullRequests().catch((): EtatPullRequests | null => null), [tic]);
   const [confirmation, setConfirmation] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreurEnvoi, setErreurEnvoi] = useState<string | null>(null);
@@ -147,6 +152,7 @@ function CarteLivraison() {
 
   const redemarrage = Boolean(erreur && (enCours || attendue));
   const propo = donnees?.proposition ?? null;
+  const prsLivrees = propo ? prsDeLaLivraison(relevePR ?? null, DEPOTS.flatMap((d) => propo.commits[d.cle])) : [];
   // Un échec reste en tête tant qu'il est récent. Un succès s'efface dès qu'une nouvelle
   // version est proposée : « Livré » au-dessus d'un nouveau bouton Livrer se lirait comme
   // l'issue de ce qui attend.
@@ -179,6 +185,7 @@ function CarteLivraison() {
             Demandée par <span className="font-mono">{enCours.par}</span> il y a {depuis(enCours.demandeeLe, maintenant)}
             {enCours.statut === "pending" && ", en attente du livreur"}
           </p>
+          <ContenuLivraison prs={prsLivrees} />
           <Etapes etape={enCours.etape} echec={false} />
           <Journal lignes={enCours.journal} />
           <p className="text-[12px] text-douce">
@@ -197,6 +204,7 @@ function CarteLivraison() {
 
       {propo && propo.disponible && !enCours && (
         <div className="ao-liv-bloc">
+          <ContenuLivraison prs={prsLivrees} />
           {DEPOTS.map((d) => (
             <Commits
               key={d.cle}
@@ -238,6 +246,141 @@ function CarteLivraison() {
   );
 }
 
+// Ce qu'une livraison apporte : ses PR, retrouvées par les commits proposés, chacune avec la
+// première phrase de son « Pourquoi ». La plus récente donne son nom à la livraison.
+function ContenuLivraison({ prs }: { prs: PrLivree[] }) {
+  const principale = prs[0];
+  if (!principale) return null;
+  return (
+    <div className="ao-liv-contenu">
+      <p className="ao-liv-definition">{principale.pourquoi ?? principale.titre}</p>
+      <ul>
+        {prs.map((pr) => (
+          <li key={`${pr.depot}#${pr.numero}`}>
+            <a className="font-mono" href={pr.url} target="_blank" rel="noreferrer">
+              {nomCourt(pr.depot, pr.numero)}
+            </a>
+            <span>{pr.pourquoi ?? pr.titre}</span>
+            {pr.pourquoi && <span className="font-mono text-[11px] text-douce">{pr.titre}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const LIBELLES_CI: Record<string, string> = { verte: "CI verte", en_cours: "CI en cours", rouge: "CI rouge", absente: "sans CI" };
+
+function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; pr: PullRequestOuverte; peutFusionner: boolean; fusionner: (pr: PullRequestOuverte) => Promise<void> }) {
+  const [confirmation, setConfirmation] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  async function confirmer() {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await fusionner(pr);
+      setConfirmation(false);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  return (
+    <li className="ao-pr">
+      <div className="ao-pr-tete">
+        <a className="font-mono" href={pr.url} target="_blank" rel="noreferrer">
+          {nomCourt(depot, pr.numero)}
+        </a>
+        <span className={`ao-liv-pastille ${pr.ci.etat === "verte" ? "ok" : pr.ci.etat === "rouge" ? "err" : ""}`}>{LIBELLES_CI[pr.ci.etat]}</span>
+        {pr.sensibles.length > 0 && (
+          <span className="ao-liv-pastille err" title={pr.sensibles.join(", ")}>
+            {pr.sensibles.length} fichier{pr.sensibles.length > 1 ? "s" : ""} sensible{pr.sensibles.length > 1 ? "s" : ""}
+          </span>
+        )}
+        {pr.fusionEnCours && <span className="ao-liv-etat encours">fusion en cours</span>}
+      </div>
+      <p>{pr.pourquoi ?? pr.titre}</p>
+      <p className="font-mono text-[11px] text-douce">
+        {pr.titre} · {pr.branche} · {pr.fichiers} fichier{pr.fichiers > 1 ? "s" : ""}
+      </p>
+      {pr.raison && !pr.fusionEnCours && <p className="text-[12px] text-douce">Pas de fusion d'ici : {pr.raison}.</p>}
+      {!pr.raison && !pr.fusionEnCours && peutFusionner && !confirmation && (
+        <div className="ao-actions">
+          <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>
+            Fusionner
+          </button>
+        </div>
+      )}
+      {confirmation && (
+        <div className="ao-liv-confirmation" role="group" aria-label={`Confirmer la fusion de ${nomCourt(depot, pr.numero)}`}>
+          <p>
+            Fusionner {nomCourt(depot, pr.numero)} en squash sur {pr.base} ?
+            {pr.sensibles.length > 0 && " Elle touche des fichiers sensibles : ton clic vaut fusion explicite."}
+          </p>
+          <div className="ao-actions">
+            <button type="button" className="ao-btn primaire" disabled={envoi} onClick={confirmer}>
+              {envoi ? "Envoi…" : "Confirmer"}
+            </button>
+            <button type="button" className="ao-btn" disabled={envoi} onClick={() => setConfirmation(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+      {erreur && <Erreur>{erreur}</Erreur>}
+    </li>
+  );
+}
+
+// Les PR ouvertes de chaque dépôt surveillé, relevées par le publieur. Fusionner dépose une
+// commande que le publieur exécute après avoir tout revérifié sur GitHub.
+function CartePullRequests() {
+  const { source } = useSource();
+  const maintenant = useHorloge(30_000);
+  const [tic, setTic] = useState(0);
+  const { donnees, erreur } = useCharge((s) => s.pullRequests(), [tic, maintenant]);
+  const ouvertes = (donnees?.depots ?? []).flatMap((d) => d.ouvertes.map((pr) => ({ depot: d.depot, pr })));
+
+  async function fusionner(depot: string, pr: PullRequestOuverte) {
+    await source.fusionnerPR({ depot, numero: pr.numero, sha: pr.sha });
+    setTic((n) => n + 1);
+  }
+
+  return (
+    <section className="ao-liv" aria-labelledby="titre-pr">
+      <header>
+        <h2 id="titre-pr">Pull requests</h2>
+        {donnees && <span className={`ao-liv-etat ${ouvertes.length ? "dispo" : ""}`}>{ouvertes.length ? `${ouvertes.length} ouverte${ouvertes.length > 1 ? "s" : ""}` : "aucune ouverte"}</span>}
+      </header>
+      {erreur && <Erreur>{erreur}</Erreur>}
+      {donnees?.erreur && <p className="text-douce">Pas de relevé : {donnees.erreur}.</p>}
+      {donnees && !donnees.erreur && donnees.perime && <p className="text-douce">Relevé ancien : le publieur ne tourne peut-être plus.</p>}
+      {donnees && !donnees.peutFusionner && ouvertes.length > 0 && (
+        <p className="text-[12px] text-douce">Seule une identité tailnet autorisée peut fusionner (specs/livraison.json sur le NAS).</p>
+      )}
+      {donnees?.depots.filter((d) => d.erreur).map((d) => (
+        <p key={d.depot} className="text-[12px] text-douce">
+          {d.depot} illisible : {d.erreur}
+        </p>
+      ))}
+      {ouvertes.length > 0 && (
+        <ul className="ao-pr-liste">
+          {ouvertes.map(({ depot, pr }) => (
+            <PullRequest key={`${depot}#${pr.numero}`} depot={depot} pr={pr} peutFusionner={Boolean(donnees?.peutFusionner)} fusionner={(p) => fusionner(depot, p)} />
+          ))}
+        </ul>
+      )}
+      {donnees?.recentes.filter((r) => !r.ok).slice(0, 2).map((r) => (
+        <p key={`${r.depot}#${r.numero}-${r.le}`} className="text-[12px] text-douce">
+          Fusion de {nomCourt(r.depot, r.numero)} refusée : {r.raison}
+        </p>
+      ))}
+    </section>
+  );
+}
+
 function Historique({ livraisons, maintenant }: { livraisons: ReponseLivraison["historique"]; maintenant: number }) {
   return (
     <details className="ao-liv-historique">
@@ -266,6 +409,7 @@ export function Decisions() {
     <div className="ao-decisions">
       <div className="ao-decisions-colonne" aria-label="Livraison">
         <CarteLivraison />
+        <CartePullRequests />
       </div>
       <div className="ao-decisions-colonne" aria-label="Approbations">
         <Approbations integre />

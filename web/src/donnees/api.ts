@@ -2,6 +2,7 @@
 import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, Topologie, Usage } from "../types";
 import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { Commande, FiltreRuns, Source } from "./source";
+import type { EtatPullRequests } from "./pullRequests";
 
 class ErreurApi extends Error {
   readonly code: number;
@@ -108,6 +109,11 @@ export function sourceApi(): Source {
     livraison: () => lire<ReponseLivraison>("/api/livraison"),
     async livrer(cible) {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/livraisons", cible);
+      return reponse.commande;
+    },
+    pullRequests: () => lire<EtatPullRequests>("/api/pull-requests"),
+    async fusionnerPR(demande) {
+      const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/pull-requests/fusions", demande);
       return reponse.commande;
     },
     approbations: () => lire<ReponseApprobations>("/api/approbations"),

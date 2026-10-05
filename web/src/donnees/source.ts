@@ -9,6 +9,7 @@
 // diverger de la base le jour où un événement manque.
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { DemandeFusion, EtatPullRequests } from "./pullRequests";
 
 export interface FiltreRuns {
   project?: string;
@@ -47,6 +48,9 @@ export interface Source {
   livraison(): Promise<ReponseLivraison>;
   /** Dépose une commande de livraison des trois SHA proposés ; le livreur l'exécute. */
   livrer(cible: VersionsLivraison): Promise<{ id: string; statut: string }>;
+  /** Les PR GitHub relevées par le publieur, et une fusion demandée (CI verte seulement). */
+  pullRequests(): Promise<EtatPullRequests>;
+  fusionnerPR(demande: DemandeFusion): Promise<{ id: string; statut: string }>;
   /** Plans métier en attente d'un arbitrage opérateur. */
   approbations(): Promise<ReponseApprobations>;
   /** Enregistre les arbitrages liés à l'empreinte du plan lu. */

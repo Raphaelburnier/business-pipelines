@@ -3,6 +3,9 @@
 // qui a `"publier": true` et un `"github"` dans sa fiche.
 const path = require("path");
 const publieur = require("../src/publieur");
+const pullRequests = require("../src/pull-requests");
+const { lireAutorises } = require("../src/livreur");
+const { EventStore } = require("agent-orchestrator");
 
 const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
@@ -16,10 +19,22 @@ const MIROIRS = publieur.miroirsSysteme(process.env.PUBLIEUR_MIROIRS);
 const MIROIRS_DIR = process.env.PUBLIEUR_MIROIRS_DIR || "/git/systeme";
 const JETON_MIROIRS = process.env.GITHUB_TOKEN_MIROIRS || "";
 
+// Les PR vues et fusionnées depuis le cockpit (src/pull-requests.js) : un troisième jeton,
+// qui seul peut fusionner. Absent, le cockpit le dit et ne propose aucune fusion.
+const JETON_FUSION = process.env.GITHUB_TOKEN_FUSION || "";
+const PR_INSTANTANE = process.env.PULL_REQUESTS_ETAT || path.join(RACINE, "etat", "pull-requests.json");
+const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUESTS_DEPOTS, miroirs: MIROIRS, projetsDir: PROJETS });
+// Qui peut fusionner : la même liste que pour livrer, relue à chaque commande. Le cockpit la
+// vérifie aussi, mais l'event store où arrive la commande est écrit par d'autres services.
+const AUTORISES = process.env.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
+const SONDE_COMMANDES_MS = 3000;
+
 if (!JETON) {
   console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
   process.exit(1);
 }
+const apiFusion = JETON_FUSION ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_FUSION }) : null;
+if (!apiFusion) console.error("GITHUB_TOKEN_FUSION absent : le cockpit ne voit ni ne fusionne les PR. Voir specs/publieur.env.example.");
 
 const git = publieur.gitAvec({ jeton: JETON });
 const api = publieur.apiAvec({ fetchImpl: fetch, jeton: JETON });
@@ -58,14 +73,69 @@ async function passage() {
       console.error(`miroir ${miroir.nom} : ${String(err.message).split("\n")[0]}`);
     }
   }
+  await releverPullRequests();
+}
+
+async function releverPullRequests() {
+  if (!apiFusion) {
+    pullRequests.ecrireInstantane(PR_INSTANTANE, { releveLe: new Date().toISOString(), erreur: "GITHUB_TOKEN_FUSION absent", depots: [] });
+    return;
+  }
+  try {
+    pullRequests.ecrireInstantane(PR_INSTANTANE, await pullRequests.relever({ api: apiFusion, depots: PR_DEPOTS }));
+  } catch (err) {
+    console.error(`relevé des PR : ${String(err.message).split("\n")[0]}`);
+  }
+}
+
+// Une fusion demandée depuis le cockpit (commande `github.merge`). Revérifiée de bout en bout
+// par `fusionner` : PR ouverte, même tête, CI verte, fusionnable. Jamais rejouée après un
+// redémarrage : la PR peut avoir changé entre-temps, il suffit de recliquer.
+async function servirFusions(store) {
+  store.abandonnerCommandesInterrompues({ kinds: ["github.merge"], raison: "publieur redémarré pendant la fusion : recliquer si besoin" });
+  while (!arret) {
+    let commande = null;
+    try {
+      commande = store.prendreCommande({ kinds: ["github.merge"] });
+    } catch (err) {
+      console.error(`file des fusions illisible : ${err.message}`);
+    }
+    if (!commande) {
+      await attendre(SONDE_COMMANDES_MS);
+      continue;
+    }
+    const { depot, numero, sha } = commande.payload;
+    let resultat;
+    if (!apiFusion) {
+      resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };
+    } else if (!lireAutorises(AUTORISES).has(String(commande.par))) {
+      resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
+    } else {
+      try {
+        const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha } });
+        resultat = fusion.fusionnee ? { ok: true, detail: fusion } : { ok: false, raison: fusion.message || "GitHub n'a pas fusionné" };
+      } catch (err) {
+        resultat = { ok: false, raison: String(err.message).split("\n")[0] };
+      }
+    }
+    store.terminerCommande(commande.id, resultat);
+    console.log(`fusion ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? "faite" : resultat.raison}`);
+    await releverPullRequests();
+  }
 }
 
 (async () => {
   console.log(`Publieur : projets dans ${PROJETS}, un passage toutes les ${Math.round(INTERVALLE / 1000)} s`);
+  console.log(`PR surveillées : ${PR_DEPOTS.join(", ") || "aucun dépôt"}`);
+  // Les fusions tournent dans leur propre boucle : un clic n'attend pas la fin d'un passage.
+  const store = process.env.ORCH_EVENT_STORE ? new EventStore(process.env.ORCH_EVENT_STORE) : null;
+  if (!store) console.error("ORCH_EVENT_STORE absent : les fusions demandées depuis le cockpit ne sont pas servies.");
+  const fusions = store ? servirFusions(store) : Promise.resolve();
   while (!arret) {
     await passage();
     await attendre(INTERVALLE);
   }
+  await fusions;
 })().catch((err) => {
   console.error(err);
   process.exitCode = 1;

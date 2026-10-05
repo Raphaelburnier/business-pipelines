@@ -48,6 +48,7 @@ const pwa = require("../src/pwa");
 const apps = require("../src/apps");
 const api = require("../src/api-lecture");
 const apiLivraison = require("../src/api-livraison");
+const apiPullRequests = require("../src/api-pull-requests");
 const flux = require("../src/flux");
 const statique = require("../src/statique");
 const catalogueModeles = require("../src/modeles");
@@ -104,6 +105,8 @@ const LIVRAISON_PROPOSITION = path.join(
   "livraison.json"
 );
 const LIVRAISON_AUTORISES = ENV.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
+// Les PR GitHub relevées par le publieur (src/pull-requests.js), à côté de la proposition.
+const PULL_REQUESTS = path.join(path.dirname(LIVRAISON_PROPOSITION), "pull-requests.json");
 
 // Les fiches projet (décision §15, option A) : `projects/<id>/project.json`. La topologie en
 // tire les catégories et les projets.
@@ -415,6 +418,26 @@ async function traiter(req, res) {
   // Le conseiller : l'agent du PC (jeton) et le fil de chaque dossier (identité tailnet).
   if (chemin.startsWith("/api/conseiller/")) {
     if (await traiterConseiller(req, res, chemin, qui)) return undefined;
+  }
+
+  // ---- PR GitHub : relevé du publieur, fusion par commande signée ----
+  if (chemin === "/api/pull-requests" || chemin === "/api/pull-requests/fusions") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const contexte = { store: magasinOuvert, instantaneFichier: PULL_REQUESTS, autorisesFichier: LIVRAISON_AUTORISES, qui };
+    if (req.method === "GET" && chemin === "/api/pull-requests") return json(res, 200, apiPullRequests.etat(contexte));
+    if (req.method === "POST" && chemin === "/api/pull-requests/fusions") {
+      const demande = await corpsJson(req, res);
+      if (demande === null) return undefined;
+      try {
+        const commande = apiPullRequests.demander({ ...contexte, demande });
+        return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+      } catch (err) {
+        if (err instanceof apiPullRequests.RefusPullRequest) return json(res, err.code, { erreur: err.message });
+        throw err;
+      }
+    }
+    return json(res, 405, { erreur: "méthode non prise en charge" });
   }
 
   // ---- livraison du cockpit (docs/SPEC-livraison.md, §6) ----
