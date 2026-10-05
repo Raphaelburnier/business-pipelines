@@ -1,108 +1,249 @@
-// Le dashboard des agents (§11.5) : la liste live des étapes, filtrable par projet et par
-// machine. Ce qu'on regarde pour savoir qui travaille, où, avec quel modèle, et ce que ça
-// coûte, sans ouvrir les runs un par un.
-import { useMemo, useState } from "react";
-import { useCharge, useHorloge } from "../donnees/contexte";
-import { VIDE, duree, jetons, usd } from "../format";
-import type { Etape, EtapeAvecOutils, RunDetailleAvecOutils } from "../types";
-import { Erreur, Etat, Titre, Vide } from "../ui";
+// L'équipe d'agents : qui est libre, sur quel projet, et le budget du mois qui lui reste.
+// On coche des agents, on choisit un projet (existant ou nouveau), et on les y associe.
+// Le détail des étapes reste dans les runs, ouverts d'un clic sur « au travail ».
+import { useState } from "react";
+import { useCharge, useHorloge, useSource } from "../donnees/contexte";
+import type { Famille, MembreEquipe } from "../donnees/equipe";
+import { CLASSES_TON, type Ton, depuis, usd } from "../format";
+import { Erreur, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 
-type Ligne = EtapeAvecOutils & { run: RunDetailleAvecOutils };
+type Filtre = "tous" | "libres" | "occupes";
 
-// Ce qui tourne d'abord, puis ce qui attend quelqu'un, puis le reste, le plus récent en tête.
-const RANG: Record<Etape["statut"], number> = { running: 0, waiting_approval: 1, waiting_quota: 1, failed: 2, cancelled: 3, succeeded: 3 };
+const FAMILLES: Record<Famille, { libelle: string; ton: Ton }> = {
+  claude: { libelle: "Claude", ton: "accent" },
+  codex: { libelle: "Codex", ton: "bleu" },
+  libre: { libelle: "Gratuit", ton: "ok" },
+};
+
+const NOUVEAU = "__nouveau__";
 
 export function Agents({ onSelection }: { onSelection: (s: Selection) => void }) {
-  const maintenant = useHorloge();
-  const [projet, setProjet] = useState("");
-  const [machine, setMachine] = useState("");
-  const { donnees, erreur } = useCharge(async (s) => {
-    const runs = await s.runs({ limite: 10 });
-    const details = await Promise.all(runs.map((r) => s.run(r.id)));
-    return details.filter((r) => r !== null);
-  }, []);
-
-  const lignes = useMemo<Ligne[]>(() => {
-    const toutes = (donnees ?? []).flatMap((run) => run.etapes.map((e) => ({ ...e, run })));
-    return toutes.sort((a, b) => RANG[a.statut] - RANG[b.statut] || Date.parse(b.debut ?? "") - Date.parse(a.debut ?? ""));
-  }, [donnees]);
-  const projets = [...new Set(lignes.map((l) => l.run.projet).filter((p): p is string => Boolean(p)))].sort();
-  const machines = [...new Set(lignes.map((l) => l.machine).filter((m): m is string => Boolean(m)))].sort();
-  const visibles = lignes.filter((l) => (!projet || l.run.projet === projet) && (!machine || l.machine === machine));
+  const { source } = useSource();
+  const maintenant = useHorloge(30_000);
+  const [recharge, setRecharge] = useState(0);
+  const { donnees, erreur } = useCharge((s) => s.equipe(), [recharge]);
+  const [filtre, setFiltre] = useState<Filtre>("tous");
+  const [choisis, setChoisis] = useState<Set<string>>(new Set());
+  const [cible, setCible] = useState("");
+  const [nouveau, setNouveau] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [refus, setRefus] = useState<string | null>(null);
 
   if (erreur) return <Erreur>{erreur}</Erreur>;
-  if (!donnees) return <p className="text-sm text-douce">Lecture des étapes…</p>;
+  if (!donnees) return <p className="text-sm text-douce">Lecture de l'équipe…</p>;
+
+  const libres = donnees.agents.filter((a) => !a.occupe).length;
+  const visibles = donnees.agents.filter((a) => filtre === "tous" || (filtre === "libres" ? !a.occupe : a.occupe));
+  const projet = cible === NOUVEAU ? nouveau.trim() : cible;
+
+  const basculer = (id: string) =>
+    setChoisis((avant) => {
+      const apres = new Set(avant);
+      if (apres.has(id)) apres.delete(id);
+      else apres.add(id);
+      return apres;
+    });
+
+  async function envoyer(ids: string[], vers: string | null) {
+    setEnvoi(true);
+    setRefus(null);
+    try {
+      await source.affecter(ids, vers);
+      setChoisis(new Set());
+      setNouveau("");
+      setCible("");
+      setRecharge((n) => n + 1);
+    } catch (err) {
+      setRefus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
 
   return (
-    <section className="flex h-full flex-col gap-2">
+    <section className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Titre compteur={visibles.length}>Étapes</Titre>
-        <select value={projet} onChange={(e) => setProjet(e.target.value)} className="ml-auto rounded-lg border border-trait bg-carte px-2 py-1 text-xs" aria-label="Filtrer par projet">
-          <option value="">tous les projets</option>
-          {projets.map((p) => (
-            <option key={p}>{p}</option>
+        <Titre compteur={donnees.agents.length}>Agents</Titre>
+        <span className="mb-2 text-xs text-douce">
+          <span className="text-ok">{libres} libres</span> · <span className="text-alerte">{donnees.agents.length - libres} occupés</span>
+        </span>
+        <div className="mb-2 ml-auto flex overflow-hidden rounded-lg border border-trait text-xs" role="group" aria-label="Filtrer">
+          {(["tous", "libres", "occupes"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFiltre(f)}
+              className={`px-2.5 py-1 ${filtre === f ? "bg-accent text-sur-accent" : "bg-carte text-douce hover:text-encre"}`}
+            >
+              {f === "occupes" ? "occupés" : f}
+            </button>
           ))}
-        </select>
-        <select value={machine} onChange={(e) => setMachine(e.target.value)} className="rounded-lg border border-trait bg-carte px-2 py-1 text-xs" aria-label="Filtrer par machine">
-          <option value="">toutes les machines</option>
-          {machines.map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
+        </div>
       </div>
 
-      {!visibles.length ? (
-        <Vide>Aucune étape ne correspond.</Vide>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-trait">
-          <table className="w-full text-left text-[12px]">
-            <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wide text-douce">
-              <tr>
-                <th className="px-2 py-1.5 font-semibold">agent</th>
-                <th className="px-2 py-1.5 font-semibold">projet</th>
-                <th className="hidden px-2 py-1.5 font-semibold sm:table-cell">machine</th>
-                <th className="hidden px-2 py-1.5 font-semibold md:table-cell">modèle</th>
-                <th className="px-2 py-1.5 font-semibold">statut</th>
-                <th className="px-2 py-1.5 text-right font-semibold">durée</th>
-                <th className="hidden px-2 py-1.5 text-right font-semibold sm:table-cell">jetons</th>
-                <th className="px-2 py-1.5 text-right font-semibold">coût</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((l) => (
-                <tr
-                  key={l.id}
-                  className="cursor-pointer border-t border-trait bg-carte hover:bg-fond"
-                  onClick={() => onSelection({ type: "run", id: l.run.id })}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelection({ type: "run", id: l.run.id }); }}
-                  role="link"
-                  tabIndex={0}
-                >
-                  <td className="px-2 py-1.5">
-                    <div className="font-mono">{l.agent ?? l.type}</div>
-                    <div className="text-[11px] text-douce">
-                      {l.noeud}
-                      {l.tour > 0 && <span className="text-alerte"> · tour {l.tour + 1}</span>}
-                    </div>
-                  </td>
-                  <td className="px-2 py-1.5">{l.run.projet ?? VIDE}</td>
-                  <td className="hidden px-2 py-1.5 font-mono sm:table-cell">{l.machine ?? VIDE}</td>
-                  <td className="hidden px-2 py-1.5 font-mono md:table-cell">{l.llm ? `${l.llm.via}:${l.llm.model}` : VIDE}</td>
-                  <td className="px-2 py-1.5">
-                    <Etat etat={l.statut} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{l.debut ? duree((l.fin ? Date.parse(l.fin) : maintenant) - Date.parse(l.debut)) : VIDE}</td>
-                  <td className="hidden px-2 py-1.5 text-right tabular-nums sm:table-cell">{l.tokens.entree ? jetons(l.tokens.entree + l.tokens.sortie) : VIDE}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums" title="Équivalent API, pas une dépense">
-                    {l.coutEquivalentUsd ? usd(l.coutEquivalentUsd) : VIDE}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!donnees.mesure && <p className="text-xs text-douce">Event store indisponible : activité et consommation non mesurées.</p>}
+
+      {choisis.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-accent bg-carte p-2 text-sm">
+          <span className="font-semibold">
+            {choisis.size} agent{choisis.size > 1 ? "s" : ""} →
+          </span>
+          <select
+            value={cible}
+            onChange={(e) => setCible(e.target.value)}
+            className="rounded-lg border border-trait bg-surface px-2 py-1 text-xs"
+            aria-label="Projet"
+          >
+            <option value="">choisir un projet</option>
+            {donnees.projets.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+            <option value={NOUVEAU}>+ nouveau projet…</option>
+          </select>
+          {cible === NOUVEAU && (
+            <input
+              value={nouveau}
+              onChange={(e) => setNouveau(e.target.value)}
+              placeholder="nom du projet"
+              maxLength={60}
+              className="min-w-0 flex-1 rounded-lg border border-trait bg-surface px-2 py-1 text-xs"
+              aria-label="Nom du nouveau projet"
+            />
+          )}
+          <button
+            type="button"
+            disabled={!projet || envoi}
+            onClick={() => envoyer([...choisis], projet)}
+            className="rounded-lg bg-accent px-3 py-1 text-xs font-semibold text-sur-accent disabled:opacity-40"
+          >
+            Associer
+          </button>
+          <button type="button" onClick={() => setChoisis(new Set())} className="text-xs text-douce hover:text-encre">
+            annuler
+          </button>
         </div>
       )}
+      {refus && <Erreur>{refus}</Erreur>}
+
+      {!visibles.length ? (
+        <Vide>Aucun agent ne correspond.</Vide>
+      ) : (
+        <ul className="min-h-0 flex-1 divide-y divide-trait overflow-auto rounded-xl border border-trait">
+          {visibles.map((a) => (
+            <Ligne
+              key={a.id}
+              agent={a}
+              choisi={choisis.has(a.id)}
+              maintenant={maintenant}
+              occupe={envoi}
+              onChoisir={() => basculer(a.id)}
+              onLiberer={() => envoyer([a.id], null)}
+              onOuvrirRun={(id) => onSelection({ type: "run", id })}
+            />
+          ))}
+        </ul>
+      )}
     </section>
+  );
+}
+
+function Ligne({
+  agent: a,
+  choisi,
+  maintenant,
+  occupe,
+  onChoisir,
+  onLiberer,
+  onOuvrirRun,
+}: {
+  agent: MembreEquipe;
+  choisi: boolean;
+  maintenant: number;
+  occupe: boolean;
+  onChoisir: () => void;
+  onLiberer: () => void;
+  onOuvrirRun: (id: string) => void;
+}) {
+  const famille = CLASSES_TON[FAMILLES[a.famille].ton];
+  const statut = CLASSES_TON[a.occupe ? "alerte" : "ok"];
+  return (
+    <li className={`grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:grid-cols-[auto_minmax(0,2fr)_7rem_minmax(0,1.5fr)_minmax(0,1.5fr)] ${choisi ? "bg-fond" : "bg-carte"}`}>
+      <label className="flex items-center gap-3">
+        <input type="checkbox" checked={choisi} onChange={onChoisir} className="h-4 w-4 accent-[var(--color-accent)]" aria-label={`Choisir ${a.nom}`} />
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border font-bold ${famille.texte} ${famille.bordure} ${famille.fond}`}>
+          {a.nom.slice(0, 1)}
+        </span>
+      </label>
+
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="font-semibold">{a.nom}</span>
+          <span className="truncate text-xs text-douce">{a.role}</span>
+        </div>
+        <div className="truncate font-mono text-[11px] text-douce" title={`${a.llm.via}:${a.llm.model}`}>
+          <span className={famille.texte}>{FAMILLES[a.famille].libelle}</span> · {a.llm.model}
+        </div>
+      </div>
+
+      <div className="col-start-2 sm:col-start-auto">
+        <span className={`inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide ${statut.texte} ${statut.fond} ${statut.bordure}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${statut.plein} ${a.enCours ? "pulse-douce" : ""}`} />
+          {a.occupe ? "occupé" : "libre"}
+        </span>
+        {a.enCours && (
+          <button type="button" onClick={() => onOuvrirRun(a.enCours!.run)} className="mt-1 block text-[11px] text-accent hover:underline">
+            au travail · {a.enCours.noeud}
+          </button>
+        )}
+      </div>
+
+      <div className="col-start-2 min-w-0 text-sm sm:col-start-auto">
+        {a.projet ? (
+          <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="truncate">{a.projet}</div>
+              {a.depuis && <div className="text-[11px] text-douce">depuis {depuis(a.depuis, maintenant)}</div>}
+            </div>
+            {a.depuis && (
+              <button type="button" disabled={occupe} onClick={onLiberer} className="ml-auto shrink-0 text-[11px] text-douce hover:text-danger disabled:opacity-40">
+                libérer
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="text-douce">aucun projet</span>
+        )}
+      </div>
+
+      <div className="col-start-2 sm:col-start-auto">
+        <Reste usage={a.usage} />
+      </div>
+    </li>
+  );
+}
+
+/** Le budget du mois qui reste, en équivalent API : ce n'est pas une dépense réelle sur abonnement. */
+function Reste({ usage }: { usage: MembreEquipe["usage"] }) {
+  if (usage.budgetMensuelUsd === null) {
+    return <span className="text-[11px] text-ok">gratuit · illimité</span>;
+  }
+  const reste = usage.resteUsd ?? 0;
+  const pourcent = usage.budgetMensuelUsd > 0 ? Math.round((reste / usage.budgetMensuelUsd) * 100) : 0;
+  const niveau = pourcent <= 10 ? "bg-danger" : pourcent <= 30 ? "bg-alerte" : "bg-ok";
+  return (
+    <div title={`Consommé ce mois : ${usd(usage.consommeMoisUsd)} (équivalent API)`}>
+      <div className="flex items-baseline justify-between text-[11px]">
+        <span className="text-douce">reste</span>
+        <span className="tabular-nums">
+          {usd(reste)} <span className="text-douce">/ {usd(usage.budgetMensuelUsd)}</span>
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-trait">
+        <div className={`h-full ${niveau}`} style={{ width: `${pourcent}%` }} />
+      </div>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import type { Evenement } from "../types";
 import type { Commande, FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
 import { approbationsMaquette } from "./decisions";
+import { equipeMaquette } from "./equipe";
 import { livraisonMaquette } from "./livraison";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
@@ -15,6 +16,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const chat = chatMaquette(maintenant);
   const approbations = approbationsMaquette();
   const livraison = livraisonMaquette(maintenant);
+  const equipe = equipeMaquette(maintenant);
   const commandes = new Map<string, Commande>();
 
   return {
@@ -80,6 +82,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     deciderRun: approbations.deciderRun,
     filConseil: approbations.filConseil,
     poserConseil: approbations.poserConseil,
+    equipe: equipe.lecture,
+    affecter: equipe.affecter,
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.
       let dernier = etat().evenements.at(-1)?.id ?? 0;

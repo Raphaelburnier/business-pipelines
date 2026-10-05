@@ -9,6 +9,7 @@
 // diverger de la base le jour où un événement manque.
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { ReponseEquipe } from "./equipe";
 
 export interface FiltreRuns {
   project?: string;
@@ -56,6 +57,10 @@ export interface Source {
   /** Le fil du conseiller sur un dossier, et y poser une question (refusée si le PC dort). */
   filConseil(dossier: string): Promise<FilConseil>;
   poserConseil(dossier: string, texte: string): Promise<FilConseil>;
+  /** L'équipe d'agents : qui est libre, sur quel projet, et le budget du mois qui reste. */
+  equipe(): Promise<ReponseEquipe>;
+  /** Associe ces agents à un projet (existant ou nouveau), ou les libère avec `null`. */
+  affecter(agents: string[], projet: string | null): Promise<void>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }
