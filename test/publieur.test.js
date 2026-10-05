@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const publieur = require("../src/publieur");
+const checkpoints = require("agent-orchestrator/src/checkpoints");
 
 const g = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "utf-8" }).trim();
 const gd = (depot, ...args) => execFileSync("git", ["--git-dir", depot, ...args], { encoding: "utf-8" }).trim();
@@ -34,11 +35,12 @@ function monter() {
   fs.writeFileSync(path.join(travail, "verdict.json"), JSON.stringify({ verdict: "PASS", failures: [] }));
   g(travail, "add", "-A");
   g(travail, "commit", "-q", "-m", `[run ${runId}] step implement`);
-  g(travail, "rm", "-q", "improvement-plan.json", "applied.json", "verdict.json");
-  g(travail, "commit", "-q", "-m", `[run ${runId}] fichiers d'échange retirés`);
-  g(travail, "push", "-q", "origin", `run/${runId}`, `HEAD:refs/heads/agent/steam-tierlist-c560f64f`);
-  g(travail, "reset", "-q", "--hard", "HEAD~1");
-  g(travail, "push", "-q", "-f", "origin", `run/${runId}`);
+  checkpoints.livrer({
+    dir: travail,
+    runId,
+    projetId: "steam-tierlist",
+    fichiers: ["improvement-plan.json", "applied.json", "verdict.json"],
+  });
   return { racine, nas, github, travail, runId };
 }
 
@@ -70,6 +72,8 @@ test("une branche agent/ est publiée avec sa PR, une seule fois", async () => {
   assert.match(creation.corps.title, /^agent\(steam-tierlist\): Chercher dans le catalogue/);
   assert.match(creation.corps.body, /SearchBar interroge le catalogue/);
   assert.match(creation.corps.body, /Verdict du pipeline : PASS/);
+  assert.doesNotMatch(creation.corps.body, /Verdict du pipeline : inconnu/);
+  assert.strictEqual(gd(github, "ls-tree", "-r", "--name-only", "agent/steam-tierlist-c560f64f"), "app.txt");
 
   // Deuxième passage : rien de nouveau, rien de republié.
   const second = await publieur.publierProjet({ projet, git, api, urlDepot: github, etat });
