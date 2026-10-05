@@ -94,6 +94,10 @@ services:
       # et monter /volume1/docker/git leur donnait les dépôts de tous les autres projets.
       # Monté en écriture, parce que le run pousse sa branche run/<runId>.
       - /volume1/docker/git/steam-tierlist.git:/git/steam-tierlist.git
+      # Le marketing, lancé depuis le cockpit : son dépôt (le worker du PC y accède par SSH,
+      # repoWorkers dans projects/marketing/project.json) et sa spec seule, pas tout specs/.
+      - /volume1/docker/git/marketing.git:/git/marketing.git
+      - ./specs/marketing.json:/app/specs/marketing.json:ro
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
@@ -110,9 +114,11 @@ services:
       # exception, git refuse de le cloner (« dubious ownership »). Posé en variables
       # d'environnement, qui comptent comme configuration protégée pour git, pour survivre à
       # la recréation du conteneur. Le premier run du 2026-09-25 a échoué là.
-      - GIT_CONFIG_COUNT=1
+      - GIT_CONFIG_COUNT=2
       - GIT_CONFIG_KEY_0=safe.directory
       - GIT_CONFIG_VALUE_0=/git/steam-tierlist.git
+      - GIT_CONFIG_KEY_1=safe.directory
+      - GIT_CONFIG_VALUE_1=/git/marketing.git
     env_file:
       - ./specs/deploiement.env
     # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve

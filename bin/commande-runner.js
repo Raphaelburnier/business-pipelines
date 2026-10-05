@@ -35,7 +35,18 @@ function projet(projectId) {
 // les mêmes choix de modèle.
 function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false } = {}) {
   const fichier = projet(projectId);
-  const args = ["/agent-orchestrator/bin/orch.js", "projet", fichier, "--pipeline", String(pipelineIndex), "--distribue"];
+  // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
+  // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
+  const args = [
+    "/agent-orchestrator/bin/orch.js",
+    "projet",
+    fichier,
+    "--pipeline",
+    String(pipelineIndex),
+    "--distribue",
+    "--handlers",
+    "src/stage-handlers.js",
+  ];
   if (reprendre) args.push("--resume");
   for (const [noeud, llm] of Object.entries(llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);
