@@ -120,6 +120,21 @@ test("les machines portent leur état et l'âge de leur dernier signe de vie", (
   assert.strictEqual(pc.meta.mac, "aa:bb:cc:dd:ee:ff");
 });
 
+test("une machine qui ne bat plus est hors ligne, un ancien conteneur disparaît", () => {
+  const { store } = bac();
+  store.majMachine({ id: "pc", state: "online", heartbeat: true });
+  store.majMachine({ id: "0d949fe02547", state: "online", heartbeat: true });
+
+  const dans = (secondes) => Object.fromEntries(api.machines(store, { maintenant: Date.now() + secondes * 1000 }).map((m) => [m.machine, m.etat]));
+  assert.strictEqual(dans(30).pc, "online");
+  assert.strictEqual(dans(600).pc, "offline");
+  // La machine locale répond, elle est donc en ligne même sans battement récent.
+  assert.strictEqual(dans(600)[store.machineId], "online");
+  const huitJours = dans(8 * 24 * 3600);
+  assert.ok(!("0d949fe02547" in huitJours), "un conteneur muet depuis huit jours sort de la liste");
+  assert.ok(store.machineId in huitJours);
+});
+
 test("les runs se filtrent par projet et par statut", () => {
   const { store } = bac();
   const fini = runComplet(store);
