@@ -562,6 +562,7 @@ async function traiter(req, res) {
         id: commande.id,
         type: commande.kind,
         statut: commande.status,
+        run: commande.run_id,
         projet: commande.payload.projectId,
         creeeLe: commande.created_at,
         priseLe: commande.taken_at,

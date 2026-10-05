@@ -17,6 +17,15 @@ export interface FiltreRuns {
   limite?: number;
 }
 
+export interface Commande {
+  id: string;
+  type: string;
+  statut: "pending" | "taken" | "done" | "refused";
+  run: string | null;
+  projet?: string;
+  resultat: { ok: boolean; raison?: string; detail?: Record<string, unknown> } | null;
+}
+
 export interface Source {
   readonly nom: "maquette" | "api";
   topologie(): Promise<Topologie>;
@@ -27,6 +36,8 @@ export interface Source {
   modeles(): Promise<ReponseModeles>;
   /** `llm` s'applique à tous les nœuds agents du run ; absent, chaque nœud garde le sien. */
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
+  /** Le run associé est visible dès son admission, avant la fin du processus. */
+  commande(id: string): Promise<Commande>;
   /** « Demander au cockpit » : les fils, un fil, et poser une question (nouveau fil sans `filId`). */
   fils(): Promise<ListeFils>;
   fil(id: string): Promise<FilDetaille | null>;
