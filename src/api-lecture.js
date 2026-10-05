@@ -104,18 +104,36 @@ function resumerApprobation(a) {
  * @param {any} store
  * @param {{ maintenant?: number }} [options]
  */
+//
+// Chaque processus qui ouvre l'event store inscrit sa machine « online » une fois, sans
+// battement ensuite : seul le maître tient l'état des workers à jour. La machine locale est
+// donc en ligne puisqu'elle répond ; une autre qui ne bat plus depuis SILENCE_S est hors
+// ligne, quoi que dise la base ; et une machine muette depuis OUBLI_S (un ancien conteneur
+// inscrit sous son id Docker) sort de la liste.
+const SILENCE_S = 180;
+const OUBLI_S = 7 * 24 * 3600;
+const ETATS_ACTIFS = new Set(["online", "busy"]);
+
 function machines(store, { maintenant = Date.now() } = {}) {
-  return store.machines().map((m) => {
-    const vu = m.last_heartbeat_at ? Date.parse(m.last_heartbeat_at) : null;
-    return {
-      machine: m.id,
-      nom: m.name,
-      etat: m.state,
-      dernierHeartbeat: m.last_heartbeat_at,
-      depuisSecondes: vu ? Math.max(0, Math.round((maintenant - vu) / 1000)) : null,
-      meta: m.meta || null,
-    };
-  });
+  return store
+    .machines()
+    .map((m) => {
+      const vu = m.last_heartbeat_at ? Date.parse(m.last_heartbeat_at) : null;
+      const depuisSecondes = vu ? Math.max(0, Math.round((maintenant - vu) / 1000)) : null;
+      const locale = m.id === store.machineId;
+      const muette = !locale && ETATS_ACTIFS.has(String(m.state)) && (depuisSecondes === null || depuisSecondes > SILENCE_S);
+      return {
+        machine: m.id,
+        nom: m.name,
+        etat: muette ? "offline" : m.state,
+        dernierHeartbeat: m.last_heartbeat_at,
+        depuisSecondes,
+        meta: m.meta || null,
+        locale,
+      };
+    })
+    .filter((m) => m.locale || m.depuisSecondes === null || m.depuisSecondes <= OUBLI_S)
+    .map(({ locale: _l, ...m }) => m);
 }
 
 /**
