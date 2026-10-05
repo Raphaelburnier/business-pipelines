@@ -23,6 +23,7 @@ ENV SHELL=/bin/bash
 # runs sont couverts aussi : la bascule les rend à admindunas, et git refusait alors le
 # dépôt du run précédent (« not in a git directory », deux runs perdus le 2026-09-26).
 RUN git config --system --add safe.directory /git/steam-tierlist.git \
+ && git config --system --add safe.directory /git/marketing.git \
  && git config --system --add safe.directory '/app/workspaces/*'
 ENV USE_BUILTIN_RIPGREP=0
 

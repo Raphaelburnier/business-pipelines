@@ -3,7 +3,8 @@
   "name": "Plan marketing",
   "business": "marketing",
   "homeMachine": "pc",
-  "repo": "ssh://admindunas@192.168.1.18/volume1/docker/git/marketing.git",
+  "repo": "/git/marketing.git",
+  "repoWorkers": "ssh://admindunas@192.168.1.18/volume1/docker/git/marketing.git",
   "pipelines": [
     {
       "extends": "marketing@1",
