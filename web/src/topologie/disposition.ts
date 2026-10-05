@@ -1,8 +1,22 @@
-// Le graphe d'accueil montre les projets enregistrés, jamais les détails d'infrastructure.
-// Les pipelines et leur exécution se consultent dans la fiche ouverte au clic.
-import type { ProjetTopologie, Topologie } from "../types";
+// Graphe d'accueil : infrastructure réelle, projets enregistrés et quelques étapes-clés
+// du dernier run. Les outils restent dans la fiche du projet, jamais en cellules du graphe.
+import type { EtapeAvecOutils, Machine, ProjetTopologie, RunDetailleAvecOutils, StatutEtape, Topologie } from "../types";
 
-export type TypeNoeud = "projet";
+export type TypeNoeud = "machine" | "orchestrateur" | "projet" | "etape";
+
+export interface EtapeImportante {
+  id: string;
+  nom: string;
+  detail: string;
+  statut: StatutEtape;
+  tour: number;
+  runId: string;
+}
+
+export interface ExecutionProjet {
+  projetId: string;
+  run: RunDetailleAvecOutils;
+}
 
 export type NoeudDispose = {
   id: string;
@@ -11,8 +25,15 @@ export type NoeudDispose = {
   y: number;
   largeur: number;
   hauteur: number;
-  projet: ProjetTopologie;
-};
+  projet?: ProjetTopologie;
+  machine?: Machine | null;
+  roleMachine?: "pc" | "nas";
+  etat?: Machine["etat"];
+  sousTitre?: string;
+  maitre?: Topologie["maitre"];
+  etape?: EtapeImportante;
+  selectionne?: boolean;
+}
 
 export interface Disposition {
   noeuds: NoeudDispose[];
@@ -20,42 +41,128 @@ export interface Disposition {
   hauteur: number;
 }
 
-const LARGEUR = 260;
-const HAUTEUR = 92;
-const ECART_X = 32;
-const ECART_Y = 28;
 const MARGE = 24;
-const COLONNES = 3;
+const LARGEUR_GROUPE = 344;
+const ECART_GROUPE = 44;
+const LARGEUR_PROJET = 344;
+const HAUTEUR_PROJET = 78;
+const LARGEUR_ETAPE = 166;
+const HAUTEUR_ETAPE = 54;
+const ECART_ETAPE_X = 12;
+const ECART_ETAPE_Y = 12;
 
+export const idMachine = (role: string) => `machine:${role}`;
+export const idOrchestrateur = "orchestrateur:nas";
 export const idProjet = (id: string) => `projet:${id}`;
+export const idEtape = (runId: string, etapeId: string) => `etape:${runId}:${etapeId}`;
 
-/** Place une carte par projet connu. Les runs sans fiche ne créent pas de fausses cartes. */
-export function disposer(topologie: Topologie, colonnesSouhaitees = COLONNES): Disposition {
-  const projets = topologie.projets
-    .filter((projet) => projet.aFiche)
-    .slice()
-    .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
-  const colonnesMax = Math.max(1, Math.min(COLONNES, Math.floor(colonnesSouhaitees)));
+/** Reconnaît les noms de machine utilisés par le worker et le Synology. */
+export function roleDeMachine(machine: Machine): "pc" | "nas" | null {
+  const meta = Object.values(machine.meta ?? {}).filter((valeur): valeur is string => typeof valeur === "string").join(" ");
+  const nom = `${machine.machine} ${machine.nom ?? ""} ${meta}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\bnas\b|synology|\bdsm\b/.test(nom)) return "nas";
+  if (/\bpc\b|destrobimobile|windows|workerpc/.test(nom)) return "pc";
+  return null;
+}
 
-  const noeuds = projets.map((projet, index) => {
-    const colonne = index % colonnesMax;
-    const rangee = Math.floor(index / colonnesMax);
-    return {
-      id: idProjet(projet.id),
-      type: "projet" as const,
-      x: MARGE + colonne * (LARGEUR + ECART_X),
-      y: MARGE + rangee * (HAUTEUR + ECART_Y),
-      largeur: LARGEUR,
-      hauteur: HAUTEUR,
-      projet,
-    };
+function etapesImportantes(run: RunDetailleAvecOutils): EtapeImportante[] {
+  const parNom = new Map<string, EtapeAvecOutils>();
+  for (const etape of run.etapes) {
+    const precedente = parNom.get(etape.noeud);
+    if (!precedente || Date.parse(etape.debut ?? "") >= Date.parse(precedente.debut ?? "")) parNom.set(etape.noeud, etape);
+  }
+
+  const etapes = [...parNom.values()].sort((a, b) => Date.parse(a.debut ?? "") - Date.parse(b.debut ?? "")).map((etape) => ({
+    id: etape.id,
+    nom: etape.noeud,
+    detail: etape.agent ? `agent · ${etape.agent}` : etape.type,
+    statut: etape.statut,
+    tour: etape.tour,
+    runId: run.id,
+  } satisfies EtapeImportante));
+  const validations = run.approbations.map((approbation) => ({
+    id: `approbation-${approbation.id}`,
+    nom: approbation.noeud,
+    detail: "décision humaine",
+    statut: "waiting_approval" as const,
+    tour: 0,
+    runId: run.id,
+  }));
+  const candidats = [...etapes, ...validations];
+  if (!candidats.length) return [];
+
+  const debut = etapes[0];
+  const fin = etapes.at(-1);
+  const score = (etape: EtapeImportante) => {
+    if (etape.detail === "décision humaine") return 120;
+    if (etape.statut === "running" || etape.statut === "failed" || etape.statut.startsWith("waiting")) return 110;
+    const originale = parNom.get(etape.nom);
+    if (originale?.outcome || /approb|gate|couverture|validation|review|test/i.test(etape.nom)) return 90;
+    if (etape.id === fin?.id) return 80;
+    if (etape.id === debut?.id) return 70;
+    if (originale?.agent) return 60;
+    return 10;
+  };
+  return candidats
+    .sort((a, b) => score(b) - score(a) || Date.parse(a.detail === "décision humaine" ? run.debut ?? "" : parNom.get(a.nom)?.debut ?? "") - Date.parse(b.detail === "décision humaine" ? run.debut ?? "" : parNom.get(b.nom)?.debut ?? ""))
+    .slice(0, 4)
+    .sort((a, b) => Date.parse(parNom.get(a.nom)?.debut ?? "") - Date.parse(parNom.get(b.nom)?.debut ?? ""));
+}
+
+/** Place les deux machines et le maître au-dessus des projets, avec leurs jalons en petit. */
+export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [], colonnesSouhaitees = 1): Disposition {
+  const projets = topologie.projets.filter((projet) => projet.aFiche).slice().sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  const colonnes = Math.max(1, Math.min(projets.length || 1, 3, Math.floor(colonnesSouhaitees)));
+  const executionParProjet = new Map(executions.map((execution) => [execution.projetId, execution.run]));
+  const machinesParRole = new Map<"pc" | "nas", Machine>();
+  for (const machine of topologie.machines) {
+    const role = roleDeMachine(machine);
+    if (role) machinesParRole.set(role, machine);
+  }
+
+  const noeuds: NoeudDispose[] = [];
+  const noeudMachine = (role: "pc" | "nas", x: number, y: number) => {
+    const machine = machinesParRole.get(role) ?? null;
+    const etat = machine?.etat ?? (role === "nas" ? topologie.maitre.etat : undefined);
+    noeuds.push({
+      id: idMachine(role), type: "machine", x, y, largeur: 154, hauteur: 66,
+      machine, roleMachine: role, etat,
+      sousTitre: machine ? (role === "pc" ? "worker" : "Synology") : role === "nas" ? "hôte du cockpit" : "non observé",
+    });
+  };
+
+  noeudMachine("pc", MARGE, 28);
+  noeudMachine("nas", MARGE + 190, 28);
+  noeuds.push({
+    id: idOrchestrateur, type: "orchestrateur", x: MARGE + 190, y: 112, largeur: 154, hauteur: 66,
+    maitre: topologie.maitre, sousTitre: `maître · ${topologie.maitre.nom}`,
   });
 
-  const colonnes = Math.min(projets.length, colonnesMax);
-  const rangees = Math.ceil(projets.length / colonnesMax);
+  let hauteurProjets = 0;
+  for (let index = 0; index < projets.length; index += 1) {
+    const projet = projets[index]!;
+    const colonne = index % colonnes;
+    const rangee = Math.floor(index / colonnes);
+    const execution = executionParProjet.get(projet.id);
+    const jalons = execution ? etapesImportantes(execution) : [];
+    const x = MARGE + colonne * (LARGEUR_GROUPE + ECART_GROUPE);
+    const y = 232 + rangee * 320;
+    noeuds.push({ id: idProjet(projet.id), type: "projet", x, y, largeur: LARGEUR_PROJET, hauteur: HAUTEUR_PROJET, projet });
+    jalons.forEach((etape, i) => {
+      noeuds.push({
+        id: idEtape(etape.runId, etape.id), type: "etape",
+        x: x + (i % 2) * (LARGEUR_ETAPE + ECART_ETAPE_X),
+        y: y + HAUTEUR_PROJET + 20 + Math.floor(i / 2) * (HAUTEUR_ETAPE + ECART_ETAPE_Y),
+        largeur: LARGEUR_ETAPE, hauteur: HAUTEUR_ETAPE, etape,
+      });
+    });
+    hauteurProjets = Math.max(hauteurProjets, y + HAUTEUR_PROJET + (jalons.length ? Math.ceil(jalons.length / 2) * (HAUTEUR_ETAPE + ECART_ETAPE_Y) + 20 : 0));
+  }
+
+  const largeurProjets = projets.length ? colonnes * LARGEUR_GROUPE + (colonnes - 1) * ECART_GROUPE : 0;
   return {
     noeuds,
-    largeur: colonnes ? MARGE * 2 + colonnes * LARGEUR + (colonnes - 1) * ECART_X : 0,
-    hauteur: rangees ? MARGE * 2 + rangees * HAUTEUR + (rangees - 1) * ECART_Y : 0,
+    largeur: Math.max(MARGE * 2 + LARGEUR_GROUPE, MARGE * 2 + largeurProjets),
+    hauteur: Math.max(196, projets.length ? hauteurProjets + MARGE : 196),
   };
 }
