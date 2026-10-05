@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Consomme les commandes durables du cockpit. Une seule commande à la fois : deux runs
-// simultanés partageraient le quota, le workspace et des branches Git sans bénéfice ici.
+// Consomme les commandes durables du cockpit. Une seule commande de run à la fois pour
+// garder l'ordre de lancement et la concurrence de quota prévue.
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
@@ -32,14 +32,14 @@ function projet(projectId) {
   return fichier;
 }
 
-// `reprendre` relance le run arrêté dans le dossier de travail du projet (`--resume`), avec
+// `reprendre` relance le run arrêté dans son propre dossier de travail (`--resume`), avec
 // les mêmes choix de modèle.
-function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false } = {}) {
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false, commandId = null, runId = null } = {}) {
   const fichier = projet(projectId);
   // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
   // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
   const args = [
-    "/agent-orchestrator/bin/orch.js",
+    require.resolve("agent-orchestrator/bin/orch.js"),
     "projet",
     fichier,
     "--pipeline",
@@ -49,6 +49,8 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre
     "src/stage-handlers.js",
   ];
   if (reprendre) args.push("--resume");
+  if (commandId) args.push("--command-id", commandId);
+  if (runId) args.push("--run-id", runId);
   for (const [noeud, llm] of Object.entries(llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);
   }
@@ -108,9 +110,12 @@ async function boucle(store, kinds, executer) {
     }
     console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
     try {
-      store.terminerCommande(commande.id, await executer(commande));
+      const resultat = await executer(commande);
+      // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
+      // sera remise en file, et retrouvera son run au redémarrage.
+      if (!arret || commande.kind === "chat.respond") store.terminerCommande(commande.id, resultat);
     } catch (err) {
-      store.terminerCommande(commande.id, { ok: false, raison: err.message });
+      if (!arret || commande.kind === "chat.respond") store.terminerCommande(commande.id, { ok: false, raison: err.message });
       console.error(`Commande ${commande.id} refusée : ${err.message}`);
     }
   }
@@ -121,21 +126,20 @@ function issue(resultat, detail = {}) {
   return { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` };
 }
 
-// Le pipeline et les modèles avec lesquels le run arrêté a été lancé. Le pipeline se lit
-// dans la fiche du projet (`extends` = la référence du run). Les modèles viennent de la
-// dernière commande `run.start` de ce projet : un projet n'a qu'un dossier de travail, donc
-// le run à reprendre est le dernier lancé.
+// Le pipeline et les modèles de la commande qui a créé ce run précis. Un lancement
+// ultérieur sur le même projet n'en change ni les modèles ni le dossier.
 function lancementDe(store, run) {
+  const commande = store.commandeLancementRun(run.id);
+  if (commande) return commande.payload;
+  // Compatibilité avec les anciens runs CLI : leur journal vérifie toujours l'empreinte
+  // du pipeline. Aucun choix de modèle n'est emprunté au dernier run d'un autre lancement.
   const fiche = JSON.parse(fs.readFileSync(projet(run.project_id), "utf8"));
   const index = (fiche.pipelines || []).findIndex((p) => p.extends === run.pipeline_ref);
-  const derniere = store
-    .commandes({ limite: 5000 })
-    .filter((c) => c.kind === "run.start" && c.payload.projectId === run.project_id)
-    .pop();
+  if (index < 0) throw new Error("Le pipeline du run n'est plus configuré dans le projet.");
   return {
     projectId: run.project_id,
-    pipelineIndex: index >= 0 ? index : 0,
-    llmOverrides: (derniere && derniere.payload.llmOverrides) || {},
+    pipelineIndex: index,
+    llmOverrides: {},
   };
 }
 
@@ -146,6 +150,7 @@ async function deciderEtReprendre(store, commande) {
   const { approbationId, decision, note = null, actions = [] } = commande.payload;
   const a = store.approbation(approbationId);
   if (!a) throw new Error(`approbation inconnue : ${approbationId}`);
+  store.lierDecisionRun(commande.id, a.run_id);
   const dejaEcrite = a.status === decision && a.par === commande.par;
   if (!dejaEcrite) {
     store.deciderApprobation(a.id, { decision, note, par: commande.par, canal: commande.canal, actions });
@@ -154,12 +159,13 @@ async function deciderEtReprendre(store, commande) {
   const run = store.run(a.run_id);
   if (!run) throw new Error(`run inconnu : ${a.run_id}`);
   const lancement = lancementDe(store, run);
-  const repris = await lancer(lancement, { reprendre: true });
+  const repris = await lancer(lancement, { reprendre: true, runId: a.run_id });
   // « Renvoyer au pipeline » : une orientation que le pipeline ne route nulle part termine
   // simplement le run (marketing@1). Un nouveau tour repart alors, et son nœud `consigne` y
-  // reprend la note. Un pipeline qui gère l'orientation lui-même n'est jamais relancé deux fois.
-  if (decision === "oriented" && CODES_ATTENDUS.has(repris.code) && !orientationRoutee(lancement, a.node_id)) {
-    return issue(await lancer(lancement), { runId: a.run_id, decision, nouveauTour: true });
+  // reprend la note. Ce nouveau tour est mis en file et lié à sa propre commande.
+  // Un pipeline qui gère l'orientation lui-même n'est jamais relancé deux fois.
+  if (decision === "oriented" && repris.code === 0 && !orientationRoutee(lancement, a.node_id)) {
+    return store.terminerOrientation(commande.id, { payload: lancement, detail: { ...repris, decision } });
   }
   return issue(repris, { runId: a.run_id, decision });
 }
@@ -178,7 +184,8 @@ function orientationRoutee(lancement, nodeId) {
 
 async function executerRun(store, commande) {
   if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande);
-  return issue(await lancer(commande.payload));
+  const resultat = await lancer(commande.payload, { commandId: commande.id });
+  return issue(resultat, { runId: store.commande(commande.id)?.run_id || null });
 }
 
 // Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
@@ -221,8 +228,7 @@ async function demarrer() {
   try {
     await Promise.all([
       ouvrirMaitre(store),
-      // Les décisions passent dans la file des runs : elles en relancent un, et deux runs à
-      // la fois partageraient le dossier de travail.
+      // Les décisions passent dans la file des runs pour conserver la concurrence de quota.
       boucle(store, ["run.start", "approval.decide"], (commande) => executerRun(store, commande)),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);

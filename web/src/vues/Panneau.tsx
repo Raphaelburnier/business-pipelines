@@ -11,6 +11,7 @@ import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
 import { SelecteurModele } from "./SelecteurModele";
+import { suivreCommande } from "../donnees/lancement";
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
@@ -23,7 +24,7 @@ export function Panneau({ selection, onSelection, onFermer, modePage = false }: 
           {modePage ? "← Retour au graphe" : "fermer"}
         </button>
       </div>
-      {selection.type === "projet" && <PanneauProjet id={selection.id} onSelection={onSelection} />}
+      {selection.type === "projet" && <PanneauProjet key={selection.id} id={selection.id} onSelection={onSelection} />}
       {selection.type === "run" && <PanneauRun id={selection.id} />}
       {selection.type === "machine" && <PanneauMachine id={selection.id} />}
     </section>
@@ -38,8 +39,35 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
   const projet = topo.donnees?.projets.find((p) => p.id === id);
   const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
   const [erreurLancement, setErreurLancement] = useState<string | null>(null);
+  const [commandeId, setCommandeId] = useState<string | null>(null);
   const [llm, setLlm] = useState<Llm | null>(null);
   const [executionRecente, setExecutionRecente] = useState<{ agents: string[]; outils: string[]; etapes: string[] }>({ agents: [], outils: [], etapes: [] });
+
+  useEffect(() => {
+    setCommandeId(null);
+    setLancement("idle");
+    setErreurLancement(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (!commandeId) return;
+    return suivreCommande(source, commandeId, {
+      surCommande: (commande) => {
+        if (commande.statut === "refused") {
+          setLancement("idle");
+          setErreurLancement(commande.resultat?.raison || "Le lancement a été refusé.");
+        } else if (commande.run) {
+          setLancement("idle");
+          setErreurLancement(null);
+          onSelection({ type: "run", id: commande.run });
+        } else if (commande.statut === "done") {
+          setLancement("idle");
+          setErreurLancement("Le lancement s'est terminé sans run associé.");
+        }
+      },
+      surErreur: (erreur) => setErreurLancement(`Suivi momentanément indisponible : ${erreur.message}`),
+    });
+  }, [commandeId, source, onSelection]);
 
   useEffect(() => {
     let abandonnee = false;
@@ -70,7 +98,8 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
     setLancement("sending");
     setErreurLancement(null);
     try {
-      await source.lancerRun(id, pipelineIndex, llm);
+      const commande = await source.lancerRun(id, pipelineIndex, llm);
+      setCommandeId(commande.id);
       setLancement("sent");
     } catch (err) {
       setLancement("idle");
@@ -145,7 +174,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
               </button>
             ))}
           </div>
-          {lancement === "sent" && <p className="mt-1 text-xs text-ok">Commande signée et mise en file. Le run apparaîtra ci-dessous.</p>}
+          {lancement === "sent" && <p className="mt-1 text-xs text-ok">Commande mise en file. Le run s’ouvrira dès son démarrage.</p>}
           {erreurLancement && <Erreur>{erreurLancement}</Erreur>}
         </div>
       )}
