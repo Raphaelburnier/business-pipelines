@@ -7,11 +7,11 @@ import { CLASSES_TON, mot, ton, vivant } from "../format";
 import type { ProjetTopologie as Projet, Topologie as DonneesTopologie } from "../types";
 import { Erreur } from "../ui";
 import { Kpis } from "../vues/Kpis";
-import { disposer, idEtape, idMachine, idOrchestrateur, idProjet, type ExecutionProjet, type NoeudDispose } from "./disposition";
+import { disposer, idEtape, idMachine, idOrchestrateur, idProjet, roleDeMachine, type ExecutionProjet, type NoeudDispose } from "./disposition";
 
 export type Selection = { type: "projet"; id: string } | { type: "machine"; id: string } | { type: "run"; id: string };
 
-type DonneesNoeud = NoeudDispose & { selectionne: boolean };
+type DonneesNoeud = NoeudDispose & { selectionne: boolean; attenue: boolean };
 
 function nomEtape(nom: string): string {
   const connus: Record<string, string> = {
@@ -34,7 +34,7 @@ function NoeudProjet({ data }: NodeProps<Node<DonneesNoeud>>) {
   return (
     <button
       type="button"
-      className={`ao-noeud projet ${classe.texte} ${attente ? "attente" : ""} ${data.selectionne ? "selectionne" : ""}`}
+      className={`ao-noeud projet ${classe.texte} ${attente ? "attente" : ""} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`}
       aria-label={`Ouvrir la fiche de ${projet.nom}`}
     >
       <span className="flex min-w-0 items-center gap-2">
@@ -68,17 +68,17 @@ function NoeudMachine({ data }: NodeProps<Node<DonneesNoeud>>) {
   );
 
   return selectionnable ? (
-    <button type="button" className={`ao-noeud infrastructure clickable ${role} ${data.selectionne ? "selectionne" : ""}`} aria-label={`Ouvrir la machine ${nom}`}>
+    <button type="button" className={`ao-noeud infrastructure clickable ${role} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir la machine ${nom}`}>
       {contenu}
     </button>
-  ) : <div className={`ao-noeud infrastructure ${role}`}>{contenu}</div>;
+  ) : <div className={`ao-noeud infrastructure ${role} ${data.attenue ? "estompe" : ""}`}>{contenu}</div>;
 }
 
 function NoeudOrchestrateur({ data }: NodeProps<Node<DonneesNoeud>>) {
   const etat = data.maitre!.etat;
   const classe = CLASSES_TON[ton(etat)];
   return (
-    <div className="ao-noeud orchestrateur infrastructure">
+    <div className={`ao-noeud orchestrateur infrastructure ${data.attenue ? "estompe" : ""}`}>
       <span className="flex min-w-0 items-center gap-2"><i className={`h-2 w-2 rounded-full ${classe.plein} ${vivant(etat) ? "pulse-douce" : ""}`} /><span className="nom">Orchestrateur</span></span>
       <span className="sous"><span>{data.sousTitre}</span><span className="ml-auto">{mot(etat)}</span></span>
     </div>
@@ -89,13 +89,13 @@ function NoeudEtape({ data }: NodeProps<Node<DonneesNoeud>>) {
   const etape = data.etape!;
   const classe = CLASSES_TON[ton(etape.statut)];
   return (
-    <button type="button" className={`ao-noeud etape ${classe.texte}`} aria-label={`Ouvrir le run ${etape.runId}, étape ${etape.nom}`}>
+    <button type="button" className={`ao-noeud etape ${classe.texte} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir le run ${etape.runId}, étape ${etape.nom}`}>
       <span className="flex min-w-0 items-center gap-2">
         <i className={`h-2 w-2 shrink-0 rounded-full ${classe.plein} ${vivant(etape.statut) ? "pulse-douce" : ""}`} aria-hidden="true" />
         <span className="nom">{nomEtape(etape.nom)}</span>
         {etape.tour > 0 && <span className="text-[10px] text-douce">t{etape.tour + 1}</span>}
       </span>
-      <span className="sous"><span>{etape.detail.startsWith("agent") ? "agent" : etape.detail}</span><span className="ml-auto">{mot(etape.statut)}</span></span>
+      <span className="sous"><span className="truncate">{etape.detail}</span><span className="ml-auto shrink-0">{mot(etape.statut)}</span></span>
     </button>
   );
 }
@@ -118,7 +118,6 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
   const { setViewport } = useReactFlow();
   const [conteneur, setConteneur] = useState<HTMLDivElement | null>(null);
   const [zone, setZone] = useState<{ largeur: number; hauteur: number } | null>(null);
-  const colonnes = zone && zone.largeur < 820 ? 1 : zone && zone.largeur < 1280 ? 2 : 3;
   const cleRuns = topologie.projets.map((projet) => `${projet.id}:${projet.dernierRun?.id ?? ""}`).join("|");
   const executions = useCharge(async (source) => {
     const projets = topologie.projets.filter((projet) => projet.aFiche && projet.dernierRun);
@@ -132,7 +131,22 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     }));
     return chargees.filter((execution): execution is ExecutionProjet => execution !== null);
   }, [cleRuns]);
-  const disposition = useMemo(() => disposer(topologie, executions.donnees ?? [], colonnes), [topologie, executions.donnees, colonnes]);
+  const disposition = useMemo(() => disposer(topologie, executions.donnees ?? []), [topologie, executions.donnees]);
+  const executionParRun = new Map((executions.donnees ?? []).map((execution) => [execution.run.id, execution.projetId]));
+  const projetFocal = selection?.type === "projet"
+    ? selection.id
+    : selection?.type === "run"
+      ? executionParRun.get(selection.id) ?? null
+      : null;
+  const machineFocale = selection?.type === "machine"
+    ? roleDeMachine(topologie.machines.find((machine) => machine.machine === selection.id) ?? {
+        machine: selection.id, nom: null, etat: "offline", dernierHeartbeat: null, depuisSecondes: null, meta: null,
+      })
+    : null;
+  const projetsFocaux = new Set(topologie.projets
+    .filter((projet) => projet.aFiche && (projet.id === projetFocal || (machineFocale !== null && (/nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc") === machineFocale)))
+    .map((projet) => projet.id));
+  const aFocal = projetFocal !== null || machineFocale !== null;
   const noeuds: Node<DonneesNoeud>[] = disposition.noeuds.map((n) => ({
     id: n.id,
     type: "cockpit",
@@ -147,27 +161,51 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     data: {
       ...n,
       selectionne: (selection?.type === "projet" && n.projet?.id === selection.id) || (selection?.type === "machine" && n.machine?.machine === selection.id),
+      attenue: aFocal && (
+        (n.type === "projet" && !projetsFocaux.has(n.projet?.id ?? "")) ||
+        (n.type === "etape" && !projetsFocaux.has(executionParRun.get(n.etape?.runId ?? "") ?? "")) ||
+        (n.type === "machine" && machineFocale !== null && n.roleMachine !== machineFocale)
+      ),
     },
   }));
   const aretes: Edge[] = [];
-  const relier = (source: string, target: string, active = false, pointillee = false) => {
+  const relier = (source: string, target: string, famille: "pc" | "nas" | "commande" | "etape", libelle: string, active: boolean, attenuee: boolean, attente = false) => {
+    const couleur = attente ? "var(--color-givre)" : famille === "pc" ? "var(--color-pc)" : famille === "nas" ? "var(--color-nas)" : famille === "commande" ? "var(--color-accent)" : "var(--color-ok)";
     aretes.push({
       id: `${source}->${target}`,
       source,
       target,
       type: "smoothstep",
-      markerEnd: { type: MarkerType.ArrowClosed, color: active ? "var(--color-accent)" : "var(--color-trait-fort)" },
-      style: { stroke: active ? "var(--color-accent)" : "var(--color-trait-fort)", strokeWidth: active ? 1.75 : 1.25, strokeDasharray: pointillee ? "2 4" : undefined, opacity: active ? 0.9 : 0.7 },
+      pathOptions: { borderRadius: 12 },
+      label: active ? libelle : undefined,
+      labelShowBg: true,
+      labelBgPadding: [5, 3],
+      className: `ao-flux ${famille} ${active ? "actif" : ""} ${attenuee ? "estompe" : ""} ${attente ? "attente" : ""}`,
+      markerEnd: { type: MarkerType.ArrowClosed, width: active ? 18 : 14, height: active ? 18 : 14, color: couleur },
+      zIndex: active ? 1 : 0,
+      style: { stroke: couleur, strokeWidth: active ? 2.75 : 2, strokeDasharray: famille === "pc" ? "6 4" : famille === "nas" ? "2 4" : famille === "etape" ? "1 5" : undefined, opacity: attenuee ? 0.08 : active ? 1 : 0.65 },
     });
   };
-  relier(idMachine("pc"), idOrchestrateur, false, true);
-  relier(idMachine("nas"), idOrchestrateur);
+  const projetsParRole = (role: "pc" | "nas") => topologie.projets.filter((projet) => projet.aFiche && (/nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc") === role);
+  const roleEnFocus = (role: "pc" | "nas") => !aFocal || machineFocale === role || projetsFocaux.size > 0 && projetsParRole(role).some((projet) => projetsFocaux.has(projet.id));
+  for (const role of ["pc", "nas"] as const) {
+    const projetsMachine = projetsParRole(role);
+    const enCours = projetsMachine.some((projet) => projet.etat === "actif");
+    relier(idOrchestrateur, idMachine(role), role, role === "pc" ? "worker" : "hôte NAS", enCours || (role === "pc" && topologie.machines.find((machine) => roleDeMachine(machine) === "pc" && (machine.etat === "busy" || machine.etat === "waking")) !== undefined), aFocal && !roleEnFocus(role));
+  }
   for (const projet of topologie.projets.filter((entree) => entree.aFiche)) {
-    relier(idOrchestrateur, idProjet(projet.id), projet.etat === "actif");
+    const role = /nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc";
+    const estFocal = !aFocal || projetsFocaux.has(projet.id);
+    relier(idMachine(role), idProjet(projet.id), role, projet.pipelines[0] ?? "pipeline", projet.etat === "actif" || (aFocal && estFocal), aFocal && !estFocal);
     const execution = executions.donnees?.find((entree) => entree.projetId === projet.id);
     if (!execution) continue;
     const etapes = disposition.noeuds.filter((noeud) => noeud.type === "etape" && noeud.etape?.runId === execution.run.id);
-    for (const etape of etapes) relier(idProjet(projet.id), etape.id, etape.etape?.statut === "running", true);
+    for (const etape of etapes) {
+      const statut = etape.etape?.statut;
+      const attente = statut === "waiting_approval" || statut === "waiting_quota";
+      const actif = statut === "running" || attente || (aFocal && estFocal);
+      relier(idProjet(projet.id), etape.id, "etape", attente ? "décision attendue" : statut === "running" ? "en cours" : "étape clé", actif, aFocal && !estFocal, attente);
+    }
   }
 
   useEffect(() => {
@@ -236,9 +274,11 @@ export function Topologie({ selection, onSelection }: { selection: Selection | n
         </ReactFlowProvider>
         <div className="ao-legende-graphe">
           <span>{projets.length} projet{projets.length === 1 ? "" : "s"}</span>
+          <span><i className="pc" />PC</span>
+          <span><i className="nas" />NAS</span>
+          <span><i className="etape" />étapes</span>
           <span><i className="wait" />décision en attente</span>
           <span><i className="run" />étape en cours</span>
-          <span><i className="multi" />étape clé du dernier run</span>
         </div>
       </div>
     </div>
