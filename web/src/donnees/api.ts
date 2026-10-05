@@ -1,5 +1,5 @@
 // La source réelle : l'API REST du cockpit et son flux SSE (§10).
-import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetaille, Topologie, Usage } from "../types";
+import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, Topologie, Usage } from "../types";
 import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { FiltreRuns, Source } from "./source";
 
@@ -50,7 +50,7 @@ export function sourceApi(): Source {
     },
     async run(id: string) {
       try {
-        return await lire<RunDetaille>(`/api/runs/${encodeURIComponent(id)}`);
+        return await lire<RunDetailleAvecOutils>(`/api/runs/${encodeURIComponent(id)}`);
       } catch (err) {
         if (err instanceof ErreurApi && err.code === 404) return null;
         throw err;

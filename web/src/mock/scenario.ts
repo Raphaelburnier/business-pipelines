@@ -220,7 +220,7 @@ export function etatA(t0: number, ecoule: number): EtatMaquette {
   const statutRejoue = t < FIN_RUN_S ? "running" : "waiting_approval";
   const rejoue: RunDetaille = {
     id: `run-rejoue-${cycle + 1}`,
-    projet: "marketing-tcg",
+    projet: "marketing",
     pipeline: "marketing@1",
     statut: statutRejoue,
     vivant: true,
@@ -252,18 +252,14 @@ export function etatA(t0: number, ecoule: number): EtatMaquette {
     return r ? { id: r.id, statut: r.statut, debut: r.debut } : null;
   };
   const projets: ProjetTopologie[] = [
-    { id: "marketing-tcg", nom: "Marketing TCG", categorie: "marketing", homeMachine: "pc", machines: ["pc", "nas"], pipelines: ["marketing@1"], etat: statutRejoue === "running" ? "actif" : "attente", aFiche: true, url: null, dernierRun: dernier(rejoue.id), approbationsEnAttente: approbations.length },
-    { id: "vitrine", nom: "Vitrine", categorie: "marketing", homeMachine: "pc", machines: ["pc"], pipelines: ["marketing@1"], etat: "inactif", aFiche: true, url: null, dernierRun: null, approbationsEnAttente: 0 },
-    { id: "storia", nom: "Storia", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "inactif", aFiche: true, url: "/storia/", dernierRun: dernier("run-adhoc"), approbationsEnAttente: 0 },
-    { id: "tcg-generator", nom: "TCG generator", categorie: "saas", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@2"], etat: "erreur", aFiche: true, url: null, dernierRun: dernier("run-echec"), approbationsEnAttente: 0 },
-    { id: "otp-relay", nom: "Relais OTP", categorie: "infra-perso", homeMachine: "pc", machines: ["pc"], pipelines: ["saas-build@3"], etat: "attente", aFiche: true, url: null, dernierRun: dernier("run-quota"), approbationsEnAttente: 0 },
-    { id: "backups", nom: "Sauvegardes", categorie: "infra-perso", homeMachine: "nas", machines: ["nas"], pipelines: ["sauvegarde@1"], etat: "pause", aFiche: true, url: null, dernierRun: dernier("run-pause"), approbationsEnAttente: 0 },
+    { id: "marketing", nom: "Plan marketing", categorie: "marketing", homeMachine: "pc", machines: ["pc"], pipelines: ["marketing@1"], etat: statutRejoue === "running" ? "actif" : "attente", aFiche: true, url: null, dernierRun: dernier(rejoue.id), approbationsEnAttente: approbations.length },
+    { id: "steam-tierlist", nom: "Steam TierList", categorie: "outils-perso", homeMachine: "nas", machines: ["nas"], pipelines: ["improve-app@4"], etat: "inactif", aFiche: true, url: "/steam/", dernierRun: null, approbationsEnAttente: 0 },
   ];
 
   const topologie: Topologie = {
     maitre: { nom: "maître", etat: "online" },
     machines,
-    categories: ["infra-perso", "marketing", "saas"].map((c) => ({ id: c, nom: c })),
+    categories: ["marketing", "outils-perso"].map((c) => ({ id: c, nom: c })),
     projets,
     anomalies: [],
   };
@@ -295,7 +291,7 @@ interface Jalon {
 // Les jalons d'un cycle, dans l'ordre du temps : ce que le flux raconte.
 function jalons(): Jalon[] {
   const liste: Jalon[] = [
-    { t: 0, type: "run.started", etape: null, machine: null, payload: { projet: "marketing-tcg", pipeline: "marketing@1" } },
+    { t: 0, type: "run.started", etape: null, machine: null, payload: { projet: "marketing", pipeline: "marketing@1" } },
     { t: 1, type: "machine.state_changed", etape: null, machine: "pc", payload: { machine: "pc", de: "sleeping", vers: "waking", raison: "réveil pour une étape" } },
     { t: 3, type: "machine.state_changed", etape: null, machine: "pc", payload: { machine: "pc", de: "waking", vers: "busy" } },
     { t: 21.5, type: "cycle.loop", etape: null, machine: null, payload: { cycle: "correction", from: "couverture", to: "synthese", tour: 1, maxLoops: 1 } },

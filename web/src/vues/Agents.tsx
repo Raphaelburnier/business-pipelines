@@ -4,11 +4,11 @@
 import { useMemo, useState } from "react";
 import { useCharge, useHorloge } from "../donnees/contexte";
 import { VIDE, duree, jetons, usd } from "../format";
-import type { Etape, RunDetaille } from "../types";
+import type { Etape, EtapeAvecOutils, RunDetailleAvecOutils } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 
-type Ligne = Etape & { run: RunDetaille };
+type Ligne = EtapeAvecOutils & { run: RunDetailleAvecOutils };
 
 // Ce qui tourne d'abord, puis ce qui attend quelqu'un, puis le reste, le plus récent en tête.
 const RANG: Record<Etape["statut"], number> = { running: 0, waiting_approval: 1, waiting_quota: 1, failed: 2, cancelled: 3, succeeded: 3 };
@@ -20,7 +20,7 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
   const { donnees, erreur } = useCharge(async (s) => {
     const runs = await s.runs({ limite: 10 });
     const details = await Promise.all(runs.map((r) => s.run(r.id)));
-    return details.filter((r): r is RunDetaille => r !== null);
+    return details.filter((r) => r !== null);
   }, []);
 
   const lignes = useMemo<Ligne[]>(() => {
