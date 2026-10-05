@@ -12,6 +12,7 @@ import { disposer, idEtape, idMachine, idOrchestrateur, idProjet, roleDeMachine,
 export type Selection = { type: "projet"; id: string } | { type: "machine"; id: string } | { type: "run"; id: string };
 
 type DonneesNoeud = NoeudDispose & { selectionne: boolean; attenue: boolean };
+type AreteFluide = Edge & { pathOptions: { borderRadius: number } };
 
 function nomEtape(nom: string): string {
   const connus: Record<string, string> = {
@@ -168,7 +169,7 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
       ),
     },
   }));
-  const aretes: Edge[] = [];
+  const aretes: AreteFluide[] = [];
   const relier = (source: string, target: string, famille: "pc" | "nas" | "commande" | "etape", libelle: string, active: boolean, attenuee: boolean, attente = false) => {
     const couleur = attente ? "var(--color-givre)" : famille === "pc" ? "var(--color-pc)" : famille === "nas" ? "var(--color-nas)" : famille === "commande" ? "var(--color-accent)" : "var(--color-ok)";
     aretes.push({
