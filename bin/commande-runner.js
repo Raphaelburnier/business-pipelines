@@ -6,6 +6,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWorkers, wol } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
+const registre = require("agent-orchestrator/src/registre");
 
 const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
@@ -152,7 +153,27 @@ async function deciderEtReprendre(store, commande) {
   }
   const run = store.run(a.run_id);
   if (!run) throw new Error(`run inconnu : ${a.run_id}`);
-  return issue(await lancer(lancementDe(store, run), { reprendre: true }), { runId: a.run_id, decision });
+  const lancement = lancementDe(store, run);
+  const repris = await lancer(lancement, { reprendre: true });
+  // « Renvoyer au pipeline » : une orientation que le pipeline ne route nulle part termine
+  // simplement le run (marketing@1). Un nouveau tour repart alors, et son nœud `consigne` y
+  // reprend la note. Un pipeline qui gère l'orientation lui-même n'est jamais relancé deux fois.
+  if (decision === "oriented" && CODES_ATTENDUS.has(repris.code) && !orientationRoutee(lancement, a.node_id)) {
+    return issue(await lancer(lancement), { runId: a.run_id, decision, nouveauTour: true });
+  }
+  return issue(repris, { runId: a.run_id, decision });
+}
+
+// Le pipeline a-t-il une arête qui part du nœud d'approbation sur une orientation ? Dans le
+// doute (registre illisible), on répond oui : mieux vaut un tour de moins qu'un tour en double.
+function orientationRoutee(lancement, nodeId) {
+  try {
+    const { pipeline } = registre.resoudreProjet(projet(lancement.projectId), { index: lancement.pipelineIndex });
+    return (pipeline.edges || []).some((e) => e.from === nodeId && (!e.on || e.on === "oriented"));
+  } catch (err) {
+    console.error(`registre illisible, pas de nouveau tour : ${err.message}`);
+    return true;
+  }
 }
 
 async function executerRun(store, commande) {

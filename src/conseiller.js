@@ -621,7 +621,16 @@ function ligneDecision(action) {
  * encadrée par des marqueurs : l'agent du PC remplace l'entrée si elle existe déjà (une note
  * ajoutée après coup), sinon il l'ajoute en fin de fichier.
  */
-function entreeVault(dossier, conseils, maintenant) {
+// L'agent du PC n'écrit qu'une note au nom simple (lettres, chiffres, - et _) et à
+// l'empreinte hexadécimale (bin/conseiller-pc.js, `noteValide`). Un dossier de run s'appelle
+// `run:<id>`, et une rallonge de budget a pour empreinte `budget-1` : la note du 2026-10-05
+// a été refusée pour ça. Les deux sont ramenés ici à la forme attendue.
+const nomDeNote = (dossier) => String(dossier).replace(/[^a-z0-9_-]/gi, "-").slice(0, 80);
+const empreinteDeNote = (empreinte) =>
+  /^[0-9a-f]{16,}$/i.test(String(empreinte)) ? String(empreinte) : crypto.createHash("sha256").update(String(empreinte)).digest("hex");
+
+function entreeVault(source, conseils, maintenant) {
+  const dossier = { ...source, dossier: nomDeNote(source.dossier), empreinte: empreinteDeNote(source.empreinte) };
   const jour = iso(maintenant).slice(0, 10);
   const marqueur = `dossier:${dossier.dossier}:${String(dossier.empreinte).slice(0, 16)}`;
   const avis = conseils
@@ -632,6 +641,7 @@ function entreeVault(dossier, conseils, maintenant) {
     `## ${jour} : dossier ${dossier.dossier} tranché`,
     `**Source** : cockpit, approbations des pipelines${dossier.appliquer_avec ? ` (${dossier.appliquer_avec})` : ""}`,
     `**Projet** : [[PROJECTS#business-pipelines]]`,
+    ...(source.source === "run" ? [`**Run** : ${source.projet ?? "?"}, nœud ${source.nodeId ?? "?"}, run ${source.runId ?? "?"}`] : []),
     "",
     ...dossier.actions.map(ligneDecision),
     ...avis,

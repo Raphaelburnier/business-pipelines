@@ -1,6 +1,6 @@
 // Les approbations métier ne sont pas celles des runs : elles tranchent un plan gelé et le
 // serveur vérifie toujours son empreinte avant d'écrire la trace signée.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { attente, lireAction, nomModele } from "../donnees/decisions";
 import type { ConseilAction, Decision, DemandeDecisionRun, DossierApprobation, EtatConseiller, FilConseil, RapportApprobationRun, SourceConseil } from "../donnees/decisions";
@@ -198,7 +198,7 @@ function DiscussionConseiller({ dossier, conseiller }: { dossier: string; consei
 
   return (
     <details className="ao-discussion" open={ouverte} onToggle={(event) => setOuverte(event.currentTarget.open)}>
-      <summary>Discuter avec le conseiller <EtatConseillerBadge conseiller={etat} /></summary>
+      <summary>Poser une question au conseiller, sans trancher <EtatConseillerBadge conseiller={etat} /></summary>
       {ouverte && (
         <div className="ao-discussion-contenu">
           {erreurLecture && <Erreur>{erreurLecture}</Erreur>}
@@ -231,19 +231,59 @@ function DiscussionConseiller({ dossier, conseiller }: { dossier: string; consei
   );
 }
 
+// Le brouillon d'un dossier survit à un rafraîchissement : il est gardé dans ce navigateur,
+// par dossier ET par empreinte (un plan replanifié repart à zéro), et effacé après l'envoi.
+// Le stockage peut être indisponible (navigation privée) : la page marche alors sans.
+type Mode = "trancher" | "renvoyer";
+interface BrouillonSauve {
+  brouillon: Brouillon;
+  reponse: string;
+  verdictRun: "approved" | "rejected" | null;
+  mode: Mode;
+}
+const cleBrouillon = (d: DossierApprobation) => `ao-brouillon:${d.dossier}:${d.empreinte}`;
+function lireBrouillon(cle: string): BrouillonSauve | null {
+  try {
+    const brut = window.localStorage.getItem(cle);
+    return brut ? (JSON.parse(brut) as BrouillonSauve) : null;
+  } catch {
+    return null;
+  }
+}
+function ecrireBrouillon(cle: string, valeur: BrouillonSauve | null): void {
+  try {
+    if (valeur) window.localStorage.setItem(cle, JSON.stringify(valeur));
+    else window.localStorage.removeItem(cle);
+  } catch {
+    // Sans stockage, le brouillon vit seulement le temps de la page.
+  }
+}
+
 function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierApprobation; conseiller: EtatConseiller; recharger: () => void; traite: (message: string) => void }) {
   const { source } = useSource();
-  const initial = useMemo(() => brouillonDu(dossier), [dossier]);
+  const cle = cleBrouillon(dossier);
+  const sauve = useMemo(() => lireBrouillon(cle), [cle]);
+  const initial = useMemo(() => ({ ...brouillonDu(dossier), ...(sauve?.brouillon ?? {}) }), [dossier, sauve]);
   const [brouillon, setBrouillon] = useState<Brouillon>(initial);
-  const [reponse, setReponse] = useState("");
+  const [reponse, setReponse] = useState(sauve?.reponse ?? "");
+  const [mode, setMode] = useState<Mode>(sauve?.mode ?? "trancher");
   const [confirmation, setConfirmation] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
 
   // Une approbation de run sans actions (rallonge de budget) se tranche d'un seul choix.
-  const [verdictRun, setVerdictRun] = useState<"approved" | "rejected" | null>(null);
+  const [verdictRun, setVerdictRun] = useState<"approved" | "rejected" | null>(sauve?.verdictRun ?? null);
   const run = dossier.source === "run";
+  const renvoi = mode === "renvoyer";
+
+  useEffect(() => {
+    const vide = !reponse.trim() && !verdictRun && mode === "trancher" && Object.entries(brouillon).every(([id, b]) => {
+      const a = dossier.actions.find((x) => x.id === id);
+      return b.decision === (a?.decision ?? null) && b.motif === (a?.note ?? "");
+    });
+    ecrireBrouillon(cle, vide ? null : { brouillon, reponse, verdictRun, mode });
+  }, [cle, brouillon, reponse, verdictRun, mode, dossier.actions]);
 
   const verrouille = dossier.plan_absent || dossier.tranche || dossier.reponse_posee !== null;
   const decisions = Object.entries(brouillon)
@@ -252,10 +292,14 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
   // Le moteur n'accepte d'approuver un plan de run que si chaque action est tranchée : une
   // décision partielle n'aurait nulle part où attendre la suite.
   const toutTranche = dossier.actions.length > 0 && decisions.length === dossier.actions.length;
+  // Renvoyer n'approuve ni ne refuse rien : seule la consigne part (`oriented` pour un run,
+  // `reponse` pour la boîte), les choix par action restent dans le brouillon.
   const demandeRun: DemandeDecisionRun | null = !run
     ? null
-    : reponse.trim()
-      ? { decision: "oriented", note: reponse.trim() }
+    : renvoi
+      ? reponse.trim()
+        ? { decision: "oriented", note: reponse.trim() }
+        : null
       : dossier.actions.length === 0
         ? verdictRun
           ? { decision: verdictRun }
@@ -263,7 +307,7 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
         : toutTranche
           ? { decision: "approved", actions: decisions.map(({ motif, ...d }) => ({ ...d, ...(motif ? { note: motif } : {}) })) }
           : null;
-  const peutEnvoyer = !verrouille && (run ? demandeRun !== null : decisions.length > 0 || Boolean(reponse.trim()));
+  const peutEnvoyer = !verrouille && (run ? demandeRun !== null : renvoi ? Boolean(reponse.trim()) : decisions.length > 0);
 
   function modifier(actionId: string, prochain: Partial<BrouillonAction>): void {
     setConfirmation(false);
@@ -286,18 +330,25 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
     try {
       if (run && dossier.approbationId && demandeRun) {
         await source.deciderRun(dossier.approbationId, demandeRun);
-        const quoi = demandeRun.decision === "oriented" ? "Consigne envoyée" : demandeRun.decision === "rejected" ? "Refus envoyé" : "Décision envoyée";
+        const quoi =
+          demandeRun.decision === "oriented"
+            ? "renvoyé avec ta consigne, un nouveau tour repart"
+            : demandeRun.decision === "rejected"
+              ? "refus envoyé, le run reprend"
+              : "décision envoyée, le run reprend";
         setConfirmation(false);
-        traite(`${dossier.projet ?? "run"} · ${dossier.nodeId} : ${quoi}, le run reprend.`);
+        ecrireBrouillon(cle, null);
+        traite(`${dossier.projet ?? "run"} · ${dossier.nodeId} : ${quoi}.`);
         recharger();
         return;
       }
       const resultat = await source.decider({
         dossier: dossier.dossier,
         empreinte: dossier.empreinte,
-        decisions,
-        ...(reponse.trim() ? { reponse: reponse.trim() } : {}),
+        decisions: renvoi ? [] : decisions,
+        ...(renvoi && reponse.trim() ? { reponse: reponse.trim() } : {}),
       });
+      ecrireBrouillon(cle, null);
       const texte = resultat.reponse ? "Consigne enregistrée." : `${resultat.decisions.length} décision${resultat.decisions.length > 1 ? "s" : ""} enregistrée${resultat.decisions.length > 1 ? "s" : ""}.`;
       setSucces(texte);
       setConfirmation(false);
@@ -340,8 +391,30 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
       )}
 
       {dossier.rapport && <RapportRun rapport={dossier.rapport} />}
+      {!verrouille && (
+        <div className="ao-approbation-mode" role="radiogroup" aria-label="Que faire de ce plan">
+          <button type="button" role="radio" aria-checked={!renvoi} className={`ao-btn ${!renvoi ? "primaire" : ""}`} onClick={() => { setConfirmation(false); setMode("trancher"); }}>
+            Trancher
+          </button>
+          <button type="button" role="radio" aria-checked={renvoi} className={`ao-btn ${renvoi ? "primaire" : ""}`} onClick={() => { setConfirmation(false); setMode("renvoyer"); }}>
+            Renvoyer au pipeline
+          </button>
+        </div>
+      )}
+      {!verrouille && renvoi && (
+        <label className="ao-approbation-reponse">
+          Ce qui ne va pas, et ce que le pipeline doit refaire
+          <textarea
+            value={reponse}
+            maxLength={500}
+            rows={4}
+            placeholder="Une erreur de raisonnement, une hypothèse fausse, une question à traiter… Rien n'est approuvé ni refusé : le pipeline repart avec cette consigne."
+            onChange={(event) => { setConfirmation(false); setSucces(null); setReponse(event.target.value); }}
+          />
+        </label>
+      )}
       {!dossier.plan_absent && dossier.actions.length === 0 && !run && <Vide>Le plan ne contient aucune action à décider.</Vide>}
-      {run && dossier.actions.length === 0 && !verrouille && (
+      {run && dossier.actions.length === 0 && !verrouille && !renvoi && (
         <fieldset className="ao-approbation-choix">
           <legend>Décision pour ce run</legend>
           <label>
@@ -354,35 +427,30 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
           </label>
         </fieldset>
       )}
-      {run && dossier.actions.length > 0 && !verrouille && !toutTranche && !reponse.trim() && decisions.length > 0 && (
+      {run && dossier.actions.length > 0 && !verrouille && !renvoi && !toutTranche && decisions.length > 0 && (
         <p className="text-[12px] text-douce">Trancher chaque action avant d’envoyer : le run reprend avec le plan entier.</p>
       )}
       {dossier.actions.map((action) => (
-        <ActionPlan key={action.id} action={action} brouillon={brouillon[action.id] ?? { decision: null, motif: "" }} modifier={(prochain) => modifier(action.id, prochain)} verrouille={verrouille} />
+        <ActionPlan key={action.id} action={action} brouillon={brouillon[action.id] ?? { decision: null, motif: "" }} modifier={(prochain) => modifier(action.id, prochain)} verrouille={verrouille || renvoi} />
       ))}
 
       <DiscussionConseiller dossier={dossier.dossier} conseiller={conseiller} />
-
-      {!verrouille && (
-        <label className="ao-approbation-reponse">
-          Consigne au pipeline, facultative
-          <textarea value={reponse} maxLength={500} rows={3} placeholder="Demander une autre proposition plutôt que trancher action par action." onChange={(event) => { setConfirmation(false); setSucces(null); setReponse(event.target.value); }} />
-        </label>
-      )}
 
       {erreur && <Erreur>{erreur}</Erreur>}
       {succes && <div className="ao-liv-issue ok" role="status"><strong>{succes}</strong></div>}
       {!verrouille && peutEnvoyer && !confirmation && (
         <div className="ao-actions">
-          <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>Enregistrer la décision</button>
+          <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>{renvoi ? "Renvoyer avec cette consigne" : "Enregistrer la décision"}</button>
         </div>
       )}
       {!verrouille && confirmation && (
         <div className="ao-liv-confirmation" role="group" aria-label={`Confirmer la décision pour ${dossier.dossier}`}>
           <p>
-            {run
-              ? `Envoyer ${demandeRun?.decision === "oriented" ? "la consigne" : demandeRun?.decision === "rejected" ? "le refus" : "la décision"} ? Le run reprend aussitôt.`
-              : `Enregistrer ${decisions.length ? `${decisions.length} décision${decisions.length > 1 ? "s" : ""}` : "la consigne"} pour ce plan gelé ?`}
+            {renvoi
+              ? "Renvoyer ce plan au pipeline avec ta consigne ? Rien n'est approuvé ni refusé, un nouveau tour repart."
+              : run
+                ? `Envoyer ${demandeRun?.decision === "rejected" ? "le refus" : "la décision"} ? Le run reprend aussitôt.`
+                : `Enregistrer ${decisions.length} décision${decisions.length > 1 ? "s" : ""} pour ce plan gelé ?`}
           </p>
           <div className="ao-actions">
             <button type="button" className="ao-btn primaire" disabled={envoi} onClick={envoyer}>{envoi ? "Envoi…" : "Confirmer"}</button>
