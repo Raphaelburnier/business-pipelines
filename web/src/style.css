@@ -650,6 +650,14 @@ details.ao-liv-depot { display: block; }
   }
 }
 .ao-liv-historique summary { display: flex; align-items: center; }
+/* Ce qu'une livraison apporte, et les PR à fusionner. */
+.ao-liv-contenu { display: flex; flex-direction: column; gap: 6px; }
+.ao-liv-definition { margin: 0; font-weight: 600; }
+.ao-liv-contenu ul, .ao-pr-liste { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ao-liv-contenu li { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; border-left: 2px solid var(--color-trait); }
+.ao-pr { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--color-trait); }
+.ao-pr p { margin: 0; overflow-wrap: anywhere; }
+.ao-pr-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .ao-liv-versions { margin: 0; font: 400 12px/1.4 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
 
 /* ---------- Approbations : plans gelés et arbitrages opérateur ---------- */

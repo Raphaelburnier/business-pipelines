@@ -7,6 +7,7 @@ import type { FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
 import { approbationsMaquette } from "./decisions";
 import { livraisonMaquette } from "./livraison";
+import { pullRequestsMaquette } from "./pullRequests";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
 
@@ -15,6 +16,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const chat = chatMaquette(maintenant);
   const approbations = approbationsMaquette();
   const livraison = livraisonMaquette(maintenant);
+  const prs = pullRequestsMaquette(maintenant);
 
   return {
     nom: "maquette",
@@ -63,6 +65,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
     livraison: livraison.livraison,
     livrer: livraison.livrer,
+    pullRequests: prs.pullRequests,
+    fusionnerPR: prs.fusionnerPR,
     approbations: approbations.lecture,
     decider: approbations.decider,
     deciderRun: approbations.deciderRun,
