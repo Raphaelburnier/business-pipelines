@@ -3,10 +3,10 @@
 //
 // Le lancement est la première action de phase 5. Pause, stop et décisions migreront ici
 // ensuite ; chaque bouton n'apparaît que lorsque son chemin serveur existe réellement.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, mot, usd } from "../format";
-import type { Etape, Llm, RunDetaille } from "../types";
+import type { EtapeAvecOutils, Llm, RunDetaille, RunDetailleAvecOutils } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
@@ -39,6 +39,32 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
   const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
   const [erreurLancement, setErreurLancement] = useState<string | null>(null);
   const [llm, setLlm] = useState<Llm | null>(null);
+  const [executionRecente, setExecutionRecente] = useState<{ agents: string[]; outils: string[]; etapes: string[] }>({ agents: [], outils: [], etapes: [] });
+
+  useEffect(() => {
+    let abandonnee = false;
+    const lignes = runs.donnees ?? [];
+    if (!lignes.length) {
+      setExecutionRecente({ agents: [], outils: [], etapes: [] });
+      return () => { abandonnee = true; };
+    }
+
+    void Promise.all(lignes.map((run) => source.run(run.id)))
+      .then((details) => {
+        if (abandonnee) return;
+        const etapes = details.flatMap((run) => run?.etapes ?? []);
+        setExecutionRecente({
+          agents: [...new Set(etapes.map((etape) => etape.agent).filter((agent): agent is string => Boolean(agent)))].sort(),
+          outils: [...new Set(etapes.flatMap((etape) => etape.outils))].sort(),
+          etapes: [...new Set(etapes.map((etape) => `${etape.noeud} · ${etape.agent ?? etape.type}`))].sort(),
+        });
+      })
+      .catch(() => {
+        if (!abandonnee) setExecutionRecente({ agents: [], outils: [], etapes: [] });
+      });
+
+    return () => { abandonnee = true; };
+  }, [runs.donnees, source]);
 
   async function lancer(pipelineIndex: number) {
     setLancement("sending");
@@ -63,22 +89,32 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
           <Etat etat={projet.etat} />
         </div>
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-          <dt className="text-douce">catégorie</dt>
-          <dd>{projet.categorie}</dd>
-          <dt className="text-douce">machine</dt>
-          <dd>
-            {projet.homeMachine}
-            {projet.machines.length > 1 && <span className="text-douce"> (et {projet.machines.filter((m) => m !== projet.homeMachine).join(", ")})</span>}
-          </dd>
-          <dt className="text-douce">pipelines</dt>
+          <dt className="text-douce">pipelines configurés</dt>
           <dd className="font-mono text-[12px]">{projet.pipelines.join(", ") || VIDE}</dd>
-          {!projet.aFiche && (
-            <>
-              <dt className="text-douce">fiche</dt>
-              <dd className="text-alerte">aucune : projet connu par ses runs seulement</dd>
-            </>
-          )}
         </dl>
+      </div>
+      <div>
+        <Titre>Agents observés</Titre>
+        <p className="mb-2 text-[11px] text-douce">D’après les cinq dernières exécutions du projet.</p>
+        {executionRecente.agents.length ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {executionRecente.agents.map((agent) => <li key={agent} className="rounded border border-trait px-2 py-1 font-mono text-[11px]">{agent}</li>)}
+          </ul>
+        ) : <Vide>Aucun agent observé dans les derniers runs.</Vide>}
+        <p className="mb-2 mt-3 text-sm font-semibold">Outils observés</p>
+        {executionRecente.outils.length ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {executionRecente.outils.map((outil) => <li key={outil} className="rounded border border-trait px-2 py-1 font-mono text-[11px]">{outil}</li>)}
+          </ul>
+        ) : <p className="text-xs text-douce">Aucun outil consigné dans les derniers runs.</p>}
+        {executionRecente.etapes.length > 0 && (
+          <details className="mt-3 rounded-lg border border-trait bg-carte px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium">Étapes observées</summary>
+            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-douce">
+              {executionRecente.etapes.map((etape) => <li key={etape} className="font-mono">{etape}</li>)}
+            </ul>
+          </details>
+        )}
       </div>
       {projet.url && (
         // Un vrai lien, pas un bouton : il s'ouvre dans un nouvel onglet au clic du milieu et
@@ -220,11 +256,12 @@ function PanneauRun({ id }: { id: string }) {
   );
 }
 
-function DetailEtape({ etape, runId }: { etape: Etape; runId: string }) {
+function DetailEtape({ etape, runId }: { etape: EtapeAvecOutils; runId: string }) {
   // La question est pré-remplie, jamais envoyée : rien ne part sans le clic de Raphaël.
   const question = `Explique l'étape « ${etape.noeud} » (étape ${etape.id}) du run ${runId} : ce qu'elle a fait, et pourquoi elle se termine en « ${mot(etape.statut)} ».`;
   const lignes: Array<[string, string]> = [
     ["agent", etape.agent ?? VIDE],
+    ["outils utilisés", etape.outils.join(", ") || VIDE],
     ["modèle", etape.llm ? `${etape.llm.via}:${etape.llm.model}` : VIDE],
     ["machine", etape.machine ?? VIDE],
     ["issue", etape.outcome ?? VIDE],
@@ -259,7 +296,7 @@ function DetailEtape({ etape, runId }: { etape: Etape; runId: string }) {
 // La timeline d'un run : une voie par machine, une barre par étape, à l'échelle. Deux étapes
 // qui se chevauchent sur une machine descendent sur des lignes distinctes : c'est le
 // parallélisme que la vue existe pour montrer.
-function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille; maintenant: number; choisie: string | null; onChoisir: (id: string | null) => void }) {
+function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille | RunDetailleAvecOutils; maintenant: number; choisie: string | null; onChoisir: (id: string | null) => void }) {
   const lecture = useMemo(() => {
     const avecDates = run.etapes.filter((e) => e.debut);
     if (!avecDates.length) return null;

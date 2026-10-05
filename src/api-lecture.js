@@ -76,9 +76,20 @@ function run(store, runId) {
   const brut = store.run(runId);
   if (!brut) return null;
   const derniers = store.evenements({ runId });
+  const outilsParEtape = new Map();
+  for (const evenement of derniers) {
+    const outils = evenement.payload && evenement.payload.outils;
+    if (!evenement.step_id || !Array.isArray(outils)) continue;
+    const connus = outilsParEtape.get(evenement.step_id) || new Set();
+    for (const outil of outils) if (typeof outil === "string" && outil) connus.add(outil);
+    outilsParEtape.set(evenement.step_id, connus);
+  }
   return {
     ...ligneRun(store, brut),
-    etapes: store.etapes(runId).map(ligneEtape),
+    etapes: store.etapes(runId).map((etape) => ({
+      ...ligneEtape(etape),
+      outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
+    })),
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
     dernierEvenementId: derniers.length ? derniers[derniers.length - 1].id : 0,
   };

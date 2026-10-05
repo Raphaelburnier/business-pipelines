@@ -7,7 +7,7 @@
 // Le flux ne porte pas l'état, il dit qu'il a changé : une vue recharge ce qu'elle affiche à
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
-import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetaille, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
+import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 
 export interface FiltreRuns {
@@ -20,7 +20,7 @@ export interface Source {
   readonly nom: "maquette" | "api";
   topologie(): Promise<Topologie>;
   runs(filtre?: FiltreRuns): Promise<Run[]>;
-  run(id: string): Promise<RunDetaille | null>;
+  run(id: string): Promise<RunDetailleAvecOutils | null>;
   usage(): Promise<Usage>;
   /** Le dernier relevé des modèles poussé par le PC. */
   modeles(): Promise<ReponseModeles>;

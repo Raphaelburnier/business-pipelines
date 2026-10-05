@@ -27,10 +27,9 @@ describe("fixtures de la maquette", () => {
     const { topologie, runs } = a(0);
     expect(topologie.machines).toHaveLength(2);
     expect(topologie.machines.find((m) => m.machine === "pc")?.etat).toBe("sleeping");
-    expect(topologie.categories).toHaveLength(3);
-    expect(topologie.projets).toHaveLength(6);
-    expect(topologie.projets.filter((p) => p.machines.length > 1)).toHaveLength(1);
-    expect(topologie.projets.filter((p) => p.dernierRun === null)).toHaveLength(1);
+    expect(topologie.projets.map((p) => p.id)).toEqual(["marketing", "steam-tierlist"]);
+    expect(topologie.projets.filter((p) => p.aFiche)).toHaveLength(2);
+    expect(topologie.projets.find((p) => p.id === "marketing")?.nom).toBe("Plan marketing");
     expect(runs.find((r) => r.declencheur === "adhoc")?.statut).toBe("succeeded");
     expect(runs.some((r) => r.statut === "waiting_quota")).toBe(true);
   });

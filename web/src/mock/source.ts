@@ -29,7 +29,20 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
           return { ...run, etapes: { total: etapes.length, parStatut } };
         });
     },
-    run: async (id: string) => etat().runs.find((r) => r.id === id) ?? null,
+    run: async (id: string) => {
+      const courant = etat();
+      const run = courant.runs.find((r) => r.id === id);
+      if (!run) return null;
+      return {
+        ...run,
+        etapes: run.etapes.map((etape) => {
+          const outils = courant.evenements
+            .filter((evenement) => evenement.run === id && evenement.etape === etape.id && Array.isArray(evenement.payload.outils))
+            .flatMap((evenement) => evenement.payload.outils as string[]);
+          return { ...etape, outils: [...new Set(outils)].sort() };
+        }),
+      };
+    },
     usage: async () => etat().usage,
     modeles: async () => catalogueMaquette(maintenant()),
     fils: chat.fils,

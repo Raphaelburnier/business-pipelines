@@ -17,6 +17,9 @@ export type Approbation = z.infer<typeof cockpit.approbation>;
 export type Etape = z.infer<typeof cockpit.etape>;
 export type Run = z.infer<typeof cockpit.run>;
 export type RunDetaille = z.infer<typeof cockpit.runDetaille>;
+/** Outils réellement vus dans les événements du moteur, ajoutés par l'API cockpit au détail. */
+export type EtapeAvecOutils = Etape & { outils: string[] };
+export type RunDetailleAvecOutils = Omit<RunDetaille, "etapes"> & { etapes: EtapeAvecOutils[] };
 export type Evenement = z.infer<typeof cockpit.evenement>;
 export type EtatProjet = z.infer<typeof cockpit.etatProjet>;
 export type ProjetTopologie = z.infer<typeof cockpit.projetTopologie>;
