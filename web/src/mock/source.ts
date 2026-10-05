@@ -3,7 +3,7 @@
 // Elle respecte exactement l'interface de la source API. Remplacer l'une par l'autre ne
 // touche aucune vue (annexe A).
 import type { Evenement } from "../types";
-import type { FiltreRuns, Source } from "../donnees/source";
+import type { Commande, FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
 import { approbationsMaquette } from "./decisions";
 import { livraisonMaquette } from "./livraison";
@@ -15,6 +15,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const chat = chatMaquette(maintenant);
   const approbations = approbationsMaquette();
   const livraison = livraisonMaquette(maintenant);
+  const commandes = new Map<string, Commande>();
 
   return {
     nom: "maquette",
@@ -60,7 +61,18 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
       }, 250);
       return () => clearInterval(minuterie);
     },
-    lancerRun: async () => ({ id: "commande-maquette", statut: "pending" }),
+    lancerRun: async (projectId) => {
+      const id = `commande-maquette-${commandes.size + 1}`;
+      const run = etat().runs.find((r) => r.projet === projectId)?.id || null;
+      commandes.set(id, { id, type: "run.start", statut: run ? "done" : "refused", projet: projectId, run,
+        resultat: run ? { ok: true } : { ok: false, raison: "La maquette ne contient pas de run pour ce projet." } });
+      return { id, statut: "pending" };
+    },
+    commande: async (id) => {
+      const commande = commandes.get(id);
+      if (!commande) throw new Error("Commande inconnue");
+      return commande;
+    },
     livraison: livraison.livraison,
     livrer: livraison.livrer,
     approbations: approbations.lecture,

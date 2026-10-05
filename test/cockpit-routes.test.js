@@ -214,9 +214,19 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const suivi = await requete(PORT, `/api/commands/${commandeLancee.id}`);
     assert.strictEqual(suivi.code, 200);
     assert.strictEqual(JSON.parse(suivi.corps).commande.projet, "steam-tierlist");
+    assert.strictEqual(JSON.parse(suivi.corps).commande.run, null);
     assert.strictEqual((await requete(PORT, "/api/commands/inconnue")).code, 404);
     const verification = new EventStore(bac.base);
     assert.deepStrictEqual(verification.commandes({ statut: "pending" }).map((c) => c.payload.projectId), ["steam-tierlist"]);
+    verification.prendreCommande({ kinds: ["run.start"] });
+    const { run: admis } = verification.ouvrirRunCommande(commandeLancee.id, { projectId: "steam-tierlist", pipelineRef: "dev@1" });
+    const enCours = JSON.parse((await requete(PORT, `/api/commands/${commandeLancee.id}`)).corps).commande;
+    assert.strictEqual(enCours.statut, "taken");
+    assert.strictEqual(enCours.run, admis.id, "le run est visible avant que le processus ne termine");
+    verification.terminerCommande(commandeLancee.id, { ok: false, raison: "préparation refusée" });
+    const refusee = JSON.parse((await requete(PORT, `/api/commands/${commandeLancee.id}`)).corps).commande;
+    assert.strictEqual(refusee.run, admis.id);
+    assert.strictEqual(refusee.resultat.raison, "préparation refusée");
     verification.fermer();
 
     assert.strictEqual(
