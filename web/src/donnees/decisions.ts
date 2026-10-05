@@ -112,6 +112,34 @@ export interface DossierApprobation {
   tranche: boolean;
   /** La note du vault d'un dossier tranché : en file, écrite par le PC, ou en échec. */
   note_vault?: "a_faire" | "en_cours" | "fait" | "echec" | "abandonne" | null;
+  /** « run » : l'approbation d'un run du moteur (phase 5), tranchée par une commande. */
+  source?: "boite" | "run";
+  runId?: string;
+  approbationId?: string;
+  nodeId?: string;
+  reason?: string;
+  projet?: string | null;
+  rapport?: RapportApprobationRun | null;
+  /** La décision est partie vers le runner, qui va reprendre le run. */
+  decision_envoyee?: boolean;
+}
+
+/** Le rapport d'impact d'une approbation de run (rallonge de budget, nœud `approval`). */
+export interface RapportApprobationRun {
+  question?: string;
+  resume?: string;
+  changements?: string[];
+  implications?: string[];
+  cout?: string;
+  risques?: string[];
+  recommandation?: string;
+}
+
+/** Trancher une approbation de run : la commande que le runner exécutera. */
+export interface DemandeDecisionRun {
+  decision: "approved" | "rejected" | "oriented";
+  note?: string;
+  actions?: Decision[];
 }
 
 export interface EtatApprobations {

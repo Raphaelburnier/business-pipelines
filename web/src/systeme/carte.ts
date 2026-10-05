@@ -781,7 +781,7 @@ export const JALONS: Jalon[] = [
 export const OUVERTS: string[] = [
   "Worker PC : passer Tailscale du NAS en mode TUN, puis le maître écoute l'IP tailnet (ORCH_MAITRE_HOTE)",
   "Les runs tournent sur le NAS (runsOn: nas), écart provisoire à « le NAS décide, le PC calcule »",
-  "Phase 5 à finir : pause, reprise, stop, relance depuis une étape, approbation par commande, jauge de quota",
+  "Phase 5 à finir : pause, reprise, stop, relance depuis une étape, jauge de quota (l'approbation par commande est faite)",
   "Relier chaque commande à son run_id et afficher la raison d'un refus",
   "fingerprint ignore les fichiers commençant par un point : must_change aveugle sur .env ou .github/",
   "Saas-generator : vérification de déployabilité après assemble jamais écrite",

@@ -31,18 +31,13 @@ function projet(projectId) {
   return fichier;
 }
 
-function lancer(commande) {
-  if (commande.kind !== "run.start") throw new Error(`commande non prise en charge : ${commande.kind}`);
-  const fichier = projet(commande.payload.projectId);
-  const args = [
-    "/agent-orchestrator/bin/orch.js",
-    "projet",
-    fichier,
-    "--pipeline",
-    String(commande.payload.pipelineIndex),
-    "--distribue",
-  ];
-  for (const [noeud, llm] of Object.entries(commande.payload.llmOverrides || {})) {
+// `reprendre` relance le run arrêté dans le dossier de travail du projet (`--resume`), avec
+// les mêmes choix de modèle.
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false } = {}) {
+  const fichier = projet(projectId);
+  const args = ["/agent-orchestrator/bin/orch.js", "projet", fichier, "--pipeline", String(pipelineIndex), "--distribue"];
+  if (reprendre) args.push("--resume");
+  for (const [noeud, llm] of Object.entries(llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);
   }
   return new Promise((resolve) => {
@@ -109,10 +104,49 @@ async function boucle(store, kinds, executer) {
   }
 }
 
-async function executerRun(commande) {
-  const resultat = await lancer(commande);
-  if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: resultat };
+function issue(resultat, detail = {}) {
+  if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: { ...resultat, ...detail } };
   return { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` };
+}
+
+// Le pipeline et les modèles avec lesquels le run arrêté a été lancé. Le pipeline se lit
+// dans la fiche du projet (`extends` = la référence du run). Les modèles viennent de la
+// dernière commande `run.start` de ce projet : un projet n'a qu'un dossier de travail, donc
+// le run à reprendre est le dernier lancé.
+function lancementDe(store, run) {
+  const fiche = JSON.parse(fs.readFileSync(projet(run.project_id), "utf8"));
+  const index = (fiche.pipelines || []).findIndex((p) => p.extends === run.pipeline_ref);
+  const derniere = store
+    .commandes({ limite: 5000 })
+    .filter((c) => c.kind === "run.start" && c.payload.projectId === run.project_id)
+    .pop();
+  return {
+    projectId: run.project_id,
+    pipelineIndex: index >= 0 ? index : 0,
+    llmOverrides: (derniere && derniere.payload.llmOverrides) || {},
+  };
+}
+
+// Trancher puis reprendre (phase 5). La décision est écrite par `deciderApprobation`, qui
+// revérifie tout, sous la signature de la commande. Rejouée après un redémarrage du runner,
+// une décision déjà écrite par cette même commande n'est pas réécrite : seul le run reprend.
+async function deciderEtReprendre(store, commande) {
+  const { approbationId, decision, note = null, actions = [] } = commande.payload;
+  const a = store.approbation(approbationId);
+  if (!a) throw new Error(`approbation inconnue : ${approbationId}`);
+  const dejaEcrite = a.status === decision && a.par === commande.par;
+  if (!dejaEcrite) {
+    store.deciderApprobation(a.id, { decision, note, par: commande.par, canal: commande.canal, actions });
+    store.emettre({ type: "approval.decided", runId: a.run_id, payload: { node: a.node_id, decision, par: commande.par } });
+  }
+  const run = store.run(a.run_id);
+  if (!run) throw new Error(`run inconnu : ${a.run_id}`);
+  return issue(await lancer(lancementDe(store, run), { reprendre: true }), { runId: a.run_id, decision });
+}
+
+async function executerRun(store, commande) {
+  if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande);
+  return issue(await lancer(commande.payload));
 }
 
 // Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
@@ -150,12 +184,14 @@ async function demarrer() {
   const store = new EventStore(STORE);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
-  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "chat.respond"] });
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "approval.decide", "chat.respond"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
       ouvrirMaitre(store),
-      boucle(store, ["run.start"], executerRun),
+      // Les décisions passent dans la file des runs : elles en relancent un, et deux runs à
+      // la fois partageraient le dossier de travail.
+      boucle(store, ["run.start", "approval.decide"], (commande) => executerRun(store, commande)),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {

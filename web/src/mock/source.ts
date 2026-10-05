@@ -52,6 +52,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     livrer: livraison.livrer,
     approbations: approbations.lecture,
     decider: approbations.decider,
+    deciderRun: approbations.deciderRun,
     filConseil: approbations.filConseil,
     poserConseil: approbations.poserConseil,
     ecouter(surEvenement, surConnexion, runId) {

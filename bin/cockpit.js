@@ -55,6 +55,7 @@ const apiChat = require("../src/api-chat");
 const fluxChat = require("../src/flux-chat");
 const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
+const approbationsRuns = require("../src/approbations-runs");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -259,7 +260,21 @@ async function traiterAIStudio(req, res) {
   return traiterAIStudioActif(req, res);
 }
 
-const etatApprobations = () => cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES });
+// La boîte métier et les approbations des runs du moteur (phase 5), dans une seule liste :
+// la page, le conseiller et la note du vault les traitent pareil. Sans event store, ou avec
+// un moteur antérieur à `approbationsOuvertes`, la boîte reste lisible seule.
+function etatApprobations() {
+  const etat = cockpit.etat({ approvalsDir: APPROVALS, pipelinesDir: PIPELINES });
+  const s = store();
+  if (!s || typeof s.approbationsOuvertes !== "function") return etat;
+  try {
+    const runs = approbationsRuns.dossiers(s);
+    return { dossiers: [...etat.dossiers, ...runs], decidables: etat.decidables + runs.filter((d) => !d.tranche).length };
+  } catch (err) {
+    console.error(`approbations des runs illisibles : ${err.message}`);
+    return etat;
+  }
+}
 const traiterConseiller = creerRouteurConseiller({
   base: CONSEILLER_BASE,
   jetonSha256: CONSEILLER_JETON_SHA256,
@@ -370,6 +385,31 @@ async function traiter(req, res) {
       conseiller: agent,
       modules: registreApps(),
     });
+  }
+
+  // Trancher l'approbation d'un run : une commande signée pour le runner, qui décide puis
+  // reprend le run. Le cockpit n'écrit pas l'historique du moteur.
+  const approbationRun = req.method === "POST" && chemin.match(/^\/api\/approbations-runs\/([0-9a-f-]{36})$/);
+  if (approbationRun) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const demande = await corpsJson(req, res);
+    if (demande === null) return undefined;
+    try {
+      const envoi = approbationsRuns.demander(magasinOuvert, { approbationId: approbationRun[1], demande, qui });
+      // Une consigne renvoie le run au travail : rien n'est validé, pas de note au vault.
+      if (envoi.decision !== "oriented") {
+        try {
+          conseiller.noter(CONSEILLER_BASE, approbationsRuns.dossierTranche(magasinOuvert, { ...envoi, qui }));
+        } catch (err) {
+          console.error(`note du vault non mise en file : ${err.message}`);
+        }
+      }
+      return json(res, 202, { commande: { id: envoi.commande.id, statut: envoi.commande.status } });
+    } catch (err) {
+      if (err instanceof approbationsRuns.RefusApprobationRun) return json(res, err.code, { erreur: err.message });
+      throw err;
+    }
   }
 
   // Le conseiller : l'agent du PC (jeton) et le fil de chaque dossier (identité tailnet).
