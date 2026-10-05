@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, mot, usd } from "../format";
-import type { EtapeAvecOutils, Llm, RunDetaille, RunDetailleAvecOutils } from "../types";
+import type { Etape, EtapeAvecOutils, Llm, RunDetaille, RunDetailleAvecOutils } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
