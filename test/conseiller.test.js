@@ -155,6 +155,29 @@ test("une note du NAS est validée contre son marqueur et son chemin calculé", 
   assert.strictEqual(noteValide({ ...note, entree: "texte libre" }), null);
 });
 
+test("la note d'une approbation de run passe la validation de l'agent du PC", () => {
+  // Refusée le 2026-10-05 : `run:<id>` et une empreinte `budget-1` ne sont pas des noms de note.
+  const maintenant = Date.parse("2026-10-05T13:05:00Z");
+  for (const empreinte of ["budget-1", "c".repeat(64)]) {
+    const note = conseiller.entreeVault(
+      {
+        dossier: "run:7031a943-bdb9-4d36-8f44-0235d21caa8e",
+        source: "run",
+        projet: "marketing",
+        nodeId: "approbation",
+        runId: "1d10f5d9",
+        empreinte,
+        tranche: true,
+        actions: [{ id: "arb-001", type: "arbitrage", cible: "Nom de boutique ?", decision: "approuve", decision_par: "raphael@example.com" }],
+      },
+      [],
+      maintenant
+    );
+    assert.ok(noteValide(note), `note refusée pour l'empreinte ${empreinte}`);
+    assert.match(note.entree, /\*\*Run\*\* : marketing, nœud approbation/);
+  }
+});
+
 test("la recherche FTS ne conserve jamais plus de deux sections par note", () => {
   const { dir, base } = temporaire("fts");
   try {
