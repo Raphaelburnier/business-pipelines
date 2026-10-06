@@ -9,6 +9,12 @@ const { spawnSync } = require("node:child_process");
 const requireMoteur = require("node:module").createRequire(require.resolve("agent-orchestrator"));
 const yaml = requireMoteur("yaml");
 const fichier = path.join(__dirname, "../.github/workflows/agent-gated-merge.yml");
+// L'image du NAS exclut `.github/` (.dockerignore) : ces tests du workflow tournent dans la
+// CI GitHub, pas à l'étape « construire » d'une livraison (échec du 2026-10-06).
+if (!fs.existsSync(fichier)) {
+  test("workflow de fusion automatique", { skip: "pas de .github/ ici (image du NAS) : vérifié par la CI GitHub" }, () => {});
+  return;
+}
 const workflow = yaml.parse(fs.readFileSync(fichier, "utf8"));
 const script = workflow.jobs["gate-and-merge"].steps[0].run;
 const HEAD = "a".repeat(40), BASE = "b".repeat(40), MERGE = "c".repeat(40);
