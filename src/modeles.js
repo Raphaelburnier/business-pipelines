@@ -11,12 +11,12 @@ const { modeles } = require("agent-orchestrator/packages/schemas/modeles");
 const PERIME_S = 600;
 
 /**
- * `nas:claude;pc:claude,omniroute` → { nas: ["claude"], pc: [...] }.
+ * `nas:claude;pc:claude,omniroute,codex` → { nas: ["claude"], pc: [...] }.
  * Une faute de configuration est refusée au démarrage : ignorer une entrée pourrait faire
  * accepter un run sur une machine qui ne possède pas son backend.
  * @param {string} valeur
  */
-function lireViaParMachine(valeur = "nas:claude;pc:claude,omniroute") {
+function lireViaParMachine(valeur = "nas:claude;pc:claude,omniroute,codex") {
   const table = {};
   for (const entree of String(valeur).split(";").map((v) => v.trim()).filter(Boolean)) {
     const separateur = entree.indexOf(":");

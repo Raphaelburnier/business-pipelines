@@ -45,7 +45,7 @@ services:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
       - ORCH_MACHINE=nas
-      - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute
+      - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute,codex
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
       # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
