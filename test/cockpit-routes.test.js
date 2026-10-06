@@ -164,7 +164,7 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const reponseModeles = JSON.parse((await requete(PORT, "/api/modeles")).corps);
     modeles.reponse.parse(reponseModeles);
     assert.strictEqual(reponseModeles.catalogue.modeles[0].id, "omniroute:agentic-code");
-    assert.deepStrictEqual(reponseModeles.viaParMachine, { nas: ["claude"], pc: ["claude", "omniroute"] });
+    assert.deepStrictEqual(reponseModeles.viaParMachine, { nas: ["claude"], pc: ["claude", "omniroute", "codex"] });
     assert.strictEqual(reponseModeles.machines.some((m) => m.machine === "pc" && m.etat === "online"), true);
     assert.strictEqual(reponseModeles.perime, true, "un relevé de 2026-01-01 est périmé");
 
