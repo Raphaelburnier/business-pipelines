@@ -35,6 +35,10 @@ const cle = (depot, numero) => `${depot}#${numero}`;
 function fusionsDemandees(store) {
   const toutes = store.commandes({ limite: 5000 }).filter((c) => c.kind === KIND);
   const enCours = new Set(toutes.filter((c) => c.status === "pending" || c.status === "taken").map((c) => cle(c.payload.depot, c.payload.numero)));
+  // Une PR fusionnée reste dans l'instantané jusqu'au relevé suivant du publieur : sans ce
+  // filtre, elle restait affichée avec son bouton, et un second clic partait pour rien
+  // (constaté le 2026-10-06 sur #68). Une PR fusionnée ne se rouvre pas, le filtre est sûr.
+  const fusionnees = new Set(toutes.filter((c) => c.status === "done" && c.resultat && c.resultat.ok).map((c) => cle(c.payload.depot, c.payload.numero)));
   const recentes = toutes
     .filter((c) => c.status === "done" || c.status === "refused")
     .slice(-5)
@@ -47,7 +51,7 @@ function fusionsDemandees(store) {
       raison: c.resultat && !c.resultat.ok ? c.resultat.raison : null,
       le: c.done_at || c.created_at,
     }));
-  return { enCours, recentes };
+  return { enCours, fusionnees, recentes };
 }
 
 /**
@@ -56,7 +60,7 @@ function fusionsDemandees(store) {
  */
 function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Date.now() }) {
   const instantane = pullRequests.lireInstantane(instantaneFichier);
-  const { enCours, recentes } = fusionsDemandees(store);
+  const { enCours, fusionnees, recentes } = fusionsDemandees(store);
   const age = instantane && instantane.releveLe ? Math.round((maintenant - Date.parse(instantane.releveLe)) / 1000) : null;
   return {
     releveLe: instantane ? instantane.releveLe : null,
@@ -65,7 +69,7 @@ function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Da
     peutFusionner: peutFusionner(qui, autorisesFichier),
     depots: ((instantane && instantane.depots) || []).map((d) => ({
       ...d,
-      ouvertes: (d.ouvertes || []).map((pr) => ({
+      ouvertes: (d.ouvertes || []).filter((pr) => !fusionnees.has(cle(d.depot, pr.numero))).map((pr) => ({
         ...pr,
         raison: pullRequests.raisonDeNePasFusionner(pr),
         fusionEnCours: enCours.has(cle(d.depot, pr.numero)),
@@ -88,6 +92,9 @@ function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) 
   const numero = Number(demande && demande.numero);
   const sha = String((demande && demande.sha) || "");
   const baseSha = String((demande && demande.baseSha) || "");
+  if (fusionsDemandees(store).fusionnees.has(cle(depot, numero))) {
+    throw new RefusPullRequest(409, `PR #${numero} déjà fusionnée depuis le cockpit`);
+  }
   const vue = etat({ store, instantaneFichier, autorisesFichier, qui });
   if (vue.perime) throw new RefusPullRequest(503, "relevé des PR trop ancien : le publieur ne tourne pas, ou n'a pas de jeton de fusion");
   const d = vue.depots.find((x) => x.depot === depot);
