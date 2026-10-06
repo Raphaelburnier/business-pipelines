@@ -58,10 +58,19 @@ function pourquoiDe(corps) {
   return p.length > 280 ? `${p.slice(0, 279)}…` : p;
 }
 
-// L'état de la CI d'un commit, d'après ses check runs : verte quand tous sont terminés sans
-// échec, en cours tant qu'un tourne, rouge au premier échec, absente sans aucun check.
-function etatCI(checks) {
-  const runs = (checks && checks.check_runs) || [];
+// L'état de la CI d'un commit, d'après ses exécutions GitHub Actions : verte quand toutes sont
+// terminées sans échec, en cours tant qu'une tourne, rouge au premier échec, absente sans
+// aucune. Les exécutions plutôt que les « check runs » : un jeton fin ne peut pas recevoir le
+// droit Checks (constaté le 2026-10-06), alors que le droit Actions en lecture suffit ici.
+// Une exécution relancée remplace la précédente : seule la plus récente de chaque workflow compte.
+function etatCI(actions) {
+  const vus = new Set();
+  const runs = ((actions && actions.workflow_runs) || []).filter((r) => {
+    const cle = r.workflow_id ?? r.name;
+    if (vus.has(cle)) return false;
+    vus.add(cle);
+    return true;
+  });
   if (!runs.length) return { etat: "absente", details: [] };
   const details = runs.map((r) => ({ nom: r.name, statut: r.status, conclusion: r.conclusion || null }));
   if (runs.some((r) => r.status !== "completed")) return { etat: "en_cours", details };
@@ -82,7 +91,8 @@ async function releverDepot({ api, depot }) {
   for (const pr of ouvertesBrutes) {
     // `mergeable` n'est calculé qu'à la lecture d'une PR seule, jamais dans la liste.
     const detail = await api("GET", `/repos/${depot}/pulls/${pr.number}`);
-    const checks = await api("GET", `/repos/${depot}/commits/${pr.head.sha}/check-runs?per_page=50`);
+    // Les plus récentes d'abord : `etatCI` garde la première de chaque workflow.
+    const checks = await api("GET", `/repos/${depot}/actions/runs?head_sha=${pr.head.sha}&per_page=50`);
     const fichiers = await api("GET", `/repos/${depot}/pulls/${pr.number}/files?per_page=100`);
     ouvertes.push({
       numero: pr.number,
