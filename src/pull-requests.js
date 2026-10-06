@@ -10,6 +10,7 @@
 // sa section « Pourquoi », que la carte Livraison affiche à côté des commits qu'elle livre.
 const fs = require("fs");
 const path = require("path");
+const { SHA, pages, lireCI, lireConversations } = require("./github-merge-gates");
 
 // Les fichiers dont une modification exige une fusion explicite (AGENTS.md, « Norme GitHub ») :
 // la page le signale, et c'est le clic de Raphaël qui vaut fusion explicite.
@@ -19,20 +20,29 @@ const SENSIBLES = [
   /(^|\/)(AGENTS|CLAUDE)\.md$/,
   /(^|\/)copilot-instructions\.md$/,
   /(^|\/)\.env(\.|$)/,
+  /(^|\/)[^/]*\.env(\.|$)/,
   /(^|\/)specs\/[^/]*\.env/,
-  /\.(pem|key|crt|p12)$/,
+  /secret|credential|token/,
+  /\.(pem|key|crt|p12|pfx|cer)$/,
   /\.sql$/,
   /(^|\/)migrations?\//,
   /(^|\/)Dockerfile[^/]*$/,
+  /\.Dockerfile$/,
+  /(^|\/)(compose([.-][^/]*)?\.ya?ml|\.dockerignore)$/,
   /(^|\/)docker-compose[^/]*\.ya?ml$/,
   /(^|\/)vercel\.json$/,
-  /\.tf$/,
-  /(^|\/)(terraform|infra)\//,
-  /(^|\/)deploy\//,
+  /\.tf(vars)?$/,
+  /(^|\/)(terraform|infra|infrastructure)\//,
+  /(^|\/)(deploy|deployment)\//,
+  /(^|\/)[^/]*deploy[^/]*\.(sh|js|mjs|cjs|py)$/,
   /(^|\/)bin\/livrer\.sh$/,
+  /^src\/(github-merge-gates|pull-requests|api-pull-requests)\.js$/,
+  /^bin\/publieur\.js$/,
+  /^packages\/schemas\/commandes\.js$/,
+  /^specs\/livraison\.json$/,
 ];
 
-const estSensible = (fichier) => SENSIBLES.some((re) => re.test(String(fichier)));
+const estSensible = (fichier) => SENSIBLES.some((re) => new RegExp(re.source, "i").test(String(fichier)));
 
 /**
  * La première phrase de la section « Pourquoi » d'une description de PR, sans markdown. Rend
@@ -58,24 +68,61 @@ function pourquoiDe(corps) {
   return p.length > 280 ? `${p.slice(0, 279)}…` : p;
 }
 
-// L'état de la CI d'un commit, d'après ses exécutions GitHub Actions : verte quand toutes sont
-// terminées sans échec, en cours tant qu'une tourne, rouge au premier échec, absente sans
-// aucune. Les exécutions plutôt que les « check runs » : un jeton fin ne peut pas recevoir le
-// droit Checks (constaté le 2026-10-06), alors que le droit Actions en lecture suffit ici.
-// Une exécution relancée remplace la précédente : seule la plus récente de chaque workflow compte.
+// Vue de compatibilité de l'ancien relevé, jamais une preuve autorisant la fusion.
 function etatCI(actions) {
   const vus = new Set();
-  const runs = ((actions && actions.workflow_runs) || []).filter((r) => {
-    const cle = r.workflow_id ?? r.name;
-    if (vus.has(cle)) return false;
-    vus.add(cle);
-    return true;
-  });
+  const runs = [...((actions && actions.workflow_runs) || [])]
+    .filter((r) => r.name === "CI")
+    .sort((a, b) => (b.run_number - a.run_number) || (b.id - a.id) || (b.run_attempt - a.run_attempt))
+    .filter((r) => {
+      const cle = r.workflow_id ?? r.name;
+      if (vus.has(cle)) return false;
+      vus.add(cle);
+      return true;
+    });
   if (!runs.length) return { etat: "absente", details: [] };
   const details = runs.map((r) => ({ nom: r.name, statut: r.status, conclusion: r.conclusion || null }));
   if (runs.some((r) => r.status !== "completed")) return { etat: "en_cours", details };
-  const ok = new Set(["success", "neutral", "skipped"]);
-  return { etat: runs.every((r) => ok.has(r.conclusion)) ? "verte" : "rouge", details };
+  return { etat: runs.every((r) => r.conclusion === "success") ? "verte" : "rouge", details };
+}
+
+/** Lit une seule PR, toujours à partir de son détail courant, jamais du SHA d'une liste. */
+async function releverPR({ api, depot, numero, parDefaut }) {
+  const pr = await api("GET", `/repos/${depot}/pulls/${numero}`);
+  const base = await api("GET", `/repos/${depot}/commits/${encodeURIComponent(parDefaut)}`);
+  if (!SHA.test(pr.head?.sha) || !SHA.test(base?.sha)) throw new Error("SHA GitHub incomplets");
+  let ci;
+  let conversations;
+  let fichiers = [];
+  let fichiersComplets = false;
+  let erreurValidation = null;
+  try {
+    ci = await lireCI({ api, depot, numero, sha: pr.head.sha, baseSha: base.sha, parDefaut });
+  } catch (err) {
+    ci = { etat: "absente", details: [], preuve: null, raison: `preuves CI illisibles : ${err.message}` };
+  }
+  try {
+    conversations = await lireConversations({ api, depot, numero });
+  } catch (err) {
+    conversations = { ouvertes: null, erreur: err.message };
+  }
+  try {
+    fichiers = await pages({ api, chemin: `/repos/${depot}/pulls/${numero}/files` });
+    fichiersComplets = Number.isInteger(pr.changed_files) && fichiers.length === pr.changed_files && fichiers.every((f) => typeof f.filename === "string");
+    if (!fichiersComplets) erreurValidation = "liste des fichiers modifiés incomplète";
+  } catch (err) {
+    erreurValidation = `fichiers modifiés illisibles : ${err.message}`;
+  }
+  return {
+    numero, titre: pr.title, url: pr.html_url, auteur: pr.user?.login || null,
+    branche: pr.head.ref, base: pr.base.ref, versDefaut: pr.base.ref === parDefaut,
+    interne: pr.head.repo?.full_name?.toLowerCase() === depot.toLowerCase(),
+    etat: pr.state, sha: pr.head.sha, baseSha: base.sha, brouillon: Boolean(pr.draft),
+    fusionnable: pr.mergeable, etatFusion: pr.mergeable_state || null, ci, conversations,
+    sensibles: [...new Set(fichiers.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean)).filter(estSensible))],
+    fichiers: pr.changed_files, fichiersComplets, erreurValidation,
+    pourquoi: pourquoiDe(pr.body), creeeLe: pr.created_at,
+  };
 }
 
 /**
@@ -86,32 +133,10 @@ function etatCI(actions) {
 async function releverDepot({ api, depot }) {
   const infos = await api("GET", `/repos/${depot}`);
   const parDefaut = infos.default_branch;
-  const ouvertesBrutes = await api("GET", `/repos/${depot}/pulls?state=open&per_page=30`);
+  const ouvertesBrutes = await pages({ api, chemin: `/repos/${depot}/pulls?state=open`, limite: 1000 });
   const ouvertes = [];
   for (const pr of ouvertesBrutes) {
-    // `mergeable` n'est calculé qu'à la lecture d'une PR seule, jamais dans la liste.
-    const detail = await api("GET", `/repos/${depot}/pulls/${pr.number}`);
-    // Les plus récentes d'abord : `etatCI` garde la première de chaque workflow.
-    const checks = await api("GET", `/repos/${depot}/actions/runs?head_sha=${pr.head.sha}&per_page=50`);
-    const fichiers = await api("GET", `/repos/${depot}/pulls/${pr.number}/files?per_page=100`);
-    ouvertes.push({
-      numero: pr.number,
-      titre: pr.title,
-      url: pr.html_url,
-      auteur: pr.user ? pr.user.login : null,
-      branche: pr.head.ref,
-      base: pr.base.ref,
-      versDefaut: pr.base.ref === parDefaut,
-      sha: pr.head.sha,
-      brouillon: Boolean(pr.draft),
-      fusionnable: detail.mergeable,
-      etatFusion: detail.mergeable_state || null,
-      ci: etatCI(checks),
-      sensibles: fichiers.map((f) => f.filename).filter(estSensible),
-      fichiers: fichiers.length,
-      pourquoi: pourquoiDe(pr.body),
-      creeeLe: pr.created_at,
-    });
+    ouvertes.push(await releverPR({ api, depot, numero: pr.number, parDefaut }));
   }
   const fermees = await api("GET", `/repos/${depot}/pulls?state=closed&base=${encodeURIComponent(parDefaut)}&sort=updated&direction=desc&per_page=30`);
   const fusionnees = fermees
@@ -147,9 +172,16 @@ async function relever({ api, depots, maintenant = new Date() }) {
 
 /** Pourquoi une PR relevée ne peut pas être fusionnée d'ici, ou null si elle le peut. */
 function raisonDeNePasFusionner(pr) {
+  if (pr.etat !== "open") return "PR fermée ou état inconnu";
   if (pr.brouillon) return "brouillon";
   if (!pr.versDefaut) return `vise ${pr.base}, pas la branche par défaut`;
-  if (pr.ci.etat !== "verte") return pr.ci.etat === "absente" ? "aucune CI sur ce commit" : `CI ${pr.ci.etat === "en_cours" ? "en cours" : "rouge"}`;
+  if (!pr.interne) return "PR issue d'un autre dépôt";
+  if (pr.ci?.raison) return pr.ci.raison;
+  if (pr.ci?.etat !== "verte") return pr.ci?.etat === "absente" ? "aucune CI sur ce commit" : `CI ${pr.ci?.etat === "en_cours" ? "en cours" : "rouge"}`;
+  if (!SHA.test(pr.baseSha) || pr.ci.preuve?.headSha !== pr.sha || pr.ci.preuve?.baseSha !== pr.baseSha || !SHA.test(pr.ci.preuve?.mergeSha)) return "la CI ne prouve pas le merge testé sur la base courante";
+  if (!pr.fichiersComplets) return pr.erreurValidation || "liste des fichiers modifiés incomplète";
+  if (pr.conversations?.erreur || !Number.isInteger(pr.conversations?.ouvertes)) return pr.conversations?.erreur || "conversations de revue illisibles";
+  if (pr.conversations.ouvertes > 0) return "conversations de revue non résolues";
   if (pr.fusionnable === false || pr.etatFusion === "dirty") return "conflit avec la branche par défaut";
   if (pr.fusionnable !== true) return "GitHub calcule encore si elle est fusionnable";
   if (pr.etatFusion === "blocked") return "bloquée par une règle du dépôt (revue ou conversation ouverte)";
@@ -161,18 +193,32 @@ class RefusFusion extends Error {}
 /**
  * Fusionne une PR, après avoir tout relu sur GitHub : l'instantané du cockpit peut dater de
  * deux minutes. Squash, avec le SHA lu à l'écran : GitHub refuse si la tête a bougé.
- * @param {{ api: Function, demande: { depot: string, numero: number, sha: string } }} opts
+ * @param {{ api: Function, demande: { depot: string, numero: number, sha: string, baseSha: string } }} opts
  */
 async function fusionner({ api, demande }) {
-  const { depot, numero, sha } = demande;
-  const relue = await releverDepot({ api, depot });
-  const pr = relue.ouvertes.find((p) => p.numero === numero);
-  if (!pr) throw new RefusFusion(`PR #${numero} de ${depot} introuvable ou déjà fermée`);
+  const { depot, numero, sha, baseSha } = demande;
+  if (!DEPOT.test(depot) || !Number.isInteger(numero) || numero < 1 || !SHA.test(sha) || !SHA.test(baseSha)) throw new RefusFusion("demande de fusion incomplète : tête et base exactes requises");
+  const infos = await api("GET", `/repos/${depot}`);
+  const pr = await releverPR({ api, depot, numero, parDefaut: infos.default_branch });
   if (pr.sha !== sha) throw new RefusFusion(`la PR #${numero} a bougé depuis l'affichage (${pr.sha.slice(0, 7)} au lieu de ${sha.slice(0, 7)})`);
+  if (pr.baseSha !== baseSha) throw new RefusFusion("la base a bougé depuis l'affichage : attendre une CI sur la nouvelle base");
   const raison = raisonDeNePasFusionner(pr);
   if (raison) throw new RefusFusion(`PR #${numero} non fusionnable : ${raison}`);
+  // Après les lectures potentiellement longues : détecter une nouvelle tentative CI, une
+  // conversation ouverte ou un changement de PR/base. Le PUT fixe atomiquement la tête ;
+  // l'API REST GitHub ne propose pas de précondition atomique sur la base (limite documentée).
+  const ci = await lireCI({ api, depot, numero, sha, baseSha, parDefaut: infos.default_branch });
+  if (ci.raison || ci.preuve?.runId !== pr.ci.preuve.runId || ci.preuve?.tentative !== pr.ci.preuve.tentative) throw new RefusFusion("la CI a changé pendant la validation : recharger");
+  const conversations = await lireConversations({ api, depot, numero });
+  if (conversations.ouvertes) throw new RefusFusion("conversations de revue non résolues");
+  const courant = await api("GET", `/repos/${depot}/pulls/${numero}`);
+  if (courant.head?.sha !== sha || courant.base?.ref !== infos.default_branch || courant.state !== "open" || courant.draft || courant.head.repo?.full_name?.toLowerCase() !== depot.toLowerCase() || courant.mergeable !== true || courant.mergeable_state === "blocked" || courant.mergeable_state === "dirty") throw new RefusFusion("la PR a changé ou n'est plus fusionnable pendant la validation");
+  const actuel = await api("GET", `/repos/${depot}`);
+  if (actuel.default_branch !== infos.default_branch) throw new RefusFusion("la branche par défaut a changé pendant la validation");
+  const base = await api("GET", `/repos/${depot}/commits/${encodeURIComponent(actuel.default_branch)}`);
+  if (base.sha !== baseSha) throw new RefusFusion("la base a bougé pendant la validation : attendre une nouvelle CI");
   const r = await api("PUT", `/repos/${depot}/pulls/${numero}/merge`, { sha, merge_method: "squash" });
-  return { fusionnee: Boolean(r && r.merged), sha: r && r.sha, message: r && r.message };
+  return { fusionnee: Boolean(r && r.merged), sha: r && r.sha, message: r && r.message, preuve: ci.preuve };
 }
 
 const DEPOT = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -225,6 +271,7 @@ module.exports = {
   pourquoiDe,
   etatCI,
   releverDepot,
+  releverPR,
   relever,
   raisonDeNePasFusionner,
   fusionner,

@@ -60,7 +60,7 @@ function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Da
   const age = instantane && instantane.releveLe ? Math.round((maintenant - Date.parse(instantane.releveLe)) / 1000) : null;
   return {
     releveLe: instantane ? instantane.releveLe : null,
-    perime: age === null || age > PERIME_S,
+    perime: age === null || !Number.isFinite(age) || age < -60 || age > PERIME_S,
     erreur: instantane ? instantane.erreur || null : "aucun relevé du publieur pour l'instant",
     peutFusionner: peutFusionner(qui, autorisesFichier),
     depots: ((instantane && instantane.depots) || []).map((d) => ({
@@ -87,16 +87,18 @@ function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) 
   const depot = String((demande && demande.depot) || "");
   const numero = Number(demande && demande.numero);
   const sha = String((demande && demande.sha) || "");
+  const baseSha = String((demande && demande.baseSha) || "");
   const vue = etat({ store, instantaneFichier, autorisesFichier, qui });
   if (vue.perime) throw new RefusPullRequest(503, "relevé des PR trop ancien : le publieur ne tourne pas, ou n'a pas de jeton de fusion");
   const d = vue.depots.find((x) => x.depot === depot);
   const pr = d && d.ouvertes.find((p) => p.numero === numero);
   if (!pr) throw new RefusPullRequest(404, `PR #${numero} de ${depot} absente du relevé`);
   if (pr.sha !== sha) throw new RefusPullRequest(409, "la PR a bougé depuis l'affichage : recharger avant de fusionner");
+  if (pr.baseSha !== baseSha) throw new RefusPullRequest(409, "la base a bougé depuis l'affichage : recharger avant de fusionner");
   if (pr.fusionEnCours) throw new RefusPullRequest(409, "une fusion est déjà demandée pour cette PR");
   if (pr.raison) throw new RefusPullRequest(409, `PR non fusionnable : ${pr.raison}`);
   try {
-    return store.creerCommande({ kind: KIND, payload: { depot, numero, sha }, par: qui.par, canal: qui.canal });
+    return store.creerCommande({ kind: KIND, payload: { depot, numero, sha, baseSha }, par: qui.par, canal: qui.canal });
   } catch (err) {
     throw new RefusPullRequest(400, err.message);
   }

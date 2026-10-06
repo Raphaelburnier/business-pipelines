@@ -5,6 +5,8 @@ import type { CommitLivraison } from "../types";
 export interface EtatCI {
   etat: "verte" | "en_cours" | "rouge" | "absente";
   details: Array<{ nom: string; statut: string; conclusion: string | null }>;
+  raison?: string | null;
+  preuve?: { runId: number; tentative: number; headSha: string; baseSha: string; mergeSha: string } | null;
 }
 
 export interface PullRequestOuverte {
@@ -16,6 +18,7 @@ export interface PullRequestOuverte {
   base: string;
   versDefaut: boolean;
   sha: string;
+  baseSha: string;
   brouillon: boolean;
   fusionnable: boolean | null;
   etatFusion: string | null;
@@ -60,6 +63,7 @@ export interface DemandeFusion {
   depot: string;
   numero: number;
   sha: string;
+  baseSha: string;
 }
 
 export interface PrLivree extends PullRequestFusionnee {

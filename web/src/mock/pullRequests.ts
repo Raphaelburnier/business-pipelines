@@ -27,6 +27,7 @@ export function pullRequestsMaquette(maintenant: () => number) {
             base: "main",
             versDefaut: true,
             sha: sha("e"),
+            baseSha: sha("a"),
             brouillon: false,
             fusionnable: true,
             etatFusion: "clean",
@@ -47,6 +48,7 @@ export function pullRequestsMaquette(maintenant: () => number) {
             base: "main",
             versDefaut: true,
             sha: sha("f"),
+            baseSha: sha("a"),
             brouillon: false,
             fusionnable: true,
             etatFusion: "unstable",
@@ -86,6 +88,7 @@ export function pullRequestsMaquette(maintenant: () => number) {
     async fusionnerPR(demande: DemandeFusion) {
       const pr = etat().depots[0]?.ouvertes.find((p) => p.numero === demande.numero);
       if (!pr) throw new Error(`PR #${demande.numero} absente du relevé`);
+      if (demande.sha !== pr.sha || demande.baseSha !== pr.baseSha) throw new Error("la PR ou sa base a bougé");
       if (pr.raison) throw new Error(`PR non fusionnable : ${pr.raison}`);
       fusionnees.add(pr.numero);
       return { id: "fusion-maquette", statut: "pending" };
