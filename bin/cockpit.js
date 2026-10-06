@@ -524,15 +524,31 @@ async function traiter(req, res) {
     }
     try {
       const demande = JSON.parse(brut);
+      // L'équipe associée au projet pose le modèle de chaque membre (src/equipe.js). Un
+      // choix explicite de la requête garde la main : clé identique écrasée, nœud nommé
+      // prioritaire dans le moteur. Avec `*`, l'équipe ne servirait à rien et n'est pas
+      // posée : un membre sans effet ne doit pas pouvoir faire refuser le lancement.
+      const toutLeRun = Boolean(demande.llmOverrides && demande.llmOverrides["*"]);
+      const equipeLancee = toutLeRun
+        ? { lancement: {}, membres: {} }
+        : equipe.lancementEquipe({
+            roster: equipe.lireRoster(EQUIPE_ROSTER),
+            affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS),
+            projet: String(demande.projectId || ""),
+          });
+      const llmOverrides = { ...equipeLancee.lancement, ...(demande.llmOverrides || {}) };
       // Un modèle sans machine capable de le servir échouerait au premier nœud, après la
       // mise en file : autant le refuser ici, avec la raison. Une machine endormie reste
       // indisponible : lancer une tâche de développement ne réveille pas le PC.
       const etatMachines = api.machines(magasinOuvert);
-      for (const llm of Object.values(demande.llmOverrides || {})) {
+      for (const [cle, llm] of Object.entries(llmOverrides)) {
         if (llm) {
           const disponibilite = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine: VIA_PAR_MACHINE, machines: etatMachines });
           if (!disponibilite.utilisable) {
-            return json(res, 400, { erreur: `backend « ${llm.via} » indisponible : ${disponibilite.raison}` });
+            const membre = equipeLancee.membres[cle] && !(demande.llmOverrides || {})[cle] ? equipeLancee.membres[cle] : null;
+            const cause = membre ? `${membre} (équipe du projet) : ` : "";
+            const conseil = membre ? ` Libère ${membre} du projet ou attends que la machine soit disponible.` : "";
+            return json(res, 400, { erreur: `${cause}backend « ${llm.via} » indisponible : ${disponibilite.raison}.${conseil}` });
           }
         }
       }
@@ -541,7 +557,7 @@ async function traiter(req, res) {
         payload: {
           projectId: demande.projectId,
           pipelineIndex: demande.pipelineIndex,
-          llmOverrides: demande.llmOverrides,
+          llmOverrides: Object.keys(llmOverrides).length ? llmOverrides : demande.llmOverrides,
         },
         par: qui.par,
         canal: qui.canal,

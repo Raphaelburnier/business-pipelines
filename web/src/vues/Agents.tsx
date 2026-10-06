@@ -138,6 +138,7 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
               agent={a}
               choisi={choisis.has(a.id)}
               maintenant={maintenant}
+              projetConnu={a.projet !== null && donnees.projets.includes(a.projet)}
               occupe={envoi}
               onChoisir={() => basculer(a.id)}
               onLiberer={() => envoyer([a.id], null)}
@@ -154,6 +155,7 @@ function Ligne({
   agent: a,
   choisi,
   maintenant,
+  projetConnu,
   occupe,
   onChoisir,
   onLiberer,
@@ -162,6 +164,8 @@ function Ligne({
   agent: MembreEquipe;
   choisi: boolean;
   maintenant: number;
+  /** Un projet du cockpit : le modèle du membre s'applique à ses runs. */
+  projetConnu: boolean;
   occupe: boolean;
   onChoisir: () => void;
   onLiberer: () => void;
@@ -206,6 +210,11 @@ function Ligne({
             <div className="min-w-0">
               <div className="truncate">{a.projet}</div>
               {a.depuis && <div className="text-[11px] text-douce">depuis {depuis(a.depuis, maintenant)}</div>}
+              {a.depuis && (
+                <div className={`text-[11px] ${projetConnu ? "text-ok" : "text-douce"}`}>
+                  {projetConnu ? "modèle appliqué aux runs" : "projet hors cockpit : sans effet sur les runs"}
+                </div>
+              )}
             </div>
             {a.depuis && (
               <button type="button" disabled={occupe} onClick={onLiberer} className="ml-auto shrink-0 text-[11px] text-douce hover:text-danger disabled:opacity-40">

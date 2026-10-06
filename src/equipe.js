@@ -143,4 +143,27 @@ function affecter({ fichier, roster, agents, projet, par = null, maintenant = Da
   return null;
 }
 
-module.exports = { lireRoster, lireAffectations, etat, affecter };
+/**
+ * Les choix de modèle que l'équipe d'un projet pose au lancement d'un run : une clé
+ * `agent:<nom>` par agent du registre qu'incarne un membre associé à ce projet. Le moteur
+ * les place après un choix explicite (nœud ou `*`) et ignore celles que le pipeline
+ * n'emploie pas.
+ * @param {{ roster: ReturnType<typeof lireRoster>, affectations: Record<string, { projet: string }>, projet: string }} options
+ * @returns {{ lancement: Record<string, { via: string, model: string }>, membres: Record<string, string> }}
+ *   `membres` nomme le membre derrière chaque clé, pour qu'un refus dise qui le cause.
+ */
+function lancementEquipe({ roster, affectations, projet }) {
+  const lancement = {};
+  const membres = {};
+  for (const membre of roster) {
+    const affectation = affectations[membre.id];
+    if (!affectation || affectation.projet !== projet) continue;
+    for (const ref of membre.registre) {
+      lancement[`agent:${ref}`] = { ...membre.llm };
+      membres[`agent:${ref}`] = membre.nom;
+    }
+  }
+  return { lancement, membres };
+}
+
+module.exports = { lireRoster, lireAffectations, etat, affecter, lancementEquipe };
