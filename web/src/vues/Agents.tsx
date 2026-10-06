@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import type { Famille, MembreEquipe } from "../donnees/equipe";
-import { CLASSES_TON, type Ton, depuis, usd } from "../format";
+import { CLASSES_TON, type Ton, depuis, jetons, usd } from "../format";
 import { Erreur, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 
@@ -219,14 +219,21 @@ function Ligne({
       </div>
 
       <div className="col-start-2 sm:col-start-auto">
-        <Reste usage={a.usage} />
+        <Reste famille={a.famille} usage={a.usage} />
       </div>
     </li>
   );
 }
 
 /** Le budget du mois qui reste, en équivalent API : ce n'est pas une dépense réelle sur abonnement. */
-function Reste({ usage }: { usage: MembreEquipe["usage"] }) {
+function Reste({ famille, usage }: { famille: Famille; usage: MembreEquipe["usage"] }) {
+  if (famille === "codex") {
+    return (
+      <span className="text-[11px] text-douce" title="Codex sur abonnement ne publie pas de prix : seuls les jetons sont mesurés">
+        abonnement Codex · <span className="tabular-nums text-encre">{jetons(usage.jetonsMois)}</span> jetons ce mois
+      </span>
+    );
+  }
   if (usage.budgetMensuelUsd === null) {
     return <span className="text-[11px] text-ok">gratuit · illimité</span>;
   }

@@ -16,7 +16,7 @@ export interface MembreEquipe {
   projet: string | null;
   depuis: string | null;
   enCours: { run: string; projet: string | null; noeud: string } | null;
-  usage: { consommeMoisUsd: number; budgetMensuelUsd: number | null; resteUsd: number | null };
+  usage: { consommeMoisUsd: number; jetonsMois: number; budgetMensuelUsd: number | null; resteUsd: number | null };
 }
 
 export interface ReponseEquipe {

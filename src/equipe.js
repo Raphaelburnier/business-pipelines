@@ -6,7 +6,8 @@
 //
 // « Ce qu'il lui reste » est un budget mensuel en équivalent API moins ce que ses étapes ont
 // coûté ce mois-ci. Le quota réel des abonnements n'est pas encore lu (phase 5) : un budget
-// déclaré et une consommation mesurée valent mieux qu'une jauge inventée.
+// déclaré et une consommation mesurée valent mieux qu'une jauge inventée. Un agent Codex n'a
+// pas de budget en dollars (l'abonnement ne publie pas de prix) : on montre ses jetons.
 const fs = require("fs");
 const path = require("path");
 const { lireJson, ecrireJson } = require("./durable");
@@ -74,6 +75,7 @@ function etat({ roster, affectations, store = null, projets = [], maintenant = D
   for (const membre of roster) for (const ref of membre.registre) membreDe.set(ref, membre.id);
 
   const consomme = new Map();
+  const jetons = new Map();
   const enCours = new Map();
   if (store) {
     for (const run of store.runs({ limite: limiteRuns })) {
@@ -85,6 +87,7 @@ function etat({ roster, affectations, store = null, projets = [], maintenant = D
         if (!id) continue;
         if (etape.started_at && Date.parse(etape.started_at) >= debutMois) {
           consomme.set(id, (consomme.get(id) || 0) + Number(etape.est_cost_usd || 0));
+          jetons.set(id, (jetons.get(id) || 0) + Number(etape.tokens_in || 0) + Number(etape.tokens_out || 0));
         }
         if (etape.status === "running") enCours.set(id, { run: run.id, projet: run.project_id, noeud: etape.node_id });
       }
@@ -104,6 +107,8 @@ function etat({ roster, affectations, store = null, projets = [], maintenant = D
       enCours: travail,
       usage: {
         consommeMoisUsd: depense,
+        // Seule mesure d'un agent sur abonnement Codex, qui rend un coût nul.
+        jetonsMois: jetons.get(membre.id) || 0,
         budgetMensuelUsd: budget,
         resteUsd: budget === null ? null : Number(Math.max(0, budget - depense).toFixed(4)),
       },
