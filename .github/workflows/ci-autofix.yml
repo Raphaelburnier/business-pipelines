@@ -1,14 +1,17 @@
 name: CI autofix
 
-# Quand la CI d'une PR d'agent échoue, Claude lit le log, corrige la branche et repousse.
+# Quand la CI d'une PR d'agent échoue, l'échec retourne à l'agent qui a ouvert la branche :
+#   - codex/       → commentaire sur la PR qui mentionne @codex avec le log : Codex cloud
+#                    reprend la PR et pousse sa correction sur la branche ;
+#   - claude/, agent/, automation/ → Claude corrige ici, par claude-code-action.
 #
 # Garde-fous :
-#   - seulement les branches d'agents (claude/, codex/, agent/, automation/) du dépôt
-#     lui-même, jamais une PR venue d'un fork : ce job exécute le code de la branche avec
-#     un secret ;
-#   - une seule tentative par échec : le commit de correction porte [ci-autofix], et un
-#     échec sur un tel commit n'en relance pas d'autre, il laisse un commentaire ;
-#   - l'action pousse avec le jeton de l'app GitHub Claude, qui relance la CI (le
+#   - seulement les branches d'agents du dépôt lui-même, jamais une PR venue d'un fork :
+#     le job Claude exécute le code de la branche avec un secret ;
+#   - une seule tentative par échec : une correction porte [ci-autofix] dans son message,
+#     et un échec sur un tel commit laisse un commentaire au lieu de relancer ;
+#   - un même commit n'est envoyé qu'une fois à Codex (marqueur caché dans le commentaire) ;
+#   - Claude pousse avec le jeton de l'app GitHub Claude, qui relance la CI (le
 #     GITHUB_TOKEN ne le ferait pas) ; la fusion reste celle d'agent-gated-merge.
 
 on:
@@ -46,7 +49,7 @@ jobs:
       RUN_ID: ${{ github.event.workflow_run.id }}
       MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
     steps:
-      - name: Find the pull request and decide
+      - name: Find the pull request and route the failure
         id: pr
         shell: bash
         run: |
@@ -54,23 +57,25 @@ jobs:
           numero="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCHE" --state open --json number,headRefOid \
             --jq ".[] | select(.headRefOid == \"$SHA\") | .number" | head -n1)"
           echo "numero=$numero" >> "$GITHUB_OUTPUT"
+          case "$BRANCHE" in
+            codex/*) agent=codex ;;
+            *) agent=claude ;;
+          esac
+          echo "agent=$agent" >> "$GITHUB_OUTPUT"
+          lien="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
           if [ -z "$numero" ]; then
             echo "Pas de PR ouverte sur ce commit : la branche a avancé ou la PR est fermée."
             echo "agir=non" >> "$GITHUB_OUTPUT"
           elif printf '%s' "$MESSAGE" | grep -q '\[ci-autofix\]'; then
             gh pr comment "$numero" --repo "$GITHUB_REPOSITORY" --body \
-              "La CI échoue encore après la correction automatique ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)). Pas de seconde tentative : à reprendre à la main."
+              "La CI échoue encore après la correction automatique ([run $RUN_ID]($lien)). Pas de seconde tentative : à reprendre à la main."
+            echo "agir=non" >> "$GITHUB_OUTPUT"
+          elif gh api "repos/$GITHUB_REPOSITORY/issues/$numero/comments" --paginate --jq '.[].body' | grep -q "ci-autofix:$SHA"; then
+            echo "Cet échec a déjà été transmis pour le commit $SHA."
             echo "agir=non" >> "$GITHUB_OUTPUT"
           else
             echo "agir=oui" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Check out the failing branch
-        if: steps.pr.outputs.agir == 'oui'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_branch }}
-          fetch-depth: 0
 
       - name: Collect the failed logs
         if: steps.pr.outputs.agir == 'oui'
@@ -81,14 +86,59 @@ jobs:
             | sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //' | tail -n 400 > "$RUNNER_TEMP/ci-echec.log"
           wc -l "$RUNNER_TEMP/ci-echec.log"
 
+      # ---------- Codex : la PR lui revient par une mention ----------
+
+      - name: Hand the failure back to Codex
+        if: steps.pr.outputs.agir == 'oui' && steps.pr.outputs.agent == 'codex'
+        shell: bash
+        env:
+          NUMERO: ${{ steps.pr.outputs.numero }}
+        run: |
+          set -euo pipefail
+          {
+            echo "<!-- ci-autofix:$SHA -->"
+            echo "@codex La CI de cette PR a échoué sur le commit $SHA ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID))."
+            echo "Trouve la cause dans le log ci-dessous, corrige-la sur cette branche sans désactiver de test et sans toucher"
+            echo "aux fichiers sensibles (.github/, AGENTS.md, CLAUDE.md, Dockerfile, docker-compose*, .env, migrations SQL,"
+            echo "scripts de déploiement), puis pousse un commit dont le message contient [ci-autofix]."
+            echo "Si la correction demande une décision humaine, explique-le en commentaire sans rien pousser."
+            echo
+            echo '<details><summary>Log des étapes en échec (fin)</summary>'
+            echo
+            echo '```'
+            tail -n 120 "$RUNNER_TEMP/ci-echec.log"
+            echo '```'
+            echo '</details>'
+          } > "$RUNNER_TEMP/commentaire.md"
+          gh pr comment "$NUMERO" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/commentaire.md"
+
+      # ---------- Claude : il corrige ici ----------
+
+      - name: Check out the failing branch
+        if: steps.pr.outputs.agir == 'oui' && steps.pr.outputs.agent == 'claude'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
       - name: Set up Node
-        if: steps.pr.outputs.agir == 'oui'
+        if: steps.pr.outputs.agir == 'oui' && steps.pr.outputs.agent == 'claude'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      - name: Mark the failure as handed to Claude
+        if: steps.pr.outputs.agir == 'oui' && steps.pr.outputs.agent == 'claude'
+        shell: bash
+        env:
+          NUMERO: ${{ steps.pr.outputs.numero }}
+        run: |
+          gh pr comment "$NUMERO" --repo "$GITHUB_REPOSITORY" --body \
+            "<!-- ci-autofix:$SHA -->
+          CI en échec sur $SHA ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)) : Claude reprend la branche."
+
       - name: Let Claude fix the branch
-        if: steps.pr.outputs.agir == 'oui'
+        if: steps.pr.outputs.agir == 'oui' && steps.pr.outputs.agent == 'claude'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
