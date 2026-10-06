@@ -23,8 +23,15 @@ function faussesAPI({ ci = "success", mergeable = true, tete = SHA } = {}) {
       return [{ number: 60, title: "feat: marketing", html_url: "u", user: { login: "r" }, head: { ref: "claude/m", sha: tete }, base: { ref: "main" }, draft: false, body: CORPS, created_at: "2026-10-05T12:00:00Z" }];
     }
     if (chemin === `/repos/${DEPOT}/pulls/60`) return { mergeable, mergeable_state: mergeable ? "clean" : "dirty" };
-    if (chemin.startsWith(`/repos/${DEPOT}/commits/${tete}/check-runs`)) {
-      return { check_runs: [{ name: "test", status: ci === "pending" ? "in_progress" : "completed", conclusion: ci === "pending" ? null : ci }] };
+    if (chemin.startsWith(`/repos/${DEPOT}/actions/runs?head_sha=${tete}`)) {
+      // La plus récente d'abord, puis une exécution plus ancienne du même workflow, en échec :
+      // seule la plus récente doit compter.
+      return {
+        workflow_runs: [
+          { workflow_id: 1, name: "CI", status: ci === "pending" ? "in_progress" : "completed", conclusion: ci === "pending" ? null : ci },
+          { workflow_id: 1, name: "CI", status: "completed", conclusion: "failure" },
+        ],
+      };
     }
     if (chemin.startsWith(`/repos/${DEPOT}/pulls/60/files`)) return [{ filename: "docker-compose.yaml" }, { filename: "src/stage-handlers.js" }];
     if (chemin.startsWith(`/repos/${DEPOT}/pulls?state=closed`)) {
