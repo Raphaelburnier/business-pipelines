@@ -133,6 +133,22 @@ test("la page dépose une fusion signée, une seule à la fois", async () => {
   assert.throws(() => apiPullRequests.demander({ ...b, qui: RAPHAEL, demande: { depot: DEPOT, numero: 60, sha: SHA, baseSha: BASE } }), /déjà demandée/);
 });
 
+test("une PR fusionnée quitte l'écran sans attendre le relevé suivant", async () => {
+  const { api } = faussesAPI();
+  const b = bac({ releve: await pullRequests.relever({ api, depots: [DEPOT] }) });
+  const commande = apiPullRequests.demander({ ...b, qui: RAPHAEL, demande: { depot: DEPOT, numero: 60, sha: SHA, baseSha: BASE } });
+  b.store.prendreCommande({ kinds: ["github.merge"] });
+  // Une fusion refusée laisse la PR à l'écran : elle reste à traiter.
+  b.store.terminerCommande(commande.id, { ok: false, raison: "CI rouge" });
+  assert.strictEqual(apiPullRequests.etat({ ...b, qui: RAPHAEL }).depots[0].ouvertes.length, 1);
+  // Une fusion réussie la retire, alors que l'instantané du publieur la montre encore ouverte.
+  const seconde = apiPullRequests.demander({ ...b, qui: RAPHAEL, demande: { depot: DEPOT, numero: 60, sha: SHA, baseSha: BASE } });
+  b.store.prendreCommande({ kinds: ["github.merge"] });
+  b.store.terminerCommande(seconde.id, { ok: true, detail: { fusionnee: true } });
+  assert.strictEqual(apiPullRequests.etat({ ...b, qui: RAPHAEL }).depots[0].ouvertes.length, 0);
+  assert.throws(() => apiPullRequests.demander({ ...b, qui: RAPHAEL, demande: { depot: DEPOT, numero: 60, sha: SHA, baseSha: BASE } }), /déjà fusionnée/);
+});
+
 test("pas de fusion pour une identité non autorisée, un relevé périmé ou une tête différente", async () => {
   const { api } = faussesAPI();
   const releve = await pullRequests.relever({ api, depots: [DEPOT] });
