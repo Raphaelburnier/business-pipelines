@@ -49,13 +49,19 @@ function disponibiliteVia(via, { viaParMachine, machines }) {
     const machine = parId.get(id);
     if (!machine) continue;
     if (ETATS_JOIGNABLES.has(machine.etat)) {
+      // Un worker ancien peut être connecté sans posséder le runtime Codex. Sa liste
+      // annoncée fait foi ; la configuration du NAS seule n'est pas une capacité.
+      const declares = machine.meta?.capacites?.backends;
+      if (via === "codex" && (!Array.isArray(declares) || !declares.includes("codex"))) continue;
       return { utilisable: true, machine: id, raison: null };
     }
   }
 
   const presentes = cibles.map((id) => parId.get(id)).filter(Boolean);
   const raison = presentes.length
-    ? presentes.map((m) => `${m.machine} ${ETATS_LISIBLES[m.etat] || m.etat}`).join(", ")
+    ? presentes.map((m) => via === "codex" && ETATS_JOIGNABLES.has(m.etat)
+      ? `${m.machine} : runtime Codex non annoncé par le worker ; mettre à jour le moteur du PC`
+      : `${m.machine} ${ETATS_LISIBLES[m.etat] || m.etat}`).join(", ")
     : `machine ${cibles.join(" ou ")} non enregistrée`;
   return { utilisable: false, machine: null, raison };
 }
@@ -64,7 +70,7 @@ function disponibiliteVia(via, { viaParMachine, machines }) {
  * @param {string} fichier
  * @param {{ viaParMachine?: Record<string, string[]>, machines?: any[], maintenant?: number }} [options]
  */
-function lireCatalogue(fichier, { viaParMachine = { nas: ["claude"], pc: ["claude", "omniroute"] }, machines = [], maintenant = Date.now() } = {}) {
+function lireCatalogue(fichier, { viaParMachine = { nas: ["claude"], pc: ["claude", "omniroute", "codex"] }, machines = [], maintenant = Date.now() } = {}) {
   const vide = (raison) => ({ catalogue: null, ageSecondes: null, perime: true, viaParMachine, machines, raison });
   let brut;
   try {

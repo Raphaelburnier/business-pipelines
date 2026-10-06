@@ -11,6 +11,7 @@ const { EventStore } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
 const { cockpit } = require("agent-orchestrator/packages/schemas/cockpit");
 const flux = require("../src/flux");
+const { disponibiliteVia, lireViaParMachine } = require("../src/modeles");
 
 const tests = [];
 function test(name, fn) {
@@ -22,6 +23,32 @@ function bac() {
   const store = new EventStore(path.join(dir, "events.sqlite"));
   return { dir, store };
 }
+
+test("Codex exige un worker qui annonce son runtime", () => {
+  const viaParMachine = lireViaParMachine();
+  const pc = { machine: "pc", etat: "online", meta: { capacites: { backends: ["claude"] } } };
+  assert.strictEqual(disponibiliteVia("codex", { viaParMachine, machines: [pc] }).utilisable, false);
+  assert.match(disponibiliteVia("codex", { viaParMachine, machines: [pc] }).raison, /mettre à jour/);
+  pc.meta.capacites.backends.push("codex");
+  assert.deepStrictEqual(disponibiliteVia("codex", { viaParMachine, machines: [pc] }), { utilisable: true, machine: "pc", raison: null });
+  pc.etat = "sleeping";
+  assert.strictEqual(disponibiliteVia("codex", { viaParMachine, machines: [pc] }).utilisable, false);
+});
+
+test("un run attendant la connexion reste vivant et lisible dans le cockpit", () => {
+  const { store } = bac();
+  try {
+    const id = store.creerRun({ pipelineRef: "dev@1", projectId: "dev" });
+    store.statutRun(id, "waiting_auth");
+    const etape = store.creerEtape({ runId: id, nodeId: "code", type: "agent", llmVia: "codex", llmModel: "gpt-5.6-terra:medium" });
+    store.majEtape(etape, { status: "waiting_auth", sessionId: "session-conservee" });
+    const lu = api.run(store, id);
+    cockpit.runDetaille.parse(lu);
+    assert.strictEqual(api.runs(store)[0].vivant, true);
+    assert.strictEqual(lu.statut, "waiting_auth");
+    assert.strictEqual(lu.etapes[0].statut, "waiting_auth");
+  } finally { store.fermer(); }
+});
 
 // Un run comme le moteur en écrit un : une étape déterministe sur le NAS, une étape
 // d'agent sur le PC, des événements, et une décision qui attend.

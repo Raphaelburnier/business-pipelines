@@ -358,6 +358,7 @@ function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille | 
     failed: "bg-danger/80",
     cancelled: "bg-douce/40",
     waiting_quota: "bg-alerte/70",
+    waiting_auth: "bg-alerte/70",
     waiting_approval: "bg-alerte/70",
   };
   return (

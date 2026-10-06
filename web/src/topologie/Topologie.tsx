@@ -203,7 +203,7 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     const etapes = disposition.noeuds.filter((noeud) => noeud.type === "etape" && noeud.etape?.runId === execution.run.id);
     for (const etape of etapes) {
       const statut = etape.etape?.statut;
-      const attente = statut === "waiting_approval" || statut === "waiting_quota";
+      const attente = statut === "waiting_approval" || statut === "waiting_quota" || statut === "waiting_auth";
       const actif = statut === "running" || attente || (aFocal && estFocal);
       relier(idProjet(projet.id), etape.id, "etape", attente ? "décision attendue" : statut === "running" ? "en cours" : "étape clé", actif, aFocal && !estFocal, attente);
     }
