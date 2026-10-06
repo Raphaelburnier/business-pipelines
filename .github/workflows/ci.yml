@@ -81,3 +81,18 @@ jobs:
       - name: Build web application
         working-directory: business-pipelines/web
         run: npm run build
+
+      - name: Verify Docker build dependencies and tests
+        working-directory: business-pipelines
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Le runner Ubuntu possède jq ; l'image Alpine peut manquer une dépendance.
+          # Construire le même étage que la livraison pour les changements qui affectent
+          # l'image, ses dépendances, ses tests ou le moteur épinglé.
+          if git diff --quiet HEAD^1 HEAD -- Dockerfile .dockerignore package.json package-lock.json web/package.json web/package-lock.json test .github/workflows/ci.yml; then
+            echo "No image, dependency or verification changes."
+            exit 0
+          fi
+          bash bin/preparer-image.sh
+          docker build --target verification --tag cockpit-ci-verification .

@@ -56,6 +56,10 @@ RUN npm install --omit=dev
 # test échoue n'est jamais produite, donc deploy.sh s'arrête avant la bascule, sans rien
 # avoir touché à l'installation en place (docs/SPEC-livraison.md, §4.5).
 FROM base AS verification
+# Les tests exécutent le vrai Bash des workflows avec un gh factice. Leurs contrôles JSON
+# nécessitent jq, présent sur GitHub Actions mais absent de node:alpine. Il reste dans cet
+# étage de construction : les images servies repartent de base.
+RUN apk add --no-cache jq
 COPY web/package*.json web/
 RUN npm --prefix web ci --no-audit --no-fund
 COPY . .
