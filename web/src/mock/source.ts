@@ -8,6 +8,7 @@ import { chatMaquette } from "./chat";
 import { approbationsMaquette } from "./decisions";
 import { equipeMaquette } from "./equipe";
 import { livraisonMaquette } from "./livraison";
+import { pullRequestsMaquette } from "./pullRequests";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
 
@@ -17,6 +18,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const approbations = approbationsMaquette();
   const livraison = livraisonMaquette(maintenant);
   const equipe = equipeMaquette(maintenant);
+  const prs = pullRequestsMaquette(maintenant);
   const commandes = new Map<string, Commande>();
 
   return {
@@ -77,6 +79,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     },
     livraison: livraison.livraison,
     livrer: livraison.livrer,
+    pullRequests: prs.pullRequests,
+    fusionnerPR: prs.fusionnerPR,
     approbations: approbations.lecture,
     decider: approbations.decider,
     deciderRun: approbations.deciderRun,
