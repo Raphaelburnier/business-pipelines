@@ -12,6 +12,7 @@ import { Erreur } from "../ui";
 import { nomCourt, prsDeLaLivraison } from "../donnees/pullRequests";
 import type { EtatPullRequests, PrLivree, PullRequestOuverte } from "../donnees/pullRequests";
 import { Approbations } from "./Approbations";
+import { confirmationLivraisonCourante, intervalleLivraison } from "../donnees/livraison";
 
 const DEPOTS: Array<{ cle: keyof VersionsLivraison; nom: string }> = [
   { cle: "cockpit", nom: "cockpit" },
@@ -115,20 +116,28 @@ function CarteLivraison() {
   // Le relevé des PR nomme la livraison. Sans lui (publieur sans jeton), la carte reste celle
   // d'avant : les commits suffisent pour livrer.
   const { donnees: relevePR } = useCharge((s) => s.pullRequests().catch((): EtatPullRequests | null => null), [tic]);
-  const [confirmation, setConfirmation] = useState(false);
+  const [confirmation, setConfirmation] = useState<VersionsLivraison | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreurEnvoi, setErreurEnvoi] = useState<string | null>(null);
   const [attendue, setAttendue] = useState<string | null>(null);
 
   const enCours = donnees?.enCours ?? null;
-  // Pendant une livraison, et tant que le cockpit ne répond plus, la carte se relit seule :
-  // le flux peut être coupé par le redémarrage, et rien d'autre ne la réveillerait.
+  const propo = donnees?.proposition ?? null;
+  const confirmationCourante = confirmationLivraisonCourante(confirmation, propo?.disponible);
+  // La proposition vient d'un fichier, pas d'un événement SSE. La relire au repos aussi,
+  // puis accélérer pendant la livraison et les redémarrages.
   const suivre = Boolean(enCours || attendue || erreur);
   useEffect(() => {
-    if (!suivre) return undefined;
-    const t = setInterval(() => setTic((n) => n + 1), 2500);
+    const t = setInterval(() => setTic((n) => n + 1), intervalleLivraison(suivre));
     return () => clearInterval(t);
   }, [suivre]);
+
+  useEffect(() => {
+    if (confirmation && !confirmationCourante) {
+      setConfirmation(null);
+      setErreurEnvoi("La proposition a changé. Vérifie les versions avant de confirmer.");
+    }
+  }, [confirmation, confirmationCourante]);
 
   const derniere = donnees?.historique[0] ?? null;
   useEffect(() => {
@@ -139,9 +148,15 @@ function CarteLivraison() {
     setEnvoi(true);
     setErreurEnvoi(null);
     try {
+      const actuelle = await source.livraison();
+      if (!confirmationLivraisonCourante(cible, actuelle.proposition?.disponible)) {
+        setConfirmation(null);
+        setTic((n) => n + 1);
+        throw new Error("La proposition a changé. Vérifie les versions avant de confirmer.");
+      }
       const commande = await source.livrer(cible);
       setAttendue(commande.id);
-      setConfirmation(false);
+      setConfirmation(null);
       setTic((n) => n + 1);
     } catch (err) {
       setErreurEnvoi(err instanceof Error ? err.message : String(err));
@@ -151,7 +166,6 @@ function CarteLivraison() {
   }
 
   const redemarrage = Boolean(erreur && (enCours || attendue));
-  const propo = donnees?.proposition ?? null;
   const prsLivrees = propo ? prsDeLaLivraison(relevePR ?? null, DEPOTS.flatMap((d) => propo.commits[d.cle])) : [];
   // Un échec reste en tête tant qu'il est récent. Un succès s'efface dès qu'une nouvelle
   // version est proposée : « Livré » au-dessus d'un nouveau bouton Livrer se lirait comme
@@ -214,21 +228,24 @@ function CarteLivraison() {
               commits={propo.commits[d.cle]}
             />
           ))}
-          {propo.disponible && donnees?.peutLivrer && !confirmation && (
+          {propo.disponible && donnees?.peutLivrer && !confirmationCourante && (
             <div className="ao-actions">
-              <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>
+              <button type="button" className="ao-btn primaire" onClick={() => {
+                setErreurEnvoi(null);
+                if (propo.disponible) setConfirmation({ ...propo.disponible });
+              }}>
                 Livrer
               </button>
             </div>
           )}
-          {propo.disponible && donnees?.peutLivrer && confirmation && (
+          {propo.disponible && donnees?.peutLivrer && confirmationCourante && (
             <div className="ao-liv-confirmation" role="group" aria-label="Confirmer la livraison">
               <p>Livrer ces commits sur le NAS ? Le cockpit va redémarrer quelques dizaines de secondes.</p>
               <div className="ao-actions">
-                <button type="button" className="ao-btn primaire" disabled={envoi} onClick={() => propo.disponible && livrer(propo.disponible)}>
+                <button type="button" className="ao-btn primaire" disabled={envoi} onClick={() => confirmation && livrer(confirmation)}>
                   {envoi ? "Envoi…" : "Confirmer"}
                 </button>
-                <button type="button" className="ao-btn" disabled={envoi} onClick={() => setConfirmation(false)}>
+                <button type="button" className="ao-btn" disabled={envoi} onClick={() => setConfirmation(null)}>
                   Annuler
                 </button>
               </div>
