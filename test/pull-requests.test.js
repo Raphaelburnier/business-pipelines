@@ -257,11 +257,17 @@ test("la pagination CI refuse une réponse tronquée", async () => {
   await assert.rejects(() => gates.pages({ api: async () => ({ total_count: 2, workflow_runs: [{}] }), chemin: "/runs", cle: "workflow_runs" }), /incomplète/);
 });
 
-test("le script CI refuse une tête seule, de mauvais parents et une base devenue ancienne", () => {
+// Ce test vérifie le workflow CI du dépôt : il n'a de sens que là où `.github/` existe. L'image
+// du NAS l'exclut (.dockerignore), et sans cette garde la livraison du 2026-10-06 échouait à
+// l'étape « construire » sur un ENOENT. Il tourne toujours dans la CI GitHub.
+const WORKFLOW_CI = path.join(__dirname, "../.github/workflows/ci.yml");
+const sansWorkflow = !fs.existsSync(WORKFLOW_CI) && "pas de .github/ ici (image du NAS) : vérifié par la CI GitHub";
+
+test("le script CI refuse une tête seule, de mauvais parents et une base devenue ancienne", { skip: sansWorkflow }, () => {
   const { execFileSync, spawnSync } = require("node:child_process");
   const requireMoteur = require("node:module").createRequire(require.resolve("agent-orchestrator"));
   const yaml = requireMoteur("yaml");
-  const ci = yaml.parse(fs.readFileSync(path.join(__dirname, "../.github/workflows/ci.yml"), "utf8"));
+  const ci = yaml.parse(fs.readFileSync(WORKFLOW_CI, "utf8"));
   const step = ci.jobs.test.steps.find((s) => s.name.startsWith("Verify tested merge ("));
   assert.ok(step?.name.includes("github.sha") && step.name.includes("github.event.pull_request.head.sha") && step.name.includes("github.event.pull_request.base.sha"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "preuve-ci-"));
