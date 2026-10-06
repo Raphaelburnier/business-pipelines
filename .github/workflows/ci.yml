@@ -47,8 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur avec vérification déterministe et preuve liée à l'arbre publié.
-          ref: 378c08c2bc9f871b8a7619ff462a6d94ab67ea3b
+          # Moteur avec vérification déterministe, preuve liée à l'arbre publié et suivi des livraisons.
+          ref: ad742b3581e67430826433fd596597b027e0de57
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
