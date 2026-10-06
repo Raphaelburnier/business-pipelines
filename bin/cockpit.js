@@ -57,6 +57,7 @@ const fluxChat = require("../src/flux-chat");
 const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
+const equipe = require("../src/equipe");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -115,6 +116,13 @@ const PROJETS = ENV.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
 // Sur le NAS, `claude` vient de la clé du runner ; OmniRoute reste local au worker PC.
 const CATALOGUE_MODELES = ENV.COCKPIT_CATALOGUE_MODELES || path.join(RACINE, "etat", "modeles.json");
 const VIA_PAR_MACHINE = catalogueModeles.lireViaParMachine(ENV.COCKPIT_VIA_MACHINES);
+// L'équipe d'agents (src/equipe.js) : le roster versionné, et ses affectations écrites à côté
+// de l'event store, avec l'état durable.
+const EQUIPE_ROSTER = ENV.COCKPIT_EQUIPE_ROSTER || path.join(RACINE, "equipe", "agents.json");
+const EQUIPE_AFFECTATIONS = path.join(
+  ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"),
+  "equipe-affectations.json"
+);
 // « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
 const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
 const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
@@ -612,6 +620,43 @@ async function traiter(req, res) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     return json(res, 200, api.usage(magasinOuvert));
+  }
+
+  if (lecture && lecture.pathname === "/api/equipe") {
+    try {
+      // Sans event store, la page montre quand même l'équipe et ses affectations.
+      const magasinOuvert = store();
+      return json(
+        res,
+        200,
+        equipe.etat({
+          roster: equipe.lireRoster(EQUIPE_ROSTER),
+          affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS),
+          store: magasinOuvert,
+          projets: api.lireFiches(PROJETS).fiches.map((f) => f.id),
+        })
+      );
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (req.method === "POST" && chemin === "/api/equipe/affectations") {
+    const corps = await corpsJson(req, res);
+    if (!corps) return undefined;
+    try {
+      const erreur = equipe.affecter({
+        fichier: EQUIPE_AFFECTATIONS,
+        roster: equipe.lireRoster(EQUIPE_ROSTER),
+        agents: corps.agents,
+        projet: corps.projet === undefined ? null : corps.projet,
+        par: qui.par,
+      });
+      if (erreur) return json(res, 400, { erreur });
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
   }
 
   // ---- Demander au cockpit (§11.7) ----

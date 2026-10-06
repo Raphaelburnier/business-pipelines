@@ -1,0 +1,22 @@
+{
+  "agents": [
+    { "id": "margaux", "nom": "Margaux", "role": "Cheffe de projet", "famille": "claude", "llm": { "via": "claude", "model": "opus" }, "registre": ["plan-synthesist", "improvement-planner", "synthesizer"], "budgetMensuelUsd": 60 },
+    { "id": "victor", "nom": "Victor", "role": "Architecte", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra-high" }, "registre": ["architect"], "budgetMensuelUsd": 40 },
+    { "id": "lea", "nom": "Léa", "role": "Dev frontend", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["frontend-builder"], "budgetMensuelUsd": 50 },
+    { "id": "hugo", "nom": "Hugo", "role": "Dev backend", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra" }, "registre": ["backend-builder"], "budgetMensuelUsd": 50 },
+    { "id": "sacha", "nom": "Sacha", "role": "Refactor et édition de code", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra" }, "registre": ["code-editor", "improvement-editor"], "budgetMensuelUsd": 40 },
+    { "id": "nora", "nom": "Nora", "role": "Design system et UX", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["design-system"], "budgetMensuelUsd": 30 },
+    { "id": "theo", "nom": "Théo", "role": "Relecteur de code", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["style-reviewer", "code-analyst"], "budgetMensuelUsd": 30 },
+    { "id": "ines", "nom": "Inès", "role": "Testeuse", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra" }, "registre": ["test-verifier", "coverage-auditor"], "budgetMensuelUsd": 30 },
+    { "id": "yanis", "nom": "Yanis", "role": "Sécurité", "famille": "claude", "llm": { "via": "claude", "model": "opus" }, "registre": ["security-reviewer"], "budgetMensuelUsd": 30 },
+    { "id": "basile", "nom": "Basile", "role": "Enquêteur de bugs", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra-high" }, "registre": ["bug-reproducer", "bug-diagnoser"], "budgetMensuelUsd": 30 },
+    { "id": "camille", "nom": "Camille", "role": "Stratégie marketing", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["marketing-plan-writer", "channel-strategy-analyst", "brand-analyst"], "budgetMensuelUsd": 40 },
+    { "id": "jules", "nom": "Jules", "role": "Rédacteur", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["content-writer", "content-planner"], "budgetMensuelUsd": 30 },
+    { "id": "elise", "nom": "Élise", "role": "Analyste marché et économie", "famille": "codex", "llm": { "via": "omniroute", "model": "codex/gpt-5.6-terra-high" }, "registre": ["economy-analyst", "market-opportunity-analyst"], "budgetMensuelUsd": 30 },
+    { "id": "paul", "nom": "Paul", "role": "Scribe (résumés, notes vault)", "famille": "libre", "llm": { "via": "omniroute", "model": "agentic-bulk" }, "registre": ["passage-extractor"], "budgetMensuelUsd": null },
+    { "id": "zoe", "nom": "Zoé", "role": "Veilleuse (collecte de sources)", "famille": "libre", "llm": { "via": "omniroute", "model": "agentic-bulk" }, "registre": ["source-collector"], "budgetMensuelUsd": null },
+    { "id": "lucas", "nom": "Lucas", "role": "Lanceur de tests", "famille": "libre", "llm": { "via": "omniroute", "model": "cline/google/gemma-4-31b-it:free" }, "registre": ["test-runner"], "budgetMensuelUsd": null },
+    { "id": "mila", "nom": "Mila", "role": "Trieuse (classement, routage)", "famille": "libre", "llm": { "via": "omniroute", "model": "ollama-local/qwen3:8b-40k" }, "registre": [], "budgetMensuelUsd": null },
+    { "id": "oscar", "nom": "Oscar", "role": "Vision (captures d'écran)", "famille": "libre", "llm": { "via": "omniroute", "model": "vision" }, "registre": [], "budgetMensuelUsd": null }
+  ]
+}
