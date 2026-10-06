@@ -47,8 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Contrats de fusion signée et runtimes natifs (waiting_auth) vérifiés ensemble.
-          ref: 009bdd6f29953f7c6e9742f8e28edfcf26c68f64
+          # Moteur avec vérification déterministe et preuve liée à l'arbre publié.
+          ref: 378c08c2bc9f871b8a7619ff462a6d94ab67ea3b
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

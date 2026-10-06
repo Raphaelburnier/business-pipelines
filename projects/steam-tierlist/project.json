@@ -4,12 +4,18 @@
   "business": "outils-perso",
   "homeMachine": "nas",
   "repo": "/git/steam-tierlist.git",
+  "repoWorkers": "admindunas@192.168.1.18:/volume1/docker/git/steam-tierlist.git",
+  "verification": {
+    "prepareNetwork": true,
+    "prepare": [{ "command": "npm", "args": ["run", "prepare:run"], "timeoutMs": 600000 }],
+    "checks": [{ "kind": "test", "command": "npm", "args": ["test"], "timeoutMs": 300000 }]
+  },
   "url": "/steam/",
   "publier": true,
   "github": "Raphaelburnier/steam_tierList",
   "pipelines": [
     {
-      "extends": "improve-app@4",
+      "extends": "improve-app@5",
       "spec": "improvement.json",
       "overrides": {
         "nodes": {}
