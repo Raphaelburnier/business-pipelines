@@ -4,6 +4,7 @@
 const path = require("path");
 const publieur = require("../src/publieur");
 const pullRequests = require("../src/pull-requests");
+const suivi = require("../src/suivi-livraisons");
 const { lireAutorises } = require("../src/livreur");
 const { EventStore } = require("agent-orchestrator");
 
@@ -43,6 +44,12 @@ const apiMiroirs = JETON_MIROIRS ? publieur.apiAvec({ fetchImpl: fetch, jeton: J
 if (MIROIRS.length && !JETON_MIROIRS) {
   console.error("GITHUB_TOKEN_MIROIRS absent : les miroirs ne sont pas tenus. Voir specs/publieur.env.example.");
 }
+// Le suivi des livraisons vit dans l'event store du moteur : il survit à un redémarrage du
+// publieur, qui repart des livraisons non finies. Le même store porte la file des fusions.
+const store = process.env.ORCH_EVENT_STORE ? new EventStore(process.env.ORCH_EVENT_STORE) : null;
+if (!store) console.error("ORCH_EVENT_STORE absent : ni suivi des livraisons, ni fusions demandées depuis le cockpit.");
+// Le suivi lit les CI (Actions) et les conversations : le jeton de fusion en a le droit.
+const apiSuivi = apiFusion || api;
 let arret = false;
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => (arret = true));
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,6 +64,7 @@ async function passage() {
         api,
         urlDepot: `https://github.com/${projet.github}.git`,
         etat,
+        store,
         journal: (ligne) => console.log(ligne),
       });
     } catch (err) {
@@ -73,7 +81,17 @@ async function passage() {
       console.error(`miroir ${miroir.nom} : ${String(err.message).split("\n")[0]}`);
     }
   }
+  await suivreLivraisons();
   await releverPullRequests();
+}
+
+async function suivreLivraisons() {
+  if (!store) return;
+  try {
+    await suivi.suivreLivraisons({ api: apiSuivi, store, projets: publieur.projetsAPublier(PROJETS), journal: (ligne) => console.log(ligne) });
+  } catch (err) {
+    console.error(`suivi des livraisons : ${String(err.message).split("\n")[0]}`);
+  }
 }
 
 async function releverPullRequests() {
@@ -120,6 +138,8 @@ async function servirFusions(store) {
     }
     store.terminerCommande(commande.id, resultat);
     console.log(`fusion ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? "faite" : resultat.raison}`);
+    // Une fusion confirmée remonte au run sans attendre le passage suivant.
+    await suivreLivraisons();
     await releverPullRequests();
   }
 }
@@ -128,8 +148,6 @@ async function servirFusions(store) {
   console.log(`Publieur : projets dans ${PROJETS}, un passage toutes les ${Math.round(INTERVALLE / 1000)} s`);
   console.log(`PR surveillées : ${PR_DEPOTS.join(", ") || "aucun dépôt"}`);
   // Les fusions tournent dans leur propre boucle : un clic n'attend pas la fin d'un passage.
-  const store = process.env.ORCH_EVENT_STORE ? new EventStore(process.env.ORCH_EVENT_STORE) : null;
-  if (!store) console.error("ORCH_EVENT_STORE absent : les fusions demandées depuis le cockpit ne sont pas servies.");
   const fusions = store ? servirFusions(store) : Promise.resolve();
   while (!arret) {
     await passage();

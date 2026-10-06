@@ -40,6 +40,8 @@ async function lireCI({ api, depot, numero, sha, baseSha, parDefaut }) {
   const ci = { etat: "absente", details: [], preuve: null, raison: "aucune CI sur ce commit" };
   if (!dernier) return ci;
   ci.details = [{ nom: "CI", statut: dernier.status, conclusion: dernier.conclusion || null }];
+  // Le lien du run CI, pour l'écran ; jamais une preuve.
+  ci.url = typeof dernier.html_url === "string" ? dernier.html_url : null;
   if (dernier.status !== "completed") return { ...ci, etat: "en_cours", raison: "CI en cours" };
   if (dernier.conclusion !== "success") return { ...ci, etat: "rouge", raison: "CI rouge (seul success autorise la fusion)" };
   ci.etat = "verte";

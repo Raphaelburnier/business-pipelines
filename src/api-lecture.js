@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { validerProjet } = require("agent-orchestrator/packages/schemas");
+const { vueLivraison } = require("./suivi-livraisons");
 
 const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
 
@@ -35,6 +36,8 @@ function ligneRun(store, run) {
     coutReelUsd: Number(run.real_cost_usd || 0),
     declencheur: run.trigger,
     etapes: { total: etapes.length, parStatut },
+    // Exécution terminée n'est pas fusion : la livraison dit ce que GitHub a fait du run.
+    livraison: vueLivraison(store.livraison(run.id)),
   };
 }
 

@@ -12,6 +12,7 @@ import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
 import { SelecteurModele } from "./SelecteurModele";
 import { suivreCommande } from "../donnees/lancement";
+import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
@@ -193,6 +194,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
                 <span className="truncate font-mono text-[11px] text-douce">{r.pipeline}</span>
                 <span className="ml-auto text-[11px] tabular-nums text-douce">il y a {depuis(r.debut, maintenant)}</span>
                 <Etat etat={r.statut} />
+                {r.livraison && <PastilleLivraison statut={r.livraison.statut} />}
               </button>
             </li>
           ))}
@@ -243,6 +245,8 @@ function PanneauRun({ id }: { id: string }) {
           </a>
         </div>
       )}
+
+      {run.livraison && <BlocLivraison livraison={run.livraison} maintenant={maintenant} />}
 
       <div>
         <Titre>Exécution</Titre>

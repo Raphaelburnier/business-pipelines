@@ -16,6 +16,9 @@ export type Machine = z.infer<typeof cockpit.machine>;
 export type Approbation = z.infer<typeof cockpit.approbation>;
 export type Etape = z.infer<typeof cockpit.etape>;
 export type Run = z.infer<typeof cockpit.run>;
+/** La livraison d'un run jusqu'à GitHub ; `Livraison` plus bas est celle du cockpit sur le NAS. */
+export type LivraisonRun = z.infer<typeof cockpit.livraison>;
+export type StatutLivraison = z.infer<typeof cockpit.statutLivraison>;
 export type RunDetaille = z.infer<typeof cockpit.runDetaille>;
 /** Outils réellement vus dans les événements du moteur, ajoutés par l'API cockpit au détail. */
 export type EtapeAvecOutils = Etape & { outils: string[] };
