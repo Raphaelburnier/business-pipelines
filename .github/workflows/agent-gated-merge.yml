@@ -136,8 +136,7 @@ jobs:
             refuse "default branch commit could not be read"
           }
           base_sha="$(jq -r '.sha // empty' <<<"$base_commit")"
-          base_committed_at="$(jq -r '.commit.committer.date // empty' <<<"$base_commit")"
-          [[ -n "$base_sha" && -n "$base_committed_at" ]] || {
+          [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || {
             gate="base branch"
             refuse "default branch snapshot is incomplete"
           }
@@ -153,14 +152,52 @@ jobs:
             | last // {}
           ' <<<"$ci_runs")"
           ci_state="$(jq -r 'if .status == "completed" then (.conclusion // "unknown") else (.status // "missing") end' <<<"$latest_ci")"
-          ci_created_at="$(jq -r '.created_at // empty' <<<"$latest_ci")"
           [[ "$ci_state" == "success" ]] || {
             gate="CI"
             refuse "latest exact-head pull-request CI conclusion is not success"
           }
-          [[ -n "$ci_created_at" && ( "$ci_created_at" > "$base_committed_at" || "$ci_created_at" == "$base_committed_at" ) ]] || {
-            gate="CI base"
-            refuse "latest exact-head CI predates the current default-branch commit"
+          [[ "$(jq -r '.total_count' <<<"$ci_runs")" =~ ^[0-9]+$ ]] && [[ "$(jq -r '.total_count' <<<"$ci_runs")" -le 100 ]] || {
+            gate="CI pagination"
+            refuse "CI run list is incomplete; cannot identify the latest run"
+          }
+          ci_id="$(jq -r '.id // empty' <<<"$latest_ci")"
+          ci_attempt="$(jq -r '.run_attempt // empty' <<<"$latest_ci")"
+          [[ "$ci_id" =~ ^[1-9][0-9]*$ && "$ci_attempt" =~ ^[1-9][0-9]*$ ]] || {
+            gate="CI identity"
+            refuse "CI run identity or attempt is missing"
+          }
+          jq -e --argjson number "$pr_number" --arg sha "$sha" --arg base "$base_sha" --arg ref "$default_branch" '
+            any(.pull_requests[]?; .number == $number and .head.sha == $sha and .base.sha == $base and .base.ref == $ref)
+          ' <<<"$latest_ci" >/dev/null || {
+            gate="CI association"
+            refuse "CI is not bound to this pull request and current base"
+          }
+          jobs="$(gh api --paginate "repos/$REPOSITORY/actions/runs/$ci_id/attempts/$ci_attempt/jobs?per_page=100" --jq '.jobs[]')" || {
+            gate="CI jobs"
+            refuse "the exact CI attempt jobs could not be read"
+          }
+          proof_regex='^Verify tested merge [(]merge=(?<merge>[0-9a-f]{40}), head=(?<head>[0-9a-f]{40}), base=(?<base>[0-9a-f]{40})[)]$'
+          proofs="$(jq -cs --arg sha "$sha" --arg regex "$proof_regex" '
+            [.[] | select(.head_sha == $sha and .status == "completed" and .conclusion == "success")
+              | .steps[]? | select(.status == "completed" and .conclusion == "success")
+              | .name | select(test($regex)) | capture($regex)]
+          ' <<<"$jobs")"
+          tested_merge="$(jq -r '.[0].merge // empty' <<<"$proofs")"
+          jq -e --arg sha "$sha" --arg base "$base_sha" --arg merge "$tested_merge" '
+            length > 0 and all(.[]; .head == $sha and .base == $base and .merge == $merge)
+          ' <<<"$proofs" >/dev/null || {
+            gate="CI merge proof"
+            refuse "CI has no successful proof of the tested head/base/merge triplet"
+          }
+          merge_commit="$(gh api "repos/$REPOSITORY/git/commits/$tested_merge")" || {
+            gate="CI merge parents"
+            refuse "the tested merge commit could not be read"
+          }
+          jq -e --arg merge "$tested_merge" --arg head "$sha" --arg base "$base_sha" '
+            .sha == $merge and (.parents | length) == 2 and .parents[0].sha == $base and .parents[1].sha == $head
+          ' <<<"$merge_commit" >/dev/null || {
+            gate="CI merge parents"
+            refuse "the tested commit does not merge the exact head into the current base"
           }
 
           threads="$(gh api graphql -f query='query($owner:String!, $name:String!, $number:Int!) { repository(owner:$owner, name:$name) { pullRequest(number:$number) { reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } } } } }' -F owner="${REPOSITORY%%/*}" -F name="${REPOSITORY##*/}" -F number="$pr_number")" || {
@@ -176,14 +213,19 @@ jobs:
             refuse "unresolved review threads remain"
           }
 
-          files="$(gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files" --jq '.[].filename')" || {
+          files_json="$(gh api --paginate "repos/$REPOSITORY/pulls/$pr_number/files?per_page=100" --jq '.[]')" || {
             gate="changed files"
             refuse "changed files could not be read"
           }
+          [[ "$(jq -s 'length' <<<"$files_json")" == "$(jq -r '.changed_files' <<<"$pr")" ]] || {
+            gate="changed files"
+            refuse "changed file list is incomplete (GitHub caps it at 3000)"
+          }
+          files="$(jq -rs '.[] | .filename, (.previous_filename // empty)' <<<"$files_json")"
           while IFS= read -r path; do
             lower="${path,,}"
             case "$lower" in
-              .github/workflows/*|.github/actions/*|.github/dependabot.yml|.github/copilot-instructions.md|*/codeowners|codeowners|agents.md|*/agents.md|claude.md|*/claude.md|*.sql|*/migrations/*|migrations/*|dockerfile*|*/dockerfile*|docker-compose*|*/docker-compose*|vercel.json|*/vercel.json|.env|.env.*|*/.env|*/.env.*|*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*/infra/*|infra/*|*/infrastructure/*|infrastructure/*|*/terraform/*|terraform/*|*.tf|*.tfvars|*/deploy/*|deploy/*|*/deployment/*)
+              .github/*|*/codeowners|codeowners|copilot-instructions.md|*/copilot-instructions.md|agents.md|*/agents.md|claude.md|*/claude.md|*.sql|*/migrations/*|migrations/*|*/migration/*|migration/*|dockerfile*|*/dockerfile*|*.dockerfile|compose.yml|compose.yaml|compose.*.yml|compose.*.yaml|*/compose.yml|*/compose.yaml|*/compose.*.yml|*/compose.*.yaml|.dockerignore|*/.dockerignore|docker-compose*|*/docker-compose*|vercel.json|*/vercel.json|.env|.env.*|*/.env|*/.env.*|*.env|*.env.*|*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*/infra/*|infra/*|*/infrastructure/*|infrastructure/*|*/terraform/*|terraform/*|*.tf|*.tfvars|*/deploy/*|deploy/*|*/deployment/*|deployment/*|src/github-merge-gates.js|src/pull-requests.js|src/api-pull-requests.js|bin/publieur.js|bin/livrer.sh|packages/schemas/commandes.js|specs/livraison.json|*deploy*.sh|*deploy*.js|*deploy*.mjs|*deploy*.cjs|*deploy*.py)
                 sensitive_files="$sensitive_files, $path"
                 ;;
             esac
@@ -229,6 +271,47 @@ jobs:
             refuse "base branch changed during the mergeability check"
           }
 
+          # Re-check mutable metadata after mergeability and file pagination.
+          latest_again="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100")" || {
+            gate="final CI"
+            refuse "CI could not be re-read"
+          }
+          jq -e --arg sha "$sha" --argjson id "$ci_id" --argjson attempt "$ci_attempt" '
+            (.total_count | type) == "number" and .total_count >= 0 and .total_count <= 100 and
+            ([.workflow_runs[] | select(.name == "CI" and .head_sha == $sha and .event == "pull_request")]
+              | sort_by(.run_number, .run_attempt) | last
+              | .id == $id and .run_attempt == $attempt and .status == "completed" and .conclusion == "success")
+          ' <<<"$latest_again" >/dev/null || {
+            gate="final CI"
+            refuse "latest CI changed after validation"
+          }
+          threads="$(gh api graphql -f query='query($owner:String!, $name:String!, $number:Int!) { repository(owner:$owner, name:$name) { pullRequest(number:$number) { reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } } } } }' -F owner="${REPOSITORY%%/*}" -F name="${REPOSITORY##*/}" -F number="$pr_number")" || {
+            gate="final review threads"
+            refuse "review threads could not be re-read"
+          }
+          jq -e '
+            ((.errors // []) | length) == 0 and
+            (.data.repository.pullRequest.reviewThreads as $t |
+              ($t.nodes | type) == "array" and $t.pageInfo.hasNextPage == false and all($t.nodes[]; .isResolved == true))
+          ' <<<"$threads" >/dev/null || {
+            gate="final review threads"
+            refuse "review threads are unresolved or unreadable"
+          }
+          jq -e --arg ref "$default_branch" --arg repo "$REPOSITORY" '
+            .state == "open" and .draft == false and .base.ref == $ref and .head.repo.full_name == $repo and
+            .mergeable == true and .mergeable_state != "blocked" and .mergeable_state != "dirty"
+          ' <<<"$current" >/dev/null || {
+            gate="final PR state"
+            refuse "PR state changed or is blocked"
+          }
+          [[ "$(gh api "repos/$REPOSITORY" --jq '.default_branch')" == "$default_branch" ]] || {
+            gate="final default branch"
+            refuse "default branch changed after validation"
+          }
+          [[ "$(gh api "repos/$REPOSITORY/commits/$default_branch" --jq '.sha // empty')" == "$base_sha" ]] || {
+            gate="final base branch"
+            refuse "base branch changed before merge"
+          }
           merge_response="$(gh api --method PUT "repos/$REPOSITORY/pulls/$pr_number/merge" -f merge_method=squash -f sha="$sha" 2>&1)" || {
             gate="merge"
             refuse "REST squash merge failed: $merge_response"
@@ -239,8 +322,8 @@ jobs:
             echo "- **PR:** $pr_number"
             echo "- **HEAD SHA:** $sha"
             echo "- **CI:** $ci_state"
+            echo "- **Tested merge:** $tested_merge (head=$sha base=$base_sha run=$ci_id attempt=$ci_attempt)"
             echo "- **External reviews:** advisory; unresolved threads still block"
             echo "- **Sensitive files:** none"
             echo "- **Merge:** REST squash with the validated SHA"
           } >> "$GITHUB_STEP_SUMMARY"
-

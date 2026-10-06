@@ -275,6 +275,9 @@ function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; p
   const [confirmation, setConfirmation] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  useEffect(() => {
+    setConfirmation(false);
+  }, [pr.sha, pr.baseSha, pr.raison, peutFusionner]);
   async function confirmer() {
     setEnvoi(true);
     setErreur(null);
@@ -313,7 +316,7 @@ function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; p
           </button>
         </div>
       )}
-      {confirmation && (
+      {confirmation && !pr.raison && peutFusionner && !pr.fusionEnCours && (
         <div className="ao-liv-confirmation" role="group" aria-label={`Confirmer la fusion de ${nomCourt(depot, pr.numero)}`}>
           <p>
             Fusionner {nomCourt(depot, pr.numero)} en squash sur {pr.base} ?
@@ -344,7 +347,7 @@ function CartePullRequests() {
   const ouvertes = (donnees?.depots ?? []).flatMap((d) => d.ouvertes.map((pr) => ({ depot: d.depot, pr })));
 
   async function fusionner(depot: string, pr: PullRequestOuverte) {
-    await source.fusionnerPR({ depot, numero: pr.numero, sha: pr.sha });
+    await source.fusionnerPR({ depot, numero: pr.numero, sha: pr.sha, baseSha: pr.baseSha });
     setTic((n) => n + 1);
   }
 
@@ -368,7 +371,7 @@ function CartePullRequests() {
       {ouvertes.length > 0 && (
         <ul className="ao-pr-liste">
           {ouvertes.map(({ depot, pr }) => (
-            <PullRequest key={`${depot}#${pr.numero}`} depot={depot} pr={pr} peutFusionner={Boolean(donnees?.peutFusionner)} fusionner={(p) => fusionner(depot, p)} />
+            <PullRequest key={`${depot}#${pr.numero}`} depot={depot} pr={pr} peutFusionner={Boolean(donnees?.peutFusionner && !donnees.perime && !donnees.erreur)} fusionner={(p) => fusionner(depot, p)} />
           ))}
         </ul>
       )}

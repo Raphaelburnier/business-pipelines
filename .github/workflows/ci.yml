@@ -20,12 +20,22 @@ jobs:
           path: business-pipelines
           fetch-depth: 2
 
-      - name: Verify tested merge uses the current base
+      - name: "Verify tested merge (merge=${{ github.sha }}, head=${{ github.event.pull_request.head.sha }}, base=${{ github.event.pull_request.base.sha }})"
         working-directory: business-pipelines
         shell: bash
+        env:
+          EXPECTED_MERGE: ${{ github.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
+          # Ce triplet est relu dans les métadonnées du job par le publieur du cockpit.
+          # Un checkout de la tête seule ou d'une autre base ne peut pas produire la preuve.
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_MERGE" ]]
+          [[ "$(git rev-list --parents -n 1 HEAD | wc -w)" == "3" ]]
+          [[ "$(git rev-parse HEAD^2)" == "$EXPECTED_HEAD" ]]
           tested_base="$(git rev-parse HEAD^1)"
+          [[ "$tested_base" == "$EXPECTED_BASE" ]]
           git fetch --no-tags --depth=1 origin "refs/heads/${GITHUB_BASE_REF}"
           current_base="$(git rev-parse FETCH_HEAD)"
           [[ "$tested_base" == "$current_base" ]] || {
@@ -37,7 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          ref: master
+          # Le contrat github.merge avec baseSha est vérifié avec cette version du moteur.
+          ref: 26532672ed9a5631989b5c1fe83d8ef027c6ef61
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

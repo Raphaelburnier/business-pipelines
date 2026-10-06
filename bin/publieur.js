@@ -104,7 +104,7 @@ async function servirFusions(store) {
       await attendre(SONDE_COMMANDES_MS);
       continue;
     }
-    const { depot, numero, sha } = commande.payload;
+    const { depot, numero, sha, baseSha } = commande.payload;
     let resultat;
     if (!apiFusion) {
       resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };
@@ -112,7 +112,7 @@ async function servirFusions(store) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
     } else {
       try {
-        const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha } });
+        const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha, baseSha } });
         resultat = fusion.fusionnee ? { ok: true, detail: fusion } : { ok: false, raison: fusion.message || "GitHub n'a pas fusionné" };
       } catch (err) {
         resultat = { ok: false, raison: String(err.message).split("\n")[0] };
