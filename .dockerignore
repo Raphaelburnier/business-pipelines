@@ -18,7 +18,13 @@ web/dist
 # de .claude, réglages et worktrees, reste dehors.
 .claude/*
 !.claude/agents
-.github
+# Les deux workflows font partie des contrôles exécutés dans l'étage verification.
+# Les autres fichiers GitHub restent exclus du contexte.
+.github/*
+!.github/workflows
+.github/workflows/*
+!.github/workflows/ci.yml
+!.github/workflows/agent-gated-merge.yml
 
 # État durable : il vit sur l'hôte et se monte, il n'a rien à faire dans l'image.
 approvals

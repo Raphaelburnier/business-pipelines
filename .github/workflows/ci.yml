@@ -47,8 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Le contrat github.merge avec baseSha est vérifié avec cette version du moteur.
-          ref: 26532672ed9a5631989b5c1fe83d8ef027c6ef61
+          # Contrats de fusion signée et runtimes natifs (waiting_auth) vérifiés ensemble.
+          ref: 009bdd6f29953f7c6e9742f8e28edfcf26c68f64
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

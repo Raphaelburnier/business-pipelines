@@ -15,7 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const { validerProjet } = require("agent-orchestrator/packages/schemas");
 
-const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_machine"]);
+const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
 
 function ligneRun(store, run) {
   const etapes = store.etapes(run.id);
