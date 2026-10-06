@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const suivi = require("./suivi-livraisons");
 
 const DEPOT_GITHUB = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
@@ -195,7 +196,7 @@ function apiAvec({ fetchImpl, jeton, api = "https://api.github.com" }) {
  * nouvelles ou déplacées, ouvrir leur PR. L'état (ce qui est déjà publié) est rendu, pas
  * écrit : l'appelant le garde.
  */
-async function publierProjet({ projet, git, api, urlDepot, etat, journal = () => {} }) {
+async function publierProjet({ projet, git, api, urlDepot, etat, store = null, journal = () => {} }) {
   const depot = projet.repo;
   const infos = await api("GET", `/repos/${projet.github}`);
   const parDefaut = infos.default_branch;
@@ -208,20 +209,41 @@ async function publierProjet({ projet, git, api, urlDepot, etat, journal = () =>
   for (const ligne of refs ? refs.split("\n") : []) {
     const [branche, sha] = ligne.split(" ");
     const cle = `${projet.id}:${branche}`;
+    const runId = extraireRunId(git, depot, sha);
+    // Le suivi durable de l'event store prime sur `etat` : un fichier d'état perdu ne doit ni
+    // rouvrir une PR fusionnée ou fermée, ni repousser en force une branche déjà publiée, ce
+    // qui effacerait sur GitHub une correction poussée par ci-autofix.
+    const livraison = store ? suivi.livraisonDeBranche({ store, projet, branche, sha, runId }) : null;
+    if (livraison && livraison.deliverySha === sha && (livraison.finishedAt || livraison.pr)) {
+      etat[cle] = { sha, pr: livraison.pr, le: new Date().toISOString() };
+      continue;
+    }
     if (etat[cle] && etat[cle].sha === sha) continue;
     // La branche est celle du moteur : une relivraison la remplace.
-    git(["--git-dir", depot, "push", "-q", "-f", urlDepot, `refs/heads/${branche}:refs/heads/${branche}`]);
+    try {
+      git(["--git-dir", depot, "push", "-q", "-f", urlDepot, `refs/heads/${branche}:refs/heads/${branche}`]);
+    } catch (err) {
+      const raison = String(err.stderr || err.message).trim().split("\n")[0];
+      if (livraison) store.majLivraison(livraison.runId, { statut: "failed", raison: `push vers GitHub refusé : ${raison}`, repo: projet.github });
+      journal(`${projet.id} : push de ${branche} refusé, retenté au prochain passage (${raison})`);
+      continue;
+    }
     const proprietaire = projet.github.split("/")[0];
     const ouvertes = await api("GET", `/repos/${projet.github}/pulls?state=open&head=${encodeURIComponent(`${proprietaire}:${branche}`)}`);
     let pr = Array.isArray(ouvertes) && ouvertes[0] ? ouvertes[0] : null;
     if (!pr) {
-      const runId = extraireRunId(git, depot, sha);
       const { titre, corps } = descriptionPR({ git, depot, projetId: projet.id, branche, runId: runId || branche });
       pr = await api("POST", `/repos/${projet.github}/pulls`, { title: titre, head: branche, base: parDefaut, body: corps });
       journal(`${projet.id} : PR #${pr.number} ouverte pour ${branche}`);
     }
+    if (livraison) {
+      store.majLivraison(livraison.runId, {
+        statut: "pr_open", raison: "PR ouverte, CI attendue", repo: projet.github,
+        pr: pr.number, prUrl: pr.html_url || null, headSha: sha,
+      });
+    }
     etat[cle] = { sha, pr: pr.number, le: new Date().toISOString() };
-    publiees.push({ branche, sha, pr: pr.number });
+    publiees.push({ branche, sha, pr: pr.number, runId: livraison ? livraison.runId : runId });
   }
   return { retour, publiees };
 }

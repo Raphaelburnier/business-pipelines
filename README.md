@@ -257,6 +257,21 @@ Qui peut livrer vit dans `specs/livraison.json` sur le NAS, jamais dans le dép�
 `specs/livraison.json.example`). Absent, personne ne livre. Le mot de passe sudo reste demandé à chaque
 fois : les agents fusionnent seuls, la mise en production reste une décision.
 
+### Le suivi des livraisons jusqu'à GitHub
+
+Un run « terminé » a fini de s'exécuter ; ses changements ne sont fusionnés que lorsque GitHub
+le dit. Le moteur enregistre la livraison de chaque run dans l'event store (table `deliveries` :
+commande, branche `agent/…`, SHA livré). À chaque passage, le publieur (`src/suivi-livraisons.js`)
+y ajoute la PR, la tête et la base, la CI, la correction après CI rouge (marqueurs du workflow
+`ci-autofix`) et le SHA de fusion. Le panneau d'un run affiche l'état de livraison à côté de
+l'état d'exécution : publication attendue, PR ouverte, CI en cours, fusion bloquée, fusionnée
+ou livraison échouée, avec la raison et les liens.
+
+Ce suivi survit à un redémarrage : le publieur repart des livraisons non finies, retrouve leur
+PR par son numéro ou par sa branche, et ne repousse jamais une branche déjà publiée, même si
+`etat/publications.json` est perdu. Une fusion bloquée reprend la règle de la fusion : une CI
+rouge, en cours, ou qui ne prouve pas le merge sur la base courante bloque.
+
 ## Ce qui a été retiré
 
 Le 2026-09-16, tout ce qui concernait eBay : les pipelines `veille-ebay`, `ajustement-prix`
