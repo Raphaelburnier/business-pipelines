@@ -1,0 +1,117 @@
+name: CI autofix
+
+# Quand la CI d'une PR d'agent échoue, Claude lit le log, corrige la branche et repousse.
+#
+# Garde-fous :
+#   - seulement les branches d'agents (claude/, codex/, agent/, automation/) du dépôt
+#     lui-même, jamais une PR venue d'un fork : ce job exécute le code de la branche avec
+#     un secret ;
+#   - une seule tentative par échec : le commit de correction porte [ci-autofix], et un
+#     échec sur un tel commit n'en relance pas d'autre, il laisse un commentaire ;
+#   - l'action pousse avec le jeton de l'app GitHub Claude, qui relance la CI (le
+#     GITHUB_TOKEN ne le ferait pas) ; la fusion reste celle d'agent-gated-merge.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: ci-autofix-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (startsWith(github.event.workflow_run.head_branch, 'claude/') ||
+       startsWith(github.event.workflow_run.head_branch, 'codex/') ||
+       startsWith(github.event.workflow_run.head_branch, 'agent/') ||
+       startsWith(github.event.workflow_run.head_branch, 'automation/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCHE: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+    steps:
+      - name: Find the pull request and decide
+        id: pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          numero="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCHE" --state open --json number,headRefOid \
+            --jq ".[] | select(.headRefOid == \"$SHA\") | .number" | head -n1)"
+          echo "numero=$numero" >> "$GITHUB_OUTPUT"
+          if [ -z "$numero" ]; then
+            echo "Pas de PR ouverte sur ce commit : la branche a avancé ou la PR est fermée."
+            echo "agir=non" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$MESSAGE" | grep -q '\[ci-autofix\]'; then
+            gh pr comment "$numero" --repo "$GITHUB_REPOSITORY" --body \
+              "La CI échoue encore après la correction automatique ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)). Pas de seconde tentative : à reprendre à la main."
+            echo "agir=non" >> "$GITHUB_OUTPUT"
+          else
+            echo "agir=oui" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the failing branch
+        if: steps.pr.outputs.agir == 'oui'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Collect the failed logs
+        if: steps.pr.outputs.agir == 'oui'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed \
+            | sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //' | tail -n 400 > "$RUNNER_TEMP/ci-echec.log"
+          wc -l "$RUNNER_TEMP/ci-echec.log"
+
+      - name: Set up Node
+        if: steps.pr.outputs.agir == 'oui'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Let Claude fix the branch
+        if: steps.pr.outputs.agir == 'oui'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Dépôt : ${{ github.repository }}. PR #${{ steps.pr.outputs.numero }}, branche ${{ github.event.workflow_run.head_branch }}.
+            Le workflow CI a échoué sur le commit ${{ github.event.workflow_run.head_sha }}.
+            Le log des étapes en échec est dans ${{ runner.temp }}/ci-echec.log.
+
+            1. Lis ce log et trouve la cause. Lis README.md, package.json et .github/workflows/ci.yml
+               pour savoir comment la CI installe et teste ce dépôt.
+            2. Corrige la cause dans le code ou dans les tests, sans désactiver ni supprimer de test
+               pour le faire passer, et sans toucher aux fichiers sensibles : .github/, AGENTS.md,
+               CLAUDE.md, CODEOWNERS, Dockerfile, docker-compose*, fichiers .env, migrations SQL,
+               scripts de déploiement.
+            3. Relance localement les tests concernés si l'installation le permet. Sinon, appuie-toi
+               sur le log : la CI repassera après ton push.
+            4. Commit sur cette branche avec un message conventionnel en anglais qui contient
+               [ci-autofix], par exemple « fix: align cockpit route test with codex backend [ci-autofix] »,
+               puis git push origin HEAD.
+            5. Laisse un commentaire court sur la PR : la cause et ce que tu as changé.
+
+            Si la correction exige une décision humaine, un secret ou un fichier sensible, ne pousse
+            rien : explique-le dans un commentaire sur la PR.
+          claude_args: |
+            --max-turns 40
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep
