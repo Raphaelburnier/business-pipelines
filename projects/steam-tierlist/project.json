@@ -15,13 +15,13 @@
   "github": "Raphaelburnier/steam_tierList",
   "pipelines": [
     {
-      "extends": "improve-app@5",
+      "extends": "improve-app@6",
       "spec": "improvement.json",
       "overrides": {
         "nodes": {}
       },
       "budget": {
-        "usdPerRun": 3,
+        "usdPerRun": 4,
         "usdPerMonth": 15
       }
     }

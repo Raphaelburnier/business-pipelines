@@ -13,6 +13,7 @@ import { naviguer } from "../navigation";
 import { SelecteurModele } from "./SelecteurModele";
 import { suivreCommande } from "../donnees/lancement";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
+import { BlocMotifs, BlocRevues } from "./RevuesRun";
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
@@ -246,7 +247,11 @@ function PanneauRun({ id }: { id: string }) {
         </div>
       )}
 
+      <BlocMotifs revues={run.revues} livraison={run.livraison} />
+
       {run.livraison && <BlocLivraison livraison={run.livraison} maintenant={maintenant} />}
+
+      <BlocRevues revues={run.revues} />
 
       <div>
         <Titre>Exécution</Titre>

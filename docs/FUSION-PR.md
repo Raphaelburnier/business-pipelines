@@ -50,6 +50,37 @@ dernière lecture reste une limite de GitHub. Cette validation ne remplace pas u
 protection de branche sur GitHub Free privé.
 [Contrat REST de fusion](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request).
 
+## Preuves de tests et de revue des PR d'agent
+
+Une PR ouverte par le publieur pour un run (branche `agent/…`) porte une livraison dans
+l'event store. Quand le pipeline a des juges, cette livraison garde une attestation :
+l'arbre Git que le superviseur du moteur a testé et fait relire, les reviewers réellement
+employés (agent, runtime, modèle, session) et leur verdict. Voir `docs/REVUE-INDEPENDANTE.md`
+dans agent-orchestrator.
+
+À chaque passage, le publieur lit l'arbre du commit de tête sur GitHub (`git/commits/<sha>`)
+et applique `raisonPreuvesFusion` du moteur :
+
+- tête dont l'arbre n'est pas l'arbre attesté (correction ci-autofix, push manuel) : fusion
+  refusée, y compris sur un clic. Le publieur dépose la tête dans le dépôt du NAS
+  (`refs/orch/pr-heads/<run>`) et crée une commande `run.reverify`, une seule par tête. Le
+  runner rejoue tests et revues obligatoires sur cet arbre ; la correction bornée du
+  pipeline s'applique si une revue ou un test échoue ;
+- livraison sans tests ni revue attestés (pipelines d'avant `improve-app@6`, runs anciens) :
+  fusion explicite depuis le cockpit seulement ;
+- preuves valides, CI verte sur le merge exact, aucune conversation ouverte, aucun fichier
+  sensible : le publieur fusionne lui-même en squash, avec le SHA de tête vérifié
+  (`PUBLIEUR_FUSION_AUTO=0` laisse toutes les fusions au clic) ;
+- preuves valides mais fichiers sensibles : décision de Raphaël dans le cockpit.
+
+Le contrôle est refait juste avant le PUT, sur le SHA exact : un clic ne peut pas fusionner
+une tête que tests et revues n'ont pas couverte. Après une revérification, le publieur ne
+pousse jamais en force : si le moteur livre un nouveau commit, il descend de la correction
+et part en avance rapide.
+
+Le workflow `agent-gated-merge.yml` d'un dépôt de projet ne voit pas ces preuves. Il ne doit
+donc pas fusionner les branches `agent/` : elles sont laissées au publieur.
+
 ## Mise en service
 
 1. Fusionner explicitement les PR du moteur et du registre, puis celle du cockpit :

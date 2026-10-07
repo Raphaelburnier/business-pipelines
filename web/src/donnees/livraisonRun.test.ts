@@ -18,6 +18,7 @@ const base: LivraisonRun = {
   ciUrl: "https://github.com/moi/steam/actions/runs/1",
   correction: { etat: "escaladee", echecSha: null, correctionSha: null, url: "https://github.com/moi/steam/pull/7#c" },
   mergeSha: "f".repeat(40),
+  attestation: null,
   finale: true,
   majLe: "2026-10-06T18:00:00Z",
   relueLe: "2026-10-06T18:00:00Z",

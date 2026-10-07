@@ -2,6 +2,7 @@
 // le publieur, sans rien deviner : une raison absente est une raison que GitHub n'a pas donnée.
 import { CLASSES_TON, depuis } from "../format";
 import { liensLivraison, motCorrection, motLivraison, tonLivraison } from "../donnees/livraisonRun";
+import { resumeAttestation } from "../donnees/revues";
 import type { LivraisonRun as Livraison, StatutLivraison } from "../types";
 import { Titre } from "../ui";
 
@@ -27,6 +28,9 @@ export function BlocLivraison({ livraison: l, maintenant }: { livraison: Livrais
         </div>
         {l.raison && <p className="mt-1">{l.raison}</p>}
         {l.correction && <p className="mt-1 text-[12px] text-douce">{motCorrection(l.correction)}</p>}
+        <p className="mt-1 font-mono text-[11px] text-douce" title="Arbre testé et revu par le superviseur ; la fusion exige qu'il soit celui de la tête">
+          {l.attestation ? resumeAttestation(l.attestation) : "aucune preuve attestée : fusion explicite seulement"}
+        </p>
         <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-[11px] text-douce">
           <span title="Branche et commit livrés par le run">
             {l.branche} @ {l.deliverySha.slice(0, 7)}

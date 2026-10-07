@@ -90,6 +90,7 @@ function runFige(t0: number): RunDetaille[] {
       approbations: [],
       dernierEvenementId: 0,
       livraison: null,
+    revues: [],
     },
     {
       id: "run-quota",
@@ -113,6 +114,7 @@ function runFige(t0: number): RunDetaille[] {
       approbations: [],
       dernierEvenementId: 0,
       livraison: null,
+    revues: [],
     },
     {
       id: "run-echec",
@@ -132,6 +134,7 @@ function runFige(t0: number): RunDetaille[] {
       approbations: [],
       dernierEvenementId: 0,
       livraison: null,
+    revues: [],
     },
     {
       id: "run-pause",
@@ -148,6 +151,7 @@ function runFige(t0: number): RunDetaille[] {
       approbations: [],
       dernierEvenementId: 0,
       livraison: null,
+    revues: [],
     },
   ];
 }
@@ -237,6 +241,7 @@ export function etatA(t0: number, ecoule: number): EtatMaquette {
     approbations,
     dernierEvenementId: 0,
     livraison: null,
+    revues: [],
   };
   const runs = [rejoue, ...runFige(t0)];
 

@@ -34,7 +34,7 @@ function projet(projectId) {
 
 // `reprendre` relance le run arrêté dans son propre dossier de travail (`--resume`), avec
 // les mêmes choix de modèle.
-function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false, commandId = null, runId = null } = {}) {
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false, commandId = null, runId = null, reverifier = null } = {}) {
   const fichier = projet(projectId);
   // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
   // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
@@ -51,6 +51,7 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre
   if (reprendre) args.push("--resume");
   if (commandId) args.push("--command-id", commandId);
   if (runId) args.push("--run-id", runId);
+  if (reverifier) args.push("--reverifier", reverifier);
   for (const [noeud, llm] of Object.entries(llmOverrides || {})) {
     args.push("--llm", `${noeud}=${llm.via}:${llm.model}`);
   }
@@ -182,8 +183,19 @@ function orientationRoutee(lancement, nodeId) {
   }
 }
 
+// Une PR corrigée hors du run (CI autofix) : tests et revues obligatoires repassent sur sa
+// tête, avec les modèles de la commande qui a lancé le run.
+async function reverifier(store, commande) {
+  const { runId, headSha } = commande.payload;
+  const run = store.run(runId);
+  if (!run) throw new Error(`run inconnu : ${runId}`);
+  const resultat = await lancer(lancementDe(store, run), { runId, reverifier: headSha });
+  return issue(resultat, { runId, headSha });
+}
+
 async function executerRun(store, commande) {
   if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande);
+  if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancer(commande.payload, { commandId: commande.id });
   return issue(resultat, { runId: store.commande(commande.id)?.run_id || null });
 }
@@ -223,13 +235,13 @@ async function demarrer() {
   const store = new EventStore(STORE);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
-  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "approval.decide", "chat.respond"] });
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "approval.decide", "run.reverify", "chat.respond"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
       ouvrirMaitre(store),
       // Les décisions passent dans la file des runs pour conserver la concurrence de quota.
-      boucle(store, ["run.start", "approval.decide"], (commande) => executerRun(store, commande)),
+      boucle(store, ["run.start", "approval.decide", "run.reverify"], (commande) => executerRun(store, commande)),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {

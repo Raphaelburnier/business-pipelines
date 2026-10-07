@@ -164,9 +164,32 @@ function descriptionPR({ git, depot, projetId, branche, runId }) {
     "",
     `## Verdict du pipeline : ${verdict && verdict.verdict ? verdict.verdict : "inconnu"}`,
     "",
+    ...sectionRevues({ git, depot, runId }),
     `La trace complète (plan, rapports) reste sur la branche \`run/${runId}\` du dépôt du NAS.`,
   ].join("\n");
   return { titre, corps };
+}
+
+// Les revues indépendantes conservées par le superviseur sur la branche du run.
+function sectionRevues({ git, depot, runId }) {
+  let fichiers = [];
+  try {
+    fichiers = git(["--git-dir", depot, "ls-tree", "--name-only", `run/${runId}:.orchestrator/revues`]).split("\n").filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const lignes = [];
+  for (const f of fichiers) {
+    try {
+      const r = JSON.parse(git(["--git-dir", depot, "show", `run/${runId}:.orchestrator/revues/${f}`]));
+      const c = r.counts || {};
+      lignes.push(`- \`${r.node}\` : ${r.agentRef} sur ${r.via}:${r.model}, ${r.verdict}, P0 ${c.P0 || 0} / P1 ${c.P1 || 0} / P2 ${c.P2 || 0} / P3 ${c.P3 || 0}, arbre \`${String(r.treeSha).slice(0, 12)}\``);
+      for (const x of (r.report?.unverified || []).slice(0, 5)) lignes.push(`  - non vérifié : ${x}`);
+    } catch {
+      lignes.push(`- ${f} : illisible`);
+    }
+  }
+  return lignes.length ? ["## Revues indépendantes", ...lignes, ""] : [];
 }
 
 /**
@@ -215,6 +238,18 @@ async function publierProjet({ projet, git, api, urlDepot, etat, store = null, j
     // qui effacerait sur GitHub une correction poussée par ci-autofix.
     const livraison = store ? suivi.livraisonDeBranche({ store, projet, branche, sha, runId }) : null;
     if (livraison && livraison.deliverySha === sha && (livraison.finishedAt || livraison.pr)) {
+      // Une revérification après correction de CI peut livrer un commit qui descend de la tête
+      // de la PR : il part en avance rapide, jamais en force, et la correction reste.
+      const avance = livraison.pr && !livraison.finishedAt && livraison.headSha && livraison.headSha !== sha && descend({ git, depot, de: livraison.headSha, sha });
+      if (avance) {
+        try {
+          git(["--git-dir", depot, "push", "-q", urlDepot, `refs/heads/${branche}:refs/heads/${branche}`]);
+          store.majLivraison(livraison.runId, { statut: "pr_open", raison: "revérification livrée, CI attendue", headSha: sha });
+          journal(`${projet.id} : ${branche} avancée à ${sha.slice(0, 7)} après revérification`);
+        } catch (err) {
+          journal(`${projet.id} : avance de ${branche} refusée (${String(err.stderr || err.message).trim().split("\n")[0]})`);
+        }
+      }
       etat[cle] = { sha, pr: livraison.pr, le: new Date().toISOString() };
       continue;
     }
@@ -248,6 +283,33 @@ async function publierProjet({ projet, git, api, urlDepot, etat, store = null, j
   return { retour, publiees };
 }
 
+// `sha` descend-il strictement de `de` dans le dépôt du NAS ?
+function descend({ git, depot, de, sha }) {
+  try {
+    git(["--git-dir", depot, "merge-base", "--is-ancestor", de, sha]);
+    return de !== sha;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Dépose la tête d'une PR corrigée hors du run dans le dépôt du NAS, puis demande au runner
+ * de rejouer tests et revues sur son arbre. Une seule demande par tête.
+ * @param {{ git: Function, store: any, projet: { id: string, repo: string }, urlDepot: string,
+ *   livraison: any, headSha: string, journal?: (l: string) => void }} opts
+ */
+function demanderReverification({ git, store, projet, urlDepot, livraison, headSha, journal = () => {} }) {
+  const ref = `refs/orch/pr-heads/${livraison.runId}`;
+  git(["--git-dir", projet.repo, "fetch", "-q", urlDepot, `+refs/heads/${livraison.branche}:${ref}`]);
+  const lu = git(["--git-dir", projet.repo, "rev-parse", ref]);
+  // La branche a encore bougé depuis le relevé : le passage suivant verra la nouvelle tête.
+  if (lu !== headSha) return null;
+  const { commande, nouvelle } = store.demanderReverification({ runId: livraison.runId, headSha });
+  if (nouvelle) journal(`livraison ${livraison.runId.slice(0, 8)} : tête ${headSha.slice(0, 7)} hors du run, tests et revues redemandés`);
+  return commande;
+}
+
 // Le run d'origine, lu dans les messages des commits du moteur : « [run <id>] … ».
 function extraireRunId(git, depot, sha) {
   const messages = git(["--git-dir", depot, "log", "-20", "--format=%s", sha]);
@@ -279,6 +341,7 @@ module.exports = {
   tenirMiroir,
   descriptionPR,
   publierProjet,
+  demanderReverification,
   lireEtat,
   ecrireEtat,
 };

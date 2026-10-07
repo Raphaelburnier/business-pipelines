@@ -6,7 +6,7 @@
     { "id": "hugo", "nom": "Hugo", "role": "Dev backend", "famille": "codex", "llm": { "via": "codex", "model": "gpt-5.6-terra:medium" }, "registre": ["backend-builder"], "budgetMensuelUsd": null },
     { "id": "sacha", "nom": "Sacha", "role": "Refactor et édition de code", "famille": "codex", "llm": { "via": "codex", "model": "gpt-5.6-terra:medium" }, "registre": ["code-editor", "improvement-editor"], "budgetMensuelUsd": null },
     { "id": "nora", "nom": "Nora", "role": "Design system et UX", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["design-system"], "budgetMensuelUsd": 30 },
-    { "id": "theo", "nom": "Théo", "role": "Relecteur de code", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["style-reviewer", "code-analyst"], "budgetMensuelUsd": 30 },
+    { "id": "theo", "nom": "Théo", "role": "Relecteur de code", "famille": "claude", "llm": { "via": "claude", "model": "sonnet" }, "registre": ["code-reviewer", "style-reviewer", "code-analyst"], "budgetMensuelUsd": 30 },
     { "id": "ines", "nom": "Inès", "role": "Testeuse", "famille": "codex", "llm": { "via": "codex", "model": "gpt-5.6-terra:medium" }, "registre": ["test-verifier", "coverage-auditor"], "budgetMensuelUsd": null },
     { "id": "yanis", "nom": "Yanis", "role": "Sécurité", "famille": "claude", "llm": { "via": "claude", "model": "opus" }, "registre": ["security-reviewer"], "budgetMensuelUsd": 30 },
     { "id": "basile", "nom": "Basile", "role": "Enquêteur de bugs", "famille": "codex", "llm": { "via": "codex", "model": "gpt-5.6-terra:high" }, "registre": ["bug-reproducer", "bug-diagnoser"], "budgetMensuelUsd": null },

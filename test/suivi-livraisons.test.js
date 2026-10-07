@@ -65,6 +65,7 @@ function monde() {
     commentaires: [],
     commits: [],
     appels: [],
+    arbres: {},
   };
   const page = (liste, url) => {
     const n = Number(url.searchParams.get("page") || 1);
@@ -104,6 +105,16 @@ function monde() {
       return { total_count: 1, jobs: page(jobs, url) };
     }
     if (methode === "GET" && route === `/repos/${DEPOT}/git/commits/${MERGE}`) return { sha: MERGE, parents: [{ sha: m.ci.base }, { sha: m.pr.head.sha }] };
+    if (methode === "GET" && route.startsWith(`/repos/${DEPOT}/git/commits/`)) {
+      const sha = route.split("/").at(-1);
+      if (!m.arbres[sha]) throw new Error(`GitHub GET ${chemin} : 404`);
+      return { sha, tree: { sha: m.arbres[sha] } };
+    }
+    if (methode === "PUT" && route === `/repos/${DEPOT}/pulls/7/merge`) {
+      assert.strictEqual(corps.sha, m.pr.head.sha);
+      Object.assign(m.pr, { state: "closed", merged_at: "2026-10-07T12:00:00Z", merge_commit_sha: FUSION });
+      return { merged: true, sha: FUSION };
+    }
     if (methode === "POST" && route === "/graphql") return { data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } } } };
     throw new Error(`appel inattendu : ${methode} ${chemin}`);
   };
@@ -171,12 +182,13 @@ test("critère de réussite : une livraison suivie jusqu'à la fusion, à traver
   await assert.rejects(() => pullRequests.fusionner({ api: gh.api, demande: { depot: DEPOT, numero: 7, sha: reprise, baseSha: BASE } }), /base a bougé/);
   assert.ok(!gh.appels.some((a) => a.methode === "PUT"), "aucune fusion tentée");
 
-  // Nouvelle CI sur la base courante : prête.
+  // Nouvelle CI sur la base courante : les gates passent, mais ce run n'a ni tests ni revue
+  // attestés par le superviseur. Il attend un clic.
   gh.ci = { conclusion: "success", base: BASE_AVANCEE };
   await suivi.suivreLivraisons({ api: gh.api, store, projets: [f.projet] });
   l = store.livraison(f.runId);
-  assert.strictEqual(l.statut, "pr_open");
-  assert.match(l.raison, /prête à fusionner/);
+  assert.strictEqual(l.statut, "merge_blocked");
+  assert.match(l.raison, /aucune preuve de tests ni de revue attestée : fusion explicite requise/);
   assert.strictEqual(l.baseSha, BASE_AVANCEE);
 
   // Fusion confirmée par GitHub : elle remonte au run.
@@ -190,7 +202,7 @@ test("critère de réussite : une livraison suivie jusqu'à la fusion, à traver
   assert.strictEqual(fusion.payload.mergeSha, FUSION);
   assert.deepStrictEqual(
     evenements(store, f.runId).map((e) => e.type),
-    ["delivery.pending", "delivery.pr_open", "delivery.ci_running", "delivery.merge_blocked", "delivery.failed", "delivery.merge_blocked", "delivery.pr_open", "delivery.merged"]
+    ["delivery.pending", "delivery.pr_open", "delivery.ci_running", "delivery.merge_blocked", "delivery.failed", "delivery.merge_blocked", "delivery.merge_blocked", "delivery.merged"]
   );
 
   // L'API du cockpit montre la livraison, dans la forme décrite par le moteur.
@@ -263,4 +275,113 @@ test("les marqueurs ci-autofix : transmise, poussée, escaladée", () => {
   assert.deepStrictEqual(suivi.correctionDe({ commentaires: transmis, commits: avecFix, tete: fix }), { etat: "poussee", echecSha: echec, correctionSha: fix, url: "f" });
   const escalade = [...transmis, { body: "La CI échoue encore après la correction automatique (run).", html_url: "e" }];
   assert.strictEqual(suivi.correctionDe({ commentaires: escalade, commits: avecFix, tete: fix }).etat, "escaladee");
+});
+
+
+// Une livraison attestée comme le moteur la fait : l'arbre du commit livré a été testé et revu.
+function attester(f, store, sha, dir) {
+  const treeSha = g(dir, "rev-parse", `${sha}^{tree}`);
+  store.ouvrirLivraison({ runId: f.runId, branche: f.livraison.branche, sha, repo: DEPOT, attestation: {
+    version: 1, treeSha, deliverySha: sha, tests: { sourceSha: sha, nodes: [{ node: "verify" }] },
+    reviews: [{ node: "review", agentRef: "code-reviewer@1", via: "claude", model: "opus", sessionId: "rev-1", verdict: "PASS" }], reviewRequired: true } });
+  return treeSha;
+}
+
+test("preuves jusqu'à la fusion : correction de CI, revérification, puis fusion automatique", async () => {
+  const f = monter();
+  const travail = path.join(f.racine, "travail");
+  const gh = monde();
+  gh.tete = f.livraison.sha;
+  gh.arbres[f.livraison.sha] = attester(f, f.store, f.livraison.sha, travail);
+  await publieur.publierProjet({ projet: f.projet, git, api: gh.api, urlDepot: f.github, etat: {}, store: f.store });
+
+  // La CI échoue, ci-autofix pousse une correction sur la branche agent/ de GitHub.
+  const clone = path.join(f.racine, "autofix");
+  execFileSync("git", ["clone", "-q", "-b", f.livraison.branche, f.github, clone]);
+  g(clone, "config", "user.email", "ci@l"); g(clone, "config", "user.name", "ci");
+  fs.writeFileSync(path.join(clone, "app.txt"), "v2 corrigé\n");
+  g(clone, "commit", "-qam", "fix: test [ci-autofix]");
+  g(clone, "push", "-q", "origin", f.livraison.branche);
+  const tete = g(clone, "rev-parse", "HEAD");
+  gh.pr.head.sha = tete;
+  gh.arbres[tete] = g(clone, "rev-parse", "HEAD^{tree}");
+  gh.ci = { conclusion: "success", base: BASE };
+
+  const demandes = [];
+  const fusions = [];
+  const reverifier = async ({ livraison, headSha }) => demandes.push(publieur.demanderReverification({ git, store: f.store, projet: f.projet, urlDepot: f.github, livraison, headSha }));
+  const fusionnerAuto = async (a) => fusions.push(a);
+  await suivi.suivreLivraisons({ api: gh.api, store: f.store, projets: [f.projet], reverifier, fusionnerAuto });
+  await suivi.suivreLivraisons({ api: gh.api, store: f.store, projets: [f.projet], reverifier, fusionnerAuto });
+  let l = f.store.livraison(f.runId);
+  assert.strictEqual(l.statut, "merge_blocked");
+  assert.match(l.raison, /preuves périmées .* revérification nécessaire/);
+  assert.strictEqual(fusions.length, 0, "aucune fusion automatique sur une tête non revue");
+  assert.strictEqual(demandes.length, 2);
+  assert.strictEqual(demandes[0].id, demandes[1].id, "une seule commande par tête");
+  assert.deepStrictEqual(demandes[0].payload, { runId: f.runId, headSha: tete });
+  assert.strictEqual(g(f.projet.repo, "rev-parse", `refs/orch/pr-heads/${f.runId}`), tete, "la tête est déposée sur le NAS pour le runner");
+
+  // Un clic du cockpit sur cette tête est refusé avant tout PUT.
+  const verifier = (strict) => async ({ depot, numero, sha }) => {
+    const p = await suivi.preuvesDe({ api: gh.api, depot, livraison: f.store.livraisons({ enCours: true }).find((x) => x.pr === numero), sha });
+    return p && (strict || !p.expliciteAutorise) ? p.raison : null;
+  };
+  await assert.rejects(() => pullRequests.fusionner({ api: gh.api, demande: { depot: DEPOT, numero: 7, sha: tete, baseSha: BASE }, verifierPreuves: verifier(false) }), /preuves périmées/);
+  assert.ok(!gh.appels.some((a) => a.methode === "PUT"));
+
+  // Le moteur rejoue tests et revues sur la tête importée ; sans changement, il la livre telle quelle.
+  checkpoints.importerTete({ dir: travail, runId: f.runId, sha: tete, livre: f.livraison.sha, fichiers: ["improvement-plan.json"] });
+  const relivree = checkpoints.livrer({ dir: travail, runId: f.runId, projetId: "steam-tierlist", fichiers: ["improvement-plan.json"], tete });
+  assert.strictEqual(relivree.sha, tete);
+  attester(f, f.store, tete, travail);
+  const pousses = gh.appels.length;
+  await publieur.publierProjet({ projet: f.projet, git, api: gh.api, urlDepot: f.github, etat: {}, store: f.store });
+  assert.strictEqual(g(f.github, "rev-parse", `refs/heads/${f.livraison.branche}`), tete, "la correction reste la tête de la PR");
+  assert.ok(!gh.appels.slice(pousses).some((a) => a.methode === "POST"), "aucune seconde PR");
+  await suivi.suivreLivraisons({ api: gh.api, store: f.store, projets: [f.projet], reverifier, fusionnerAuto });
+  l = f.store.livraison(f.runId);
+  assert.strictEqual(l.statut, "pr_open");
+  assert.match(l.raison, /prête à fusionner .* tests et revues sur cet arbre/);
+  assert.strictEqual(fusions.length, 1);
+  assert.strictEqual(fusions[0].detail.sha, tete);
+  const fusion = await pullRequests.fusionner({ api: gh.api, demande: { depot: DEPOT, numero: 7, sha: tete, baseSha: BASE }, verifierPreuves: verifier(true) });
+  assert.strictEqual(fusion.fusionnee, true);
+  await suivi.suivreLivraisons({ api: gh.api, store: f.store, projets: [f.projet] });
+  l = f.store.livraison(f.runId);
+  assert.deepStrictEqual([l.statut, l.mergeSha], ["merged", FUSION]);
+  const vue = lecture.run(f.store, f.runId);
+  cockpit.runDetaille.parse(vue);
+  assert.strictEqual(vue.livraison.attestation.arbre, gh.arbres[tete]);
+  assert.deepStrictEqual(vue.livraison.attestation.revues[0].llm, { via: "claude", model: "opus" });
+});
+
+test("une revérification qui corrige encore part en avance rapide, sans écraser la correction de CI", async () => {
+  const f = monter();
+  const travail = path.join(f.racine, "travail");
+  const gh = monde();
+  gh.tete = f.livraison.sha;
+  attester(f, f.store, f.livraison.sha, travail);
+  await publieur.publierProjet({ projet: f.projet, git, api: gh.api, urlDepot: f.github, etat: {}, store: f.store });
+  const clone = path.join(f.racine, "autofix");
+  execFileSync("git", ["clone", "-q", "-b", f.livraison.branche, f.github, clone]);
+  g(clone, "config", "user.email", "ci@l"); g(clone, "config", "user.name", "ci");
+  fs.writeFileSync(path.join(clone, "app.txt"), "v2 corrigé\n");
+  g(clone, "commit", "-qam", "fix [ci-autofix]");
+  g(clone, "push", "-q", "origin", f.livraison.branche);
+  const tete = g(clone, "rev-parse", "HEAD");
+  gh.pr.head.sha = tete;
+  f.store.majLivraison(f.runId, { headSha: tete });
+  publieur.demanderReverification({ git, store: f.store, projet: f.projet, urlDepot: f.github, livraison: f.store.livraison(f.runId), headSha: tete });
+  // Revue FAIL puis correction dans le run : un nouveau commit au-dessus de la tête importée.
+  checkpoints.importerTete({ dir: travail, runId: f.runId, sha: tete, livre: f.livraison.sha, fichiers: ["improvement-plan.json"] });
+  fs.writeFileSync(path.join(travail, "app.txt"), "v3 revu\n");
+  g(travail, "commit", "-qam", `[run ${f.runId}] step implement`);
+  const nouvelle = checkpoints.livrer({ dir: travail, runId: f.runId, projetId: "steam-tierlist", fichiers: ["improvement-plan.json"], tete });
+  assert.notStrictEqual(nouvelle.sha, tete);
+  attester(f, f.store, nouvelle.sha, travail);
+  await publieur.publierProjet({ projet: f.projet, git, api: gh.api, urlDepot: f.github, etat: {}, store: f.store });
+  assert.strictEqual(g(f.github, "rev-parse", `refs/heads/${f.livraison.branche}`), nouvelle.sha);
+  execFileSync("git", ["merge-base", "--is-ancestor", tete, nouvelle.sha], { cwd: f.github });
+  assert.strictEqual(f.store.livraison(f.runId).headSha, nouvelle.sha);
 });
