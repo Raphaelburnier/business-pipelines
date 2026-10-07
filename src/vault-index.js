@@ -10,8 +10,9 @@
 
 // Ce que le conseiller a le droit de lire. `notes/` est le savoir technique, `wiki/` en est
 // dérivé, `_context/projects/` et `_context/memory/` portent les décisions et l'état des
-// projets. Le reste de `_context/` (profil, préférences) n'aide pas à juger un dossier.
-const PERIMETRE = ["notes/", "wiki/", "_context/projects/", "_context/memory/"];
+// projets, `_context/PROJECTS.md` les résume tous. Le reste de `_context/` (profil,
+// préférences) n'aide pas à juger un dossier.
+const PERIMETRE = ["notes/", "wiki/", "_context/projects/", "_context/memory/", "_context/PROJECTS.md"];
 
 // Au-delà, un fichier est un export ou une pièce jointe, pas une note.
 const TAILLE_MAX = 200_000;
@@ -271,7 +272,10 @@ function rechercher(db, texte, { limite = 6 } = {}) {
   if (!requete) return [];
   const lignes = db
     .prepare(
-      `SELECT chemin, titre, texte, bm25(vault_sections, 0, 3.0, 2.0, 1.0) AS score
+      // bm25 est négatif, plus bas vaut mieux. `wiki/` est dérivé de `notes/` : sa pertinence
+      // est divisée par deux, pour qu'une page générique ne passe pas devant `_context/`.
+      `SELECT chemin, titre, texte,
+              bm25(vault_sections, 0, 3.0, 2.0, 1.0) * CASE WHEN chemin LIKE 'wiki/%' THEN 0.5 ELSE 1.0 END AS score
        FROM vault_sections WHERE vault_sections MATCH ? ORDER BY score LIMIT ?`
     )
     .all(requete, limite * 4);
