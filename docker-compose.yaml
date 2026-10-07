@@ -35,6 +35,8 @@ services:
       # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
       - ./etat:/app/etat
       - ./projects:/app/projects:ro
+      # Préparer les missions depuis les profils et pipelines du registre livré.
+      - ./agent-registry:/app/agent-registry:ro
       # Profils, références et jobs en cours.
       - ${AI_STUDIO_WORK_PATH:-./ai-studio-data}:/data/ai-studio-work
       # Seules les générations terminées et validées sont archivées ici.
@@ -44,6 +46,7 @@ services:
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_REGISTRE=/app/agent-registry
       - ORCH_MACHINE=nas
       - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute,codex
       # Le nom du NAS dans le tailnet, pas celui du poste.

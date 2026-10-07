@@ -34,8 +34,8 @@ function projet(projectId) {
 
 // `reprendre` relance le run arrêté dans son propre dossier de travail (`--resume`), avec
 // les mêmes choix de modèle.
-function lancer({ projectId, pipelineIndex = 0, llmOverrides = {} }, { reprendre = false, commandId = null, runId = null, reverifier = null } = {}) {
-  const fichier = projet(projectId);
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = null }, { reprendre = false, commandId = null, runId = null, reverifier = null } = {}) {
+  const fichier = mission ? path.join(PROJETS, projectId, "project.json") : projet(projectId);
   // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
   // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
   const args = [
@@ -175,7 +175,7 @@ async function deciderEtReprendre(store, commande) {
 // doute (registre illisible), on répond oui : mieux vaut un tour de moins qu'un tour en double.
 function orientationRoutee(lancement, nodeId) {
   try {
-    const { pipeline } = registre.resoudreProjet(projet(lancement.projectId), { index: lancement.pipelineIndex });
+    const pipeline = lancement.mission?.resolution.pipeline || registre.resoudreProjet(projet(lancement.projectId), { index: lancement.pipelineIndex }).pipeline;
     return (pipeline.edges || []).some((e) => e.from === nodeId && (!e.on || e.on === "oriented"));
   } catch (err) {
     console.error(`registre illisible, pas de nouveau tour : ${err.message}`);

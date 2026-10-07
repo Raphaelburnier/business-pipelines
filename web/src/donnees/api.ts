@@ -106,6 +106,10 @@ export function sourceApi(): Source {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", corps);
       return reponse.commande;
     },
+    preparerMission: (projectId, index) => lire(`/api/projects/${encodeURIComponent(projectId)}/mission?pipeline=${index}`),
+    async lancerMission(demande) {
+      return (await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", demande)).commande;
+    },
     commande: async (id) => (await lire<{ commande: Commande }>(`/api/commands/${encodeURIComponent(id)}`)).commande,
     livraison: () => lire<ReponseLivraison>("/api/livraison"),
     async livrer(cible) {

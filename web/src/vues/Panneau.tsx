@@ -6,12 +6,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, mot, usd } from "../format";
-import type { Etape, EtapeAvecOutils, Llm, RunDetaille, RunDetailleAvecOutils } from "../types";
+import type { Etape, EtapeAvecOutils, RunDetaille, RunDetailleAvecOutils } from "../types";
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
-import { SelecteurModele } from "./SelecteurModele";
-import { suivreCommande } from "../donnees/lancement";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
 
@@ -39,37 +37,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
   const topo = useCharge((s) => s.topologie(), []);
   const runs = useCharge((s) => s.runs({ project: id, limite: 5 }), [id]);
   const projet = topo.donnees?.projets.find((p) => p.id === id);
-  const [lancement, setLancement] = useState<"idle" | "sending" | "sent">("idle");
-  const [erreurLancement, setErreurLancement] = useState<string | null>(null);
-  const [commandeId, setCommandeId] = useState<string | null>(null);
-  const [llm, setLlm] = useState<Llm | null>(null);
   const [executionRecente, setExecutionRecente] = useState<{ agents: string[]; outils: string[]; etapes: string[] }>({ agents: [], outils: [], etapes: [] });
-
-  useEffect(() => {
-    setCommandeId(null);
-    setLancement("idle");
-    setErreurLancement(null);
-  }, [id]);
-
-  useEffect(() => {
-    if (!commandeId) return;
-    return suivreCommande(source, commandeId, {
-      surCommande: (commande) => {
-        if (commande.statut === "refused") {
-          setLancement("idle");
-          setErreurLancement(commande.resultat?.raison || "Le lancement a été refusé.");
-        } else if (commande.run) {
-          setLancement("idle");
-          setErreurLancement(null);
-          onSelection({ type: "run", id: commande.run });
-        } else if (commande.statut === "done") {
-          setLancement("idle");
-          setErreurLancement("Le lancement s'est terminé sans run associé.");
-        }
-      },
-      surErreur: (erreur) => setErreurLancement(`Suivi momentanément indisponible : ${erreur.message}`),
-    });
-  }, [commandeId, source, onSelection]);
 
   useEffect(() => {
     let abandonnee = false;
@@ -95,19 +63,6 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
 
     return () => { abandonnee = true; };
   }, [runs.donnees, source]);
-
-  async function lancer(pipelineIndex: number) {
-    setLancement("sending");
-    setErreurLancement(null);
-    try {
-      const commande = await source.lancerRun(id, pipelineIndex, llm);
-      setCommandeId(commande.id);
-      setLancement("sent");
-    } catch (err) {
-      setLancement("idle");
-      setErreurLancement(err instanceof Error ? err.message : String(err));
-    }
-  }
 
   if (topo.erreur) return <Erreur>{topo.erreur}</Erreur>;
   if (!topo.donnees) return <p className="text-sm text-douce">Lecture du projet…</p>;
@@ -161,23 +116,8 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
       )}
       {projet.aFiche && projet.pipelines.length > 0 && (
         <div>
-          <Titre>Lancer</Titre>
-          <div className="flex flex-col gap-2">
-            <SelecteurModele choix={llm} onChoix={setLlm} desactive={lancement !== "idle"} />
-            {projet.pipelines.map((pipeline, index) => (
-              <button
-                key={`${pipeline}:${index}`}
-                type="button"
-                disabled={lancement === "sending" || lancement === "sent"}
-                onClick={() => lancer(index)}
-                className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-sur-accent disabled:opacity-60"
-              >
-                {lancement === "sending" ? "Envoi…" : lancement === "sent" ? "Run demandé" : `Lancer ${pipeline}`}
-              </button>
-            ))}
-          </div>
-          {lancement === "sent" && <p className="mt-1 text-xs text-ok">Commande mise en file. Le run s’ouvrira dès son démarrage.</p>}
-          {erreurLancement && <Erreur>{erreurLancement}</Erreur>}
+          <Titre>Lancer une mission</Titre>
+          <a href={`/missions/${encodeURIComponent(id)}`} className="block rounded-lg bg-accent px-3 py-2 text-center text-sm font-semibold text-sur-accent">Choisir l'équipe et l'objectif</a>
         </div>
       )}
       <div>
@@ -230,6 +170,18 @@ function PanneauRun({ id }: { id: string }) {
           <span title="Sur abonnement, un équivalent API, pas une dépense">{usd(run.coutEquivalentUsd)} équivalent</span>
         </div>
       </div>
+
+      {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
+        <Titre>Mission</Titre>
+        <p className="whitespace-pre-wrap">{run.mission.objectif}</p>
+        <ul className="mt-2 list-disc pl-5">{run.mission.criteres.map((c, i) => <li key={i}>{c}</li>)}</ul>
+        <p className="mt-2 text-xs text-douce">{run.mission.participants.map((p) => `${p.nom} (${p.noeud}, ${p.llm.via}:${p.llm.model})`).join(" · ")}</p>
+        <details className="mt-2"><summary className="cursor-pointer text-xs">Spec et directives conservées</summary>
+          <p className="mt-2 whitespace-pre-wrap">{run.mission.document || "Aucune spec détaillée."}</p>
+          {run.mission.directives && <p className="mt-2 whitespace-pre-wrap">Directives : {run.mission.directives}</p>}
+          {run.mission.exclusions && <p className="mt-2 whitespace-pre-wrap">Hors périmètre : {run.mission.exclusions}</p>}
+        </details>
+      </div>}
 
       {run.approbations.length > 0 && (
         <div className="rounded-lg border-l-4 border-alerte bg-alerte-fond p-2 text-sm">

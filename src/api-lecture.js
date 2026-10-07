@@ -80,6 +80,7 @@ function run(store, runId) {
   const brut = store.run(runId);
   if (!brut) return null;
   const derniers = store.evenements({ runId });
+  const contratMission = store.commandeLancementRun(runId)?.payload.mission;
   const outilsParEtape = new Map();
   for (const evenement of derniers) {
     const outils = evenement.payload && evenement.payload.outils;
@@ -90,6 +91,7 @@ function run(store, runId) {
   }
   return {
     ...ligneRun(store, brut),
+    ...(contratMission ? { mission: require("agent-orchestrator/src/mission").vue(contratMission) } : {}),
     etapes: store.etapes(runId).map((etape) => ({
       ...ligneEtape(etape),
       outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
