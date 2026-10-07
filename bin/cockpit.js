@@ -58,6 +58,7 @@ const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
+const missions = require("../src/missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -356,6 +357,7 @@ async function traiter(req, res) {
   // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/missions" || chemin.startsWith("/missions/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
     chemin === "/decisions" || chemin === "/decisions/" ||
     chemin === "/decisions/pipelines" || chemin === "/decisions/pipelines/" ||
@@ -503,6 +505,17 @@ async function traiter(req, res) {
 
   if (await traiterAIStudio(req, res)) return undefined;
 
+  const preparationMission = chemin.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/mission$/);
+  if (req.method === "GET" && preparationMission) {
+    try {
+      const index = Number(new URL(req.url, "http://cockpit").searchParams.get("pipeline") || 0);
+      if (!Number.isInteger(index) || index < 0) throw new Error("index de pipeline invalide");
+      const { options } = missions.lire({ projetsDir: PROJETS, projectId: preparationMission[1], pipelineIndex: index,
+        roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) });
+      return json(res, 200, options);
+    } catch (err) { return json(res, 400, { erreur: err.message }); }
+  }
+
   // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
   // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
   // l'event store, que le service runner consomme dans un autre conteneur.
@@ -520,10 +533,27 @@ async function traiter(req, res) {
     let brut = "";
     for await (const morceau of req) {
       brut += morceau;
-      if (brut.length > 20_000) return json(res, 413, { erreur: "corps trop gros" });
+      if (Buffer.byteLength(brut) > 128_000) return json(res, 413, { erreur: "corps trop gros" });
     }
     try {
       const demande = JSON.parse(brut);
+      if (Object.hasOwn(demande, "demande")) {
+        const etatMachines = api.machines(magasinOuvert);
+        const commande = missions.demander({ store: magasinOuvert, qui, demande,
+          params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) },
+          verifierBackend: (llm, noeud) => {
+            const dispo = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine: VIA_PAR_MACHINE, machines: etatMachines });
+            if (!dispo.utilisable) throw new Error(`${noeud.id} : backend ${llm.via} indisponible (${dispo.raison})`);
+            const role = require("agent-orchestrator/src/dispatch").roleEffectif({ ...noeud, llm });
+            if (role !== "nas") {
+              const worker = etatMachines.find((m) => m.machine === role);
+              if (!worker || !["online", "busy"].includes(worker.etat)) throw new Error(`${noeud.id} : worker ${role} indisponible`);
+              if (worker.meta?.capacites?.missions !== 1) throw new Error(`${noeud.id} : mettre le worker ${role} à jour pour les missions`);
+              if (!(worker.meta?.capacites?.backends || []).includes(llm.via)) throw new Error(`${noeud.id} : runtime ${llm.via} non annoncé par ${role}`);
+            }
+          } });
+        return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+      }
       // L'équipe associée au projet pose le modèle de chaque membre (src/equipe.js). Un
       // choix explicite de la requête garde la main : clé identique écrasée, nœud nommé
       // prioritaire dans le moteur. Avec `*`, l'équipe ne servirait à rien et n'est pas

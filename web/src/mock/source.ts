@@ -72,6 +72,20 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
         resultat: run ? { ok: true } : { ok: false, raison: "La maquette ne contient pas de run pour ce projet." } });
       return { id, statut: "pending" };
     },
+    async preparerMission(projectId, pipelineIndex) {
+      const projet = etat().topologie.projets.find((p) => p.id === projectId);
+      if (!projet) throw new Error("Projet inconnu");
+      const membres = (await equipe.lecture()).agents;
+      const marketing = /marketing/.test(projet.pipelines[pipelineIndex] ?? "");
+      const noms = marketing ? ["economy-analyst", "brand-analyst", "plan-synthesist"] : ["improvement-planner", "improvement-editor", "code-reviewer"];
+      return { projectId, pipelineIndex, nom: projet.nom, repo: `maquette/${projectId}`, pipeline: projet.pipelines[pipelineIndex] ?? "dev@1",
+        titre: marketing ? "Plan marketing" : "Développement et revue", nature: marketing ? "marketing" : "developpement",
+        configuration: "0".repeat(64), spec: { project_name: projectId }, budget: { usdPerRun: 4 }, publication: !marketing,
+        roles: noms.map((nom, i) => ({ noeud: `etape-${i}`, agent: `${nom}@1`, type: nom === "code-reviewer" ? "review" : "agent",
+          llm: { via: "claude", model: "sonnet" }, membre: null,
+          membres: membres.filter((m) => m.registre.includes(nom)).map((m) => ({ id: m.id, nom: m.nom, role: m.role, llm: m.llm })) })) };
+    },
+    async lancerMission(demande) { return this.lancerRun(demande.projectId, demande.pipelineIndex); },
     commande: async (id) => {
       const commande = commandes.get(id);
       if (!commande) throw new Error("Commande inconnue");

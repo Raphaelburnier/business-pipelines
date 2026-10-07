@@ -11,6 +11,7 @@ import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseM
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
 import type { DemandeFusion, EtatPullRequests } from "./pullRequests";
+import type { OptionsMission, DemandeMission } from "./missions";
 
 export interface FiltreRuns {
   project?: string;
@@ -37,6 +38,8 @@ export interface Source {
   modeles(): Promise<ReponseModeles>;
   /** `llm` s'applique à tous les nœuds agents du run ; absent, chaque nœud garde le sien. */
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
+  preparerMission(projectId: string, pipelineIndex: number): Promise<OptionsMission>;
+  lancerMission(demande: DemandeMission): Promise<{ id: string; statut: string }>;
   /** Le run associé est visible dès son admission, avant la fin du processus. */
   commande(id: string): Promise<Commande>;
   /** « Demander au cockpit » : les fils, un fil, et poser une question (nouveau fil sans `filId`). */
