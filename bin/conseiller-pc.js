@@ -18,6 +18,7 @@
 //   CONSEILLER_VAULT        dossier du vault Git (obligatoire)
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
 const { dansPerimetre } = require("../src/vault-index");
 
@@ -45,6 +46,8 @@ const VERSION = require("../package.json").version;
 // Au-delà de ce nombre de travaux d'affilée, on rend la main pour battre et synchroniser.
 const TRAVAUX_PAR_TOUR = 5;
 const LOT_MAX = 1_500_000;
+// La limite du NAS (src/vault-index.js) : au-delà, la note est retirée de l'index.
+const TAILLE_MAX = 200_000;
 
 const journal = (...m) => console.log(new Date().toISOString(), ...m);
 
@@ -87,54 +90,60 @@ function git(args, { entree = null, binaire = false } = {}) {
   });
 }
 
-// Chemin et blob de chaque note du périmètre, telles que HEAD les porte : on envoie ce qui
-// est commité, jamais un brouillon en cours de frappe dans Obsidian.
+// Chemin, blob et contenu de chaque note du périmètre telle qu'elle est sur le disque, commitée
+// ou non : le vault n'est pas commité à chaque session, et l'index restait figé sur un commit
+// vieux de trois semaines. Un brouillon en cours de frappe peut passer, il sera remplacé au
+// tour suivant. Le blob est calculé ici comme git le ferait : aucun processus par fichier,
+// et une note dont la taille et la date n'ont pas bougé n'est pas relue.
+const vus = new Map();
+
 async function arbre() {
-  const brut = await git(["ls-tree", "-r", "-z", "HEAD"]);
+  const brut = await git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
   const out = new Map();
-  for (const entree of brut.split("\0")) {
-    const m = entree.match(/^\d+ blob ([0-9a-f]+)\t(.+)$/s);
-    if (m && dansPerimetre(m[2])) out.set(m[2], m[1]);
+  for (const chemin of new Set(brut.split("\0"))) {
+    if (!chemin || !dansPerimetre(chemin)) continue;
+    let stat;
+    try {
+      stat = fs.statSync(path.join(VAULT, chemin));
+    } catch {
+      continue; // supprimée du disque, encore dans l'index git
+    }
+    if (!stat.isFile()) continue;
+    const connu = vus.get(chemin);
+    if (connu && connu.taille === stat.size && connu.modifie === stat.mtimeMs) {
+      out.set(chemin, connu);
+      continue;
+    }
+    const octets = fs.readFileSync(path.join(VAULT, chemin));
+    const blob = crypto.createHash("sha1").update(`blob ${octets.length}\0`).update(octets).digest("hex");
+    const fiche = { blob, taille: stat.size, modifie: stat.mtimeMs, contenu: octets.length > TAILLE_MAX ? null : octets.toString("utf8") };
+    vus.set(chemin, fiche);
+    out.set(chemin, fiche);
   }
+  for (const chemin of vus.keys()) if (!out.has(chemin)) vus.delete(chemin);
   return out;
 }
 
-// Contenu de plusieurs blobs en un seul processus git : sur /mnt/c, un processus par
-// fichier coûte une minute au premier envoi.
-async function contenus(blobs) {
-  if (!blobs.length) return new Map();
-  const brut = await git(["cat-file", "--batch"], { entree: `${blobs.join("\n")}\n`, binaire: true });
-  const out = new Map();
-  let i = 0;
-  while (i < brut.length) {
-    const fin = brut.indexOf(0x0a, i);
-    const [sha, type, taille] = brut.subarray(i, fin).toString().split(" ");
-    if (type !== "blob") {
-      i = fin + 1;
-      continue;
-    }
-    const n = Number(taille);
-    out.set(sha, brut.subarray(fin + 1, fin + 1 + n).toString("utf8"));
-    i = fin + 1 + n + 1;
-  }
-  return out;
+// L'état publié : une empreinte de l'inventaire, puisqu'il n'y a plus de commit à nommer.
+function empreinteArbre(local) {
+  const h = crypto.createHash("sha256");
+  for (const chemin of [...local.keys()].sort()) h.update(`${chemin}\0${local.get(chemin).blob}\n`);
+  return h.digest("hex");
 }
 
 async function synchroniser() {
-  const head = (await git(["rev-parse", "HEAD"])).trim();
-  const distant = await appel("vault/inventaire");
   const local = await arbre();
+  const head = empreinteArbre(local);
+  const distant = await appel("vault/inventaire");
   const supprimes = new Set(Object.keys(distant.blobs).filter((c) => !local.has(c)));
-  const changes = [...local].filter(([c, b]) => distant.blobs[c] !== b);
+  const changes = [...local].filter(([c, f]) => distant.blobs[c] !== f.blob);
   if (!changes.length && !supprimes.size && distant.head === head) return;
 
-  const textes = await contenus([...new Set(changes.map(([, b]) => b))]);
   const envoyables = [];
-  for (const [chemin, blob] of changes) {
-    const contenu = textes.get(blob);
-    // Une note devenue trop grosse ou illisible doit disparaître de l'index publié, plutôt que
-    // laisser le NAS répondre avec sa version précédente.
-    if (contenu === undefined || Buffer.byteLength(contenu, "utf8") > 200_000) {
+  for (const [chemin, { blob, contenu }] of changes) {
+    // Une note devenue trop grosse doit disparaître de l'index publié, plutôt que laisser le
+    // NAS répondre avec sa version précédente.
+    if (contenu === null) {
       supprimes.add(chemin);
       continue;
     }
@@ -157,7 +166,7 @@ async function synchroniser() {
     taille += octets;
   }
   await envoyer(true);
-  journal(`vault envoyé : ${envoyables.length} note(s) changée(s), ${supprimes.size} retirée(s), HEAD ${head.slice(0, 7)}`);
+  journal(`vault envoyé : ${envoyables.length} note(s) changée(s), ${supprimes.size} retirée(s), état ${head.slice(0, 7)}`);
 }
 
 // ---------- les travaux ----------
