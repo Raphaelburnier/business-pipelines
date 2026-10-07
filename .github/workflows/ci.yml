@@ -48,7 +48,7 @@ jobs:
         with:
           repository: Raphaelburnier/agent-orchestrator
           # Moteur avec vérification déterministe, preuve liée à l'arbre publié et suivi des livraisons.
-          ref: ad742b3581e67430826433fd596597b027e0de57
+          ref: a64cd12c6c51b7158ffdd6332d5783ac5d628d41
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

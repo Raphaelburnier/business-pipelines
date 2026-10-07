@@ -193,9 +193,12 @@ class RefusFusion extends Error {}
 /**
  * Fusionne une PR, après avoir tout relu sur GitHub : l'instantané du cockpit peut dater de
  * deux minutes. Squash, avec le SHA lu à l'écran : GitHub refuse si la tête a bougé.
- * @param {{ api: Function, demande: { depot: string, numero: number, sha: string, baseSha: string } }} opts
+ * `verifierPreuves(pr)` rend la raison pour laquelle les preuves de tests et de revue ne couvrent
+ * pas la tête `sha`, ou null ; il est appelé juste avant la fusion, sur ce SHA exact.
+ * @param {{ api: Function, demande: { depot: string, numero: number, sha: string, baseSha: string },
+ *   verifierPreuves?: ((pr: { depot: string, numero: number, sha: string }) => Promise<string|null>)|null }} opts
  */
-async function fusionner({ api, demande }) {
+async function fusionner({ api, demande, verifierPreuves = null }) {
   const { depot, numero, sha, baseSha } = demande;
   if (!DEPOT.test(depot) || !Number.isInteger(numero) || numero < 1 || !SHA.test(sha) || !SHA.test(baseSha)) throw new RefusFusion("demande de fusion incomplète : tête et base exactes requises");
   const infos = await api("GET", `/repos/${depot}`);
@@ -217,6 +220,9 @@ async function fusionner({ api, demande }) {
   if (actuel.default_branch !== infos.default_branch) throw new RefusFusion("la branche par défaut a changé pendant la validation");
   const base = await api("GET", `/repos/${depot}/commits/${encodeURIComponent(actuel.default_branch)}`);
   if (base.sha !== baseSha) throw new RefusFusion("la base a bougé pendant la validation : attendre une nouvelle CI");
+  // Le PUT fixe la tête : des preuves qui couvrent ce SHA couvrent ce qui sera fusionné.
+  const preuves = verifierPreuves ? await verifierPreuves({ depot, numero, sha }) : null;
+  if (preuves) throw new RefusFusion(`PR #${numero} non fusionnable : ${preuves}`);
   const r = await api("PUT", `/repos/${depot}/pulls/${numero}/merge`, { sha, merge_method: "squash" });
   return { fusionnee: Boolean(r && r.merged), sha: r && r.sha, message: r && r.message, preuve: ci.preuve };
 }

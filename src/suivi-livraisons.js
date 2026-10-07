@@ -9,6 +9,7 @@
 // Tout est relu sur GitHub, rien n'est supposé : après un redémarrage, le publieur repart des
 // livraisons non finies de l'event store et retrouve leur état réel. Les métadonnées seules
 // passent, le code d'une PR n'est jamais récupéré.
+const { revues } = require("agent-orchestrator");
 const { SHA, pages } = require("./github-merge-gates");
 const pullRequests = require("./pull-requests");
 
@@ -48,10 +49,12 @@ function correctionDe({ commentaires, commits, tete }) {
 
 /**
  * L'état de livraison d'une PR relevée. Pur : se teste sans GitHub.
- * @param {{ pr: any, detail: any|null, correction: any, depot: string }} lu
- *   `pr` est la PR brute de GitHub, `detail` le relevé de `releverPR` (null si la PR est fermée).
+ * @param {{ pr: any, detail: any|null, correction: any, depot: string, preuves?: any }} lu
+ *   `pr` est la PR brute de GitHub, `detail` le relevé de `releverPR` (null si la PR est fermée),
+ *   `preuves` ce que `raisonPreuvesFusion` du moteur dit de la tête (null : rien n'y fait obstacle).
+ *   `fusionAuto` n'est vrai que pour une PR prête, non sensible, aux preuves valides.
  */
-function etatLivraison({ pr, detail, correction, depot }) {
+function etatLivraison({ pr, detail, correction, depot, preuves = null }) {
   const commun = { pr: pr.number, prUrl: pr.html_url || null, headSha: SHA.test(pr.head?.sha) ? pr.head.sha : null, correction };
   if (pr.merged_at || pr.merged) {
     if (!SHA.test(pr.merge_commit_sha)) return { ...commun, statut: "pr_open", raison: "GitHub n'a pas encore rendu le commit de fusion" };
@@ -77,15 +80,18 @@ function etatLivraison({ pr, detail, correction, depot }) {
         : correction && correction.etat === "poussee"
           ? " : la correction automatique n'a pas suffi"
           : "";
-    return { ...commun, ...champsCI, statut: "merge_blocked", raison: `CI rouge ${sur}${suite}` };
+    if (!(preuves && preuves.reverifier)) return { ...commun, ...champsCI, statut: "merge_blocked", raison: `CI rouge ${sur}${suite}` };
   }
+  // Tête corrigée hors du run : tests et revues repassent avant toute fusion, CI ou non.
+  if (preuves && !preuves.expliciteAutorise) return { ...commun, ...champsCI, statut: "merge_blocked", raison: preuves.raison };
   // CI verte : la même règle que la fusion décide, y compris une CI périmée par une base avancée.
   const blocage = pullRequests.raisonDeNePasFusionner(detail);
   if (blocage) return { ...commun, ...champsCI, statut: "merge_blocked", raison: blocage };
   if (detail.sensibles && detail.sensibles.length) {
     return { ...commun, ...champsCI, statut: "merge_blocked", raison: `fichiers sensibles (${detail.sensibles.slice(0, 3).join(", ")}) : fusion explicite depuis le cockpit` };
   }
-  return { ...commun, ...champsCI, statut: "pr_open", raison: `prête à fusionner : CI verte sur le merge ${court(ci.preuve?.mergeSha)} (${depot})` };
+  if (preuves) return { ...commun, ...champsCI, statut: "merge_blocked", raison: preuves.raison };
+  return { ...commun, ...champsCI, statut: "pr_open", raison: `prête à fusionner : CI verte sur le merge ${court(ci.preuve?.mergeSha)}, tests et revues sur cet arbre (${depot})`, fusionAuto: true };
 }
 
 /** La PR d'une branche, ouverte ou non : la plus récente si la branche en a eu plusieurs. */
@@ -96,12 +102,40 @@ async function prDeBranche({ api, depot, branche }) {
 }
 
 /**
+ * L'arbre Git d'un commit de GitHub, ou null s'il est illisible.
+ * @param {{ api: Function, depot: string, sha: string }} opts
+ */
+async function arbreDe({ api, depot, sha }) {
+  if (!SHA.test(String(sha))) return null;
+  try {
+    const commit = await api("GET", `/repos/${depot}/git/commits/${sha}`);
+    return commit && commit.sha === sha && SHA.test(commit.tree?.sha) ? commit.tree.sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Les preuves d'une livraison face à une tête de PR : la règle du moteur, avec l'arbre lu sur
+ * GitHub. Une livraison sans attestation n'a pas besoin de lire l'arbre.
+ * @param {{ api: Function, depot: string, livraison: any, sha: string }} opts
+ */
+async function preuvesDe({ api, depot, livraison, sha }) {
+  const arbre = livraison && livraison.attestation ? await arbreDe({ api, depot, sha }) : null;
+  return revues.raisonPreuvesFusion(livraison, arbre);
+}
+
+/**
  * Relève une livraison sur GitHub et met à jour l'event store. Rejouable : un état identique
  * n'émet rien.
- * @param {{ api: Function, store: any, livraison: any, depot: string }} opts
+ * `reverifier` est appelé quand la tête de la PR n'est plus l'arbre testé et revu ; `fusionnerAuto`
+ * quand la PR est prête et que ses preuves couvrent sa tête. Les deux sont optionnels.
+ * @param {{ api: Function, store: any, livraison: any, depot: string,
+ *   reverifier?: (a: { livraison: any, headSha: string }) => Promise<void>,
+ *   fusionnerAuto?: (a: { livraison: any, detail: any, depot: string }) => Promise<void> }} opts
  * @returns {Promise<any>} la livraison à jour
  */
-async function suivreLivraison({ api, store, livraison, depot }) {
+async function suivreLivraison({ api, store, livraison, depot, reverifier = null, fusionnerAuto = null }) {
   let pr = livraison.pr ? await api("GET", `/repos/${depot}/pulls/${livraison.pr}`) : await prDeBranche({ api, depot, branche: livraison.branche });
   if (!pr) {
     // Pas encore de PR : le publieur l'ouvrira. Un échec de push garde sa raison.
@@ -119,8 +153,12 @@ async function suivreLivraison({ api, store, livraison, depot }) {
   } catch {
     // Les marqueurs illisibles ne cachent pas l'état de la PR : la dernière lecture reste.
   }
-  const etat = etatLivraison({ pr, detail, correction, depot });
-  return store.majLivraison(livraison.runId, { repo: depot, ...etat }).livraison;
+  const preuves = ouverte ? await preuvesDe({ api, depot, livraison, sha: pr.head?.sha }) : null;
+  const { fusionAuto, ...etat } = etatLivraison({ pr, detail, correction, depot, preuves });
+  const apres = store.majLivraison(livraison.runId, { repo: depot, ...etat }).livraison;
+  if (preuves && preuves.reverifier && reverifier && SHA.test(pr.head?.sha)) await reverifier({ livraison: apres, headSha: pr.head.sha });
+  if (fusionAuto && fusionnerAuto) await fusionnerAuto({ livraison: apres, detail, depot });
+  return apres;
 }
 
 /**
@@ -128,7 +166,7 @@ async function suivreLivraison({ api, store, livraison, depot }) {
  * toutes celles qui ne sont pas finies. Une livraison en échec de lecture n'arrête pas les autres.
  * @param {{ api: Function, store: any, projets: Array<{ id: string, github: string }>, journal?: (l: string) => void }} opts
  */
-async function suivreLivraisons({ api, store, projets, journal = () => {} }) {
+async function suivreLivraisons({ api, store, projets, journal = () => {}, reverifier = null, fusionnerAuto = null }) {
   store.reprendreLivraisonsAnciennes();
   const depotDe = new Map(projets.map((p) => [p.id, p.github]));
   const suivies = [];
@@ -136,7 +174,7 @@ async function suivreLivraisons({ api, store, projets, journal = () => {} }) {
     const depot = livraison.repo || depotDe.get(livraison.projectId);
     if (!depot) continue;
     try {
-      const apres = await suivreLivraison({ api, store, livraison, depot });
+      const apres = await suivreLivraison({ api, store, livraison, depot, reverifier, fusionnerAuto });
       if (apres.statut !== livraison.statut || apres.raison !== livraison.raison) {
         journal(`livraison ${livraison.runId.slice(0, 8)} (${depot}${apres.pr ? `#${apres.pr}` : ""}) : ${apres.statut}${apres.raison ? `, ${apres.raison}` : ""}`);
       }
@@ -180,10 +218,18 @@ function vueLivraison(l) {
     ciUrl: l.ciUrl,
     correction: l.correction,
     mergeSha: l.mergeSha,
+    attestation: l.attestation
+      ? {
+          arbre: l.attestation.treeSha,
+          tests: Boolean(l.attestation.tests),
+          revueRequise: Boolean(l.attestation.reviewRequired),
+          revues: (l.attestation.reviews || []).map((r) => ({ noeud: r.node, agent: r.agentRef, llm: { via: r.via, model: r.model }, session: r.sessionId, verdict: r.verdict })),
+        }
+      : null,
     finale: Boolean(l.finishedAt),
     majLe: l.majLe,
     relueLe: l.relueLe,
   };
 }
 
-module.exports = { correctionDe, etatLivraison, prDeBranche, suivreLivraison, suivreLivraisons, livraisonDeBranche, vueLivraison };
+module.exports = { correctionDe, etatLivraison, prDeBranche, suivreLivraison, suivreLivraisons, livraisonDeBranche, vueLivraison, arbreDe, preuvesDe };

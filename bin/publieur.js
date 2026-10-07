@@ -29,6 +29,9 @@ const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUES
 // vérifie aussi, mais l'event store où arrive la commande est écrit par d'autres services.
 const AUTORISES = process.env.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
 const SONDE_COMMANDES_MS = 3000;
+// Une PR d'agent prête, non sensible, dont tests et revues couvrent la tête, est fusionnée par
+// le publieur. `0` laisse toutes les fusions au clic du cockpit.
+const FUSION_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_FUSION_AUTO ?? "1").toLowerCase());
 
 if (!JETON) {
   console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
@@ -85,10 +88,49 @@ async function passage() {
   await releverPullRequests();
 }
 
+// La livraison d'une PR, si elle vient d'un run : seules celles-là portent des preuves.
+function livraisonDePR(depot, numero) {
+  if (!store) return null;
+  return store.livraisons({ enCours: true }).find((l) => String(l.repo).toLowerCase() === depot.toLowerCase() && l.pr === numero) || null;
+}
+
+// Les preuves au moment de fusionner, sur le SHA exact du PUT. `strict` : la fusion automatique
+// exige tests et revues ; un clic peut passer outre une livraison sans attestation, jamais
+// une preuve périmée.
+function verifierPreuves({ strict }) {
+  return async ({ depot, numero, sha }) => {
+    const livraison = livraisonDePR(depot, numero);
+    if (!livraison) return null;
+    const p = await suivi.preuvesDe({ api: apiSuivi, depot, livraison, sha });
+    if (!p) return null;
+    return strict || !p.expliciteAutorise ? p.raison : null;
+  };
+}
+
 async function suivreLivraisons() {
   if (!store) return;
+  const projets = publieur.projetsAPublier(PROJETS);
+  const reverifier = async ({ livraison, headSha }) => {
+    const projet = projets.find((p) => p.id === livraison.projectId);
+    if (!projet) return;
+    try {
+      publieur.demanderReverification({ git, store, projet, urlDepot: `https://github.com/${projet.github}.git`, livraison, headSha, journal: (l) => console.log(l) });
+    } catch (err) {
+      console.error(`livraison ${livraison.runId.slice(0, 8)} : revérification non demandée, ${String(err.message).split("\n")[0]}`);
+    }
+  };
+  const fusionnerAuto = apiFusion && FUSION_AUTO
+    ? async ({ livraison, detail, depot }) => {
+        try {
+          const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero: livraison.pr, sha: detail.sha, baseSha: detail.baseSha }, verifierPreuves: verifierPreuves({ strict: true }) });
+          console.log(`fusion automatique ${depot}#${livraison.pr} : ${fusion.fusionnee ? "faite" : fusion.message || "refusée par GitHub"}`);
+        } catch (err) {
+          console.log(`fusion automatique ${depot}#${livraison.pr} non faite : ${String(err.message).split("\n")[0]}`);
+        }
+      }
+    : null;
   try {
-    await suivi.suivreLivraisons({ api: apiSuivi, store, projets: publieur.projetsAPublier(PROJETS), journal: (ligne) => console.log(ligne) });
+    await suivi.suivreLivraisons({ api: apiSuivi, store, projets, journal: (ligne) => console.log(ligne), reverifier, fusionnerAuto });
   } catch (err) {
     console.error(`suivi des livraisons : ${String(err.message).split("\n")[0]}`);
   }
@@ -130,7 +172,7 @@ async function servirFusions(store) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
     } else {
       try {
-        const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha, baseSha } });
+        const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha, baseSha }, verifierPreuves: verifierPreuves({ strict: false }) });
         resultat = fusion.fusionnee ? { ok: true, detail: fusion } : { ok: false, raison: fusion.message || "GitHub n'a pas fusionné" };
       } catch (err) {
         resultat = { ok: false, raison: String(err.message).split("\n")[0] };

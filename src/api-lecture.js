@@ -14,6 +14,7 @@
 const fs = require("fs");
 const path = require("path");
 const { validerProjet } = require("agent-orchestrator/packages/schemas");
+const { revues } = require("agent-orchestrator");
 const { vueLivraison } = require("./suivi-livraisons");
 
 const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
@@ -94,8 +95,18 @@ function run(store, runId) {
       outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
     })),
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
+    revues: revues.vueRevues(derniers, arbreCourant(store, runId, derniers)),
     dernierEvenementId: derniers.length ? derniers[derniers.length - 1].id : 0,
   };
+}
+
+// Le dernier arbre jugé du run : celui de sa livraison attestée, sinon celui de son dernier
+// juge (tests ou revue). Une revue sur un autre arbre est périmée.
+function arbreCourant(store, runId, evenements) {
+  const livraison = store.livraison(runId);
+  if (livraison && livraison.attestation) return livraison.attestation.treeSha;
+  const juge = [...evenements].reverse().find((e) => ["verification.finished", "review.finished", "review.invalid"].includes(e.type) && e.payload && e.payload.treeSha);
+  return juge ? juge.payload.treeSha : null;
 }
 
 // Une approbation telle que l'écran la montre : la question, pas le dossier complet. Le
