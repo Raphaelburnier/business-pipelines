@@ -42,6 +42,7 @@ export interface Source {
   lancerMission(demande: DemandeMission): Promise<{ id: string; statut: string }>;
   /** Le run associé est visible dès son admission, avant la fin du processus. */
   commande(id: string): Promise<Commande>;
+  reprendreRun(id: string, waitId: string, reconnexionConfirmee?: boolean): Promise<{ id: string; statut: string }>;
   /** « Demander au cockpit » : les fils, un fil, et poser une question (nouveau fil sans `filId`). */
   fils(): Promise<ListeFils>;
   fil(id: string): Promise<FilDetaille | null>;

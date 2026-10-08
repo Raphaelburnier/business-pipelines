@@ -7,6 +7,7 @@ const { spawn } = require("child_process");
 const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWorkers, wol } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
 const registre = require("agent-orchestrator/src/registre");
+const { reprendreRun } = require("../src/reprises-runs");
 
 const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
@@ -104,6 +105,7 @@ async function repondre(store, commande) {
 // question ne doit pas l'attendre. Chaque boucle ne réserve que ses propres commandes.
 async function boucle(store, kinds, executer) {
   while (!arret) {
+    if (kinds.includes("run.resume")) store.attentes.programmer();
     const commande = store.prendreCommande({ kinds });
     if (!commande) {
       await attendre(INTERVALLE);
@@ -114,9 +116,15 @@ async function boucle(store, kinds, executer) {
       const resultat = await executer(commande);
       // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
       // sera remise en file, et retrouvera son run au redémarrage.
-      if (!arret || commande.kind === "chat.respond") store.terminerCommande(commande.id, resultat);
+      if (!arret || commande.kind === "chat.respond") {
+        store.terminerCommande(commande.id, resultat);
+        if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      }
     } catch (err) {
-      if (!arret || commande.kind === "chat.respond") store.terminerCommande(commande.id, { ok: false, raison: err.message });
+      if (!arret || commande.kind === "chat.respond") {
+        store.terminerCommande(commande.id, { ok: false, raison: err.message });
+        if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      }
       console.error(`Commande ${commande.id} refusée : ${err.message}`);
     }
   }
@@ -194,6 +202,7 @@ async function reverifier(store, commande) {
 }
 
 async function executerRun(store, commande) {
+  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer, lancementDe });
   if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande);
   if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancer(commande.payload, { commandId: commande.id });
@@ -233,20 +242,30 @@ async function ouvrirMaitre(store) {
 
 async function demarrer() {
   const store = new EventStore(STORE);
+  const bail = require("node:crypto").randomUUID();
+  try { store.attentes.acquerirBail(bail); }
+  catch (err) { store.fermer(); throw err; }
+  store.attentes.reconcilier();
+  const renouvellement = setInterval(() => {
+    try { store.attentes.renouvelerBail(bail); }
+    catch (err) { console.error(err.message); arret=true; enfant?.kill("SIGTERM"); }
+  }, 1000);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
-  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "approval.decide", "run.reverify", "chat.respond"] });
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "run.resume", "approval.decide", "run.reverify", "chat.respond"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
       ouvrirMaitre(store),
       // Les décisions passent dans la file des runs pour conserver la concurrence de quota.
-      boucle(store, ["run.start", "approval.decide", "run.reverify"], (commande) => executerRun(store, commande)),
+      boucle(store, ["run.start", "run.resume", "approval.decide", "run.reverify"], (commande) => executerRun(store, commande)),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {
+    clearInterval(renouvellement);
     if (serviceMaitre) await serviceMaitre.arreter();
     if (maitre) await maitre.arreter();
+    store.attentes.libererBail(bail);
     store.fermer();
   }
 }

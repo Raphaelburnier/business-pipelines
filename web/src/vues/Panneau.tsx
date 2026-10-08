@@ -12,6 +12,7 @@ import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
+import { AttenteRun } from "./AttenteRun";
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
@@ -199,6 +200,7 @@ function PanneauRun({ id }: { id: string }) {
         </div>
       )}
 
+      <AttenteRun key={run.attente?.id ?? run.id} run={run} />
       <BlocMotifs revues={run.revues} livraison={run.livraison} />
 
       {run.livraison && <BlocLivraison livraison={run.livraison} maintenant={maintenant} />}

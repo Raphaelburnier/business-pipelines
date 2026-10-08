@@ -516,6 +516,22 @@ async function traiter(req, res) {
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
+  const repriseRun = req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
+  if (repriseRun) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: "event store indisponible" });
+    const demande = await corpsJson(req, res);
+    if (demande === null) return undefined;
+    try {
+      // L'API publique ne peut pas se faire passer pour le planificateur.
+      const corps = require("agent-orchestrator/packages/schemas/commandes").valider("run.resume", {
+        ...demande, runId: decodeURIComponent(repriseRun[1]), automatique: false,
+      });
+      const commande = magasinOuvert.attentes.demander(corps.runId, { ...corps, par: qui.par, canal: qui.canal });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) { return json(res, 409, { erreur: err.message }); }
+  }
+
   // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
   // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
   // l'event store, que le service runner consomme dans un autre conteneur.

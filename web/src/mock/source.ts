@@ -86,6 +86,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
           membres: membres.filter((m) => m.registre.includes(nom)).map((m) => ({ id: m.id, nom: m.nom, role: m.role, llm: m.llm })) })) };
     },
     async lancerMission(demande) { return this.lancerRun(demande.projectId, demande.pipelineIndex); },
+    async reprendreRun() { throw new Error("La reprise des runtimes nécessite les données réelles du cockpit."); },
     commande: async (id) => {
       const commande = commandes.get(id);
       if (!commande) throw new Error("Commande inconnue");
