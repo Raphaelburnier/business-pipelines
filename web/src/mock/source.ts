@@ -5,6 +5,7 @@
 import type { Evenement } from "../types";
 import type { Commande, FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
+import { discussionsMaquette } from "./discussions";
 import { approbationsMaquette } from "./decisions";
 import { equipeMaquette } from "./equipe";
 import { livraisonMaquette } from "./livraison";
@@ -22,6 +23,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const commandes = new Map<string, Commande>();
 
   return {
+    ...discussionsMaquette(),
     nom: "maquette",
     topologie: async () => etat().topologie,
     async runs(filtre: FiltreRuns = {}) {

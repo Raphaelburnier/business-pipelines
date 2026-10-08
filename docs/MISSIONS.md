@@ -67,4 +67,5 @@ Le registre actuel suffit : aucun pipeline ni permission d'agent n'est changé p
 Le service cockpit monte aussi le registre livré en lecture seule et le retrouve par
 `ORCH_REGISTRE`, pour préparer les rôles et figer leurs profils dans la commande.
 La validation de fusion sensible reste celle du cockpit ; le conseiller Qwen n'obtient
-pas de nouvel outil dans ce lot. La conversation d'équipe marketing est le lot suivant.
+pas de nouvel outil dans ce lot. La conversation d'équipe marketing et son passage vers
+une mission dev sont décrits dans [DISCUSSIONS-MARKETING.md](DISCUSSIONS-MARKETING.md).

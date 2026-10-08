@@ -118,6 +118,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
         <div>
           <Titre>Lancer une mission</Titre>
           <a href={`/missions/${encodeURIComponent(id)}`} className="block rounded-lg bg-accent px-3 py-2 text-center text-sm font-semibold text-sur-accent">Choisir l'équipe et l'objectif</a>
+          <a href={`/marketing/${encodeURIComponent(id)}`} className="mt-2 block rounded-lg border border-trait px-3 py-2 text-center text-sm">Discuter avec l'équipe marketing</a>
         </div>
       )}
       <div>
@@ -173,6 +174,7 @@ function PanneauRun({ id }: { id: string }) {
 
       {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
         <Titre>Mission</Titre>
+        {run.mission.origine && <a className="text-xs text-accent underline" href={`/marketing/${run.projet}/${run.mission.origine.fil}`}>Discussion marketing à l'origine de cette spec</a>}
         <p className="whitespace-pre-wrap">{run.mission.objectif}</p>
         <ul className="mt-2 list-disc pl-5">{run.mission.criteres.map((c, i) => <li key={i}>{c}</li>)}</ul>
         <p className="mt-2 text-xs text-douce">{run.mission.participants.map((p) => `${p.nom} (${p.noeud}, ${p.llm.via}:${p.llm.model})`).join(" · ")}</p>

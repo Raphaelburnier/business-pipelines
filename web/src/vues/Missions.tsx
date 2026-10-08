@@ -5,21 +5,27 @@ import { classer } from "../donnees/modeles";
 import { lignes, specStructuree, type OptionsMission, type ChoixAgentMission } from "../donnees/missions";
 import { Erreur, Titre } from "../ui";
 import type { ReponseModeles } from "../types";
+import type { BrouillonEquipe } from "../donnees/discussions";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
 const cleLlm = (llm: { via: string; model: string }) => `${llm.via}:${llm.model}`;
 
-export function Missions({ projetInitial, aller }: { projetInitial: string | null; aller: (href: string) => void }) {
+export function Missions({ projetInitial, brouillonId = null, aller }: { projetInitial: string | null; brouillonId?: string | null; aller: (href: string) => void }) {
   const topo = useCharge((s) => s.topologie(), []);
+  const brouillon = useCharge((s) => brouillonId ? s.brouillonEquipe(brouillonId) : Promise.resolve(null), [brouillonId]);
   const [projetId, setProjetId] = useState(projetInitial ?? "");
   const [index, setIndex] = useState(0);
   const [occupe, setOccupe] = useState(false);
   const projet = topo.donnees?.projets.find((p) => p.id === projetId);
+  const draft = brouillon.donnees;
   return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
     <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Choisis le projet, son équipe et le résultat attendu.</p></div>
     {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
+    {brouillon.erreur && <Erreur>{brouillon.erreur}</Erreur>}
+    {draft && <p className="rounded-lg border border-trait bg-carte p-3 text-sm">Spec issue de la discussion marketing : {draft.titre}. Relis le workflow, l'équipe dev et les critères avant lancement. <a className="text-accent underline" href={`/marketing/${draft.projectId}/${draft.origine.fil}`}>Revenir au fil</a></p>}
+    {!!draft?.directives.length && <details className="rounded-lg border border-trait p-3 text-sm"><summary className="cursor-pointer">Directives du fil transmises comme contexte</summary><ul className="mt-2 list-disc pl-5">{draft.directives.map((d, i) => <li key={i} className="whitespace-pre-wrap">{d}</li>)}</ul></details>}
     <label className="flex flex-col gap-1 text-sm">Projet
-      <select className={champ} disabled={occupe} value={projetId} onChange={(e) => { setProjetId(e.target.value); setIndex(0); }}>
+      <select className={champ} disabled={occupe || Boolean(brouillonId)} value={projetId} onChange={(e) => { setProjetId(e.target.value); setIndex(0); }}>
         <option value="">Choisir un projet…</option>
         {topo.donnees?.projets.filter((p) => p.aFiche && p.pipelines.length).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
       </select>
@@ -30,18 +36,20 @@ export function Missions({ projetInitial, aller }: { projetInitial: string | nul
       </select>
       <span className="text-xs text-douce">Changer de projet ou de workflow réinitialise la mission.</span>
     </label>}
-    {projet && <FormulaireMission key={`${projet.id}:${index}`} projectId={projet.id} index={index} aller={aller} surEnvoi={setOccupe} />}
+    {brouillonId && !draft && !brouillon.erreur && <p>Lecture de la spec…</p>}
+    {draft && draft.projectId !== projetId && <Erreur>Cette spec appartient à un autre projet.</Erreur>}
+    {projet && (!brouillonId || draft?.projectId === projetId) && <FormulaireMission key={`${projet.id}:${index}:${brouillonId}`} projectId={projet.id} index={index} brouillon={draft} aller={aller} surEnvoi={setOccupe} />}
   </section>;
 }
 
-function FormulaireMission({ projectId, index, aller, surEnvoi }: { projectId: string; index: number; aller: (href: string) => void; surEnvoi: (envoi: boolean) => void }) {
+function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { projectId: string; index: number; brouillon: BrouillonEquipe | null; aller: (href: string) => void; surEnvoi: (envoi: boolean) => void }) {
   const { source } = useSource();
   const catalogue = useCharge((s) => s.modeles(), []);
   const [options, setOptions] = useState<OptionsMission | null>(null);
   const [agents, setAgents] = useState<ChoixAgentMission[]>([]);
-  const [objectif, setObjectif] = useState("");
-  const [criteres, setCriteres] = useState("");
-  const [document, setDocument] = useState("");
+  const [objectif, setObjectif] = useState(brouillon?.objectif ?? "");
+  const [criteres, setCriteres] = useState(brouillon?.criteres.join("\n") ?? "");
+  const [document, setDocument] = useState(brouillon?.document ?? "");
   const [directives, setDirectives] = useState("");
   const [exclusions, setExclusions] = useState("");
   const [spec, setSpec] = useState("{}");
@@ -92,12 +100,14 @@ function FormulaireMission({ projectId, index, aller, surEnvoi }: { projectId: s
       const demande = { objectif: objectif.trim(), criteres: lignes(criteres), directives, exclusions, document, spec: specStructuree(spec), agents };
       if (!demande.objectif || !demande.criteres.length) throw new Error("Indique l'objectif et au moins un critère de réussite.");
       if (!relecture) { setRelecture(true); return; }
-      const contenu = JSON.stringify({ projectId, pipelineIndex: index, configuration: options.configuration, demande });
+      if (brouillon && options.nature !== "developpement") throw new Error("Choisis un workflow de développement pour cette spec.");
+      const origine = brouillon ? { brouillonId: brouillon.id } : {};
+      const contenu = JSON.stringify({ projectId, pipelineIndex: index, configuration: options.configuration, demande, ...origine });
       if (tentative.current?.contenu !== contenu) tentative.current = { contenu, id: crypto.randomUUID() };
       setEnvoi(true);
       surEnvoi(true);
       const c = await source.lancerMission({ projectId, pipelineIndex: index, configuration: options.configuration,
-        requestId: tentative.current.id, demande });
+        requestId: tentative.current.id, demande, ...origine });
       setCommandeId(c.id);
     } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); setEnvoi(false); surEnvoi(false); }
   }
@@ -147,8 +157,8 @@ function FormulaireMission({ projectId, index, aller, surEnvoi }: { projectId: s
   </form>;
 }
 
-function ModeleMission({ choix, catalogue, changer }: { choix: ChoixAgentMission; catalogue: ReponseModeles | null; changer: (llm: ChoixAgentMission["llm"]) => void }) {
-  const disponibles = catalogue ? classer(catalogue).utilisables.flatMap(([, ms]) => ms) : [];
+export function ModeleMission({ choix, catalogue, changer, vias }: { choix: ChoixAgentMission; catalogue: ReponseModeles | null; changer: (llm: ChoixAgentMission["llm"]) => void; vias?: readonly string[] }) {
+  const disponibles = catalogue ? classer(catalogue).utilisables.flatMap(([, ms]) => ms).filter((m) => !vias || vias.includes(m.llm.via)) : [];
   const cle = cleLlm(choix.llm);
   const connus = disponibles.some((m) => cleLlm(m.llm) === cle);
   return <label className="text-xs">Modèle

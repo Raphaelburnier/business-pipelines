@@ -47,8 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur avec contrats de mission figés, tests, revues et suivi des livraisons.
-          ref: 2d78cf459ccfe4f1571336abe40c8cff89cb965c
+          # Moteur compagnon : contrats figés et réponses d'équipe supervisées.
+          ref: b29756323d98cd6af66eb1e8e102b76fdff972ee
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
