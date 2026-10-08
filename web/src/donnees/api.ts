@@ -111,6 +111,9 @@ export function sourceApi(): Source {
       return (await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", demande)).commande;
     },
     commande: async (id) => (await lire<{ commande: Commande }>(`/api/commands/${encodeURIComponent(id)}`)).commande,
+    async reprendreRun(id, waitId, reconnexionConfirmee = false) {
+      return (await ecrire<{ commande: { id: string; statut: string } }>(`/api/runs/${encodeURIComponent(id)}/reprise`, { waitId, reconnexionConfirmee })).commande;
+    },
     livraison: () => lire<ReponseLivraison>("/api/livraison"),
     async livrer(cible) {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/livraisons", cible);

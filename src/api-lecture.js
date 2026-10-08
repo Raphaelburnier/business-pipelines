@@ -39,6 +39,7 @@ function ligneRun(store, run) {
     etapes: { total: etapes.length, parStatut },
     // Exécution terminée n'est pas fusion : la livraison dit ce que GitHub a fait du run.
     livraison: vueLivraison(store.livraison(run.id)),
+    attente: store.attentes.vue(run.id),
   };
 }
 
