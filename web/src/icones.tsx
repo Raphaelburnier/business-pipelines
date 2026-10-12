@@ -20,6 +20,7 @@ const TRACES = {
     </>
   ),
   demander: <path d="M4 5h16v11H9l-5 4z" />,
+  finance: <path d="M4 20h16M6 16v-4M12 16V8M18 16V4M4 8l6-4 5 2 5-4" />,
   studio: (
     <>
       <rect x="3" y="5" width="18" height="14" />

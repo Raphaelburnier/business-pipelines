@@ -1,0 +1,7 @@
+account_id,currency,as_of,balance_minor,source_record_id
+demo-courant,CHF,2026-10-01,100000,s1
+demo-epargne,CHF,2026-10-01,0,s2
+demo-eur,EUR,2026-10-01,10000,s3
+demo-courant,CHF,2026-11-01,170000,s4
+demo-epargne,CHF,2026-11-01,40000,s5
+demo-eur,EUR,2026-11-01,5000,s6

@@ -64,6 +64,8 @@ const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussion
 const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
+const { FinanceService } = require("../src/finance/service");
+const { creerRouteurFinance } = require("../src/finance/http");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -277,6 +279,23 @@ async function traiterAIStudio(req, res) {
   return traiterAIStudioActif(req, res);
 }
 
+// Finance partage les contrôles d'identité et d'origine du serveur principal.
+let traiterFinanceActif = null;
+try {
+  traiterFinanceActif = creerRouteurFinance({
+    service: new FinanceService({ storageRoot: ENV.FINANCE_STORAGE_ROOT || path.join(RACINE, "etat", "finance") }),
+    json, corpsJson, durcissement: DURCISSEMENT,
+  });
+} catch (err) {
+  console.error(`Finance indisponible : ${err.message}`);
+}
+async function traiterFinance(req, res) {
+  if (!/^\/api\/finance(?:\/|\?|$)/.test(req.url)) return false;
+  if (traiterFinanceActif) return traiterFinanceActif(req, res);
+  json(res, 503, { erreur: "Stockage Finance indisponible. Consulter les logs serveur." });
+  return true;
+}
+
 // La boîte métier et les approbations des runs du moteur (phase 5), dans une seule liste :
 // la page, le conseiller et la note du vault les traitent pareil. Sans event store, ou avec
 // un moteur antérieur à `approbationsOuvertes`, la boîte reste lisible seule.
@@ -362,6 +381,7 @@ async function traiter(req, res) {
   // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/finance" || chemin === "/finance/" ||
     chemin === "/missions" || chemin.startsWith("/missions/") ||
     chemin === "/marketing" || chemin.startsWith("/marketing/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
@@ -521,6 +541,7 @@ async function traiter(req, res) {
   }
 
   if (await traiterAIStudio(req, res)) return undefined;
+  if (await traiterFinance(req, res)) return undefined;
   if (await traiterDiscussions(req, res, chemin, qui)) return undefined;
 
   const preparationMission = chemin.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/mission$/);

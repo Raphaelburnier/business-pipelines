@@ -2,6 +2,7 @@ node_modules/
 web/node_modules
 ai-studio-data/
 ai-studio-archive/
+finance-data/
 runs/
 *.log
 

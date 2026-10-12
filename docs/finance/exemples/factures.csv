@@ -1,0 +1,2 @@
+document_id,business_id,issued_on,due_on,currency,total_minor,tax_minor,status
+f-unpaid,demo-business,2026-10-10,2026-11-10,CHF,30000,,unpaid
