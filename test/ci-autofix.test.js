@@ -61,6 +61,7 @@ else if (args[0] === "api") {
     fs.writeFileSync(process.env.FAKE_POSTS, JSON.stringify(posts));
     repondre({id: 1});
   } else if (route === "repos/r/p") repondre({default_branch: "main"});
+  else if (route.startsWith("repos/r/p/actions/runs/") && route.includes("/attempts/")) repondre(cfg.jobs);
   else if (route.startsWith("repos/r/p/actions/runs/")) repondre(cfg.run);
   else if (route.startsWith("repos/r/p/pulls?")) repondre(cfg.prs);
   else if (route.startsWith("repos/r/p/issues/60/comments")) repondre(cfg.commentaires);
@@ -188,6 +189,14 @@ test("Claude travaille sur le SHA exact, sans écriture, sans shell ni réseau, 
   }
 });
 
+test("bubblewrap est installé avant Claude, sinon le nettoyage d'environnement empêche son démarrage", () => {
+  const bac = etape(corriger, "Install the subprocess sandbox");
+  assert.ok(corriger.steps.indexOf(bac) < corriger.steps.indexOf(ETAPE_CLAUDE));
+  assert.ok(!bac["continue-on-error"], "sans bac à sable, le job doit s'arrêter avant d'utiliser le secret");
+  assert.match(bac.run, /apt-get install -y --no-install-recommends bubblewrap/);
+  assert.match(bac.run, /command -v bwrap/);
+});
+
 test("seul corriger exécute un agent ; tri, signalement et publication n'exécutent pas le code de la PR", () => {
   for (const job of [trier, signaler]) assert.ok(!job.steps.some((s) => s.uses?.startsWith("actions/checkout")));
   for (const job of [trier, signaler, publier]) {
@@ -239,6 +248,7 @@ function configTri(modif = {}) {
     commentaires: [],
     commit: { commit: { message: "feat: something" } },
     commits: [{ commit: { message: "feat: something" } }],
+    jobs: { jobs: [{ steps: [{ name: "Verify tested merge (merge=x)", conclusion: "success" }, { name: "Run server tests", conclusion: "failure" }] }] },
     log: "job\tstep\t2026-10-12T10:00:00.0000000Z not ok 1 - route\n",
   };
   modif.modifier?.(c);
@@ -299,6 +309,7 @@ for (const [nom, modif, raison] of [
   ["tentative déjà transmise", { modifier: (c) => { c.commentaires = [{ user: { login: "github-actions[bot]" }, body: `<!-- ci-autofix:${SHA}:1 -->\nok` }]; } }, /déjà été traitée/],
   ["commits illisibles", { modifier: (c) => { delete c.commits; } }, /illisibles/],
   ["commentaires illisibles", { modifier: (c) => { delete c.commentaires; } }, /illisibles/],
+  ["jobs du run illisibles", { modifier: (c) => { delete c.jobs; } }, /illisibles/],
 ]) {
   test(`tri refusé : ${nom}`, () => {
     const r = trierAvec(modif);
@@ -308,6 +319,19 @@ for (const [nom, modif, raison] of [
     assert.ok(!r.appels.some((a) => a[0] === "run"), "aucun log collecté");
   });
 }
+
+test("tri : un échec limité à la preuve de merge (base périmée) ne réveille pas l'agent", () => {
+  const r = trierAvec({ modifier: (c) => { c.jobs.jobs[0].steps = [{ name: "Verify tested merge (merge=x, head=y, base=z)", conclusion: "failure" }]; } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.sorties.decision, "perime", r.resume);
+  assert.match(r.sorties.raison, /mettre la branche à jour/);
+  assert.ok(!r.appels.some((a) => a[0] === "run"), "aucun log collecté");
+});
+
+test("tri : preuve de merge et tests en échec ensemble, l'agent est quand même appelé", () => {
+  const r = trierAvec({ modifier: (c) => { c.jobs.jobs[0].steps = [{ name: "Verify tested merge (merge=x)", conclusion: "failure" }, { name: "Run server tests", conclusion: "failure" }]; } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
 
 test("tri : un marqueur posté par un autre auteur ne bloque pas", () => {
   const r = trierAvec({ modifier: (c) => { c.commentaires = [{ user: { login: "someone" }, body: `<!-- ci-autofix:${SHA}:1 -->` }]; } });
@@ -376,6 +400,16 @@ test("signalement : Claude pose le marqueur de transmission, l'arrêt un marqueu
   for (const r of [claude, arret]) assert.doesNotMatch(r.posts[0].corps, /@codex/);
 });
 
+test("signalement d'une base périmée : marqueur d'arrêt, ni mention ni escalade", () => {
+  const { correctionDe } = require("../src/suivi-livraisons");
+  const r = signalerAvec("perime");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.posts[0].corps, new RegExp(`^<!-- ci-autofix-arret:${SHA}:1 -->\n`));
+  assert.match(r.posts[0].corps, /Update branch/);
+  assert.doesNotMatch(r.posts[0].corps, /@codex|échoue encore après la correction automatique/);
+  assert.equal(correctionDe({ commentaires: [{ body: r.posts[0].corps }], commits: [], tete: SHA }), null);
+});
+
 test("le suivi des livraisons du publieur lit ces commentaires comme avant", () => {
   const { correctionDe } = require("../src/suivi-livraisons");
   const transmis = signalerAvec("claude").posts[0].corps;
@@ -435,10 +469,15 @@ test("isolement : .git sort de l'espace de travail, la config Claude de la branc
   fs.writeFileSync(path.join(dir, ".claude/settings.json"), "{}\n");
   fs.writeFileSync(path.join(dir, ".ci-autofix/message.txt"), "fix: bump value\n");
   fs.writeFileSync(path.join(dir, ".ci-autofix/resume.md"), "Cause : valeur.\n");
+  // Masques vides laissés par le bac à sable de Claude Code (recette du 2026-10-12), et un
+  // .env avec du contenu, qui doit rester visible pour être refusé à la publication.
+  for (const f of [".env.development", ".env.test.local", ".npmrc", "bunfig.toml", "yarn.lock", ".gitmodules"]) fs.writeFileSync(path.join(dir, f), "");
+  fs.writeFileSync(path.join(dir, ".env.local"), "A=1\n");
   r = executer(SCRIPT_EMBALLER, env, dir, ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c"]);
   assert.equal(r.status, 0, r.stderr);
   const paquet = path.join(e.runnerTemp, "paquet");
   const patch = fs.readFileSync(path.join(paquet, "correctif.patch"), "utf8");
+  assert.deepEqual(patch.match(/^diff --git a\/(\S+)/gm).map((l) => l.slice(13)).sort(), [".env.local", "src/app.js"]);
   assert.match(patch, /^diff --git a\/src\/app\.js b\/src\/app\.js$/m);
   assert.doesNotMatch(patch, /\.claude|\.mcp\.json|\.ci-autofix/);
   assert.equal(fs.readFileSync(path.join(paquet, "message.txt"), "utf8"), "fix: bump value\n");

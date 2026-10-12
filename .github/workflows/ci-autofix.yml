@@ -153,6 +153,14 @@ jobs:
             conclure rien "cette tentative de CI a déjà été traitée"
           fi
 
+          # Un échec limité à la preuve de merge vient d'une base périmée (main a avancé, ou les
+          # jobs ont été relancés sur l'ancien merge) : le code n'y est pour rien.
+          etapes="$(gh api --paginate "repos/$REPOSITORY/actions/runs/$run_id/attempts/$tentative/jobs?per_page=100" \
+            --jq '.jobs[] | .steps[]? | select(.conclusion == "failure") | .name')" || conclure rien "jobs du run illisibles"
+          if [[ -n "$etapes" ]] && ! grep -vq '^Verify tested merge' <<<"$etapes"; then
+            conclure perime "le merge testé est périmé : mettre la branche à jour avec la branche par défaut pour relancer la CI"
+          fi
+
           message="$(gh api "repos/$REPOSITORY/commits/$sha" --jq '.commit.message')" || conclure rien "commit illisible"
           if grep -Fq '[ci-autofix]' <<<"$message" && [[ "$tentative" == "1" ]]; then
             conclure boucle "pas de seconde tentative sur un commit de correction automatique"
@@ -193,7 +201,7 @@ jobs:
 
   signaler:
     needs: trier
-    if: needs.trier.outputs.decision == 'boucle' || needs.trier.outputs.decision == 'codex' || needs.trier.outputs.decision == 'claude'
+    if: contains(fromJSON('["boucle","perime","codex","claude"]'), needs.trier.outputs.decision)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -229,6 +237,13 @@ jobs:
               {
                 echo "<!-- ci-autofix-arret:$SHA:$TENTATIVE -->"
                 echo "La CI échoue encore après la correction automatique ([run $RUN_ID]($lien), commit $SHA). Arrêt : $RAISON. À reprendre à la main."
+              } > "$corps"
+              ;;
+            perime)
+              # Même marqueur d'arrêt pour la déduplication, sans la phrase d'escalade du suivi.
+              {
+                echo "<!-- ci-autofix-arret:$SHA:$TENTATIVE -->"
+                echo "La CI de $SHA ([run $RUN_ID]($lien)) n'a échoué qu'à la vérification du merge testé : la branche par défaut a avancé depuis. Aucune correction de code n'est demandée ; mettre la branche à jour (« Update branch ») relance la CI. Relancer les jobs échoués ne suffit pas, ils réutilisent l'ancien merge."
               } > "$corps"
               ;;
             codex)
@@ -301,6 +316,24 @@ jobs:
         with:
           name: ci-autofix-log
           path: .ci-autofix
+
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB exige bubblewrap ; l'action ne l'installe que pour
+      # allowed_non_write_users. Sans lui, Claude Code refuse de démarrer (recette du 2026-10-12).
+      # Mêmes commandes que l'action ; un échec ici arrête le job avant que le secret serve.
+      - name: Install the subprocess sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends bubblewrap socat && break
+            echo "apt-get, tentative $i en échec"
+            sleep 5
+          done
+          command -v bwrap
+          # Ubuntu 24.04 restreint les espaces de noms non privilégiés par AppArmor.
+          if [[ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: Let Claude propose a fix
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1
@@ -381,6 +414,15 @@ jobs:
           chmod -R u+w "$RUNNER_TEMP/paquet.git"
           g() { git --git-dir="$RUNNER_TEMP/paquet.git" --work-tree="$GITHUB_WORKSPACE" -c core.hooksPath=/dev/null -c core.fsmonitor=false "$@"; }
           [[ "$(g rev-parse HEAD)" == "$SHA" ]]
+          # Le bac à sable de Claude Code laisse à la racine des fichiers vides qui lui servaient
+          # à masquer ces chemins. Seuls les fichiers non suivis et vides partent ; un vrai
+          # contenu reste dans le patch et la publication le refuse comme chemin sensible.
+          while IFS= read -r -d '' f; do
+            case "${f##*/}" in
+              .env|.env.*|.npmrc|.yarnrc|.yarnrc.yml|bunfig.toml|pnpm-lock.yaml|yarn.lock|.gitmodules)
+                if [[ -f "$f" && ! -L "$f" && ! -s "$f" ]]; then rm -f -- "$f"; echo "masque vide du bac à sable retiré : $f"; fi ;;
+            esac
+          done < <(g ls-files --others --exclude-standard -z)
           g add -A -- . ':(exclude).ci-autofix' ':(exclude,glob)**/.claude/**' ':(exclude,glob)**/.mcp.json' ':(exclude,glob)**/CLAUDE.local.md'
           g diff --cached --binary --no-renames HEAD > "$paquet/correctif.patch"
           for f in message.txt resume.md; do
