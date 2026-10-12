@@ -203,6 +203,41 @@ test("la recherche FTS ne conserve jamais plus de deux sections par note", () =>
   }
 });
 
+test("le chat lit le vault dans le périmètre du conseiller, par dossier et par section", () => {
+  const { dir, base } = temporaire("chat");
+  try {
+    conseiller.recevoirVault(base, {
+      head: "8".repeat(40),
+      debut: true,
+      fin: true,
+      fichiers: [
+        { chemin: "notes/10-node/sqlite.md", blob: "a".repeat(40), contenu: "# SQLite\n\n## WAL\nLe journal WAL du cockpit.\n\n## FTS5\nIndex du cockpit." },
+        { chemin: "_context/projects/business-pipelines/etat-business-pipelines.md", blob: "b".repeat(40), contenu: "# État\n\n## Objectif\nLe cockpit observe les runs." },
+      ],
+      supprimes: [],
+    });
+    const vault = conseiller.vaultPourChat(base);
+
+    const partout = vault.chercher({ requete: "cockpit", limite: 6, dossier: null });
+    assert.ok(partout.synchroLe);
+    assert.strictEqual(new Set(partout.resultats.map((r) => r.chemin)).size, 2);
+    const projets = vault.chercher({ requete: "cockpit", limite: 6, dossier: "_context/projects/" });
+    assert.deepStrictEqual([...new Set(projets.resultats.map((r) => r.chemin))], ["_context/projects/business-pipelines/etat-business-pipelines.md"]);
+    assert.strictEqual(vault.chercher({ requete: "zzzinconnu", limite: 6, dossier: null }).resultats, "aucune note trouvée pour ces mots");
+
+    const note = vault.lire({ chemin: "notes/10-node/sqlite.md", section: null });
+    assert.deepStrictEqual(note.sections, ["SQLite", "SQLite › WAL", "SQLite › FTS5"]);
+    assert.ok(note.texte.indexOf("WAL") < note.texte.indexOf("FTS5"));
+    const section = vault.lire({ chemin: "notes/10-node/sqlite.md", section: "fts5" });
+    assert.ok(section.texte.includes("Index du cockpit") && !section.texte.includes("journal WAL"));
+
+    assert.match(vault.lire({ chemin: "_context/PROFILE.md", section: null }), /hors du périmètre/);
+    assert.match(vault.lire({ chemin: "notes/absente.md", section: null }), /absente de l'index/);
+  } finally {
+    nettoyer(dir);
+  }
+});
+
 let failed = 0;
 (async () => {
   for (const { name, fn } of tests) {

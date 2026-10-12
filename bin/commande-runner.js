@@ -6,6 +6,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWorkers, wol } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
+const conseiller = require("../src/conseiller");
 const registre = require("agent-orchestrator/src/registre");
 const { reprendreRun } = require("../src/reprises-runs");
 
@@ -14,6 +15,8 @@ const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects")
 const STORE = process.env.ORCH_EVENT_STORE || path.join(RACINE, "etat", "events.sqlite");
 const INTERVALLE = Number(process.env.COMMAND_POLL_MS || 1000);
 const MODELE_CHAT = process.env.COCKPIT_CHAT_MODELE || "sonnet";
+// Même emplacement que dans bin/cockpit.js : à côté de l'event store.
+const CONSEILLER_BASE = process.env.CONSEILLER_BASE || path.join(path.dirname(STORE), "conseiller.sqlite");
 const CODES_ATTENDUS = new Set([0, 75, 76, 77, 78]);
 
 let arret = false;
@@ -79,13 +82,15 @@ function contexteCockpit(store) {
 }
 
 // Les outils du chat lisent par les mêmes fonctions que l'API : le chat voit ce que voit
-// l'écran, jamais plus.
+// l'écran, jamais plus. Le vault est l'index que l'agent du PC tient à jour sur le NAS
+// (src/vault-index.js), dans son périmètre : sans cette base, le chat n'a pas d'outil vault.
 function outilsCockpit(store) {
   return cockpitRead.serveurCockpitRead({
     store,
     runs: ({ projet, statut, limite }) => api.runs(store, { projet, statut, limite }),
     run: (id) => api.run(store, id),
     etat: () => ({ machines: api.machines(store), usage: api.usage(store) }),
+    vault: fs.existsSync(CONSEILLER_BASE) ? conseiller.vaultPourChat(CONSEILLER_BASE) : null,
   });
 }
 
