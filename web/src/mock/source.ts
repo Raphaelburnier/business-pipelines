@@ -86,6 +86,21 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
           membres: membres.filter((m) => m.registre.includes(nom)).map((m) => ({ id: m.id, nom: m.nom, role: m.role, llm: m.llm })) })) };
     },
     async lancerMission(demande) { return this.lancerRun(demande.projectId, demande.pipelineIndex); },
+    // La maquette reprend la préparation d'équipe : premier membre de chaque rôle, aucune raison réelle.
+    async proposerPlan(spec) {
+      const o = await this.preparerMission(spec.projectId, 0);
+      const realise = o.roles.filter((r) => r.type === "agent").map((r) => r.noeud);
+      const juge = o.roles.filter((r) => r.type === "review").map((r) => r.noeud);
+      return { statut: "lancable", blocages: [], empreinte: "0".repeat(64), projet: { id: o.projectId, nom: o.nom },
+        plan: { version: 1, nature: o.nature === "marketing" ? "marketing" : "developpement",
+          pipeline: { ref: o.pipeline.includes("@") ? o.pipeline : `${o.pipeline}@1`, index: 0, titre: o.titre, raison: "Maquette : premier pipeline du projet." },
+          etapes: o.roles.map((r) => { const m = r.membres[0]; return { noeud: r.noeud, type: r.type, role: r.type === "review" ? "revue" as const : "production" as const,
+            agent: r.agent, membre: m?.id ?? null, nom: m?.nom ?? r.agent, llm: m?.llm ?? r.llm, machine: "pc", maxTurns: null, raisons: ["Maquette."] }; }),
+          criteres: spec.criteres.map((texte) => ({ texte, realisePar: realise, jugePar: juge })),
+          independance: [], limites: { maxTurnsPerAgent: null, maxTotalTurns: null, usdPerRun: 4, usdPerMonth: null, corrections: [] },
+          resultat: { type: "livrables", depot: null, description: "Maquette : aucun run réel." }, degrade: false, avertissements: [] } };
+    },
+    async lancerPlan(demande) { return this.lancerRun(demande.spec.projectId, 0); },
     async reprendreRun() { throw new Error("La reprise des runtimes nécessite les données réelles du cockpit."); },
     commande: async (id) => {
       const commande = commandes.get(id);

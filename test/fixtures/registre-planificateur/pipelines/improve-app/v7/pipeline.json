@@ -1,0 +1,44 @@
+{
+  "name": "improve-app",
+  "version": 7,
+  "title": "Amélioration avec tests et revue indépendante",
+  "tags": ["code", "amelioration", "verification", "revue"],
+  "description": "Plan et code sur le PC ; tests déclarés par la fiche projet sur un snapshot isolé ; revue indépendante en lecture seule de l'arbre livrable, rapport JSON validé par le superviseur. Un test rouge ou un finding P0/P1 renvoie au code, qui repasse tests et revues. Deux corrections au maximum.",
+  "budget": { "maxTurnsPerAgent": 35, "maxTotalTurns": 200, "usdPerRun": 4 },
+  "nodes": [
+    {
+      "id": "plan", "type": "agent", "agent": "improvement-planner@1", "runsOn": "pc",
+      "outputs": ["improvement-plan.json"], "maxTurns": 24,
+      "outputSchema": { "improvement-plan.json": { "objective": "string", "rationale": "string", "test_command": "string", "acceptance_criteria": "array", "changes": "array", "coverage_gaps": "array", "risks": "array", "blockers": "array" } }
+    },
+    {
+      "id": "implement", "type": "agent", "agent": "improvement-editor@2", "runsOn": "pc",
+      "llm": { "via": "codex", "model": "gpt-5.6-terra:medium" },
+      "inputs": ["improvement-plan.json"], "outputs": ["applied.json"], "maxTurns": 35, "mustChange": true,
+      "outputSchema": { "applied.json": { "changes_done": "array", "changes_blocked": "array", "tests": "array" } }
+    },
+    {
+      "id": "verify", "type": "script", "handler": "verify-project", "runsOn": "pc",
+      "outcomeFrom": { "report": "test-report.json", "field": "verdict", "items": "failures" }
+    },
+    {
+      "id": "review", "type": "review", "agent": "code-reviewer@1", "runsOn": "pc",
+      "inputs": ["improvement-plan.json", "applied.json", "test-report.json"], "maxTurns": 30, "blockOn": ["P0", "P1"]
+    },
+    {
+      "id": "review-security", "type": "review", "agent": "security-reviewer@2", "runsOn": "pc", "optional": true,
+      "inputs": ["improvement-plan.json", "applied.json"], "maxTurns": 30, "blockOn": ["P0", "P1"],
+      "notes": "Activée par la fiche projet : overrides.nodes.review-security.enabled = true."
+    }
+  ],
+  "edges": [
+    { "from": "plan", "to": "implement" },
+    { "from": "implement", "to": "verify" },
+    { "from": "verify", "to": "review", "on": "PASS" },
+    { "from": "review", "to": "review-security", "on": "PASS" },
+    { "from": "verify", "to": "implement", "on": "FAIL" },
+    { "from": "review", "to": "implement", "on": "FAIL" },
+    { "from": "review-security", "to": "implement", "on": "FAIL" }
+  ],
+  "cycles": [{ "id": "correction", "nodes": ["implement", "verify", "review", "review-security"], "maxLoops": 2 }]
+}

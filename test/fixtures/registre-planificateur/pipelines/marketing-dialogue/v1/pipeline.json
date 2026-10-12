@@ -1,0 +1,20 @@
+{
+  "name": "marketing-dialogue",
+  "version": 1,
+  "title": "Discussion avec l'équipe marketing",
+  "workspace": "documents",
+  "tags": ["marketing", "discussion"],
+  "description": "Gabarit documentaire : le cockpit crée un nœud par participant choisi et relie les réponses du tour.",
+  "budget": {"maxTurnsPerAgent": 6, "maxTotalTurns": 36, "usdPerRun": 3},
+  "nodes": [{
+    "id": "discussion",
+    "type": "agent",
+    "agent": "marketing-discussant@1",
+    "runsOn": "pc",
+    "outputs": ["reponse.json"],
+    "outputSchema": {"reponse.json": {"contenu": "string", "questions": "array", "propositions": "array"}},
+    "slice": "*",
+    "maxTurns": 6
+  }],
+  "edges": []
+}

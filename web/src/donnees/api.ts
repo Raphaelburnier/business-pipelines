@@ -110,6 +110,10 @@ export function sourceApi(): Source {
     async lancerMission(demande) {
       return (await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", demande)).commande;
     },
+    proposerPlan: (spec) => ecrire<import("./missions").PropositionPlan>("/api/missions/plan", { spec }),
+    async lancerPlan(demande) {
+      return (await ecrire<{ commande: { id: string; statut: string } }>("/api/missions/lancer", demande)).commande;
+    },
     commande: async (id) => (await lire<{ commande: Commande }>(`/api/commands/${encodeURIComponent(id)}`)).commande,
     async reprendreRun(id, waitId, reconnexionConfirmee = false) {
       return (await ecrire<{ commande: { id: string; statut: string } }>(`/api/runs/${encodeURIComponent(id)}/reprise`, { waitId, reconnexionConfirmee })).commande;

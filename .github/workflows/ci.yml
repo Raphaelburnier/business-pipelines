@@ -47,8 +47,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur compagnon : attentes/reprises durables, bornées, et contrats figés.
-          ref: 7c305ab12267093b68bbbcecb578d61bfcf4f2cb
+          # Moteur compagnon : plan du planificateur figé dans le contrat de mission
+          # (agent-orchestrator claude/planificateur-missions).
+          ref: b389d352ee181b7d3603fdc2cd0d5a8e58fba32e
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

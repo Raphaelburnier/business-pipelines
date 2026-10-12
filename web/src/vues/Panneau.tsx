@@ -13,6 +13,9 @@ import { naviguer } from "../navigation";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
 import { AttenteRun } from "./AttenteRun";
+import { PlanLisible } from "./PlanMission";
+
+const ETATS_CRITERE = { "a-venir": "À venir", "en-cours": "En cours", valide: "Validé", echec: "Échec", "non-verifie": "Non vérifié" } as const;
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
   return (
@@ -175,7 +178,11 @@ function PanneauRun({ id }: { id: string }) {
       {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
         <Titre>Mission</Titre>
         <p className="whitespace-pre-wrap">{run.mission.objectif}</p>
-        <ul className="mt-2 list-disc pl-5">{run.mission.criteres.map((c, i) => <li key={i}>{c}</li>)}</ul>
+        {run.criteres
+          ? <ul className="mt-2 flex flex-col gap-1">{run.criteres.map((c, i) => <li key={i}><span className={c.etat === "valide" ? "text-ok" : c.etat === "echec" ? "text-alerte" : "text-douce"}>{ETATS_CRITERE[c.etat]}</span> · {c.texte}
+            <span className="text-xs text-douce"> ({c.jugements.map((j) => `${j.noeud} ${j.outcome ?? j.statut}`).join(", ") || "aucun juge"})</span></li>)}</ul>
+          : <ul className="mt-2 list-disc pl-5">{run.mission.criteres.map((c, i) => <li key={i}>{c}</li>)}</ul>}
+        {run.mission.plan && <details className="mt-2"><summary className="cursor-pointer text-xs">Plan figé du planificateur</summary><div className="mt-2"><PlanLisible plan={run.mission.plan} /></div></details>}
         <p className="mt-2 text-xs text-douce">{run.mission.participants.map((p) => `${p.nom} (${p.noeud}, ${p.llm.via}:${p.llm.model})`).join(" · ")}</p>
         <details className="mt-2"><summary className="cursor-pointer text-xs">Spec et directives conservées</summary>
           <p className="mt-2 whitespace-pre-wrap">{run.mission.document || "Aucune spec détaillée."}</p>
