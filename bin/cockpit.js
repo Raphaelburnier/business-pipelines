@@ -59,6 +59,7 @@ const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
 const missions = require("../src/missions");
+const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -527,7 +528,12 @@ async function traiter(req, res) {
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
-  const repriseRun = req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
+  // Le planificateur de missions (src/planificateur.js) : une spec, un plan, un lancement.
+  if (await plansMissions.traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 128_000), store, qui,
+    params: () => ({ projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) }),
+    machines: api.machines, viaParMachine: VIA_PAR_MACHINE, origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
+
+  const repriseRun =req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
   if (repriseRun) {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: "event store indisponible" });
@@ -568,17 +574,7 @@ async function traiter(req, res) {
         const etatMachines = api.machines(magasinOuvert);
         const commande = missions.demander({ store: magasinOuvert, qui, demande,
           params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) },
-          verifierBackend: (llm, noeud) => {
-            const dispo = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine: VIA_PAR_MACHINE, machines: etatMachines });
-            if (!dispo.utilisable) throw new Error(`${noeud.id} : backend ${llm.via} indisponible (${dispo.raison})`);
-            const role = require("agent-orchestrator/src/dispatch").roleEffectif({ ...noeud, llm });
-            if (role !== "nas") {
-              const worker = etatMachines.find((m) => m.machine === role);
-              if (!worker || !["online", "busy"].includes(worker.etat)) throw new Error(`${noeud.id} : worker ${role} indisponible`);
-              if (worker.meta?.capacites?.missions !== 1) throw new Error(`${noeud.id} : mettre le worker ${role} à jour pour les missions`);
-              if (!(worker.meta?.capacites?.backends || []).includes(llm.via)) throw new Error(`${noeud.id} : runtime ${llm.via} non annoncé par ${role}`);
-            }
-          } });
+          verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }) });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
       }
       // L'équipe associée au projet pose le modèle de chaque membre (src/equipe.js). Un

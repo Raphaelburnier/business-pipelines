@@ -11,7 +11,7 @@ import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseM
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
-import type { OptionsMission, DemandeMission } from "./missions";
+import type { OptionsMission, DemandeMission, SpecMission, PropositionPlan, LancementPlan } from "./missions";
 
 export interface FiltreRuns {
   project?: string;
@@ -40,6 +40,10 @@ export interface Source {
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
   preparerMission(projectId: string, pipelineIndex: number): Promise<OptionsMission>;
   lancerMission(demande: DemandeMission): Promise<{ id: string; statut: string }>;
+  /** Le planificateur choisit pipeline et agents pour une spec ; rien n'est mis en file. */
+  proposerPlan(spec: SpecMission): Promise<PropositionPlan>;
+  /** Met en file le plan présenté ; refusé s'il a changé depuis sa présentation. */
+  lancerPlan(demande: LancementPlan): Promise<{ id: string; statut: string }>;
   /** Le run associé est visible dès son admission, avant la fin du processus. */
   commande(id: string): Promise<Commande>;
   reprendreRun(id: string, waitId: string, reconnexionConfirmee?: boolean): Promise<{ id: string; statut: string }>;

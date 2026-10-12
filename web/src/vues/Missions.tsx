@@ -4,6 +4,7 @@ import { suivreCommande } from "../donnees/lancement";
 import { classer } from "../donnees/modeles";
 import { lignes, specStructuree, type OptionsMission, type ChoixAgentMission } from "../donnees/missions";
 import { Erreur, Titre } from "../ui";
+import { PlanMission } from "./PlanMission";
 import type { ReponseModeles } from "../types";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
@@ -14,9 +15,18 @@ export function Missions({ projetInitial, aller }: { projetInitial: string | nul
   const [projetId, setProjetId] = useState(projetInitial ?? "");
   const [index, setIndex] = useState(0);
   const [occupe, setOccupe] = useState(false);
+  const [mode, setMode] = useState<"plan" | "equipe">("plan");
   const projet = topo.donnees?.projets.find((p) => p.id === projetId);
+  const onglet = (m: typeof mode, libelle: string) => <button type="button" aria-pressed={mode === m} disabled={occupe} onClick={() => setMode(m)}
+    className={`rounded-lg px-3 py-2 text-sm ${mode === m ? "bg-accent font-semibold text-sur-accent" : "border border-trait"}`}>{libelle}</button>;
+  if (mode === "plan") return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
+    <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Confie une spec : le planificateur choisit le workflow et les agents disponibles, puis te montre le plan.</p></div>
+    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
+    <PlanMission projetInitial={projetInitial} aller={aller} />
+  </section>;
   return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
     <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Choisis le projet, son équipe et le résultat attendu.</p></div>
+    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
     {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
     <label className="flex flex-col gap-1 text-sm">Projet
       <select className={champ} disabled={occupe} value={projetId} onChange={(e) => { setProjetId(e.target.value); setIndex(0); }}>

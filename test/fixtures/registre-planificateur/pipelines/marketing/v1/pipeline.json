@@ -1,0 +1,199 @@
+{
+  "name": "marketing",
+  "version": 1,
+  "title": "Plan marketing à deux voix",
+  "tags": [
+    "marketing",
+    "plan"
+  ],
+  "description": "Deux voix analysent la même demande, une synthèse les confronte sans lisser leurs désaccords, un contrôle déterministe vérifie la couverture et la traçabilité, puis une approbation humaine tranche question par question.",
+  "notes": "Réécriture en graphe de business-pipelines/pipelines/marketing.json (stages). La boucle de correction synthese ↔ couverture est bornée à un tour, comme retry.max_fix_cycles valait 1.",
+  "budget": {
+    "maxTurnsPerAgent": 15,
+    "maxTotalTurns": 40,
+    "usdPerRun": 2
+  },
+  "nodes": [
+    {
+      "id": "consigne",
+      "type": "script",
+      "handler": "consigne",
+      "params": {
+        "decisions": "marketing.decisions.json",
+        "plan_gele": "marketing.plan.json",
+        "output": "orientation.json"
+      },
+      "notes": "Relit la réponse libre laissée sur le plan précédent."
+    },
+    {
+      "id": "economie",
+      "type": "agent",
+      "agent": "economy-analyst@1",
+      "inputs": [
+        "orientation.json"
+      ],
+      "outputs": [
+        "economie.json"
+      ],
+      "outputSchema": {
+        "economie.json": {
+          "constats": "array",
+          "questions_sans_reponse": "array"
+        }
+      },
+      "slice": [
+        "offre",
+        "marche",
+        "questions",
+        "contraintes"
+      ],
+      "maxTurns": 12
+    },
+    {
+      "id": "marque",
+      "type": "agent",
+      "agent": "brand-analyst@1",
+      "inputs": [
+        "orientation.json"
+      ],
+      "outputs": [
+        "marque.json"
+      ],
+      "outputSchema": {
+        "marque.json": {
+          "constats": "array",
+          "questions_sans_reponse": "array"
+        }
+      },
+      "slice": [
+        "offre",
+        "marche",
+        "questions",
+        "contraintes"
+      ],
+      "maxTurns": 12
+    },
+    {
+      "id": "synthese",
+      "type": "agent",
+      "agent": "plan-synthesist@1",
+      "inputs": [
+        "orientation.json",
+        "economie.json",
+        "marque.json"
+      ],
+      "outputs": [
+        "plan-marketing.json"
+      ],
+      "outputSchema": {
+        "plan-marketing.json": {
+          "reponses": "array",
+          "desaccords": "array",
+          "constats_ecartes": "array",
+          "questions_sans_reponse": "array",
+          "actions": "array"
+        }
+      },
+      "slice": [
+        "offre",
+        "marche",
+        "questions",
+        "contraintes"
+      ],
+      "maxTurns": 15
+    },
+    {
+      "id": "couverture",
+      "type": "script",
+      "handler": "verify-couverture",
+      "params": {
+        "report": "plan-marketing.json",
+        "against": [
+          "economie.json",
+          "marque.json"
+        ],
+        "questions_from": "questions",
+        "owner": "synthese",
+        "output": "couverture.json"
+      },
+      "outcomeFrom": {
+        "report": "couverture.json",
+        "field": "verdict",
+        "items": "manques"
+      }
+    },
+    {
+      "id": "approbation",
+      "type": "approval",
+      "actions": "plan-marketing.json"
+    }
+  ],
+  "edges": [
+    {
+      "from": "consigne",
+      "to": "economie"
+    },
+    {
+      "from": "consigne",
+      "to": "marque"
+    },
+    {
+      "from": "economie",
+      "to": "synthese"
+    },
+    {
+      "from": "marque",
+      "to": "synthese"
+    },
+    {
+      "from": "synthese",
+      "to": "couverture"
+    },
+    {
+      "from": "couverture",
+      "to": "synthese",
+      "on": "INCOMPLETE"
+    },
+    {
+      "from": "couverture",
+      "to": "approbation",
+      "on": "COMPLETE"
+    }
+  ],
+  "cycles": [
+    {
+      "id": "correction",
+      "nodes": [
+        "synthese",
+        "couverture"
+      ],
+      "maxLoops": 1
+    }
+  ],
+  "layout": {
+    "consigne": [
+      0,
+      120
+    ],
+    "economie": [
+      240,
+      40
+    ],
+    "marque": [
+      240,
+      200
+    ],
+    "synthese": [
+      480,
+      120
+    ],
+    "couverture": [
+      720,
+      120
+    ],
+    "approbation": [
+      960,
+      120
+    ]
+  }
+}
