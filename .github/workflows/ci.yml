@@ -48,7 +48,7 @@ jobs:
         with:
           repository: Raphaelburnier/agent-orchestrator
           # Moteur compagnon : attentes/reprises durables, bornées, et contrats figés.
-          ref: 832f1b6a2555421cb486375c1f61d6c967fe4d90
+          ref: c04ce5775556deada61a0d56bc6a89988a2257bf
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
