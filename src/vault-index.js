@@ -17,6 +17,8 @@ const PERIMETRE = ["notes/", "wiki/", "_context/projects/", "_context/memory/", 
 // Au-delà, un fichier est un export ou une pièce jointe, pas une note.
 const TAILLE_MAX = 200_000;
 const EXTRAIT_MAX = 800;
+// Une note lue par le chat : assez pour une fiche d'état, pas pour un export entier.
+const LECTURE_MAX = 20_000;
 const FICHIERS_MAX = 2_000;
 const SUPPRIMES_MAX = 10_000;
 const LOT_OCTETS_MAX = 3_500_000;
@@ -266,19 +268,21 @@ function extrait(texte) {
  * contexte avec une seule longue page.
  * @returns {Array<{ chemin: string, titre: string, extrait: string, score: number }>}
  */
-function rechercher(db, texte, { limite = 6 } = {}) {
+function rechercher(db, texte, { limite = 6, dossier = null } = {}) {
   preparer(db);
   const requete = requeteFts(texte);
   if (!requete) return [];
+  // Un préfixe comparé tel quel : pas de LIKE, où `_` et `%` des noms de dossier joueraient.
+  const prefixe = dossier ? `${String(dossier).replace(/^\/+|\/+$/g, "")}/` : "";
   const lignes = db
     .prepare(
       // bm25 est négatif, plus bas vaut mieux. `wiki/` est dérivé de `notes/` : sa pertinence
       // est divisée par deux, pour qu'une page générique ne passe pas devant `_context/`.
       `SELECT chemin, titre, texte,
               bm25(vault_sections, 0, 3.0, 2.0, 1.0) * CASE WHEN chemin LIKE 'wiki/%' THEN 0.5 ELSE 1.0 END AS score
-       FROM vault_sections WHERE vault_sections MATCH ? ORDER BY score LIMIT ?`
+       FROM vault_sections WHERE vault_sections MATCH ? AND substr(chemin, 1, length(?)) = ? ORDER BY score LIMIT ?`
     )
-    .all(requete, limite * 4);
+    .all(requete, prefixe, prefixe, limite * 4);
   const parNote = new Map();
   const resultats = [];
   for (const l of lignes) {
@@ -291,4 +295,24 @@ function rechercher(db, texte, { limite = 6 } = {}) {
   return resultats;
 }
 
-module.exports = { PERIMETRE, dansPerimetre, decouper, inventaire, appliquer, rechercher, requeteFts, preparer };
+/**
+ * Une note de l'index, entière ou réduite aux sections dont le titre `##` contient `section`
+ * (sans casse), bornée. Rend `null` pour une note hors périmètre ou absente de l'index.
+ * @returns {{ chemin: string, titre: string, sections: string[], texte: string, tronque: boolean } | null}
+ */
+function lire(db, chemin, { section = null } = {}) {
+  preparer(db);
+  if (!dansPerimetre(chemin)) return null;
+  const fichier = db.prepare("SELECT titre FROM vault_fichiers WHERE chemin = ?").get(chemin);
+  if (!fichier) return null;
+  // Les sections sont insérées dans l'ordre de la note : le rowid le garde.
+  const toutes = db.prepare("SELECT titre, texte FROM vault_sections WHERE chemin = ? ORDER BY rowid").all(chemin);
+  const voulue = section ? String(section).toLowerCase().trim() : null;
+  const gardees = voulue ? toutes.filter((s) => s.titre.split(" › ").pop().toLowerCase().includes(voulue)) : toutes;
+  let texte = gardees.map((s) => `## ${s.titre}\n${s.texte}`).join("\n\n");
+  const tronque = texte.length > LECTURE_MAX;
+  if (tronque) texte = `${texte.slice(0, LECTURE_MAX - 1)}…`;
+  return { chemin, titre: fichier.titre, sections: toutes.map((s) => s.titre), texte, tronque };
+}
+
+module.exports = { PERIMETRE, dansPerimetre, decouper, inventaire, appliquer, rechercher, lire, requeteFts, preparer };
