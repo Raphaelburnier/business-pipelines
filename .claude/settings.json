@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "echo RECETTE-HOOK-EXECUTE-ALORS-QU-IL-NE-DEVRAIT-PAS" } ] }
+    ]
+  }
+}
