@@ -431,7 +431,7 @@ async function traiter(req, res) {
   }
 
   // ---- PR GitHub : relevé du publieur, fusion par commande signée ----
-  if (chemin === "/api/pull-requests" || chemin === "/api/pull-requests/fusions") {
+  if (chemin === "/api/pull-requests" || chemin === "/api/pull-requests/fusions" || chemin === "/api/pull-requests/ci-relances") {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     const contexte = { store: magasinOuvert, instantaneFichier: PULL_REQUESTS, autorisesFichier: LIVRAISON_AUTORISES, qui };
@@ -441,6 +441,17 @@ async function traiter(req, res) {
       if (demande === null) return undefined;
       try {
         const commande = apiPullRequests.demander({ ...contexte, demande });
+        return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+      } catch (err) {
+        if (err instanceof apiPullRequests.RefusPullRequest) return json(res, err.code, { erreur: err.message });
+        throw err;
+      }
+    }
+    if (req.method === "POST" && chemin === "/api/pull-requests/ci-relances") {
+      const demande = await corpsJson(req, res);
+      if (demande === null) return undefined;
+      try {
+        const commande = apiPullRequests.demanderRelanceCI({ ...contexte, demande });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
       } catch (err) {
         if (err instanceof apiPullRequests.RefusPullRequest) return json(res, err.code, { erreur: err.message });

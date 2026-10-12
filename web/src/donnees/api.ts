@@ -124,6 +124,10 @@ export function sourceApi(): Source {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/pull-requests/fusions", demande);
       return reponse.commande;
     },
+    async relancerCIPR(demande) {
+      const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/pull-requests/ci-relances", demande);
+      return reponse.commande;
+    },
     approbations: () => lire<ReponseApprobations>("/api/approbations"),
     decider: (demande: DemandeDecision) => ecrire<ReponseDecision>("/api/decider", demande),
     async deciderRun(approbationId, demande) {

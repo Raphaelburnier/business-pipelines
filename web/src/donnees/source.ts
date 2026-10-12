@@ -10,7 +10,7 @@
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
-import type { DemandeFusion, EtatPullRequests } from "./pullRequests";
+import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
 import type { OptionsMission, DemandeMission } from "./missions";
 
 export interface FiltreRuns {
@@ -56,6 +56,7 @@ export interface Source {
   /** Les PR GitHub relevées par le publieur, et une fusion demandée (CI verte seulement). */
   pullRequests(): Promise<EtatPullRequests>;
   fusionnerPR(demande: DemandeFusion): Promise<{ id: string; statut: string }>;
+  relancerCIPR(demande: DemandeRelanceCI): Promise<{ id: string; statut: string }>;
   /** Plans métier en attente d'un arbitrage opérateur. */
   approbations(): Promise<ReponseApprobations>;
   /** Enregistre les arbitrages liés à l'empreinte du plan lu. */

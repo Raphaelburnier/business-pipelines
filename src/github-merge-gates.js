@@ -37,8 +37,10 @@ async function lireCI({ api, depot, numero, sha, baseSha, parDefaut }) {
   }
   const runs = await pages({ api, chemin: `/repos/${depot}/actions/workflows/ci.yml/runs?head_sha=${sha}&event=pull_request`, cle: "workflow_runs", limite: 1000 });
   const dernier = derniereCI(runs, workflow.id, sha);
-  const ci = { etat: "absente", details: [], preuve: null, raison: "aucune CI sur ce commit" };
+  const ci = { etat: "absente", details: [], preuve: null, runId: null, tentative: null, raison: "aucune CI sur ce commit" };
   if (!dernier) return ci;
+  ci.runId = Number.isInteger(dernier.id) ? dernier.id : null;
+  ci.tentative = Number.isInteger(dernier.run_attempt) ? dernier.run_attempt : null;
   ci.details = [{ nom: "CI", statut: dernier.status, conclusion: dernier.conclusion || null }];
   // Le lien du run CI, pour l'écran ; jamais une preuve.
   ci.url = typeof dernier.html_url === "string" ? dernier.html_url : null;
