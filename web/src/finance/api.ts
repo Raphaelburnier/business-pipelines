@@ -67,6 +67,54 @@ export interface Preview {
   canConfirm: boolean;
   sample: { data: RecordData; line: number }[];
 }
+export interface MacroSnapshot {
+  provider: {
+    name: string;
+    url: string;
+    license: string;
+    termsUrl: string;
+    frequency: string;
+  };
+  countries: { id: string; name: string }[];
+  indicators: {
+    id: string;
+    name: string;
+    unit: string;
+    definition: string;
+    attribution: string;
+    url: string;
+  }[];
+  period: { from: number; to: number };
+  series: {
+    id: string;
+    countryId: string;
+    indicatorId: string;
+    points: { year: number; value: number | null }[];
+    latest: { year: number; value: number } | null;
+    lastYearMissing: boolean;
+    lagging: boolean;
+  }[];
+  collectedAt: string | null;
+  sourceUpdatedAt: string | null;
+  lastAttempt: {
+    at: string;
+    ok: boolean;
+    message: string;
+    durationMs: number;
+    added?: number;
+    revised?: number;
+    unchanged?: number;
+    observationCount?: number;
+    availableCount?: number;
+  } | null;
+  revision: number;
+  cacheAgeDays: number | null;
+  cacheStale: boolean;
+  refreshSkipped?: boolean;
+  nextRefreshAt: string | null;
+  empty: boolean;
+  synthetic?: boolean;
+}
 export async function financeRequest<T>(
   path: string,
   body?: object,

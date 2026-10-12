@@ -1,13 +1,16 @@
-# Finance — premier jalon : trésorerie CSV
+# Finance — trésorerie CSV et contexte macro
 
 La page `/finance` fonctionne sans chiffres initiaux. Les montants sont inconnus tant
 que les entrées nécessaires ne sont pas importées. « Voir un exemple fictif » charge
 des cas synthétiques en lecture seule ; aucune ligne n’est ajoutée au stockage. Le
 mode global `?source=maquette` ne propose aucune écriture Finance.
 
-Trésorerie est implémentée. Marchés, Analyses et Portefeuille indiquent « À développer ».
+Trésorerie et le premier connecteur macro de Marchés sont implémentés. Analyses et
+Portefeuille indiquent « À développer ». Dans Marchés, collecter les statistiques
+publiques puis choisir une zone et un indicateur pour lire dix années d'historique.
+Le [contrat macro](macro.md) détaille les dates, absences, sources et limites.
 Le futur agent prépare des analyses sourcées ; les investissements seront exécutés par
-l’utilisateur chez son courtier. Ce jalon ne collecte aucun cours et ne lance aucun agent.
+l’utilisateur chez son courtier. Aucun cours boursier ni agent d'analyse n'est encore intégré.
 
 ## Premier usage
 
@@ -117,11 +120,12 @@ trésorerie business. Le compte courant seul termine à 170000 CHF et l’éparg
 ## Validation et suite
 
 Commandes : `node test/finance-import.test.js`, `node test/finance-metrics.test.js`,
-`npm test`, `npm run web:test`, `npm run web:build`. Les deux suites Finance sont incluses
+`node test/finance-sources.test.js`,
+`npm test`, `npm run web:test`, `npm run web:build`. Les trois suites Finance sont incluses
 dans `npm test`, donc dans la CI existante. La recette navigateur utilise un stockage
 temporaire et uniquement ces fixtures : vide → exemple → import → réimport → filtres →
 attribution → rechargement, navigation/retour, consultation clavier et largeur mobile.
 
-Prochain jalon : premier connecteur macro officiel, puis couverture des cours et mission
+Prochain jalon : couverture des cours, puis mission
 réelle d’analyse. La livraison sur le NAS et la validation avec des relevés réels restent
 distinctes des essais locaux.

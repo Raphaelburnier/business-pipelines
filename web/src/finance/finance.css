@@ -4,6 +4,148 @@
   display: grid;
   gap: 24px;
 }
+.fin-macro {
+  display: grid;
+  gap: 24px;
+}
+.fin-macro-intro,
+.fin-macro-chart-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.fin-macro-intro > div {
+  max-width: 780px;
+}
+.fin-macro-intro > button {
+  flex-shrink: 0;
+  margin-top: 28px;
+}
+.fin-macro-countries {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.finance .fin-macro-countries button {
+  padding: 18px;
+  text-align: left;
+}
+.fin-macro-countries button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  box-shadow: inset 3px 0 var(--color-accent);
+}
+.fin-macro-countries strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.fin-macro-country-metric {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  margin-top: 10px;
+}
+.fin-macro-country-metric b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 400;
+}
+.fin-macro-country-metric small {
+  grid-column: 2;
+  text-align: right;
+  color: var(--color-douce);
+}
+.fin-macro-chart-head label {
+  min-width: 280px;
+}
+.finance .fin-macro-warning {
+  border-left: 3px solid var(--color-accent);
+  padding: 10px 14px;
+  color: var(--color-encre);
+}
+.fin-macro-chart {
+  width: 100%;
+  display: block;
+  color: var(--color-encre);
+}
+.fin-macro-chart text {
+  fill: var(--color-douce);
+  font-family: var(--font-mono);
+  font-size: 21px;
+}
+.fin-macro-grid {
+  stroke: var(--color-trait);
+}
+.fin-macro-zero {
+  stroke: var(--color-trait-fort);
+  stroke-dasharray: 5 5;
+}
+.fin-macro-line {
+  stroke: var(--color-accent);
+  stroke-width: 3;
+}
+.fin-macro-dot {
+  fill: var(--color-accent);
+}
+.fin-macro-point {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 16px 0 24px;
+}
+.fin-macro-point output {
+  font-family: var(--font-mono);
+  padding-bottom: 10px;
+}
+.fin-macro-point a {
+  margin-left: auto;
+  padding-bottom: 10px;
+}
+.fin-macro-provenance dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.fin-macro-provenance dt {
+  color: var(--color-douce);
+}
+.fin-macro-provenance dd {
+  margin: 8px 0 0;
+}
+@media (max-width: 760px) {
+  .fin-macro-intro,
+  .fin-macro-chart-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .fin-macro-intro > button {
+    margin-top: 0;
+    width: 100%;
+  }
+  .fin-macro-countries {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fin-macro-chart-head label {
+    min-width: 0;
+    width: 100%;
+  }
+  .fin-macro-provenance dl {
+    grid-template-columns: 1fr;
+  }
+  .fin-macro-point a {
+    margin-left: 0;
+  }
+  .fin-macro-chart text {
+    font-size: 28px;
+  }
+}
+@media (max-width: 440px) {
+  .fin-macro-countries {
+    grid-template-columns: 1fr;
+  }
+}
 .finance h2 {
   font-size: clamp(24px, 3vw, 38px);
   font-weight: 600;

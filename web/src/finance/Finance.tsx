@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Marches } from "./Marches";
 import { financeRequest, type Summary } from "./api";
 import { Imports } from "./Imports";
 import { Comptes } from "./Comptes";
@@ -9,14 +10,9 @@ import "./finance.css";
 const spaces = ["Trésorerie", "Marchés", "Analyses", "Portefeuille"] as const;
 type Space = (typeof spaces)[number];
 const upcoming: Record<
-  Exclude<Space, "Trésorerie">,
+  Exclude<Space, "Trésorerie" | "Marchés">,
   { title: string; text: string; next: string }
 > = {
-  Marchés: {
-    title: "Suivre l’économie mondiale",
-    text: "Cet espace accueillera les données macro et une liste de suivi : source, devise, place de cotation et date de chaque observation.",
-    next: "Prochaine étape : premier connecteur officiel, puis validation de la couverture des cours.",
-  },
   Analyses: {
     title: "Ton agent de recherche financière",
     text: "L’agent pourra analyser le marché et les chiffres importés, produire des rapports sourcés et expliquer ses hypothèses. Tu décideras et investiras directement chez ton courtier.",
@@ -82,12 +78,18 @@ export function Finance() {
           </span>
           <h2>Des chiffres à la décision.</h2>
           <p>
-            Trésorerie des comptes aujourd’hui. Recherche économique et suivi
-            des investissements dans les prochains jalons.
+            Trésorerie des comptes et repères économiques mondiaux. Des sources
+            datées pour préparer tes décisions.
           </p>
         </div>
         <span className="fin-status">
-          {example ? "Exemple fictif" : "Données importées"}
+          {space === "Marchés"
+            ? maquette
+              ? "Exemple macro fictif"
+              : "Sources économiques"
+            : example
+              ? "Exemple fictif"
+              : "Données importées"}
         </span>
       </header>
       <nav className="fin-tabs" aria-label="Espaces Finance">
@@ -99,11 +101,14 @@ export function Finance() {
             onClick={() => setSpace(s)}
           >
             {s}
-            {s !== "Trésorerie" && <small>Prévu</small>}
+            {s === "Marchés" && <small>Macro</small>}
+            {s !== "Trésorerie" && s !== "Marchés" && <small>Prévu</small>}
           </button>
         ))}
       </nav>
-      {space !== "Trésorerie" ? (
+      {space === "Marchés" ? (
+        <Marches maquette={maquette} />
+      ) : space !== "Trésorerie" ? (
         <section className="fin-empty">
           <span className="fin-eyebrow">À développer</span>
           <h2>{upcoming[space].title}</h2>

@@ -4,6 +4,7 @@ const { SCHEMAS } = require("./imports");
 const { emptyState } = require("./service");
 const { validateImport } = require("./imports");
 const { summarize } = require("./metrics");
+const { macroExample } = require("./sources");
 function exampleState() {
   const state = emptyState();
   for (const kind of Object.keys(SCHEMAS)) {
@@ -27,7 +28,13 @@ function exampleState() {
   }
   return state;
 }
-function creerRouteurFinance({ service, json, corpsJson, durcissement }) {
+function creerRouteurFinance({
+  service,
+  macro,
+  json,
+  corpsJson,
+  durcissement,
+}) {
   return async function (req, res) {
     const url = new URL(req.url, "http://localhost");
     if (
@@ -36,7 +43,40 @@ function creerRouteurFinance({ service, json, corpsJson, durcissement }) {
     )
       return false;
     try {
-      if (req.method === "GET" && url.pathname === "/api/finance/summary")
+      if (url.pathname === "/api/finance/macro/example" && req.method === "GET")
+        json(res, 200, macroExample());
+      else if (
+        url.pathname === "/api/finance/macro" ||
+        url.pathname.startsWith("/api/finance/macro/")
+      ) {
+        if (!macro)
+          json(res, 503, {
+            erreur: "Cache macro indisponible. Consulter les logs serveur.",
+          });
+        else if (req.method === "GET" && url.pathname === "/api/finance/macro")
+          json(res, 200, macro.snapshot());
+        else if (
+          req.method === "GET" &&
+          url.pathname === "/api/finance/macro/original"
+        )
+          json(res, 200, macro.original());
+        else if (
+          req.method === "POST" &&
+          url.pathname === "/api/finance/macro/refresh"
+        ) {
+          const body = await corpsJson(req, res);
+          if (body) {
+            if (Object.keys(body).length)
+              throw new Error(
+                "La collecte utilise uniquement le catalogue macro fixe ; envoyer un objet vide.",
+              );
+            json(res, 200, await macro.refresh());
+          }
+        } else json(res, 404, { erreur: "Route macro inconnue." });
+      } else if (
+        req.method === "GET" &&
+        url.pathname === "/api/finance/summary"
+      )
         json(res, 200, service.summary(Object.fromEntries(url.searchParams)));
       else if (req.method === "GET" && url.pathname === "/api/finance/example")
         json(res, 200, {
@@ -91,7 +131,9 @@ function creerRouteurFinance({ service, json, corpsJson, durcissement }) {
       const operational = error.code || error instanceof SyntaxError;
       json(res, error.status || (operational ? 503 : 400), {
         erreur: operational
-          ? "Stockage Finance indisponible. Aucun import confirmé ; consulter les logs serveur."
+          ? url.pathname.startsWith("/api/finance/macro")
+            ? "Stockage macro indisponible. Consulter les logs serveur."
+            : "Stockage Finance indisponible. Aucun import confirmé ; consulter les logs serveur."
           : error.message,
       });
       if (operational) console.error("Finance:", error.message);

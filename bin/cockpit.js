@@ -65,6 +65,7 @@ const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 const { FinanceService } = require("../src/finance/service");
+const { MacroSourceService } = require("../src/finance/sources");
 const { creerRouteurFinance } = require("../src/finance/http");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -281,9 +282,17 @@ async function traiterAIStudio(req, res) {
 
 // Finance partage les contrôles d'identité et d'origine du serveur principal.
 let traiterFinanceActif = null;
+const stockageFinance = ENV.FINANCE_STORAGE_ROOT || path.join(RACINE, "etat", "finance");
+let sourcesMacro = null;
+try {
+  sourcesMacro = new MacroSourceService({ storageRoot: stockageFinance });
+} catch (err) {
+  console.error(`Sources macro indisponibles : ${err.message}`);
+}
 try {
   traiterFinanceActif = creerRouteurFinance({
-    service: new FinanceService({ storageRoot: ENV.FINANCE_STORAGE_ROOT || path.join(RACINE, "etat", "finance") }),
+    service: new FinanceService({ storageRoot: stockageFinance }),
+    macro: sourcesMacro,
     json, corpsJson, durcissement: DURCISSEMENT,
   });
 } catch (err) {

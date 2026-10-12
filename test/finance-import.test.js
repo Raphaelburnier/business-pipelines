@@ -254,6 +254,31 @@ test("routes Finance réelles : identité, origine, JSON, tailles et exemple sé
     403,
   );
   const empty = await request("summary");
+  const macro = await request("macro");
+  assert.equal(macro.status, 200);
+  assert.equal((await macro.json()).empty, true);
+  assert.equal((await request("macro/example")).status, 200);
+  assert.equal(fs.existsSync(path.join(dir, "finance")), false);
+  assert.equal(
+    (await request("macro/refresh", { url: "https://intrus.example" })).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        "macro/refresh",
+        {},
+        { ...identity, origin: "https://intrus.example" },
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request("macro/refresh", {}, { host: "finance.test.ts.net" }))
+      .status,
+    403,
+  );
+  assert.equal((await request("macro/original")).status, 404);
   assert.equal(empty.headers.get("cache-control"), "no-store");
   assert.equal((await empty.json()).empty, true);
   assert.equal(
