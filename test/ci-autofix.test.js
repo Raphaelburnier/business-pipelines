@@ -188,6 +188,14 @@ test("Claude travaille sur le SHA exact, sans écriture, sans shell ni réseau, 
   }
 });
 
+test("bubblewrap est installé avant Claude, sinon le nettoyage d'environnement empêche son démarrage", () => {
+  const bac = etape(corriger, "Install the subprocess sandbox");
+  assert.ok(corriger.steps.indexOf(bac) < corriger.steps.indexOf(ETAPE_CLAUDE));
+  assert.ok(!bac["continue-on-error"], "sans bac à sable, le job doit s'arrêter avant d'utiliser le secret");
+  assert.match(bac.run, /apt-get install -y --no-install-recommends bubblewrap/);
+  assert.match(bac.run, /command -v bwrap/);
+});
+
 test("seul corriger exécute un agent ; tri, signalement et publication n'exécutent pas le code de la PR", () => {
   for (const job of [trier, signaler]) assert.ok(!job.steps.some((s) => s.uses?.startsWith("actions/checkout")));
   for (const job of [trier, signaler, publier]) {
