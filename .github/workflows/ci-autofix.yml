@@ -47,6 +47,7 @@ jobs:
       BRANCHE: ${{ github.event.workflow_run.head_branch }}
       SHA: ${{ github.event.workflow_run.head_sha }}
       RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
       MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
     steps:
       - name: Find the pull request and route the failure
@@ -66,12 +67,12 @@ jobs:
           if [ -z "$numero" ]; then
             echo "Pas de PR ouverte sur ce commit : la branche a avancé ou la PR est fermée."
             echo "agir=non" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$MESSAGE" | grep -q '\[ci-autofix\]'; then
+          elif printf '%s' "$MESSAGE" | grep -q '\[ci-autofix\]' && [ "$RUN_ATTEMPT" -eq 1 ]; then
             gh pr comment "$numero" --repo "$GITHUB_REPOSITORY" --body \
               "La CI échoue encore après la correction automatique ([run $RUN_ID]($lien)). Pas de seconde tentative : à reprendre à la main."
             echo "agir=non" >> "$GITHUB_OUTPUT"
-          elif gh api "repos/$GITHUB_REPOSITORY/issues/$numero/comments" --paginate --jq '.[].body' | grep -q "ci-autofix:$SHA"; then
-            echo "Cet échec a déjà été transmis pour le commit $SHA."
+          elif gh api "repos/$GITHUB_REPOSITORY/issues/$numero/comments" --paginate --jq '.[].body' | grep -Fq "ci-autofix:$SHA:$RUN_ATTEMPT"; then
+            echo "Cette tentative de CI a déjà été transmise pour le commit $SHA."
             echo "agir=non" >> "$GITHUB_OUTPUT"
           else
             echo "agir=oui" >> "$GITHUB_OUTPUT"
@@ -96,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "<!-- ci-autofix:$SHA -->"
+            echo "<!-- ci-autofix:$SHA:$RUN_ATTEMPT -->"
             echo "@codex La CI de cette PR a échoué sur le commit $SHA ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID))."
             echo "Trouve la cause dans le log ci-dessous, corrige-la sur cette branche sans désactiver de test et sans toucher"
             echo "aux fichiers sensibles (.github/, AGENTS.md, CLAUDE.md, Dockerfile, docker-compose*, .env, migrations SQL,"
@@ -134,7 +135,7 @@ jobs:
           NUMERO: ${{ steps.pr.outputs.numero }}
         run: |
           gh pr comment "$NUMERO" --repo "$GITHUB_REPOSITORY" --body \
-            "<!-- ci-autofix:$SHA -->
+            "<!-- ci-autofix:$SHA:$RUN_ATTEMPT -->
           CI en échec sur $SHA ([run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID)) : Claude reprend la branche."
 
       - name: Let Claude fix the branch

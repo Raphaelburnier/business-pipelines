@@ -1,7 +1,7 @@
 // Les PR de la maquette : deux PR fusionnées que la livraison de la maquette apporte (mêmes
 // SHA que ses commits), une PR ouverte à CI verte qui touche le compose, une autre dont la
 // CI tourne encore. Une fusion la retire de la liste au relevé suivant.
-import type { DemandeFusion, EtatPullRequests, PullRequestOuverte } from "../donnees/pullRequests";
+import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests, PullRequestOuverte } from "../donnees/pullRequests";
 
 const sha = (c: string) => c.repeat(40);
 
@@ -38,6 +38,7 @@ export function pullRequestsMaquette(maintenant: () => number) {
             creeeLe: "2026-10-05T12:00:00Z",
             raison: null,
             fusionEnCours: false,
+            ciRelanceEnCours: false,
           },
           {
             numero: 67,
@@ -52,13 +53,14 @@ export function pullRequestsMaquette(maintenant: () => number) {
             brouillon: false,
             fusionnable: true,
             etatFusion: "unstable",
-            ci: { etat: "en_cours", details: [{ nom: "test", statut: "in_progress", conclusion: null }] },
+            ci: { etat: "rouge", runId: 101, tentative: 1, details: [{ nom: "CI", statut: "completed", conclusion: "failure" }] },
             sensibles: [],
             fichiers: 4,
             pourquoi: "La carte Livraison ne disait pas ce qu'une livraison apporte.",
             creeeLe: "2026-10-06T08:00:00Z",
             raison: "CI en cours",
             fusionEnCours: false,
+            ciRelanceEnCours: false,
           },
         ] satisfies PullRequestOuverte[]).filter((pr) => !fusionnees.has(pr.numero)),
         fusionnees: [
@@ -92,6 +94,9 @@ export function pullRequestsMaquette(maintenant: () => number) {
       if (pr.raison) throw new Error(`PR non fusionnable : ${pr.raison}`);
       fusionnees.add(pr.numero);
       return { id: "fusion-maquette", statut: "pending" };
+    },
+    async relancerCIPR(_demande: DemandeRelanceCI) {
+      return { id: "relance-ci-maquette", statut: "pending" };
     },
   };
 }

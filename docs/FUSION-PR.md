@@ -93,7 +93,8 @@ donc pas fusionner les branches `agent/` : elles sont laissées au publieur.
 4. Pour les autres dépôts surveillés et les générateurs de nouveaux dépôts, adopter ce
    format de preuve et les nouveaux contrôles avant d'autoriser leur fusion ici.
 
-Le jeton du publieur demande Contents et Pull requests en écriture, Actions en lecture ;
+Le jeton de fusion du publieur demande Contents et Pull requests en écriture, Actions en
+lecture et écriture (lecture des preuves et relance des jobs échoués depuis le cockpit) ;
 le droit Checks n'est pas utilisé. Les autorisations de fusion restent dans
 `specs/livraison.json`. Les résultats de tests locaux et les preuves GitHub sont consignés
 dans la page du vault `plan-runs-dev-autonomes`.

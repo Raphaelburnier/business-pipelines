@@ -7,6 +7,8 @@ export interface EtatCI {
   details: Array<{ nom: string; statut: string; conclusion: string | null }>;
   raison?: string | null;
   preuve?: { runId: number; tentative: number; headSha: string; baseSha: string; mergeSha: string } | null;
+  runId?: number | null;
+  tentative?: number | null;
 }
 
 export interface PullRequestOuverte {
@@ -31,6 +33,7 @@ export interface PullRequestOuverte {
   /** Pourquoi elle ne peut pas être fusionnée d'ici, ou null. */
   raison: string | null;
   fusionEnCours: boolean;
+  ciRelanceEnCours: boolean;
 }
 
 export interface PullRequestFusionnee {
@@ -64,6 +67,14 @@ export interface DemandeFusion {
   numero: number;
   sha: string;
   baseSha: string;
+}
+
+export interface DemandeRelanceCI {
+  depot: string;
+  numero: number;
+  sha: string;
+  runId: number;
+  tentative: number;
 }
 
 export interface PrLivree extends PullRequestFusionnee {
