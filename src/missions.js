@@ -32,10 +32,13 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations }
     budget: resolution.budget, publication: resolution.projet.publier }) };
 }
 
-function construire(params, brut, { verifierBackend = () => {}, plan } = {}) {
+function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
   const { resolution, options } = lire({ ...params, projectId: d.projectId, pipelineIndex: d.pipelineIndex });
   if (options.configuration !== d.configuration) throw new Error("La configuration du projet ou de l'équipe a changé : relire la mission.");
+  const brouillon = d.brouillonId ? verifierBrouillon?.(d.brouillonId, d.projectId, options.nature) : null;
+  const origine = brouillon?.origine;
+  if (d.brouillonId && !origine) throw new Error("Origine du brouillon non vérifiée.");
   const parNoeud = new Map();
   for (const c of d.demande.agents) {
     if (parNoeud.has(c.noeud)) throw new Error(`rôle ${c.noeud} choisi deux fois`);
@@ -58,17 +61,18 @@ function construire(params, brut, { verifierBackend = () => {}, plan } = {}) {
   resolution.spec = { ...d.demande.spec, project_name: d.projectId, task: d.demande.objectif,
     acceptance_criteria: d.demande.criteres,
     _mission: { projectId: d.projectId, objectif: d.demande.objectif, criteres: d.demande.criteres,
-      directives: d.demande.directives, exclusions: d.demande.exclusions, document: d.demande.document } };
+      directives: d.demande.directives, exclusions: d.demande.exclusions, document: d.demande.document,
+      ...(origine ? { origine, contexteEquipe: brouillon.contexte } : {}) } };
   for (const n of roles) {
     if (Array.isArray(n.slice)) for (const key of n.slice) {
       if (!Object.hasOwn(resolution.spec, key)) throw new Error(`La spec du rôle ${n.id} doit contenir le champ « ${key} ».`);
     }
   }
-  return { mission: contrat.figer({ id: d.requestId, resolution, demande: d.demande, participants, plan }),
+  return { mission: contrat.figer({ id: d.requestId, resolution, demande: d.demande, participants, origine, plan }),
     llmOverrides: Object.fromEntries(participants.map((p) => [p.noeud, p.llm])), demande: d };
 }
 
-function demander({ store, qui, params, demande, verifierBackend, plan }) {
+function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   store.db.exec("BEGIN IMMEDIATE");
@@ -81,7 +85,7 @@ function demander({ store, qui, params, demande, verifierBackend, plan }) {
         throw new Error("Cette demande a déjà été utilisée avec un autre contenu ou auteur.");
       }
     } else {
-      const { mission, llmOverrides } = construire(params, d, { verifierBackend, plan });
+      const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
         pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash }, par: qui.par, canal: qui.canal });
     }

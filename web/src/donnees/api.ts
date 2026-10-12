@@ -60,6 +60,13 @@ export function sourceApi(): Source {
     },
     usage: () => lire<Usage>("/api/usage"),
     modeles: () => lire<ReponseModeles>("/api/modeles"),
+    optionsDiscussion: (id) => lire(`/api/equipes/marketing/options?projet=${encodeURIComponent(id)}`),
+    filsEquipe: async (id) => (await lire<{ fils: import("./discussions").ResumeFilEquipe[] }>(`/api/equipes/marketing${id ? `?projet=${encodeURIComponent(id)}` : ""}`)).fils,
+    filEquipe: (id) => lire(`/api/equipes/marketing/${encodeURIComponent(id)}`),
+    ouvrirDiscussion: (demande) => ecrire("/api/equipes/marketing", demande),
+    envoyerEquipe: (id, demande) => ecrire(`/api/equipes/marketing/${encodeURIComponent(id)}/messages`, demande),
+    preparerBrouillonEquipe: (id, demande) => ecrire(`/api/equipes/marketing/${encodeURIComponent(id)}/brouillons`, demande),
+    brouillonEquipe: (id) => lire(`/api/equipes/brouillons/${encodeURIComponent(id)}`),
     fils: () => lire<ListeFils>("/api/chat"),
     async fil(id: string) {
       try {

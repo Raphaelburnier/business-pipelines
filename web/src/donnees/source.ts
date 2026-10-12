@@ -12,6 +12,7 @@ import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobatio
 import type { ReponseEquipe } from "./equipe";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
 import type { OptionsMission, DemandeMission, SpecMission, PropositionPlan, LancementPlan } from "./missions";
+import type { OptionsDiscussion, OuvrirDiscussion, MessageEquipe, FilEquipe, ResumeFilEquipe, BrouillonEquipe, DemandeBrouillon } from "./discussions";
 
 export interface FiltreRuns {
   project?: string;
@@ -44,6 +45,13 @@ export interface Source {
   proposerPlan(spec: SpecMission): Promise<PropositionPlan>;
   /** Met en file le plan présenté ; refusé s'il a changé depuis sa présentation. */
   lancerPlan(demande: LancementPlan): Promise<{ id: string; statut: string }>;
+  optionsDiscussion(projectId: string): Promise<OptionsDiscussion>;
+  filsEquipe(projectId?: string): Promise<ResumeFilEquipe[]>;
+  filEquipe(id: string): Promise<FilEquipe>;
+  ouvrirDiscussion(demande: OuvrirDiscussion): Promise<FilEquipe>;
+  envoyerEquipe(id: string, demande: MessageEquipe): Promise<FilEquipe>;
+  preparerBrouillonEquipe(id: string, demande: DemandeBrouillon): Promise<BrouillonEquipe>;
+  brouillonEquipe(id: string): Promise<BrouillonEquipe>;
   /** Le run associé est visible dès son admission, avant la fin du processus. */
   commande(id: string): Promise<Commande>;
   reprendreRun(id: string, waitId: string, reconnexionConfirmee?: boolean): Promise<{ id: string; statut: string }>;

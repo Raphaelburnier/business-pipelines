@@ -59,6 +59,8 @@ const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
 const missions = require("../src/missions");
+const discussions = require("../src/discussions-equipe");
+const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussions-equipe");
 const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
@@ -125,6 +127,8 @@ const EQUIPE_AFFECTATIONS = path.join(
   ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"),
   "equipe-affectations.json"
 );
+const traiterDiscussions = creerRouteurDiscussions({ store, json, corpsJson, projetsDir: PROJETS,
+  rosterFichier: EQUIPE_ROSTER, affectationsFichier: EQUIPE_AFFECTATIONS, viaParMachine: VIA_PAR_MACHINE });
 // « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
 const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
 const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
@@ -359,6 +363,7 @@ async function traiter(req, res) {
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
     chemin === "/missions" || chemin.startsWith("/missions/") ||
+    chemin === "/marketing" || chemin.startsWith("/marketing/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
     chemin === "/decisions" || chemin === "/decisions/" ||
     chemin === "/decisions/pipelines" || chemin === "/decisions/pipelines/" ||
@@ -516,6 +521,7 @@ async function traiter(req, res) {
   }
 
   if (await traiterAIStudio(req, res)) return undefined;
+  if (await traiterDiscussions(req, res, chemin, qui)) return undefined;
 
   const preparationMission = chemin.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/mission$/);
   if (req.method === "GET" && preparationMission) {
@@ -574,7 +580,8 @@ async function traiter(req, res) {
         const etatMachines = api.machines(magasinOuvert);
         const commande = missions.demander({ store: magasinOuvert, qui, demande,
           params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) },
-          verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }) });
+          verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }),
+          verifierBrouillon: (id, projectId, nature) => discussions.origineBrouillon(magasinOuvert, id, projectId, nature) });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
       }
       // L'équipe associée au projet pose le modèle de chaque membre (src/equipe.js). Un

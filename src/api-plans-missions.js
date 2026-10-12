@@ -1,29 +1,17 @@
 // Routes du planificateur de missions et état réel qu'il consulte : machines, runtimes en
 // attente de quota ou de connexion, dépenses du mois. Le planificateur ne lit rien d'autre.
-const { roleEffectif } = require("agent-orchestrator/src/dispatch");
-const catalogueModeles = require("./modeles");
 const equipe = require("./equipe");
+const runtimeMission = require("./runtime-mission");
 const planificateur = require("./planificateur");
 
 const JOIGNABLES = new Set(["online", "busy"]);
 
 /**
  * Le contrôle de lancement d'un nœud de mission : backend joignable, worker à jour pour les
- * missions et annonçant ce runtime. Partagé par le lancement manuel et par le planificateur.
+ * missions (et la discussion d'équipe pour un nœud de dialogue) et annonçant ce runtime.
+ * Partagé par le lancement manuel, le planificateur et les tours de conversation.
  */
-function verifierBackend({ viaParMachine, machines }) {
-  return (llm, noeud) => {
-    const dispo = catalogueModeles.disponibiliteVia(llm.via, { viaParMachine, machines });
-    if (!dispo.utilisable) throw new Error(`${noeud.id} : backend ${llm.via} indisponible (${dispo.raison})`);
-    const role = roleEffectif({ ...noeud, llm });
-    if (role !== "nas") {
-      const worker = machines.find((m) => m.machine === role);
-      if (!worker || !JOIGNABLES.has(worker.etat)) throw new Error(`${noeud.id} : worker ${role} indisponible`);
-      if (worker.meta?.capacites?.missions !== 1) throw new Error(`${noeud.id} : mettre le worker ${role} à jour pour les missions`);
-      if (!(worker.meta?.capacites?.backends || []).includes(llm.via)) throw new Error(`${noeud.id} : runtime ${llm.via} non annoncé par ${role}`);
-    }
-  };
-}
+const verifierBackend = runtimeMission.verifier;
 
 /** Runtimes qu'un run vivant attend : quota atteint ou connexion expirée. */
 function runtimesBloques(store, limite = 300) {

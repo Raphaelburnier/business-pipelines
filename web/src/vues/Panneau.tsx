@@ -122,6 +122,7 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
         <div>
           <Titre>Lancer une mission</Titre>
           <a href={`/missions/${encodeURIComponent(id)}`} className="block rounded-lg bg-accent px-3 py-2 text-center text-sm font-semibold text-sur-accent">Choisir l'équipe et l'objectif</a>
+          <a href={`/marketing/${encodeURIComponent(id)}`} className="mt-2 block rounded-lg border border-trait px-3 py-2 text-center text-sm">Discuter avec l'équipe marketing</a>
         </div>
       )}
       <div>
@@ -177,6 +178,7 @@ function PanneauRun({ id }: { id: string }) {
 
       {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
         <Titre>Mission</Titre>
+        {run.mission.origine && <a className="text-xs text-accent underline" href={`/marketing/${run.projet}/${run.mission.origine.fil}`}>Discussion marketing à l'origine de cette spec</a>}
         <p className="whitespace-pre-wrap">{run.mission.objectif}</p>
         {run.criteres
           ? <ul className="mt-2 flex flex-col gap-1">{run.criteres.map((c, i) => <li key={i}><span className={c.etat === "valide" ? "text-ok" : c.etat === "echec" ? "text-alerte" : "text-douce"}>{ETATS_CRITERE[c.etat]}</span> · {c.texte}

@@ -47,9 +47,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur compagnon : plan du planificateur figé dans le contrat de mission
-          # (agent-orchestrator claude/planificateur-missions).
-          ref: b389d352ee181b7d3603fdc2cd0d5a8e58fba32e
+          # Moteur compagnon (master) : réponses d'équipe supervisées (#42) et plan du
+          # planificateur figé dans le contrat de mission (#46).
+          ref: f66b951ad6b4c24685811419723da73ec78a4542
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
