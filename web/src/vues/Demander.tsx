@@ -3,6 +3,7 @@
 // Les réponses viennent de Claude par le runner du NAS : le chat reste disponible quand le
 // PC dort. Pendant une réponse, le fil arrive par son propre flux SSE (`/api/chat/<id>/flux`).
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useTexteBrouillon } from "../donnees/brouillons";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis, usd } from "../format";
 import type { FilDetaille, MessageChat } from "../types";
@@ -35,11 +36,16 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
   const [fil, setFil] = useState<FilDetaille | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   // Une question pré-remplie par un autre écran (« Expliquer cette étape ») : lue une fois,
-  // puis retirée de l'adresse pour qu'un rechargement ne la remette pas.
-  const [question, setQuestion] = useState(() => new URLSearchParams(window.location.search).get("question") ?? "");
+  // puis retirée de l'adresse pour qu'un rechargement ne la remette pas. Sinon, la question en
+  // cours de saisie survit au rechargement jusqu'à son envoi.
+  const [question, setQuestion, oublierQuestion] = useTexteBrouillon("demander:question");
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("question")) window.history.replaceState(null, "", window.location.pathname);
-  }, []);
+    const prerempli = new URLSearchParams(window.location.search).get("question");
+    if (prerempli !== null) {
+      setQuestion(prerempli);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [setQuestion]);
   const [envoi, setEnvoi] = useState(false);
   const bas = useRef<HTMLDivElement>(null);
 
@@ -84,7 +90,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
     setErreur(null);
     try {
       const suite = await source.poser(question.trim(), filId);
-      setQuestion("");
+      oublierQuestion();
       setFil(suite);
       if (suite.id !== filId) aller(`/demander/${encodeURIComponent(suite.id)}`);
     } catch (err) {
