@@ -77,6 +77,8 @@ Dans `corriger` :
   ou un serveur MCP de la branche se serait exécuté avec le secret ;
 - action épinglée par SHA, `github_token` en lecture seule (sinon l'action obtient le jeton
   d'écriture de l'app), `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, hooks désactivés ;
+- bubblewrap installé avant Claude : sans lui, ce nettoyage d'environnement empêche Claude
+  Code de démarrer (trouvé à la recette du 2026-10-12) ;
 - outils : `Read`, `Edit`, `Write`, `Glob`, `Grep`. Pas de `Bash`, pas de réseau. Règles de
   refus sur `/proc`, `/etc`, `/tmp`, les fichiers du runner (`_temp`, `_actions`) et les
   fichiers de configuration du compte ;
