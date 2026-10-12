@@ -179,6 +179,33 @@ function chercherVault(base, texte, opts) {
   return avec(base, (db) => vault.rechercher(db, texte, opts));
 }
 
+function lireVault(base, chemin, opts) {
+  return avec(base, (db) => vault.lire(db, chemin, opts));
+}
+
+/**
+ * Ce que l'index donne au chat du cockpit : le même périmètre que le conseiller, et l'état
+ * de la dernière synchro, pour que le chat dise quand sa copie date.
+ */
+function vaultPourChat(base) {
+  const synchro = () => avec(base, (db) => vault.inventaire(db).synchroLe);
+  return {
+    chercher: ({ requete, limite, dossier }) => {
+      const resultats = chercherVault(base, requete, { limite, dossier });
+      return { synchroLe: synchro(), resultats: resultats.length ? resultats : "aucune note trouvée pour ces mots" };
+    },
+    lire: ({ chemin, section }) => {
+      const note = lireVault(base, chemin, { section });
+      if (!note) {
+        return vault.dansPerimetre(chemin)
+          ? `note ${chemin} absente de l'index (chemin tiré de vault_search ?)`
+          : `note ${chemin} hors du périmètre lisible (${vault.PERIMETRE.join(", ")})`;
+      }
+      return { synchroLe: synchro(), ...note };
+    },
+  };
+}
+
 // ---------- la file ----------
 
 // Ce qui attend une décision : un dossier au plan présent et pas encore tranché.
@@ -698,6 +725,8 @@ module.exports = {
   inventaireVault,
   recevoirVault,
   chercherVault,
+  lireVault,
+  vaultPourChat,
   prendre,
   rendre,
   fil,
