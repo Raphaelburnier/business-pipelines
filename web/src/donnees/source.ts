@@ -10,8 +10,8 @@
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
-import type { DemandeFusion, EtatPullRequests } from "./pullRequests";
-import type { OptionsMission, DemandeMission } from "./missions";
+import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
+import type { OptionsMission, DemandeMission, SpecMission, PropositionPlan, LancementPlan } from "./missions";
 import type { OptionsDiscussion, OuvrirDiscussion, MessageEquipe, FilEquipe, ResumeFilEquipe, BrouillonEquipe, DemandeBrouillon } from "./discussions";
 
 export interface FiltreRuns {
@@ -41,6 +41,10 @@ export interface Source {
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
   preparerMission(projectId: string, pipelineIndex: number): Promise<OptionsMission>;
   lancerMission(demande: DemandeMission): Promise<{ id: string; statut: string }>;
+  /** Le planificateur choisit pipeline et agents pour une spec ; rien n'est mis en file. */
+  proposerPlan(spec: SpecMission): Promise<PropositionPlan>;
+  /** Met en file le plan présenté ; refusé s'il a changé depuis sa présentation. */
+  lancerPlan(demande: LancementPlan): Promise<{ id: string; statut: string }>;
   optionsDiscussion(projectId: string): Promise<OptionsDiscussion>;
   filsEquipe(projectId?: string): Promise<ResumeFilEquipe[]>;
   filEquipe(id: string): Promise<FilEquipe>;
@@ -50,6 +54,7 @@ export interface Source {
   brouillonEquipe(id: string): Promise<BrouillonEquipe>;
   /** Le run associé est visible dès son admission, avant la fin du processus. */
   commande(id: string): Promise<Commande>;
+  reprendreRun(id: string, waitId: string, reconnexionConfirmee?: boolean): Promise<{ id: string; statut: string }>;
   /** « Demander au cockpit » : les fils, un fil, et poser une question (nouveau fil sans `filId`). */
   fils(): Promise<ListeFils>;
   fil(id: string): Promise<FilDetaille | null>;
@@ -63,6 +68,7 @@ export interface Source {
   /** Les PR GitHub relevées par le publieur, et une fusion demandée (CI verte seulement). */
   pullRequests(): Promise<EtatPullRequests>;
   fusionnerPR(demande: DemandeFusion): Promise<{ id: string; statut: string }>;
+  relancerCIPR(demande: DemandeRelanceCI): Promise<{ id: string; statut: string }>;
   /** Plans métier en attente d'un arbitrage opérateur. */
   approbations(): Promise<ReponseApprobations>;
   /** Enregistre les arbitrages liés à l'empreinte du plan lu. */

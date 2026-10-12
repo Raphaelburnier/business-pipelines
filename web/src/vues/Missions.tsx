@@ -4,6 +4,7 @@ import { suivreCommande } from "../donnees/lancement";
 import { classer } from "../donnees/modeles";
 import { lignes, specStructuree, type OptionsMission, type ChoixAgentMission } from "../donnees/missions";
 import { Erreur, Titre } from "../ui";
+import { PlanMission } from "./PlanMission";
 import type { ReponseModeles } from "../types";
 import type { BrouillonEquipe } from "../donnees/discussions";
 
@@ -16,10 +17,20 @@ export function Missions({ projetInitial, brouillonId = null, aller }: { projetI
   const [projetId, setProjetId] = useState(projetInitial ?? "");
   const [index, setIndex] = useState(0);
   const [occupe, setOccupe] = useState(false);
+  // Une spec venue d'une discussion d'équipe préremplit la composition : on l'ouvre directement.
+  const [mode, setMode] = useState<"plan" | "equipe">(brouillonId ? "equipe" : "plan");
   const projet = topo.donnees?.projets.find((p) => p.id === projetId);
   const draft = brouillon.donnees;
+  const onglet = (m: typeof mode, libelle: string) => <button type="button" aria-pressed={mode === m} disabled={occupe} onClick={() => setMode(m)}
+    className={`rounded-lg px-3 py-2 text-sm ${mode === m ? "bg-accent font-semibold text-sur-accent" : "border border-trait"}`}>{libelle}</button>;
+  if (mode === "plan") return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
+    <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Confie une spec : le planificateur choisit le workflow et les agents disponibles, puis te montre le plan.</p></div>
+    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
+    <PlanMission projetInitial={projetInitial} aller={aller} />
+  </section>;
   return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
     <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Choisis le projet, son équipe et le résultat attendu.</p></div>
+    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
     {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
     {brouillon.erreur && <Erreur>{brouillon.erreur}</Erreur>}
     {draft && <p className="rounded-lg border border-trait bg-carte p-3 text-sm">Spec issue de la discussion marketing : {draft.titre}. Relis le workflow, l'équipe dev et les critères avant lancement. <a className="text-accent underline" href={`/marketing/${draft.projectId}/${draft.origine.fil}`}>Revenir au fil</a></p>}

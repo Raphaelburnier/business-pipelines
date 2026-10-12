@@ -60,8 +60,8 @@ const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
 const missions = require("../src/missions");
 const discussions = require("../src/discussions-equipe");
-const runtimeMission = require("../src/runtime-mission");
 const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussions-equipe");
+const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 
@@ -437,7 +437,7 @@ async function traiter(req, res) {
   }
 
   // ---- PR GitHub : relevé du publieur, fusion par commande signée ----
-  if (chemin === "/api/pull-requests" || chemin === "/api/pull-requests/fusions") {
+  if (chemin === "/api/pull-requests" || chemin === "/api/pull-requests/fusions" || chemin === "/api/pull-requests/ci-relances") {
     const magasinOuvert = store();
     if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
     const contexte = { store: magasinOuvert, instantaneFichier: PULL_REQUESTS, autorisesFichier: LIVRAISON_AUTORISES, qui };
@@ -447,6 +447,17 @@ async function traiter(req, res) {
       if (demande === null) return undefined;
       try {
         const commande = apiPullRequests.demander({ ...contexte, demande });
+        return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+      } catch (err) {
+        if (err instanceof apiPullRequests.RefusPullRequest) return json(res, err.code, { erreur: err.message });
+        throw err;
+      }
+    }
+    if (req.method === "POST" && chemin === "/api/pull-requests/ci-relances") {
+      const demande = await corpsJson(req, res);
+      if (demande === null) return undefined;
+      try {
+        const commande = apiPullRequests.demanderRelanceCI({ ...contexte, demande });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
       } catch (err) {
         if (err instanceof apiPullRequests.RefusPullRequest) return json(res, err.code, { erreur: err.message });
@@ -523,6 +534,27 @@ async function traiter(req, res) {
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
+  // Le planificateur de missions (src/planificateur.js) : une spec, un plan, un lancement.
+  if (await plansMissions.traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 128_000), store, qui,
+    params: () => ({ projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) }),
+    machines: api.machines, viaParMachine: VIA_PAR_MACHINE, origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
+
+  const repriseRun =req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
+  if (repriseRun) {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: "event store indisponible" });
+    const demande = await corpsJson(req, res);
+    if (demande === null) return undefined;
+    try {
+      // L'API publique ne peut pas se faire passer pour le planificateur.
+      const corps = require("agent-orchestrator/packages/schemas/commandes").valider("run.resume", {
+        ...demande, runId: decodeURIComponent(repriseRun[1]), automatique: false,
+      });
+      const commande = magasinOuvert.attentes.demander(corps.runId, { ...corps, par: qui.par, canal: qui.canal });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) { return json(res, 409, { erreur: err.message }); }
+  }
+
   // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
   // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
   // l'event store, que le service runner consomme dans un autre conteneur.
@@ -548,7 +580,7 @@ async function traiter(req, res) {
         const etatMachines = api.machines(magasinOuvert);
         const commande = missions.demander({ store: magasinOuvert, qui, demande,
           params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) },
-          verifierBackend: runtimeMission.verifier({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }),
+          verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }),
           verifierBrouillon: (id, projectId, nature) => discussions.origineBrouillon(magasinOuvert, id, projectId, nature) });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
       }

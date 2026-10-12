@@ -32,7 +32,7 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations }
     budget: resolution.budget, publication: resolution.projet.publier }) };
 }
 
-function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon } = {}) {
+function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
   const { resolution, options } = lire({ ...params, projectId: d.projectId, pipelineIndex: d.pipelineIndex });
   if (options.configuration !== d.configuration) throw new Error("La configuration du projet ou de l'équipe a changé : relire la mission.");
@@ -68,11 +68,11 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
       if (!Object.hasOwn(resolution.spec, key)) throw new Error(`La spec du rôle ${n.id} doit contenir le champ « ${key} ».`);
     }
   }
-  return { mission: contrat.figer({ id: d.requestId, resolution, demande: d.demande, participants, origine }),
+  return { mission: contrat.figer({ id: d.requestId, resolution, demande: d.demande, participants, origine, plan }),
     llmOverrides: Object.fromEntries(participants.map((p) => [p.noeud, p.llm])), demande: d };
 }
 
-function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon }) {
+function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   store.db.exec("BEGIN IMMEDIATE");
@@ -85,7 +85,7 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
         throw new Error("Cette demande a déjà été utilisée avec un autre contenu ou auteur.");
       }
     } else {
-      const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon });
+      const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
         pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash }, par: qui.par, canal: qui.canal });
     }

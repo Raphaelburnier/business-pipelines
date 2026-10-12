@@ -8,6 +8,7 @@ const fs = require("fs");
 const pullRequests = require("./pull-requests");
 
 const KIND = "github.merge";
+const KIND_CI = "github.ci.rerun";
 // Au-delà, le relevé est trop vieux pour fonder une fusion : le publieur est sans doute arrêté.
 const PERIME_S = 600;
 
@@ -54,6 +55,10 @@ function fusionsDemandees(store) {
   return { enCours, fusionnees, recentes };
 }
 
+function relancesDemandees(store) {
+  return store.commandes({ limite: 5000 }).filter((c) => c.kind === KIND_CI);
+}
+
 /**
  * Ce que montre la carte « Pull requests » de la page Décisions.
  * @param {{ store: any, instantaneFichier: string, autorisesFichier: string, qui: any, maintenant?: number }} opts
@@ -61,6 +66,7 @@ function fusionsDemandees(store) {
 function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Date.now() }) {
   const instantane = pullRequests.lireInstantane(instantaneFichier);
   const { enCours, fusionnees, recentes } = fusionsDemandees(store);
+  const relances = relancesDemandees(store);
   const age = instantane && instantane.releveLe ? Math.round((maintenant - Date.parse(instantane.releveLe)) / 1000) : null;
   return {
     releveLe: instantane ? instantane.releveLe : null,
@@ -73,10 +79,44 @@ function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Da
         ...pr,
         raison: pullRequests.raisonDeNePasFusionner(pr),
         fusionEnCours: enCours.has(cle(d.depot, pr.numero)),
+        ciRelanceEnCours: relances.some((c) =>
+          c.payload.depot === d.depot && c.payload.numero === pr.numero &&
+          c.payload.runId === pr.ci.runId && c.payload.tentative === pr.ci.tentative &&
+          (c.status === "pending" || c.status === "taken" || (c.status === "done" && c.resultat?.ok))),
       })),
     })),
     recentes,
   };
+}
+
+/** Dépose une relance CI après relecture de la PR et vérification du relevé affiché. */
+function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, demande }) {
+  if (!peutFusionner(qui, autorisesFichier)) {
+    throw new RefusPullRequest(403, "seule une identité tailnet autorisée peut relancer la CI");
+  }
+  const depot = String((demande && demande.depot) || "");
+  const numero = Number(demande && demande.numero);
+  const sha = String((demande && demande.sha) || "");
+  const runId = Number(demande && demande.runId);
+  const tentative = Number(demande && demande.tentative);
+  const vue = etat({ store, instantaneFichier, autorisesFichier, qui });
+  if (vue.perime) throw new RefusPullRequest(503, "relevé des PR trop ancien : attendre le publieur");
+  const pr = vue.depots.find((d) => d.depot === depot)?.ouvertes.find((p) => p.numero === numero);
+  if (!pr) throw new RefusPullRequest(404, `PR #${numero} de ${depot} absente du relevé`);
+  if (pr.sha !== sha) throw new RefusPullRequest(409, "la PR a bougé depuis l'affichage : recharger avant de relancer la CI");
+  if (!pr.interne || !pr.versDefaut || pr.etat !== "open") {
+    throw new RefusPullRequest(409, "la relance est réservée aux PR internes ouvertes vers la branche par défaut");
+  }
+  if (pr.ci.etat !== "rouge" || pr.ci.runId !== runId || pr.ci.tentative !== tentative ||
+      !Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(tentative) || tentative < 1) {
+    throw new RefusPullRequest(409, "aucune CI rouge récente ne peut être relancée pour cette tête");
+  }
+  if (pr.ciRelanceEnCours) throw new RefusPullRequest(409, "une relance CI est déjà en cours pour cette PR");
+  try {
+    return store.creerCommande({ kind: KIND_CI, payload: { depot, numero, sha, runId, tentative }, par: qui.par, canal: qui.canal });
+  } catch (err) {
+    throw new RefusPullRequest(400, err.message);
+  }
 }
 
 /**
@@ -111,4 +151,4 @@ function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) 
   }
 }
 
-module.exports = { etat, demander, RefusPullRequest, KIND, PERIME_S };
+module.exports = { etat, demander, demanderRelanceCI, RefusPullRequest, KIND, KIND_CI, PERIME_S };

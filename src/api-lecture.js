@@ -39,6 +39,7 @@ function ligneRun(store, run) {
     etapes: { total: etapes.length, parStatut },
     // Exécution terminée n'est pas fusion : la livraison dit ce que GitHub a fait du run.
     livraison: vueLivraison(store.livraison(run.id)),
+    attente: store.attentes.vue(run.id),
   };
 }
 
@@ -89,13 +90,17 @@ function run(store, runId) {
     for (const outil of outils) if (typeof outil === "string" && outil) connus.add(outil);
     outilsParEtape.set(evenement.step_id, connus);
   }
+  const etapes = store.etapes(runId).map((etape) => ({
+    ...ligneEtape(etape),
+    outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
+  }));
+  const mission = contratMission ? require("agent-orchestrator/src/mission").vue(contratMission) : null;
   return {
     ...ligneRun(store, brut),
-    ...(contratMission ? { mission: require("agent-orchestrator/src/mission").vue(contratMission) } : {}),
-    etapes: store.etapes(runId).map((etape) => ({
-      ...ligneEtape(etape),
-      outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
-    })),
+    ...(mission ? { mission } : {}),
+    // Critères du plan reliés aux étapes qui les réalisent et les jugent (src/planificateur.js).
+    ...(mission?.plan ? { criteres: require("./planificateur").resultatCriteres(mission.plan, etapes) } : {}),
+    etapes,
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
     revues: revues.vueRevues(derniers, arbreCourant(store, runId, derniers)),
     dernierEvenementId: derniers.length ? derniers[derniers.length - 1].id : 0,

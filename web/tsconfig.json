@@ -18,6 +18,7 @@
     "paths": {
       "@schemas/equipes": ["../node_modules/agent-orchestrator/packages/schemas/equipes.js"],
       "@schemas/mission": ["../node_modules/agent-orchestrator/packages/schemas/mission.js"],
+      "@schemas/plan": ["../node_modules/agent-orchestrator/packages/schemas/plan.js"],
       "@schemas/cockpit": ["../node_modules/agent-orchestrator/packages/schemas/cockpit.js"],
       "@schemas/modeles": ["../node_modules/agent-orchestrator/packages/schemas/modeles.js"],
       "@schemas/chat": ["../node_modules/agent-orchestrator/packages/schemas/chat.js"],

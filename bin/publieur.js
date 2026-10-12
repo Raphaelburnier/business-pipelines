@@ -29,6 +29,7 @@ const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUES
 // vérifie aussi, mais l'event store où arrive la commande est écrit par d'autres services.
 const AUTORISES = process.env.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
 const SONDE_COMMANDES_MS = 3000;
+const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun"];
 // Une PR d'agent prête, non sensible, dont tests et revues couvrent la tête, est fusionnée par
 // le publieur. `0` laisse toutes les fusions au clic du cockpit.
 const FUSION_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_FUSION_AUTO ?? "1").toLowerCase());
@@ -152,11 +153,11 @@ async function releverPullRequests() {
 // par `fusionner` : PR ouverte, même tête, CI verte, fusionnable. Jamais rejouée après un
 // redémarrage : la PR peut avoir changé entre-temps, il suffit de recliquer.
 async function servirFusions(store) {
-  store.abandonnerCommandesInterrompues({ kinds: ["github.merge"], raison: "publieur redémarré pendant la fusion : recliquer si besoin" });
+  store.abandonnerCommandesInterrompues({ kinds: COMMANDES_GITHUB, raison: "publieur redémarré pendant l'action GitHub : recliquer si besoin" });
   while (!arret) {
     let commande = null;
     try {
-      commande = store.prendreCommande({ kinds: ["github.merge"] });
+      commande = store.prendreCommande({ kinds: COMMANDES_GITHUB });
     } catch (err) {
       console.error(`file des fusions illisible : ${err.message}`);
     }
@@ -164,12 +165,27 @@ async function servirFusions(store) {
       await attendre(SONDE_COMMANDES_MS);
       continue;
     }
-    const { depot, numero, sha, baseSha } = commande.payload;
+    const { depot, numero, sha, baseSha, runId, tentative } = commande.payload;
     let resultat;
     if (!apiFusion) {
       resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };
     } else if (!lireAutorises(AUTORISES).has(String(commande.par))) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
+    } else if (commande.kind === "github.ci.rerun") {
+      try {
+        const pr = await apiFusion("GET", `/repos/${depot}/pulls/${numero}`);
+        if (pr.state !== "open" || pr.head?.sha !== sha) throw new Error("la PR est fermée ou sa tête a changé");
+        const run = await apiFusion("GET", `/repos/${depot}/actions/runs/${runId}`);
+        if (run.name !== "CI" || run.event !== "pull_request" || run.head_sha !== sha ||
+            !run.pull_requests?.some((association) => association.number === numero && association.head?.sha === sha) ||
+            run.status !== "completed" || run.conclusion !== "failure" || run.run_attempt !== tentative) {
+          throw new Error("la dernière CI n'est plus en échec sur cette tête");
+        }
+        await apiFusion("POST", `/repos/${depot}/actions/runs/${runId}/rerun-failed-jobs`);
+        resultat = { ok: true, detail: { depot, numero, sha, runId, tentative, statut: "relancee" } };
+      } catch (err) {
+        resultat = { ok: false, raison: String(err.message).split("\n")[0] };
+      }
     } else {
       try {
         const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero, sha, baseSha }, verifierPreuves: verifierPreuves({ strict: false }) });
@@ -179,7 +195,7 @@ async function servirFusions(store) {
       }
     }
     store.terminerCommande(commande.id, resultat);
-    console.log(`fusion ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? "faite" : resultat.raison}`);
+    console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? "faite" : resultat.raison}`);
     // Une fusion confirmée remonte au run sans attendre le passage suivant.
     await suivreLivraisons();
     await releverPullRequests();

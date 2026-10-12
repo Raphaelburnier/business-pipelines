@@ -288,7 +288,7 @@ function ContenuLivraison({ prs }: { prs: PrLivree[] }) {
 
 const LIBELLES_CI: Record<string, string> = { verte: "CI verte", en_cours: "CI en cours", rouge: "CI rouge", absente: "sans CI" };
 
-function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; pr: PullRequestOuverte; peutFusionner: boolean; fusionner: (pr: PullRequestOuverte) => Promise<void> }) {
+function PullRequest({ depot, pr, peutFusionner, fusionner, relancerCI }: { depot: string; pr: PullRequestOuverte; peutFusionner: boolean; fusionner: (pr: PullRequestOuverte) => Promise<void>; relancerCI: (pr: PullRequestOuverte) => Promise<void> }) {
   const [confirmation, setConfirmation] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -301,6 +301,17 @@ function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; p
     try {
       await fusionner(pr);
       setConfirmation(false);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  async function relancer() {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await relancerCI(pr);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : String(err));
     } finally {
@@ -326,6 +337,14 @@ function PullRequest({ depot, pr, peutFusionner, fusionner }: { depot: string; p
         {pr.titre} · {pr.branche} · {pr.fichiers} fichier{pr.fichiers > 1 ? "s" : ""}
       </p>
       {pr.raison && !pr.fusionEnCours && <p className="text-[12px] text-douce">Pas de fusion d'ici : {pr.raison}.</p>}
+      {pr.ci.etat === "rouge" && peutFusionner && !pr.ciRelanceEnCours && (
+        <div className="ao-actions">
+          <button type="button" className="ao-btn" disabled={envoi || !pr.ci.runId || !pr.ci.tentative} onClick={relancer}>
+            {envoi ? "Relance…" : "Relancer la CI"}
+          </button>
+        </div>
+      )}
+      {pr.ciRelanceEnCours && <p className="text-[12px] text-douce">Relance CI demandée ; en cas de nouvel échec, l’autofix CI transmettra les logs à l’agent de cette branche.</p>}
       {!pr.raison && !pr.fusionEnCours && peutFusionner && !confirmation && (
         <div className="ao-actions">
           <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>
@@ -368,6 +387,13 @@ function CartePullRequests() {
     setTic((n) => n + 1);
   }
 
+  async function relancerCI(depot: string, pr: PullRequestOuverte) {
+    if (!pr.ci.runId) throw new Error("identifiant de la CI manquant ; actualise le relevé");
+    if (!pr.ci.tentative) throw new Error("tentative CI manquante ; actualise le relevé");
+    await source.relancerCIPR({ depot, numero: pr.numero, sha: pr.sha, runId: pr.ci.runId, tentative: pr.ci.tentative });
+    setTic((n) => n + 1);
+  }
+
   return (
     <section className="ao-liv" aria-labelledby="titre-pr">
       <header>
@@ -378,7 +404,7 @@ function CartePullRequests() {
       {donnees?.erreur && <p className="text-douce">Pas de relevé : {donnees.erreur}.</p>}
       {donnees && !donnees.erreur && donnees.perime && <p className="text-douce">Relevé ancien : le publieur ne tourne peut-être plus.</p>}
       {donnees && !donnees.peutFusionner && ouvertes.length > 0 && (
-        <p className="text-[12px] text-douce">Seule une identité tailnet autorisée peut fusionner (specs/livraison.json sur le NAS).</p>
+        <p className="text-[12px] text-douce">Seule une identité tailnet autorisée peut fusionner ou relancer la CI (specs/livraison.json sur le NAS).</p>
       )}
       {donnees?.depots.filter((d) => d.erreur).map((d) => (
         <p key={d.depot} className="text-[12px] text-douce">
@@ -388,7 +414,7 @@ function CartePullRequests() {
       {ouvertes.length > 0 && (
         <ul className="ao-pr-liste">
           {ouvertes.map(({ depot, pr }) => (
-            <PullRequest key={`${depot}#${pr.numero}`} depot={depot} pr={pr} peutFusionner={Boolean(donnees?.peutFusionner && !donnees.perime && !donnees.erreur)} fusionner={(p) => fusionner(depot, p)} />
+            <PullRequest key={`${depot}#${pr.numero}`} depot={depot} pr={pr} peutFusionner={Boolean(donnees?.peutFusionner && !donnees.perime && !donnees.erreur)} fusionner={(p) => fusionner(depot, p)} relancerCI={(p) => relancerCI(depot, p)} />
           ))}
         </ul>
       )}

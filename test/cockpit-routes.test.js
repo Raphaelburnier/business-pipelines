@@ -136,6 +136,32 @@ function poster(port, chemin, corps, entetes = {}) {
 
 const PORT = 4699;
 
+test("reprise de runtime : identité/origine contrôlées, reconnexion explicite et double clic dédupliqué", async () => {
+  const bac = base();
+  const store = new EventStore(bac.base);
+  const etape = store.etapes(bac.runId)[0];
+  store.majEtape(etape.id, { status: "waiting_auth", llmVia: "codex", sessionId: "session-preservee" });
+  const attente = store.attentes.enregistrer(bac.runId, { name: "AbonnementRequis" });
+  const serveur = await demarrer({ COCKPIT_PORT: String(PORT + 7), APPROVALS_DIR: path.join(bac.dir, "approvals"), ORCH_EVENT_STORE: bac.base, COCKPIT_OPERATEUR_LOCAL: "test" });
+  try {
+    const chemin = `/api/runs/${bac.runId}/reprise`;
+    assert.equal((await poster(PORT + 7, chemin, { waitId: attente.wait_id }, { origin: "https://autre.example" })).code, 403);
+    assert.equal((await poster(PORT + 7, chemin, { waitId: attente.wait_id })).code, 409);
+    assert.equal((await poster(PORT + 7, chemin, { waitId: require("node:crypto").randomUUID(), reconnexionConfirmee: true })).code, 409);
+    const premier = await poster(PORT + 7, chemin, { waitId: attente.wait_id, reconnexionConfirmee: true, automatique: true });
+    const second = await poster(PORT + 7, chemin, { waitId: attente.wait_id, reconnexionConfirmee: true });
+    assert.equal(premier.code, 202);
+    const id = JSON.parse(premier.corps).commande.id;
+    assert.equal(JSON.parse(second.corps).commande.id, id);
+    assert.equal(store.commande(id).par, "test");
+    assert.equal(store.commande(id).payload.automatique, false);
+    const vue = JSON.parse((await requete(PORT + 7, `/api/runs/${bac.runId}`)).corps);
+    assert.equal(vue.attente.commande, id); assert.equal(vue.attente.prochaineReprise, null);
+    assert.equal(vue.etapes[0].session, "session-preservee");
+    assert.deepEqual(vue.attente.actions, []);
+  } finally { serveur.kill(); store.fermer(); }
+});
+
 test("les routes de lecture servent les runs, les machines et le front", async () => {
   const bac = base();
   const cockpit = await demarrer({
