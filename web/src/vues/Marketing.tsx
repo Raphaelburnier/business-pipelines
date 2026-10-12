@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { enAttente, messageStatut, type FilEquipe, type OptionsDiscussion, type SelectionEquipe } from "../donnees/discussions";
+import { useTexteBrouillon } from "../donnees/brouillons";
 import { Erreur, Titre } from "../ui";
 import { ModeleMission } from "./Missions";
 
@@ -45,8 +46,8 @@ function Ouvrir({ projectId, aller, surEnvoi }: { projectId: string; aller: (hre
   const { source } = useSource();
   const [options, setOptions] = useState<OptionsDiscussion | null>(null);
   const [participants, setParticipants] = useState<SelectionEquipe[]>([]);
-  const [objectif, setObjectif] = useState("");
-  const [contenu, setContenu] = useState("");
+  const [objectif, setObjectif, oublierObjectif] = useTexteBrouillon(`marketing:${projectId}:objectif`);
+  const [contenu, setContenu, oublierContenu] = useTexteBrouillon(`marketing:${projectId}:premier-message`);
   const [type, setType] = useState<"message" | "directive">("message");
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -72,6 +73,7 @@ function Ouvrir({ projectId, aller, surEnvoi }: { projectId: string; aller: (hre
     setEnvoi(true); surEnvoi(true); setErreur(null);
     try {
       const f = await source.ouvrirDiscussion({ ...demande, requestId: idPour(demande) });
+      oublierObjectif(); oublierContenu();
       aller(`/marketing/${f.projectId}/${f.id}`);
     } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); setEnvoi(false); surEnvoi(false); }
   }
@@ -107,7 +109,7 @@ function Conversation({ filId, projectId, aller }: { filId: string; projectId: s
   const [revision, setRevision] = useState(0);
   const lecture = useCharge((s) => s.filEquipe(filId), [filId, revision]);
   const fil = lecture.donnees;
-  const [contenu, setContenu] = useState("");
+  const [contenu, setContenu, oublierContenu] = useTexteBrouillon(`marketing:fil:${filId}:message`);
   const [type, setType] = useState<"message" | "directive">("message");
   const [destinataire, setDestinataire] = useState("");
   const [envoi, setEnvoi] = useState(false);
@@ -129,7 +131,7 @@ function Conversation({ filId, projectId, aller }: { filId: string; projectId: s
     try {
       await source.envoyerEquipe(filId, { ...demande, requestId: idPour(demande) });
       oublierEnvoi();
-      setContenu(""); setType("message"); setRevision((r) => r + 1);
+      oublierContenu(); setType("message"); setRevision((r) => r + 1);
     } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
     finally { setEnvoi(false); }
   }
