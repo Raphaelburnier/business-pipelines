@@ -178,8 +178,8 @@ function Coquille() {
           <Lien href="/agents" actif={route.type === "agents"} aller={naviguer} icone="agent" compte={usage?.runsActifs}>
             Agents
           </Lien>
-          <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="agent">Missions</Lien>
-          <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="demander">Marketing</Lien>
+          <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
+          <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
           <Lien href="/demander" actif={route.type === "demander"} aller={naviguer} icone="demander">
             Demander
           </Lien>
