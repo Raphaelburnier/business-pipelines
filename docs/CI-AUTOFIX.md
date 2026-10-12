@@ -64,6 +64,9 @@ Ajoutés :
   commande ;
 - seuls les marqueurs postés par `github-actions[bot]` comptent pour la déduplication ;
 - au plus 3 commits `[ci-autofix]` par PR, relances comprises ;
+- un échec limité à l'étape « Verify tested merge » (base périmée) n'appelle aucun agent :
+  un commentaire demande de mettre la branche à jour. Relancer les jobs échoués depuis le
+  cockpit réutilise l'ancien merge et échoue de la même façon dès que `main` a avancé ;
 - un arrêt porte son propre marqueur (`ci-autofix-arret:`) et la phrase que lit le suivi des
   livraisons du publieur.
 
@@ -82,6 +85,9 @@ Dans `corriger` :
 - outils : `Read`, `Edit`, `Write`, `Glob`, `Grep`. Pas de `Bash`, pas de réseau. Règles de
   refus sur `/proc`, `/etc`, `/tmp`, les fichiers du runner (`_temp`, `_actions`) et les
   fichiers de configuration du compte ;
+- les fichiers vides non suivis que le bac à sable laisse à la racine pour masquer `.env*`,
+  `.npmrc`, `bunfig.toml`, `yarn.lock`, etc. sont retirés avant de construire le patch ; un
+  tel fichier avec du contenu reste dans le patch et la publication le refuse ;
 - les étapes suivantes remettent à zéro `BASH_ENV`, `LD_PRELOAD`, `NODE_OPTIONS`, le `PATH` et
   la configuration git globale, au cas où l'agent aurait écrit un fichier lu par le runner.
 
