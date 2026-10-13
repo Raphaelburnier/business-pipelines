@@ -66,6 +66,7 @@ const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
 const { FinanceService } = require("../src/finance/service");
 const { MacroSourceService } = require("../src/finance/sources");
+const { PriceSourceService } = require("../src/finance/prices");
 const { creerRouteurFinance } = require("../src/finance/http");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -284,15 +285,22 @@ async function traiterAIStudio(req, res) {
 let traiterFinanceActif = null;
 const stockageFinance = ENV.FINANCE_STORAGE_ROOT || path.join(RACINE, "etat", "finance");
 let sourcesMacro = null;
+let sourcesCours = null;
 try {
   sourcesMacro = new MacroSourceService({ storageRoot: stockageFinance });
 } catch (err) {
   console.error(`Sources macro indisponibles : ${err.message}`);
 }
 try {
+  sourcesCours = new PriceSourceService({ storageRoot: stockageFinance, token: ENV.EODHD_API_TOKEN });
+} catch (err) {
+  console.error(`Sources cours indisponibles : ${err.message}`);
+}
+try {
   traiterFinanceActif = creerRouteurFinance({
     service: new FinanceService({ storageRoot: stockageFinance }),
     macro: sourcesMacro,
+    prices: sourcesCours,
     json, corpsJson, durcissement: DURCISSEMENT,
   });
 } catch (err) {

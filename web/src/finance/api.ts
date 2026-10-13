@@ -115,6 +115,74 @@ export interface MacroSnapshot {
   empty: boolean;
   synthetic?: boolean;
 }
+export interface PricePoint {
+  id: string;
+  date: string;
+  close: number;
+  adjustedClose: number | null;
+  volume: number;
+}
+export interface PriceInstrument {
+  id: string;
+  code: string;
+  name: string;
+  venue: string;
+  currency: string;
+  type: string;
+  region: string;
+  identityUrl: string;
+  followed: boolean;
+  collectionAllowed: boolean;
+  status: string;
+  points: PricePoint[];
+  latest: PricePoint | null;
+  collectedAt: string | null;
+  ageDays: number | null;
+  dateNeedsCheck: boolean;
+  cacheStale: boolean;
+  coverageVerified: boolean;
+  lastAttempt: {
+    at: string;
+    status: string;
+    message: string;
+    durationMs: number;
+  } | null;
+}
+export interface PriceSnapshot {
+  provider: {
+    name: string;
+    url: string;
+    termsUrl: string;
+    pricingUrl: string;
+    frequency: string;
+  };
+  mode: "demo" | "personal";
+  watchlist: string[];
+  instruments: PriceInstrument[];
+  revision: number;
+  synthetic?: boolean;
+  refreshSkipped?: boolean;
+  budget: {
+    day: string;
+    used: number;
+    remaining: number;
+    limit: number;
+    resetsAt: string;
+  };
+  nextRefreshAt: string | null;
+  lastAttempt: {
+    at: string;
+    ok: boolean;
+    message: string;
+    requests: number;
+    successes: number;
+    failures: number;
+    durationMs: number;
+    added?: number;
+    revised?: number;
+    removed?: number;
+  } | null;
+}
 export async function financeRequest<T>(
   path: string,
   body?: object,

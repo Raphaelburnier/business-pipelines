@@ -1,16 +1,20 @@
-# Finance — trésorerie CSV et contexte macro
+# Finance — trésorerie CSV, contexte macro et cours datés
 
 La page `/finance` fonctionne sans chiffres initiaux. Les montants sont inconnus tant
 que les entrées nécessaires ne sont pas importées. « Voir un exemple fictif » charge
 des cas synthétiques en lecture seule ; aucune ligne n’est ajoutée au stockage. Le
 mode global `?source=maquette` ne propose aucune écriture Finance.
 
-Trésorerie et le premier connecteur macro de Marchés sont implémentés. Analyses et
-Portefeuille indiquent « À développer ». Dans Marchés, collecter les statistiques
-publiques puis choisir une zone et un indicateur pour lire dix années d'historique.
-Le [contrat macro](macro.md) détaille les dates, absences, sources et limites.
+Trésorerie et les deux espaces de Marchés sont implémentés. Analyses et
+Portefeuille indiquent « À développer ». Dans Marchés → Économie mondiale, collecter
+les statistiques publiques puis choisir une zone et un indicateur pour lire dix années
+d'historique. Le [contrat macro](macro.md) détaille les dates, absences, sources et limites.
+Dans Marchés → Cours & suivi, choisir les titres du catalogue et actualiser leurs
+clôtures/historiques, bruts ou ajustés. Sans clé personnelle, seuls Apple et VTI sont
+collectables ; Suisse, Europe et Japon restent non vérifiés. Le [contrat des cours](cours.md)
+documente la configuration serveur `EODHD_API_TOKEN`, le plafond local et les droits.
 Le futur agent prépare des analyses sourcées ; les investissements seront exécutés par
-l’utilisateur chez son courtier. Aucun cours boursier ni agent d'analyse n'est encore intégré.
+l’utilisateur chez son courtier. L'agent d'analyse n'est pas encore intégré.
 
 ## Premier usage
 
@@ -120,12 +124,13 @@ trésorerie business. Le compte courant seul termine à 170000 CHF et l’éparg
 ## Validation et suite
 
 Commandes : `node test/finance-import.test.js`, `node test/finance-metrics.test.js`,
-`node test/finance-sources.test.js`,
-`npm test`, `npm run web:test`, `npm run web:build`. Les trois suites Finance sont incluses
+`node test/finance-sources.test.js`, `node test/finance-prices.test.js`,
+`npm test`, `npm run web:test`, `npm run web:build`. Les quatre suites Finance sont incluses
 dans `npm test`, donc dans la CI existante. La recette navigateur utilise un stockage
 temporaire et uniquement ces fixtures : vide → exemple → import → réimport → filtres →
 attribution → rechargement, navigation/retour, consultation clavier et largeur mobile.
 
-Prochain jalon : couverture des cours, puis mission
-réelle d’analyse. La livraison sur le NAS et la validation avec des relevés réels restent
+Prochain jalon : parcours de mission Finance, puis rapport réel d’analyse. La recette
+des cours internationaux attend une clé personnelle et reste distincte de la simulation.
+La livraison sur le NAS et la validation avec des relevés réels restent
 distinctes des essais locaux.

@@ -258,6 +258,35 @@ test("routes Finance réelles : identité, origine, JSON, tailles et exemple sé
   assert.equal(macro.status, 200);
   assert.equal((await macro.json()).empty, true);
   assert.equal((await request("macro/example")).status, 200);
+  assert.equal((await request("prices")).status, 200);
+  const prices = await (await request("prices")).json();
+  assert.equal(prices.budget.used, 0);
+  assert.equal(prices.instruments[0].latest, null);
+  assert.equal((await request("prices/example")).status, 200);
+  assert.equal((await request("prices/original?id=eodhd:US:AAPL")).status, 404);
+  assert.equal(
+    (await request("prices/refresh", { url: "https://intrus.example" })).status,
+    400,
+  );
+  assert.equal(
+    (await request("prices/watchlist", { ids: ["AAPL"] })).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        "prices/watchlist",
+        { ids: [] },
+        { ...identity, origin: "https://intrus.example" },
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request("prices/refresh", {}, { host: "finance.test.ts.net" }))
+      .status,
+    403,
+  );
   assert.equal(fs.existsSync(path.join(dir, "finance")), false);
   assert.equal(
     (await request("macro/refresh", { url: "https://intrus.example" })).status,

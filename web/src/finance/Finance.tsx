@@ -85,8 +85,8 @@ export function Finance() {
         <span className="fin-status">
           {space === "Marchés"
             ? maquette
-              ? "Exemple macro fictif"
-              : "Sources économiques"
+              ? "Exemples fictifs"
+              : "Sources datées"
             : example
               ? "Exemple fictif"
               : "Données importées"}
@@ -101,7 +101,7 @@ export function Finance() {
             onClick={() => setSpace(s)}
           >
             {s}
-            {s === "Marchés" && <small>Macro</small>}
+            {s === "Marchés" && <small>Macro & cours</small>}
             {s !== "Trésorerie" && s !== "Marchés" && <small>Prévu</small>}
           </button>
         ))}

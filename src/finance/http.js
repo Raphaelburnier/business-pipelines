@@ -5,6 +5,7 @@ const { emptyState } = require("./service");
 const { validateImport } = require("./imports");
 const { summarize } = require("./metrics");
 const { macroExample } = require("./sources");
+const { pricesExample } = require("./prices");
 function exampleState() {
   const state = emptyState();
   for (const kind of Object.keys(SCHEMAS)) {
@@ -31,6 +32,7 @@ function exampleState() {
 function creerRouteurFinance({
   service,
   macro,
+  prices,
   json,
   corpsJson,
   durcissement,
@@ -43,7 +45,55 @@ function creerRouteurFinance({
     )
       return false;
     try {
-      if (url.pathname === "/api/finance/macro/example" && req.method === "GET")
+      if (
+        url.pathname === "/api/finance/prices/example" &&
+        req.method === "GET"
+      )
+        json(res, 200, pricesExample());
+      else if (
+        url.pathname === "/api/finance/prices" ||
+        url.pathname.startsWith("/api/finance/prices/")
+      ) {
+        if (!prices)
+          json(res, 503, {
+            erreur: "Cache des cours indisponible. Consulter les logs serveur.",
+          });
+        else if (req.method === "GET" && url.pathname === "/api/finance/prices")
+          json(res, 200, prices.snapshot());
+        else if (
+          req.method === "GET" &&
+          url.pathname === "/api/finance/prices/original"
+        )
+          json(res, 200, prices.original(url.searchParams.get("id")));
+        else if (
+          req.method === "POST" &&
+          url.pathname === "/api/finance/prices/watchlist"
+        ) {
+          const body = await corpsJson(req, res);
+          if (body) {
+            if (Object.keys(body).some((k) => k !== "ids"))
+              throw new Error(
+                "Envoyer uniquement la liste d’identifiants du catalogue.",
+              );
+            json(res, 200, prices.setWatchlist(body.ids));
+          }
+        } else if (
+          req.method === "POST" &&
+          url.pathname === "/api/finance/prices/refresh"
+        ) {
+          const body = await corpsJson(req, res);
+          if (body) {
+            if (Object.keys(body).length)
+              throw new Error(
+                "La collecte utilise la liste de suivi ; envoyer un objet vide.",
+              );
+            json(res, 200, await prices.refresh());
+          }
+        } else json(res, 404, { erreur: "Route des cours inconnue." });
+      } else if (
+        url.pathname === "/api/finance/macro/example" &&
+        req.method === "GET"
+      )
         json(res, 200, macroExample());
       else if (
         url.pathname === "/api/finance/macro" ||
@@ -131,9 +181,11 @@ function creerRouteurFinance({
       const operational = error.code || error instanceof SyntaxError;
       json(res, error.status || (operational ? 503 : 400), {
         erreur: operational
-          ? url.pathname.startsWith("/api/finance/macro")
-            ? "Stockage macro indisponible. Consulter les logs serveur."
-            : "Stockage Finance indisponible. Aucun import confirmé ; consulter les logs serveur."
+          ? url.pathname.startsWith("/api/finance/prices")
+            ? "Stockage des cours indisponible. Consulter les logs serveur."
+            : url.pathname.startsWith("/api/finance/macro")
+              ? "Stockage macro indisponible. Consulter les logs serveur."
+              : "Stockage Finance indisponible. Aucun import confirmé ; consulter les logs serveur."
           : error.message,
       });
       if (operational) console.error("Finance:", error.message);
