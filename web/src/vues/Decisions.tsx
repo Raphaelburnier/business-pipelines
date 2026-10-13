@@ -344,7 +344,7 @@ function PullRequest({ depot, pr, peutFusionner, fusionner, relancerCI }: { depo
           </button>
         </div>
       )}
-      {pr.ciRelanceEnCours && <p className="text-[12px] text-douce">Relance CI demandée ; en cas de nouvel échec, l’autofix CI transmettra les logs à l’agent de cette branche.</p>}
+      {pr.ciRelanceEnCours && <p className="text-[12px] text-douce">Relance CI demandée (la branche est d’abord mise à jour si la branche par défaut a avancé) ; en cas de nouvel échec, l’autofix CI transmettra les logs à l’agent de cette branche.</p>}
       {!pr.raison && !pr.fusionEnCours && peutFusionner && !confirmation && (
         <div className="ao-actions">
           <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>

@@ -173,16 +173,8 @@ async function servirFusions(store) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
     } else if (commande.kind === "github.ci.rerun") {
       try {
-        const pr = await apiFusion("GET", `/repos/${depot}/pulls/${numero}`);
-        if (pr.state !== "open" || pr.head?.sha !== sha) throw new Error("la PR est fermée ou sa tête a changé");
-        const run = await apiFusion("GET", `/repos/${depot}/actions/runs/${runId}`);
-        if (run.name !== "CI" || run.event !== "pull_request" || run.head_sha !== sha ||
-            !run.pull_requests?.some((association) => association.number === numero && association.head?.sha === sha) ||
-            run.status !== "completed" || run.conclusion !== "failure" || run.run_attempt !== tentative) {
-          throw new Error("la dernière CI n'est plus en échec sur cette tête");
-        }
-        await apiFusion("POST", `/repos/${depot}/actions/runs/${runId}/rerun-failed-jobs`);
-        resultat = { ok: true, detail: { depot, numero, sha, runId, tentative, statut: "relancee" } };
+        const detail = await pullRequests.relancerCI({ api: apiFusion, demande: { depot, numero, sha, runId, tentative } });
+        resultat = { ok: true, detail };
       } catch (err) {
         resultat = { ok: false, raison: String(err.message).split("\n")[0] };
       }
@@ -195,7 +187,7 @@ async function servirFusions(store) {
       }
     }
     store.terminerCommande(commande.id, resultat);
-    console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? "faite" : resultat.raison}`);
+    console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? (resultat.detail?.statut || "faite") : resultat.raison}`);
     // Une fusion confirmée remonte au run sans attendre le passage suivant.
     await suivreLivraisons();
     await releverPullRequests();
