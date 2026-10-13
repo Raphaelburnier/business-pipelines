@@ -227,7 +227,45 @@ async function fusionner({ api, demande, verifierPreuves = null }) {
   return { fusionnee: Boolean(r && r.merged), sha: r && r.sha, message: r && r.message, preuve: ci.preuve };
 }
 
-const DEPOT = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+/**
+ * Relance la CI rouge d'une PR depuis le cockpit. Relancer les jobs réutilise le merge déjà
+ * testé : si la branche par défaut a avancé depuis, « Verify tested merge » échoue à nouveau.
+ * Dans ce cas la branche est mise à jour (nouveau commit de merge, donc nouvelle CI), sinon
+ * seuls les jobs échoués repartent.
+ * @returns {Promise<{ depot: string, numero: number, sha: string, runId: number, tentative: number, statut: "relancee"|"branche_mise_a_jour" }>}
+ */
+async function relancerCI({ api, demande }) {
+  const { depot, numero, sha, runId, tentative } = demande || {};
+  if (!DEPOT.test(String(depot)) || !Number.isInteger(numero) || numero < 1 || !SHA.test(String(sha)) || !Number.isInteger(runId) || !Number.isInteger(tentative)) {
+    throw new RefusFusion("demande de relance incomplète");
+  }
+  const pr = await api("GET", `/repos/${depot}/pulls/${numero}`);
+  if (pr.state !== "open" || pr.head?.sha !== sha) throw new RefusFusion("la PR est fermée ou sa tête a changé");
+  const run = await api("GET", `/repos/${depot}/actions/runs/${runId}`);
+  const association = run.pull_requests?.find((a) => a.number === numero && a.head?.sha === sha);
+  if (run.name !== "CI" || run.event !== "pull_request" || run.head_sha !== sha || !association ||
+      run.status !== "completed" || run.conclusion !== "failure" || run.run_attempt !== tentative) {
+    throw new RefusFusion("la dernière CI n'est plus en échec sur cette tête");
+  }
+  const infos = await api("GET", `/repos/${depot}`);
+  const base = await api("GET", `/repos/${depot}/commits/${encodeURIComponent(infos.default_branch)}`);
+  const basePerimee = pr.base?.ref === infos.default_branch && SHA.test(String(base?.sha)) &&
+    SHA.test(String(association.base?.sha)) && association.base.sha !== base.sha;
+  const resultat = { depot, numero, sha, runId, tentative };
+  if (basePerimee) {
+    try {
+      // expected_head_sha : GitHub refuse si la tête a bougé depuis la vérification.
+      await api("PUT", `/repos/${depot}/pulls/${numero}/update-branch`, { expected_head_sha: sha });
+    } catch (err) {
+      throw new RefusFusion(`mise à jour de la branche refusée (conflit ou tête déplacée) : ${String(err.message).split("\n")[0]}`);
+    }
+    return { ...resultat, statut: "branche_mise_a_jour" };
+  }
+  await api("POST", `/repos/${depot}/actions/runs/${runId}/rerun-failed-jobs`);
+  return { ...resultat, statut: "relancee" };
+}
+
+const DEPOT =/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /**
  * Les dépôts dont le cockpit montre les PR : la liste explicite de PULL_REQUESTS_DEPOTS
@@ -281,6 +319,7 @@ module.exports = {
   relever,
   raisonDeNePasFusionner,
   fusionner,
+  relancerCI,
   RefusFusion,
   depotsSurveilles,
   ecrireInstantane,
