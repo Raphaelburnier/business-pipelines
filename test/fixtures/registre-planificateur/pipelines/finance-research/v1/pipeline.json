@@ -1,0 +1,23 @@
+{
+  "name": "finance-research",
+  "version": 1,
+  "title": "Observation financière et rapport sourcé",
+  "workspace": "documents",
+  "tags": ["finance", "research"],
+  "description": "Fige les données disponibles, analyse leurs limites et scénarios, valide les références puis archive un rapport privé. Aucun ordre courtier.",
+  "notes": "Déclaration F07. Les handlers Finance et le workspace réel sont livrés en F08/F09 ; le cockpit bloque jusque-là le lancement.",
+  "budget": {"maxTurnsPerAgent": 8, "maxTotalTurns": 16, "usdPerRun": 2},
+  "nodes": [
+    {"id": "collecte", "type": "script", "handler": "finance-snapshot", "runsOn": "nas", "params": {"output": "finance-snapshot.json"}},
+    {"id": "analyse", "type": "agent", "agent": "financial-research-analyst@1", "runsOn": "pc", "inputs": ["finance-snapshot.json"], "outputs": ["finance-report.json"], "outputSchema": {"finance-report.json": {"version": "number", "resume": "string", "observations": "array", "scenarios": "array", "risques": "array", "limites": "array", "questions_sans_reponse": "array"}}, "slice": ["questions", "perimetre", "contraintes"], "maxTurns": 8},
+    {"id": "validation", "type": "script", "handler": "finance-report-validate", "runsOn": "nas", "params": {"snapshot": "finance-snapshot.json", "report": "finance-report.json", "output": "finance-validation.json"}, "outcomeFrom": {"report": "finance-validation.json", "field": "verdict", "items": "manques"}},
+    {"id": "publication", "type": "script", "handler": "finance-report-publish", "runsOn": "nas", "params": {"report": "finance-report.json", "validation": "finance-validation.json", "snapshot": "finance-snapshot.json"}}
+  ],
+  "edges": [
+    {"from": "collecte", "to": "analyse"},
+    {"from": "analyse", "to": "validation"},
+    {"from": "validation", "to": "analyse", "on": "FAIL"},
+    {"from": "validation", "to": "publication", "on": "PASS"}
+  ],
+  "cycles": [{"id": "correction", "nodes": ["analyse", "validation"], "maxLoops": 1}]
+}

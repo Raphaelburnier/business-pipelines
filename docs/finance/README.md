@@ -14,7 +14,10 @@ clôtures/historiques, bruts ou ajustés. Sans clé personnelle, seuls Apple et 
 collectables ; Suisse, Europe et Japon restent non vérifiés. Le [contrat des cours](cours.md)
 documente la configuration serveur `EODHD_API_TOKEN`, le plafond local et les droits.
 Le futur agent prépare des analyses sourcées ; les investissements seront exécutés par
-l’utilisateur chez son courtier. L'agent d'analyse n'est pas encore intégré.
+l’utilisateur chez son courtier. Le [contrat des missions Finance](missions.md) est
+déclaré dans le registre, le moteur et le planificateur. L'exécution native et la
+consultation des analyses restent à intégrer ; les lancements Finance sont bloqués
+tant que les handlers correspondants ne sont pas installés côté serveur.
 
 ## Premier usage
 

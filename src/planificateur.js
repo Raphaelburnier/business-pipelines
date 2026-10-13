@@ -16,6 +16,7 @@ const contrat = require("agent-orchestrator/src/mission");
 const { roleEffectif } = require("agent-orchestrator/src/dispatch");
 const schemas = require("agent-orchestrator/packages/schemas/plan");
 const missions = require("./missions");
+const finance = require("agent-orchestrator/packages/schemas/finance");
 
 const nomAgent = (ref) => String(ref || "").split("@")[0];
 const incarne = (membre, noeud) => membre.registre.includes(nomAgent(noeud.agent));
@@ -24,6 +25,7 @@ const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.mod
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
 function natureDe(pipeline) {
   const tags = pipeline.tags || [];
+  if (finance.estFinance(pipeline)) { finance.validerFinance(pipeline); return "finance"; }
   if (pipeline.workspace === "documents" || tags.includes("discussion")) return null;
   if (tags.includes("code") || pipeline.nodes.some((n) => n.handler === "verify-project")) return "developpement";
   if (tags.includes("marketing")) return "marketing";
@@ -37,6 +39,7 @@ function roles(pipeline, nature) {
   const aretes = pipeline.edges || [];
   const dev = new Set(noeuds.filter((n) => n.type === "agent" && nature === "developpement" && n.mustChange).map((n) => n.id));
   const role = (n) => {
+    if (nature === "finance") return finance.roleFinance(n);
     if (n.type === "review") return "revue";
     if (n.type === "approval") return "decision";
     if (n.type === "script") return n.handler === "verify-project" ? "verification" : "controle";
@@ -123,6 +126,15 @@ function evaluer({ spec, index, params, etat }) {
   const avertissements = [];
   let degrade = false;
 
+  if (nature === "finance") {
+    if (resolution.projet.publier === true) bloquer("decision-requise", "Le projet Finance doit désactiver la publication GitHub.", "Définir publier: false dans la fiche Finance.");
+    for (const n of actifs.filter((n) => n.type === "script")) {
+      if (params.financeDisponible?.(n.handler, roleEffectif(n)) !== true) {
+        bloquer("capacite-absente", `L'étape Finance ${n.id} n'est pas installée sur ${roleEffectif(n)}.`, "Terminer l'intégration de l'analyse financière avant de lancer cette mission.", n.id);
+      }
+    }
+  }
+
   if (nature === "developpement") {
     if (![...roleDe.values()].includes("developpement")) bloquer("pipeline-incomplet", `${ref} n'a aucun nœud de développement (agent avec mustChange).`);
     if (!actifs.some((n) => n.handler === "verify-project")) bloquer("pipeline-incomplet", `${ref} n'exécute pas les tests du projet (verify-project).`);
@@ -205,7 +217,9 @@ function evaluer({ spec, index, params, etat }) {
 
   const projet = resolution.projet;
   const approbation = actifs.some((n) => n.type === "approval");
-  const resultat = approbation
+  const resultat = nature === "finance"
+    ? { type: "rapport", depot: null, description: "Rapport financier privé, daté et sourcé, archivé après validation déterministe des références. Les scénarios restent à examiner par l'opérateur." }
+    : approbation
     ? { type: "approbation", depot: null, description: "Le run s'arrête sur une approbation : la décision se prend dans Décisions, question par question. Aucun déploiement n'est prévu par le plan." }
     : projet.publier === true && projet.github
       ? { type: "pull-request", depot: projet.github, description: `PR agent/ sur ${projet.github} ; fusion par le publieur si tests et revues attestés, CI verte sur le merge exact et aucun fichier sensible, sinon décision dans le cockpit. Aucun déploiement n'est prévu par le plan.` }
@@ -268,7 +282,7 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   if (!nature) {
     return sans("bloque", [...illisibles, { code: "nature-indeterminee", message: natures.length
       ? `Le projet accepte plusieurs natures de mission (${natures.join(", ")}) : la spec doit préciser la sienne.`
-      : "Le projet n'a aucun pipeline de développement ou de marketing.", arbitrage: natures.length ? "Préciser la nature de la mission." : null, noeud: null, pipeline: null }], projet);
+      : "Le projet n'a aucun pipeline de développement, de marketing ou de finance.", arbitrage: natures.length ? "Préciser la nature de la mission." : null, noeud: null, pipeline: null }], projet);
   }
   const retenus = candidats.filter((c) => c.nature === nature);
   if (!retenus.length) {

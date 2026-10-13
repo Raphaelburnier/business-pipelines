@@ -126,14 +126,15 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
   if (!options) return <div>{erreur ? <><Erreur>{erreur}</Erreur><button className={champ} onClick={() => setChargement((n) => n + 1)}>Relire le projet</button></> : <p>Préparation de l'équipe…</p>}</div>;
   const changerAgent = (noeud: string, suite: Partial<ChoixAgentMission>) => { setAgents((a) => a.map((c) => c.noeud === noeud ? { ...c, ...suite } : c)); setRelecture(false); };
   return <form onSubmit={envoyer} className="flex flex-col gap-4">
-    <p className="text-sm text-douce">{options.titre} · {options.nature === "developpement" ? "Développement" : options.nature === "marketing" ? "Marketing" : "Mission"}</p>
+    <p className="text-sm text-douce">{options.titre} · {options.nature === "developpement" ? "Développement" : options.nature === "marketing" ? "Marketing" : options.nature === "finance" ? "Finance" : "Mission"}</p>
+    {!!options.blocages?.length && <div role="status" className="rounded-lg border border-alerte p-3 text-sm"><p className="font-semibold">Mission indisponible</p>{options.blocages.map((b) => <p key={b}>{b}</p>)}</div>}
     {catalogue.erreur && <p role="status" className="text-sm text-alerte">Catalogue indisponible : les modèles configurés restent affichés. {catalogue.erreur}</p>}
     <fieldset disabled={envoi} className="flex flex-col gap-4 disabled:opacity-70" onChange={() => setRelecture(false)}>
       <legend className="mb-2 text-sm font-semibold">Agents de la mission</legend>
       {options.roles.map((r) => {
         const c = agents.find((c) => c.noeud === r.noeud)!;
         return <div key={r.noeud} className="grid gap-2 rounded-xl border border-trait bg-surface p-3 sm:grid-cols-2">
-          <p className="text-sm font-semibold sm:col-span-2">{r.noeud} · {r.type === "review" ? "Revue indépendante" : "Production"} <span className="font-normal text-douce">{r.agent}</span></p>
+          <p className="text-sm font-semibold sm:col-span-2">{r.noeud} · {r.type === "review" ? "Revue indépendante" : options.nature === "finance" ? "Analyse financière" : "Production"} <span className="font-normal text-douce">{r.agent}</span></p>
           <label className="text-xs">Agent
             <select className={champ} value={c.membre ?? ""} onChange={(e) => {
               const membre = r.membres.find((m) => m.id === e.target.value);
@@ -164,7 +165,7 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
     </div>}
     {commandeId && <p role="status" className="text-sm text-ok">Mission mise en file. Le run s'ouvrira dès son admission.</p>}
     {erreur && <Erreur>{erreur}</Erreur>}
-    <button type="submit" disabled={envoi || !options.roles.length} className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-sur-accent disabled:opacity-50">{envoi ? "Lancement en cours…" : relecture ? "Lancer cette mission" : "Relire la mission"}</button>
+    <button type="submit" disabled={envoi || !options.roles.length || Boolean(options.blocages?.length)} className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-sur-accent disabled:opacity-50">{envoi ? "Lancement en cours…" : relecture ? "Lancer cette mission" : "Relire la mission"}</button>
   </form>;
 }
 

@@ -47,9 +47,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur compagnon (master) : réponses d'équipe supervisées (#42) et plan du
-          # planificateur figé dans le contrat de mission (#46).
-          ref: f66b951ad6b4c24685811419723da73ec78a4542
+          # Moteur compagnon : contrat Finance documentaire, rapport privé et
+          # blocages du formulaire manuel (PR moteur #49).
+          ref: 1e054f9799ae8f187817e859937ff59d401a0739
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false

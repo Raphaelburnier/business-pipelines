@@ -6,7 +6,7 @@ import { Erreur, Titre } from "../ui";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
 const ROLES: Record<string, string> = { planification: "Planification", developpement: "Développement", verification: "Tests du projet",
-  revue: "Revue indépendante", analyse: "Analyse", synthese: "Synthèse", controle: "Contrôle", decision: "Décision", production: "Production" };
+  revue: "Revue indépendante", analyse: "Analyse", synthese: "Synthèse", controle: "Contrôle", decision: "Décision", production: "Production", collecte: "Collecte", validation: "Validation des sources", publication: "Archivage du rapport" };
 
 // Une spec confiée au planificateur : il choisit le pipeline et les agents, le serveur fige
 // le plan dans le contrat. L'écran montre le plan avant tout lancement.
@@ -14,7 +14,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
   const { source } = useSource();
   const topo = useCharge((s) => s.topologie(), []);
   const [projetId, setProjetId] = useState(projetInitial ?? "");
-  const [nature, setNature] = useState<"" | "developpement" | "marketing">("");
+  const [nature, setNature] = useState<"" | "developpement" | "marketing" | "finance">("");
   const [objectif, setObjectif] = useState("");
   const [criteres, setCriteres] = useState("");
   const [document, setDocument] = useState("");
@@ -89,6 +89,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
               <option value="">Déduite du projet</option>
               <option value="developpement">Développement</option>
               <option value="marketing">Marketing</option>
+              <option value="finance">Finance</option>
             </select>
           </label>
         </div>

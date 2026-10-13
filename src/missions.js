@@ -3,6 +3,8 @@ const path = require("node:path");
 const registre = require("agent-orchestrator/src/registre");
 const schemas = require("agent-orchestrator/packages/schemas/mission");
 const contrat = require("agent-orchestrator/src/mission");
+const finance = require("agent-orchestrator/packages/schemas/finance");
+const { roleEffectif } = require("agent-orchestrator/src/dispatch");
 
 const lancement = schemas.lancement;
 
@@ -12,7 +14,7 @@ function fichier(projetsDir, id) {
 }
 const actifs = (r) => r.pipeline.nodes.filter((n) => ["agent", "review"].includes(n.type) && !n.disabled);
 const incarne = (m, n) => m.registre.includes(n.agent.split("@")[0]);
-function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations }) {
+function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, financeDisponible }) {
   const resolution = registre.resoudreProjet(fichier(projetsDir, projectId), { index: pipelineIndex });
   if (resolution.projet.id !== projectId) throw new Error("la fiche ne correspond pas au projet choisi");
   const configuration = contrat.empreinte({ resolution, roster, affectations });
@@ -24,18 +26,27 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations }
   });
   // Une mission dev repart d'une demande nouvelle, sans les détails d'un ancien run.
   const developpement = resolution.pipeline.tags?.includes("code") || resolution.pipeline.nodes.some((n) => n.handler === "verify-project");
+  const blocages = [];
+  if (finance.estFinance(resolution.pipeline)) {
+    if (resolution.projet.publier === true) blocages.push("Le projet Finance doit désactiver la publication GitHub.");
+    for (const n of resolution.pipeline.nodes.filter((n) => n.type === "script" && !n.disabled)) {
+      if (financeDisponible?.(n.handler, roleEffectif(n)) !== true) blocages.push(`L'étape Finance ${n.id} n'est pas installée sur ${roleEffectif(n)}.`);
+    }
+  }
   return { resolution, options: schemas.options.parse({ projectId, nom: resolution.projet.name, repo: resolution.projet.repo,
     pipelineIndex, pipeline: `${resolution.pipeline.name}@${resolution.pipeline.version}`,
     titre: resolution.pipeline.title || resolution.pipeline.name,
-    nature: developpement ? "developpement" : resolution.pipeline.tags?.includes("marketing") ? "marketing" : "autre",
+    nature: finance.estFinance(resolution.pipeline) ? "finance" : developpement ? "developpement" : resolution.pipeline.tags?.includes("marketing") ? "marketing" : "autre",
     configuration, roles, spec: developpement ? { project_name: projectId } : resolution.spec,
-    budget: resolution.budget, publication: resolution.projet.publier }) };
+    budget: resolution.budget, publication: resolution.projet.publier,
+    ...(finance.estFinance(resolution.pipeline) ? { blocages } : {}) }) };
 }
 
 function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
   const { resolution, options } = lire({ ...params, projectId: d.projectId, pipelineIndex: d.pipelineIndex });
   if (options.configuration !== d.configuration) throw new Error("La configuration du projet ou de l'équipe a changé : relire la mission.");
+  if (options.blocages?.length) throw new Error(options.blocages.join(" "));
   const brouillon = d.brouillonId ? verifierBrouillon?.(d.brouillonId, d.projectId, options.nature) : null;
   const origine = brouillon?.origine;
   if (d.brouillonId && !origine) throw new Error("Origine du brouillon non vérifiée.");
