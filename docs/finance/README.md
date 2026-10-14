@@ -5,19 +5,21 @@ que les entrées nécessaires ne sont pas importées. « Voir un exemple fictif 
 des cas synthétiques en lecture seule ; aucune ligne n’est ajoutée au stockage. Le
 mode global `?source=maquette` ne propose aucune écriture Finance.
 
-Trésorerie et les deux espaces de Marchés sont implémentés. Analyses et
-Portefeuille indiquent « À développer ». Dans Marchés → Économie mondiale, collecter
+Trésorerie, les deux espaces de Marchés et la consultation des rapports dans Analyses
+sont implémentés. Le portefeuille indique encore « À développer ». Dans Marchés → Économie mondiale, collecter
 les statistiques publiques puis choisir une zone et un indicateur pour lire dix années
 d'historique. Le [contrat macro](macro.md) détaille les dates, absences, sources et limites.
 Dans Marchés → Cours & suivi, choisir les titres du catalogue et actualiser leurs
 clôtures/historiques, bruts ou ajustés. Sans clé personnelle, seuls Apple et VTI sont
 collectables ; Suisse, Europe et Japon restent non vérifiés. Le [contrat des cours](cours.md)
 documente la configuration serveur `EODHD_API_TOKEN`, le plafond local et les droits.
-Le futur agent prépare des analyses sourcées ; les investissements seront exécutés par
-l’utilisateur chez son courtier. Le [contrat des missions Finance](missions.md) est
-déclaré dans le registre, le moteur et le planificateur. L'exécution native et la
-consultation des analyses restent à intégrer ; les lancements Finance sont bloqués
-tant que les handlers correspondants ne sont pas installés côté serveur.
+L'agent prépare des analyses à partir d'un snapshot figé des imports et des caches déjà
+collectés ; il ne collecte pas le web pendant sa mission. La validation vérifie les
+références aux sources avant l'archivage privé et l'onglet Analyses. Les investissements
+seront exécutés par l’utilisateur chez son courtier. Le [contrat des missions Finance](missions.md)
+est déclaré dans le registre, le moteur et le planificateur. Ces modifications sont dans
+La mission Finance est proposée dans la PR #94, ouverte pour revue ; son usage en production
+exige la fusion puis le déploiement de cette PR.
 
 ## Premier usage
 

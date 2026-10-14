@@ -33,6 +33,7 @@ function creerRouteurFinance({
   service,
   macro,
   prices,
+  reports = null,
   json,
   corpsJson,
   durcissement,
@@ -45,7 +46,13 @@ function creerRouteurFinance({
     )
       return false;
     try {
-      if (
+      if (url.pathname === "/api/finance/reports" && req.method === "GET") {
+        if (!reports) json(res, 503, { erreur: "Archive des rapports Finance indisponible." });
+        else json(res, 200, { reports: reports.lister({ projectId: url.searchParams.get("projectId") || undefined }) });
+      } else if (/^\/api\/finance\/reports\/[^/]+$/.test(url.pathname) && req.method === "GET") {
+        if (!reports) json(res, 503, { erreur: "Archive des rapports Finance indisponible." });
+        else json(res, 200, reports.lire(decodeURIComponent(url.pathname.split("/").at(-1))));
+      } else if (
         url.pathname === "/api/finance/prices/example" &&
         req.method === "GET"
       )

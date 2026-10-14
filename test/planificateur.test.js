@@ -414,8 +414,8 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     assert.equal((await poster("/api/missions/plan", { spec: spec() }, { origin: "https://autre.example" })).code, 403);
     const finance = await poster("/api/missions/plan", { spec: specFinance({ nature: "finance" }), financeDisponible: true });
     assert.equal(finance.code, 200, JSON.stringify(finance.corps));
-    assert.equal(finance.corps.statut, "bloque", "un champ HTTP ne déclare pas de capacité serveur");
-    assert.deepEqual(finance.corps.blocages.map((b) => b.noeud), ["collecte", "validation", "publication"]);
+    assert.equal(finance.corps.statut, "degrade", "la capacité est évaluée côté serveur ; le plan reste dégradé sans équipe Finance complète");
+    assert.equal(finance.corps.blocages.some((b) => b.code === "capacite-absente"), false, "un champ HTTP ne remplace pas la capacité réelle du serveur");
     assert.equal((await poster("/api/missions/lancer", { spec: specFinance(), empreinte: "0".repeat(64), requestId: crypto.randomUUID() })).code, 409);
     const proposition = await poster("/api/missions/plan", { spec: spec() });
     assert.equal(proposition.code, 200, JSON.stringify(proposition.corps));

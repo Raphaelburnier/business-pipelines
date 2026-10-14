@@ -4,6 +4,7 @@ import { financeRequest, type Summary } from "./api";
 import { Imports } from "./Imports";
 import { Comptes } from "./Comptes";
 import { Tresorerie } from "./Tresorerie";
+import { Analyses } from "./Analyses";
 import { useSource } from "../donnees/contexte";
 import "./finance.css";
 
@@ -102,12 +103,15 @@ export function Finance() {
           >
             {s}
             {s === "Marchés" && <small>Macro & cours</small>}
-            {s !== "Trésorerie" && s !== "Marchés" && <small>Prévu</small>}
+            {s === "Analyses" && <small>Rapports</small>}
+            {s === "Portefeuille" && <small>Prévu</small>}
           </button>
         ))}
       </nav>
       {space === "Marchés" ? (
         <Marches maquette={maquette} />
+      ) : space === "Analyses" ? (
+        <Analyses />
       ) : space !== "Trésorerie" ? (
         <section className="fin-empty">
           <span className="fin-eyebrow">À développer</span>

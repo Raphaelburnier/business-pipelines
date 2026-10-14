@@ -539,6 +539,13 @@
 .fin-empty p {
   max-width: 620px;
 }
+
+.fin-report-list { display: grid; gap: .55rem; margin: 1rem 0; padding: 0; list-style: none; }
+.fin-report-list button { width: 100%; padding: .8rem 1rem; border: 1px solid var(--color-trait-fort); border-radius: .7rem; text-align: left; color: inherit; background: var(--color-surface); }
+.fin-report-list button:hover { border-color: var(--color-accent); }
+.fin-report { margin-top: 1.25rem; padding: 1.1rem; border: 1px solid var(--color-trait-fort); border-radius: .9rem; text-align: left; }
+.fin-report section { padding: .65rem 0; border-bottom: 1px solid var(--color-trait-fort); }
+.fin-report h3 { margin-top: 1.2rem; }
 .fin-empty-values {
   display: flex;
   flex-wrap: wrap;
