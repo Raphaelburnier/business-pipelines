@@ -151,4 +151,4 @@ function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) 
   }
 }
 
-module.exports = { etat, demander, demanderRelanceCI, RefusPullRequest, KIND, KIND_CI, PERIME_S };
+module.exports = { etat, demander, demanderRelanceCI, peutFusionner, RefusPullRequest, KIND, KIND_CI, PERIME_S };

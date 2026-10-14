@@ -6,6 +6,7 @@ const publieur = require("../src/publieur");
 const pullRequests = require("../src/pull-requests");
 const suivi = require("../src/suivi-livraisons");
 const { lireAutorises } = require("../src/livreur");
+const rattachements = require("../src/rattachements");
 const { EventStore } = require("agent-orchestrator");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -29,7 +30,9 @@ const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUES
 // vérifie aussi, mais l'event store où arrive la commande est écrit par d'autres services.
 const AUTORISES = process.env.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
 const SONDE_COMMANDES_MS = 3000;
-const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun"];
+const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun", rattachements.KIND];
+// Le seul dépôt où un rattachement de pipeline peut écrire : celui des fiches du cockpit.
+const DEPOT_COCKPIT = process.env.COCKPIT_DEPOT || "Raphaelburnier/business-pipelines";
 // Une PR d'agent prête, non sensible, dont tests et revues couvrent la tête, est fusionnée par
 // le publieur. `0` laisse toutes les fusions au clic du cockpit.
 const FUSION_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_FUSION_AUTO ?? "1").toLowerCase());
@@ -171,6 +174,14 @@ async function servirFusions(store) {
       resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };
     } else if (!lireAutorises(AUTORISES).has(String(commande.par))) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
+    } else if (commande.kind === rattachements.KIND) {
+      try {
+        if (commande.payload.depot !== DEPOT_COCKPIT) throw new Error(`rattachement refusé hors du dépôt du cockpit (${DEPOT_COCKPIT})`);
+        const pr = await rattachements.proposer({ api: apiFusion, depot: DEPOT_COCKPIT, projet: commande.payload.projet, pipeline: commande.payload.pipeline, par: commande.par });
+        resultat = { ok: true, detail: pr };
+      } catch (err) {
+        resultat = { ok: false, raison: String(err.message).split("\n")[0] };
+      }
     } else if (commande.kind === "github.ci.rerun") {
       try {
         const detail = await pullRequests.relancerCI({ api: apiFusion, demande: { depot, numero, sha, runId, tentative } });
@@ -187,7 +198,11 @@ async function servirFusions(store) {
       }
     }
     store.terminerCommande(commande.id, resultat);
-    console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? (resultat.detail?.statut || "faite") : resultat.raison}`);
+    if (commande.kind === rattachements.KIND) {
+      console.log(`rattachement ${commande.payload.pipeline} → ${commande.payload.projet} demandé par ${commande.par} : ${resultat.ok ? `PR #${resultat.detail.numero}` : resultat.raison}`);
+    } else {
+      console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? (resultat.detail?.statut || "faite") : resultat.raison}`);
+    }
     // Une fusion confirmée remonte au run sans attendre le passage suivant.
     await suivreLivraisons();
     await releverPullRequests();

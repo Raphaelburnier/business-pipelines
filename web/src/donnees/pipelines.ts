@@ -15,8 +15,26 @@ export interface PipelineConnu {
   dernierRun: string | null;
 }
 
+/** Un rattachement demandé depuis la page : la PR que le publieur a ouverte, ou son refus. */
+export interface Rattachement {
+  id: string;
+  projet: string;
+  pipeline: string;
+  statut: "pending" | "taken" | "done" | "refused";
+  ok: boolean | null;
+  raison: string | null;
+  pr: { numero: number; url: string } | null;
+  par: string;
+  le: string;
+}
+
 export interface ReponsePipelines {
   pipelines: PipelineConnu[];
+  /** Les projets qui ont une fiche, auxquels un pipeline peut être rattaché. */
+  projets: { id: string; nom: string }[];
+  /** Vrai pour une identité tailnet autorisée à livrer. */
+  peutRattacher: boolean;
+  rattachements: Rattachement[];
 }
 
 /** `improve-app@7` → `improve-app`. */
