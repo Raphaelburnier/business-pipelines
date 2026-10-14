@@ -2,6 +2,7 @@
 import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, Topologie, Usage } from "../types";
 import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
+import type { ReponsePipelines } from "./pipelines";
 import type { Commande, FiltreRuns, Source } from "./source";
 import type { EtatPullRequests } from "./pullRequests";
 
@@ -153,6 +154,10 @@ export function sourceApi(): Source {
     },
     async profil(agent, changement) {
       await ecrire<{ ok: true }>("/api/equipe/profil", { agent, ...changement });
+    },
+    pipelines: () => lire<ReponsePipelines>("/api/pipelines"),
+    async renommerPipeline(pipeline, nom) {
+      await ecrire<{ ok: true }>("/api/pipelines/nom", { pipeline, nom });
     },
     ecouter(surEvenement, surConnexion, runId) {
       // `EventSource` reconnecte seul et renvoie `Last-Event-ID` : une coupure ne perd rien,

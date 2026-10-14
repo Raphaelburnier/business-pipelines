@@ -58,6 +58,8 @@ const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
+const pipelinesNoms = require("../src/pipelines-noms");
+const { dossierRegistre } = require("agent-orchestrator/src/registre");
 const missions = require("../src/missions");
 const discussions = require("../src/discussions-equipe");
 const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussions-equipe");
@@ -137,6 +139,8 @@ const EQUIPE_AFFECTATIONS = path.join(
 // notes publiques des modèles sont versionnées à côté du roster.
 const EQUIPE_PROFILS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-profils.json");
 const EQUIPE_PHOTOS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-photos");
+// Les noms choisis depuis la page Pipelines : de l'état, comme les profils de l'équipe.
+const PIPELINES_NOMS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "pipelines-noms.json");
 const EQUIPE_BENCHMARKS = ENV.COCKPIT_EQUIPE_BENCHMARKS || path.join(RACINE, "equipe", "benchmarks.json");
 const traiterDiscussions = creerRouteurDiscussions({ store, json, corpsJson, projetsDir: PROJETS,
   rosterFichier: EQUIPE_ROSTER, affectationsFichier: EQUIPE_AFFECTATIONS, viaParMachine: VIA_PAR_MACHINE });
@@ -802,6 +806,35 @@ async function traiter(req, res) {
         photo: corps.photo,
         par: qui.par,
       });
+      if (erreur) return json(res, 400, { erreur });
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (lecture && lecture.pathname === "/api/pipelines") {
+    try {
+      // Sans event store, la page nomme quand même les pipelines du registre et des fiches.
+      const magasinOuvert = store();
+      return json(res, 200, {
+        pipelines: pipelinesNoms.liste({
+          fichier: PIPELINES_NOMS,
+          registre: dossierRegistre(),
+          fiches: api.lireFiches(PROJETS).fiches,
+          runs: magasinOuvert ? api.runs(magasinOuvert, { limite: 1000 }) : [],
+        }),
+      });
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (req.method === "POST" && chemin === "/api/pipelines/nom") {
+    const corps = await corpsJson(req, res);
+    if (!corps) return undefined;
+    try {
+      const erreur = pipelinesNoms.renommer({ fichier: PIPELINES_NOMS, pipeline: corps.pipeline, nom: corps.nom === undefined ? null : corps.nom, par: qui.par });
       if (erreur) return json(res, 400, { erreur });
       return json(res, 200, { ok: true });
     } catch (err) {
