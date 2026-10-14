@@ -12,6 +12,9 @@ import { livraisonMaquette } from "./livraison";
 import { pullRequestsMaquette } from "./pullRequests";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
+import { idPipeline, type PipelineConnu } from "../donnees/pipelines";
+
+const TITRES: Record<string, string> = { marketing: "Plan marketing à deux voix" };
 
 export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(), pasMs = 500 } = {}): Source {
   const etat = () => etatA(t0, maintenant() - t0);
@@ -21,6 +24,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const equipe = equipeMaquette(maintenant);
   const prs = pullRequestsMaquette(maintenant);
   const commandes = new Map<string, Commande>();
+  const nomsPipelines = new Map<string, string>();
 
   return {
     ...discussionsMaquette(),
@@ -122,6 +126,27 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     equipe: equipe.lecture,
     affecter: equipe.affecter,
     profil: equipe.profil,
+    async pipelines() {
+      const parId = new Map<string, PipelineConnu>();
+      for (const r of etat().runs) {
+        const id = idPipeline(r.pipeline);
+        const p = parId.get(id) ?? { id, nom: null, perso: false, titreRegistre: TITRES[id] ?? null, versions: [], projets: [], runs: 0, dernierRun: null };
+        const v = Number(r.pipeline.split("@")[1]);
+        if (v && !p.versions.includes(v)) p.versions.push(v);
+        if (r.projet && !p.projets.includes(r.projet)) p.projets.push(r.projet);
+        p.runs += 1;
+        if (r.debut && (!p.dernierRun || r.debut > p.dernierRun)) p.dernierRun = r.debut;
+        parId.set(id, p);
+      }
+      return {
+        pipelines: [...parId.values()].map((p) => ({ ...p, nom: nomsPipelines.get(p.id) ?? p.titreRegistre, perso: nomsPipelines.has(p.id), versions: p.versions.sort((a, b) => a - b) })),
+      };
+    },
+    async renommerPipeline(pipeline, nom) {
+      const id = idPipeline(pipeline);
+      if (nom === null) nomsPipelines.delete(id);
+      else nomsPipelines.set(id, nom.trim());
+    },
     ecouter(surEvenement, surConnexion, runId) {
       // Le dernier id déjà livré : comme `Last-Event-ID`, il évite de renvoyer deux fois.
       let dernier = etat().evenements.at(-1)?.id ?? 0;

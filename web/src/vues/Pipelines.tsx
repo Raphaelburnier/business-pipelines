@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import type { MembreEquipe } from "../donnees/equipe";
 import { construireGraphe, grapheJson, trierRuns, type EtatNoeud, type GraphePipeline, type LienPipeline, type NoeudPipeline } from "../donnees/pipelineGraphe";
+import { idPipeline, nomPipeline, versionPipeline, type PipelineConnu } from "../donnees/pipelines";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
 import { Icone } from "../icones";
 import type { RunDetailleAvecOutils } from "../types";
@@ -453,9 +454,88 @@ function InspecteurNoeud({
   );
 }
 
+/** Le nom du pipeline du run, ce qu'il est sous le capot, les projets qui s'en servent, et son renommage. */
+function EnTete({ refPipeline, connus, renomme }: { refPipeline: string; connus: ReadonlyMap<string, PipelineConnu>; renomme: () => void }) {
+  const { source } = useSource();
+  const id = idPipeline(refPipeline);
+  const connu = connus.get(id);
+  const nom = nomPipeline(refPipeline, connus);
+  const [edition, setEdition] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function enregistrer(valeur: string | null) {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await source.renommerPipeline(id, valeur);
+      setEdition(null);
+      renomme();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <div className="pl-entete">
+      {edition === null ? (
+        <div className="pl-titre">
+          <h2>{nom}</h2>
+          <button type="button" className="ao-btn" onClick={() => setEdition(connu?.perso ? nom : "")}>
+            Renommer
+          </button>
+        </div>
+      ) : (
+        <form
+          className="pl-titre"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (edition.trim()) void enregistrer(edition);
+          }}
+        >
+          <label className="sr-only" htmlFor="pl-nom">
+            Nom du pipeline
+          </label>
+          <input id="pl-nom" className="pl-champ" value={edition} maxLength={60} placeholder={connu?.titreRegistre ?? nom} onChange={(e) => setEdition(e.target.value)} autoFocus />
+          <button type="submit" className="ao-btn primaire" disabled={envoi || !edition.trim()}>
+            Enregistrer
+          </button>
+          {connu?.perso && (
+            <button type="button" className="ao-btn" disabled={envoi} onClick={() => void enregistrer(null)} title="Revenir au titre du registre">
+              Nom d'origine
+            </button>
+          )}
+          <button type="button" className="ao-btn" disabled={envoi} onClick={() => setEdition(null)}>
+            Annuler
+          </button>
+        </form>
+      )}
+      <p className="pl-sous">
+        <code>
+          {id} {versionPipeline(refPipeline)}
+        </code>
+        {connu && (
+          <>
+            {" · "}
+            {connu.projets.length ? `utilisé par ${connu.projets.join(", ")}` : "aucun projet"}
+            {" · "}
+            {connu.runs} run{connu.runs > 1 ? "s" : ""}
+          </>
+        )}
+      </p>
+      {erreur && <Erreur>{erreur}</Erreur>}
+    </div>
+  );
+}
+
 export function Pipelines({ runId, aller }: { runId: string | null; aller: (href: string) => void }) {
   const { donnees: runs, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
   const { donnees: equipe } = useCharge((s) => s.equipe(), []);
+  const [renommages, setRenommages] = useState(0);
+  const { donnees: catalogue } = useCharge((s) => s.pipelines(), [renommages]);
+  const connus = useMemo(() => new Map((catalogue?.pipelines ?? []).map((p) => [p.id, p])), [catalogue]);
   const tries = useMemo(() => trierRuns(runs ?? []), [runs]);
   const actif = runId ?? tries[0]?.id ?? null;
   const { donnees: run, erreur: erreurRun } = useCharge((s) => (actif ? s.run(actif) : Promise.resolve(null)), [actif]);
@@ -500,9 +580,12 @@ export function Pipelines({ runId, aller }: { runId: string | null; aller: (href
             }}
           >
             <Etat etat={r.statut} />
-            <b>{r.pipeline}</b>
+            <b>{nomPipeline(r.pipeline, connus)}</b>
             <small>
               {r.projet ?? "sans projet"} · {r.debut ? `il y a ${depuis(r.debut)}` : "pas démarré"}
+            </small>
+            <small className="pl-ref">
+              {idPipeline(r.pipeline)} {versionPipeline(r.pipeline)}
             </small>
           </a>
         ))}
@@ -512,6 +595,7 @@ export function Pipelines({ runId, aller }: { runId: string | null; aller: (href
         {erreurRun && <Erreur>{erreurRun}</Erreur>}
         {run && graphe ? (
           <>
+            <EnTete refPipeline={run.pipeline} connus={connus} renomme={() => setRenommages((n) => n + 1)} />
             <div className="ao-kpis pl-stats" role="group" aria-label="Indicateurs du run">
               <div className="ao-kpi">
                 <span className="k">Étape</span>

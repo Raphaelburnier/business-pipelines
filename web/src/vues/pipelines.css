@@ -11,6 +11,14 @@
 .pl-liste a.on { border-color: var(--color-accent); box-shadow: inset 3px 0 0 var(--color-accent); background: var(--color-carte); }
 .pl-liste a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
+.pl-liste a small.pl-ref { font-size: 10px; opacity: .8; }
+.pl-entete { display: flex; flex: none; flex-direction: column; gap: 6px; padding: 12px 12px 0; }
+.pl-titre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.pl-titre h2 { margin: 0 8px 0 0; font: 700 22px/1.1 var(--font-sans); overflow-wrap: anywhere; }
+.pl-champ { flex: 1 1 220px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--color-accent); background: var(--color-fond); color: var(--color-encre); font: 600 15px/1 var(--font-sans); }
+.pl-champ:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pl-sous { margin: 0; font: 400 11px/1.4 var(--font-mono); color: var(--color-douce); }
+.pl-sous code { color: var(--color-encre); }
 .pl-centre { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--color-trait); background: var(--color-surface); }
 .pl-centre .pl-stats { flex: none; align-self: flex-start; max-width: calc(100% - 24px); margin: 12px; overflow-x: auto; }
 .pl-defile { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; }

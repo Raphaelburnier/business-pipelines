@@ -141,10 +141,12 @@ function resumerApprobation(a) {
 // battement ensuite : seul le maître tient l'état des workers à jour. La machine locale est
 // donc en ligne puisqu'elle répond ; une autre qui ne bat plus depuis SILENCE_S est hors
 // ligne, quoi que dise la base ; et une machine muette depuis OUBLI_S (un ancien conteneur
-// inscrit sous son id Docker) sort de la liste.
+// inscrit sous son id Docker) sort de la liste. Un id de conteneur ne revient jamais après un
+// redéploiement : hors ligne, il sort tout de suite au lieu d'encombrer la barre une semaine.
 const SILENCE_S = 180;
 const OUBLI_S = 7 * 24 * 3600;
 const ETATS_ACTIFS = new Set(["online", "busy"]);
+const ID_CONTENEUR = /^[0-9a-f]{12}$/;
 
 function machines(store, { maintenant = Date.now() } = {}) {
   return store
@@ -164,6 +166,7 @@ function machines(store, { maintenant = Date.now() } = {}) {
         locale,
       };
     })
+    .filter((m) => m.locale || !(ID_CONTENEUR.test(m.machine) && m.etat === "offline"))
     .filter((m) => m.locale || m.depuisSecondes === null || m.depuisSecondes <= OUBLI_S)
     .map(({ locale: _l, ...m }) => m);
 }
