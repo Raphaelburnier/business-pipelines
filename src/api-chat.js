@@ -6,6 +6,17 @@
 
 // Une question plus longue relève d'un document, pas d'un chat.
 const LONGUEUR_MAX = 4000;
+const AGENTS = ["cockpit", "claude", "codex"];
+
+function actions(m) {
+  if (!m.actions_json) return [];
+  try {
+    const lues = JSON.parse(m.actions_json);
+    return Array.isArray(lues) ? lues : [];
+  } catch {
+    return [];
+  }
+}
 
 function message(m) {
   return {
@@ -16,6 +27,8 @@ function message(m) {
     creeLe: m.created_at,
     termineLe: m.completed_at || null,
     coutEquivalentUsd: Number(m.est_cost_usd || 0),
+    agent: m.role === "assistant" ? m.agent || "cockpit" : null,
+    actions: actions(m),
   };
 }
 
@@ -36,8 +49,12 @@ function usage(store, plafondUsd) {
   return { coutEquivalentUsd: u.coutEquivalentUsd, plafondUsd, depuis: u.depuis, bloque: u.coutEquivalentUsd >= plafondUsd };
 }
 
-function listeFils(store, { plafondUsd, modele }) {
-  return { fils: store.filsChat({ limite: 30 }).map(fil), usage: usage(store, plafondUsd), modele };
+/**
+ * @param {any} store
+ * @param {{ plafondUsd: number, modele: string, agents?: Array<{ id: string, nom: string, modele: string }> }} options
+ */
+function listeFils(store, { plafondUsd, modele, agents = [{ id: "cockpit", nom: "Cockpit", modele }] }) {
+  return { fils: store.filsChat({ limite: 30 }).map(fil), usage: usage(store, plafondUsd), modele, agents };
 }
 
 function filDetaille(store, id) {
@@ -50,10 +67,13 @@ function filDetaille(store, id) {
  * Rend `{ code, corps }` : les refus disent pourquoi, dans les mêmes termes que le reste
  * de l'API.
  * @param {any} store
+ * `agent` : qui répond (cockpit par défaut, claude ou codex) ; un fil peut changer de
+ * répondant d'une question à l'autre.
  * @param {{ threadId?: string|null, contenu: unknown, par: string, canal?: string|null,
- *   plafondUsd: number, projet?: string|null }} demande
+ *   plafondUsd: number, projet?: string|null, agent?: unknown }} demande
  */
-function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd, projet = null }) {
+function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd, projet = null, agent = "cockpit" }) {
+  if (!AGENTS.includes(/** @type {string} */ (agent))) return { code: 400, corps: { erreur: `répondant inconnu : ${String(agent)}` } };
   const texte = typeof contenu === "string" ? contenu.trim() : "";
   if (!texte) return { code: 400, corps: { erreur: "question vide" } };
   if (texte.length > LONGUEUR_MAX) return { code: 413, corps: { erreur: `question trop longue (${LONGUEUR_MAX} caractères au plus)` } };
@@ -74,9 +94,9 @@ function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd,
   }
 
   store.ajouterMessageChat({ threadId: cible, role: "user", content: texte });
-  const reponse = store.ajouterMessageChat({ threadId: cible, role: "assistant", status: "queued" });
-  store.creerCommande({ kind: "chat.respond", payload: { threadId: cible, responseMessageId: reponse.id }, par, canal });
+  const reponse = store.ajouterMessageChat({ threadId: cible, role: "assistant", status: "queued", agent });
+  store.creerCommande({ kind: "chat.respond", payload: { threadId: cible, responseMessageId: reponse.id, agent }, par, canal });
   return { code: 202, corps: filDetaille(store, cible) };
 }
 
-module.exports = { listeFils, filDetaille, poser, LONGUEUR_MAX };
+module.exports = { listeFils, filDetaille, poser, LONGUEUR_MAX, AGENTS };
