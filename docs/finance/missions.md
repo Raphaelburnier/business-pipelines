@@ -52,10 +52,8 @@ manuellement chez le courtier ; aucun ordre ni accès courtier ne fait partie de
 
 ## Versions compagnons
 
-Le cockpit utilise le moteur `257a1ad6c4f3ba14ef4457dbd7bc82190793fe15`
-(`codex/finance-mission-contract`) et les déclarations du registre
-`796abe97abb024de5e694aab42f0feb84a74383e`
-(`codex/finance-research-pipeline`). Le moteur est épinglé à ce SHA dans la CI ;
-les fixtures de tests copient les deux déclarations versionnées du registre.
-Ces branches sont ouvertes pour revue : leur existence ne signifie pas qu'elles
-sont fusionnées ou installées sur le NAS.
+Les PR compagnons sont fusionnées : moteur #49 (`257a1ad6c4f3ba14ef4457dbd7bc82190793fe15`)
+et registre #14 (`796abe97abb024de5e694aab42f0feb84a74383e`). Le cockpit les consomme
+via `agent-orchestrator` et ses fixtures versionnées. Le code Finance du cockpit a été livré
+par la PR #94. Ces fusions ne prouvent pas que les dépôts sont déployés sur le NAS : le run
+F08 natif et la vérification du runtime restent à faire après livraison.
