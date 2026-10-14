@@ -77,7 +77,7 @@ function pipelinesDuRegistre(nature, dossier = registre.dossierRegistre()) {
  * membre affecté au projet (100), puis un membre de l'équipe (30), puis pour une revue un
  * runtime différent du développement (20), puis le modèle recommandé par le pipeline (5).
  */
-function choisir(noeud, { projectId, roster, affectations, etat, auteurs }) {
+function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contexte }) {
   const options = [...roster.filter((m) => incarne(m, noeud)).map((m) => ({ membre: m, llm: m.llm })), { membre: null, llm: noeud.llm }];
   const viasAuteurs = new Set(auteurs.map((a) => a.llm?.via).filter(Boolean));
   const evaluees = options.map((o, rang) => {
@@ -88,7 +88,7 @@ function choisir(noeud, { projectId, roster, affectations, etat, auteurs }) {
     if (etat.runtimesExclus.includes(o.llm.via)) rejet = `runtime ${o.llm.via} exclu par la spec`;
     else if (etat.runtimesBloques[o.llm.via]) rejet = etat.runtimesBloques[o.llm.via];
     else {
-      const dispo = etat.disponibilite(o.llm, noeud);
+      const dispo = etat.disponibilite(o.llm, noeud, contexte);
       if (!dispo.utilisable) rejet = dispo.raison;
     }
     if (!rejet && o.membre) {
@@ -171,7 +171,8 @@ function evaluer({ spec, index, params, etat }) {
   const ordre = [...actifs.filter((n) => n.type === "agent"), ...actifs.filter((n) => n.type === "review")];
   for (const n of ordre) {
     const auteurs = n.type === "review" ? auteursDe(actifs, roleDe).map((id) => choisis.get(id)).filter(Boolean) : [];
-    const { choix, ecartes } = choisir(n, { projectId: spec.projectId, roster: params.roster, affectations: params.affectations, etat, auteurs });
+    const { choix, ecartes } = choisir(n, { projectId: spec.projectId, roster: params.roster, affectations: params.affectations, etat, auteurs,
+      contexte: { pipeline: p, agent: resolution.agents[n.agent] } });
     if (!choix) {
       bloquer("aucun-agent", `Aucun agent disponible pour ${n.id} (${n.agent}) : ${ecartes.join(" ; ")}.`,
         "Réveiller ou mettre à jour le worker, attendre la fin du quota, ou affecter un membre disponible au projet.", n.id);
@@ -192,7 +193,7 @@ function evaluer({ spec, index, params, etat }) {
   // Les scripts hors NAS tournent sur un worker : il doit être joignable.
   for (const n of actifs.filter((x) => x.type === "script")) {
     const machine = roleEffectif(n);
-    const dispo = etat.machine(machine, n);
+    const dispo = etat.machine(machine, n, { pipeline: p });
     if (!dispo.utilisable) bloquer("machine-indisponible", `${n.id} doit tourner sur ${machine} : ${dispo.raison}.`, `Rendre ${machine} disponible avant le lancement.`, n.id);
   }
   if (blocages.length) return { blocages, ref, nature };
