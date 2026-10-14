@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "agent-orchestrator": "file:../agent-orchestrator",
-    "nodemailer": "^9.0.5"
+    "nodemailer": "^10.1.0"
   }
 }
