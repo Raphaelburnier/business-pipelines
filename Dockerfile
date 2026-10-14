@@ -81,6 +81,11 @@ CMD ["node", "bin/livreur.js"]
 
 # ---- Image servie ----
 FROM base
+# La CLI Codex, pour le conseiller Codex de « Demander » (bin/commande-runner.js). Version
+# épinglée sur celle du PC ; le paquet Linux x64 embarque un binaire musl, qui tourne sur
+# Alpine. La connexion à l'abonnement n'est pas dans l'image : elle vit dans le volume
+# ./codex du runner, créée une fois par `codex login --device-auth`.
+RUN npm install -g @openai/codex@0.162.1 && codex --version
 COPY . .
 # Seul le résultat du build entre dans l'image, pas ses 200 Mo de dépendances. Cette copie
 # est aussi ce qui oblige l'étage de vérification à tourner : sans elle, BuildKit le sauterait.
