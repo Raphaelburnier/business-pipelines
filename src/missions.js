@@ -63,9 +63,14 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     const c = parNoeud.get(n.id);
     const m = c.membre ? params.roster.find((m) => m.id === c.membre) : null;
     if (c.membre && (!m || !incarne(m, n))) throw new Error(`membre incompatible avec le rôle ${n.id}`);
-    verifierBackend(c.llm, n);
+    verifierBackend(c.llm, n, { pipeline: resolution.pipeline, agent: resolution.agents[n.agent] });
     return { ...c, nom: m?.nom || resolution.agents[n.agent].name, agent: n.agent, type: n.type };
   });
+  if (resolution.pipeline.workspace === "documents") {
+    for (const n of resolution.pipeline.nodes.filter((n) => n.type === "script" && !n.disabled)) {
+      verifierBackend(null, n, { pipeline: resolution.pipeline });
+    }
+  }
   resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm } : n);
   // La tranche métier reste structurée (questions marketing, etc.). L'objectif de cette
   // mission est aussi envoyé hors slicing à tous les développeurs et reviewers.

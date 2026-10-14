@@ -4,8 +4,6 @@ const equipe = require("./equipe");
 const runtimeMission = require("./runtime-mission");
 const planificateur = require("./planificateur");
 
-const JOIGNABLES = new Set(["online", "busy"]);
-
 /**
  * Le contrôle de lancement d'un nœud de mission : backend joignable, worker à jour pour les
  * missions (et la discussion d'équipe pour un nœud de dialogue) et annonçant ce runtime.
@@ -43,15 +41,12 @@ function etatPlanification({ store, machines, viaParMachine, roster, affectation
   const verifier = verifierBackend({ viaParMachine, machines });
   const usage = equipe.etat({ roster, affectations, store, maintenant }).agents;
   return {
-    disponibilite: (llm, noeud) => {
-      try { verifier(llm, noeud); return { utilisable: true, raison: null }; } catch (err) { return { utilisable: false, raison: err.message }; }
+    disponibilite: (llm, noeud, contexte) => {
+      try { verifier(llm, noeud, contexte); return { utilisable: true, raison: null }; } catch (err) { return { utilisable: false, raison: err.message }; }
     },
-    machine: (machine) => {
-      if (machine === "nas") return { utilisable: true, raison: null };
-      const worker = machines.find((m) => m.machine === machine);
-      if (!worker || !JOIGNABLES.has(worker.etat)) return { utilisable: false, raison: `worker ${machine} ${worker ? worker.etat : "non enregistré"}` };
-      if (worker.meta?.capacites?.missions !== 1) return { utilisable: false, raison: `worker ${machine} à mettre à jour pour les missions` };
-      return { utilisable: true, raison: null };
+    machine: (machine, noeud = { id: "script" }, contexte) => {
+      try { runtimeMission.verifierMachine(machines, machine, noeud, contexte); return { utilisable: true, raison: null }; }
+      catch (err) { return { utilisable: false, raison: err.message }; }
     },
     runtimesBloques: runtimesBloques(store),
     depensesMembres: Object.fromEntries(usage.map((a) => [a.id, a.usage.consommeMoisUsd])),

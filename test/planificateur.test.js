@@ -391,7 +391,7 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
   const http = require("node:http");
   const f = fixture();
   const port = 4689;
-  f.store.majMachine({ id: "pc", state: "online", heartbeat: true, meta: { capacites: { backends: ["claude", "codex"], noeuds: ["agent", "script", "review"], missions: 1 } } });
+  f.store.majMachine({ id: "pc", state: "online", heartbeat: true, meta: { capacites: { backends: ["claude", "codex"], noeuds: ["agent", "script", "review"], missions: 1, documents: 1, procedures: 1 } } });
   const roster = path.join(f.dir, "agents.json");
   fs.writeFileSync(roster, JSON.stringify({ agents: ROSTER }));
   const poster = (chemin, corps, entetes = {}) => new Promise((resoudre, rejeter) => {
