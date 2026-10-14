@@ -127,6 +127,11 @@ const EQUIPE_AFFECTATIONS = path.join(
   ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"),
   "equipe-affectations.json"
 );
+// Le nom et la photo choisis depuis la page Agents : de l'état, comme les affectations. Les
+// notes publiques des modèles sont versionnées à côté du roster.
+const EQUIPE_PROFILS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-profils.json");
+const EQUIPE_PHOTOS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-photos");
+const EQUIPE_BENCHMARKS = ENV.COCKPIT_EQUIPE_BENCHMARKS || path.join(RACINE, "equipe", "benchmarks.json");
 const traiterDiscussions = creerRouteurDiscussions({ store, json, corpsJson, projetsDir: PROJETS,
   rosterFichier: EQUIPE_ROSTER, affectationsFichier: EQUIPE_AFFECTATIONS, viaParMachine: VIA_PAR_MACHINE });
 // « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
@@ -708,10 +713,43 @@ async function traiter(req, res) {
         equipe.etat({
           roster: equipe.lireRoster(EQUIPE_ROSTER),
           affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS),
+          profils: equipe.lireProfils(EQUIPE_PROFILS),
+          benchmarks: equipe.lireBenchmarks(EQUIPE_BENCHMARKS),
+          dossierPhotos: EQUIPE_PHOTOS,
           store: magasinOuvert,
           projets: api.lireFiches(PROJETS).fiches.map((f) => f.id),
         })
       );
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  const photoEquipe = lecture && lecture.pathname.match(/^\/api\/equipe\/photos\/([a-z][a-z0-9-]{0,39})$/);
+  if (photoEquipe) {
+    const photo = equipe.lirePhoto(EQUIPE_PHOTOS, photoEquipe[1]);
+    if (!photo) return json(res, 404, { erreur: "pas de photo" });
+    res.writeHead(200, { "Content-Type": photo.type, "Content-Length": photo.octets.length, ...DURCISSEMENT });
+    return res.end(photo.octets);
+  }
+
+  if (req.method === "POST" && chemin === "/api/equipe/profil") {
+    // Une photo redimensionnée par la page pèse quelques dizaines de ko ; 600 ko de JSON
+    // laissent la place au base64 d'une image de 400 ko au plus.
+    const corps = await corpsJson(req, res, 600_000);
+    if (!corps) return undefined;
+    try {
+      const erreur = equipe.ecrireProfil({
+        fichier: EQUIPE_PROFILS,
+        dossierPhotos: EQUIPE_PHOTOS,
+        roster: equipe.lireRoster(EQUIPE_ROSTER),
+        agent: corps.agent,
+        nom: corps.nom,
+        photo: corps.photo,
+        par: qui.par,
+      });
+      if (erreur) return json(res, 400, { erreur });
+      return json(res, 200, { ok: true });
     } catch (err) {
       return json(res, 500, { erreur: err.message });
     }
