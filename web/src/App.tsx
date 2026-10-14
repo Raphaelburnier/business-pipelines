@@ -1,6 +1,6 @@
-// Le cockpit principal. Les vues ont de vraies URL : un nœud du graphe ouvre une page
-// partageable, et le bouton Retour du navigateur ramène exactement où l'opérateur était.
-import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+// Les cellules s'inspectent sans quitter le graphe. Les URL de détail restent accessibles
+// directement, pour les liens partagés et les favoris existants.
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
 import { mot } from "./format";
 import { Icone, type NomIcone } from "./icones";
@@ -65,11 +65,6 @@ function lireRoute(): Route {
   return { type: "inconnue" };
 }
 
-function chemin(selection: Selection): string {
-  const dossiers = { projet: "projects", run: "runs", machine: "machines" } as const;
-  return `/${dossiers[selection.type]}/${encodeURIComponent(selection.id)}`;
-}
-
 function useNavigation() {
   const [route, setRoute] = useState(lireRoute);
   useEffect(() => {
@@ -127,7 +122,7 @@ function titreDe(route: Route): string {
   if (route.type === "ai-studio") return "AI Studio";
   if (route.type === "systeme") return "Systeme";
   if (route.type === "finance") return "Finance";
-  if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine" }[route.selection.type];
+  if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine", orchestrateur: "Orchestrateur" }[route.selection.type];
   return "Introuvable";
 }
 
@@ -136,6 +131,8 @@ function Coquille() {
   const { source, connecte } = useSource();
   const { theme, basculer } = useTheme();
   const [ouvert, setOuvert] = useState(false);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const declencheur = useRef<HTMLElement | null>(null);
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const { donnees: usage } = useCharge((s) => s.usage(), []);
   const { donnees: livraison } = useCharge((s) => s.livraison(), []);
@@ -151,15 +148,41 @@ function Coquille() {
   // Sur téléphone, le tiroir se referme dès qu'on a choisi une destination.
   const naviguer = useCallback(
     (href: string) => {
+      setSelection(null);
       if (window.matchMedia("(max-width: 720px)").matches) setOuvert(false);
       aller(href);
     },
     [aller]
   );
-  const ouvrir = useCallback((selection: Selection) => naviguer(chemin(selection)), [naviguer]);
+  const ouvrir = useCallback((choix: Selection) => {
+    // Les clics à l'intérieur du panneau gardent le déclencheur du graphe pour le retour.
+    const actif = document.activeElement;
+    if (actif instanceof HTMLElement && !actif.closest(".ao-inspection")) declencheur.current = actif;
+    setSelection(choix);
+  }, []);
+  const fermer = useCallback(() => {
+    setSelection(null);
+    if (declencheur.current?.isConnected) declencheur.current.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    const suivre = () => setSelection(null);
+    window.addEventListener("popstate", suivre);
+    return () => window.removeEventListener("popstate", suivre);
+  }, []);
+  useEffect(() => {
+    if (!selection) return;
+    const echapper = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        fermer();
+      }
+    };
+    window.addEventListener("keydown", echapper);
+    return () => window.removeEventListener("keydown", echapper);
+  }, [selection, fermer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${route.type === "finance" || route.type === "ai-studio" || route.type === "systeme" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "finance" || route.type === "ai-studio" || route.type === "systeme" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -236,7 +259,7 @@ function Coquille() {
         </header>
 
         <main className="ao-contenu">
-          {route.type === "graph" && <Topologie selection={null} onSelection={(selection) => selection && ouvrir(selection)} />}
+          {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => choix ? ouvrir(choix) : fermer()} />}
           {(route.type === "agents" || route.type === "detail") && (
             <div className="mb-4">
               <Kpis />
@@ -244,11 +267,11 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "missions" && <Missions key={`${route.projetId}:${route.brouillonId}`} projetInitial={route.projetId} brouillonId={route.brouillonId} aller={naviguer} />}
+          {route.type === "finance" && <Suspense fallback={<section className="page-vide"><p>Chargement de Finance…</p></section>}><Finance /></Suspense>}
           {route.type === "marketing" && <Suspense fallback={<p>Chargement de l'équipe marketing…</p>}><Marketing key={`${route.projetId}:${route.filId}`} projetInitial={route.projetId} filId={route.filId} aller={naviguer} /></Suspense>}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
           {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
           {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement de la carte…</p></section>}><Systeme /></Suspense>}
-          {route.type === "finance" && <Suspense fallback={<p>Chargement de Finance…</p>}><Finance /></Suspense>}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
             <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />
@@ -266,7 +289,11 @@ function Coquille() {
         </main>
       </div>
 
-      {route.type !== "finance" && route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "decisions" && route.type !== "approbations" && <EnCours />}
+      {selection ? (
+        <aside className="ao-inspection" aria-label="Détails de la cellule">
+          <Panneau key={`${selection.type}:${selection.id}:${selection.type === "run" ? selection.etapeId ?? "" : ""}`} selection={selection} onSelection={ouvrir} onFermer={fermer} />
+        </aside>
+      ) : route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "decisions" && route.type !== "approbations" && <EnCours onSelection={ouvrir} />}
     </div>
   );
 }

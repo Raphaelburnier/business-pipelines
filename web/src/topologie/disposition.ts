@@ -41,14 +41,13 @@ export interface Disposition {
   hauteur: number;
 }
 
-const MARGE = 24;
+const MARGE = 40;
 const LARGEUR_GROUPE = 344;
-const ECART_GROUPE = 44;
+const ECART_GROUPE = 80;
 const LARGEUR_PROJET = 344;
-const HAUTEUR_PROJET = 78;
-const LARGEUR_ETAPE = 166;
-const HAUTEUR_ETAPE = 54;
-const ECART_ETAPE_X = 12;
+const HAUTEUR_PROJET = 96;
+const LARGEUR_ETAPE = 192;
+const HAUTEUR_ETAPE = 64;
 const ECART_ETAPE_Y = 12;
 
 export const idMachine = (role: string) => `machine:${role}`;
@@ -110,7 +109,7 @@ function etapesImportantes(run: RunDetailleAvecOutils): EtapeImportante[] {
 }
 
 /** Arbre vertical : orchestrateur → machines → projets → étapes du dernier run. */
-export function disposer(topologie: Topologie, executions: ExecutionProjet[] = []): Disposition {
+export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [], compact = false): Disposition {
   const projets = topologie.projets.filter((projet) => projet.aFiche).slice().sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   const executionParProjet = new Map(executions.map((execution) => [execution.projetId, execution.run]));
   const machinesParRole = new Map<"pc" | "nas", Machine>();
@@ -124,7 +123,7 @@ export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [
     const machine = machinesParRole.get(role) ?? null;
     const etat = machine?.etat ?? (role === "nas" ? topologie.maitre.etat : undefined);
     noeuds.push({
-      id: idMachine(role), type: "machine", x, y, largeur: 154, hauteur: 66,
+      id: idMachine(role), type: "machine", x, y, largeur: compact ? 156 : 192, hauteur: 78,
       machine, roleMachine: role, etat,
       sousTitre: machine ? (role === "pc" ? "worker" : "Synology") : role === "nas" ? "hôte du cockpit" : "non observé",
     });
@@ -132,47 +131,46 @@ export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [
 
   const xPc = MARGE;
   const xNas = MARGE + LARGEUR_GROUPE + ECART_GROUPE;
-  const yMachine = 132;
-  const yProjet = 238;
-  const pasProjet = 286;
-  const centrePc = xPc + LARGEUR_GROUPE / 2;
-  const centreNas = xNas + LARGEUR_GROUPE / 2;
+  const yMachine = 156;
+  const yProjet = 302;
+  const centrePc = compact ? MARGE + 78 : xPc + LARGEUR_GROUPE / 2;
+  const centreNas = compact ? MARGE + LARGEUR_GROUPE - 78 : xNas + LARGEUR_GROUPE / 2;
   const centreOrchestrateur = (centrePc + centreNas) / 2;
 
   noeuds.push({
-    id: idOrchestrateur, type: "orchestrateur", x: centreOrchestrateur - 77, y: 28, largeur: 154, hauteur: 66,
-    maitre: topologie.maitre, sousTitre: `maître · ${topologie.maitre.nom}`,
+    id: idOrchestrateur, type: "orchestrateur", x: centreOrchestrateur - 96, y: 24, largeur: 192, hauteur: 78,
+    maitre: topologie.maitre, sousTitre: topologie.maitre.nom,
   });
-  noeudMachine("pc", centrePc - 77, yMachine);
-  noeudMachine("nas", centreNas - 77, yMachine);
+  noeudMachine("pc", centrePc - (compact ? 78 : 96), yMachine);
+  noeudMachine("nas", centreNas - (compact ? 78 : 96), yMachine);
 
-  const indexParRole = new Map<"pc" | "nas", number>([["pc", 0], ["nas", 0]]);
+  const prochainY = new Map<"pc" | "nas", number>([["pc", yProjet], ["nas", yProjet]]);
   let hauteurProjets = 0;
   for (const projet of projets) {
     const role = /nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc";
     const colonne = role === "pc" ? 0 : 1;
-    const rangee = indexParRole.get(role)!;
-    indexParRole.set(role, rangee + 1);
     const execution = executionParProjet.get(projet.id);
     const jalons = execution ? etapesImportantes(execution) : [];
-    const x = (colonne === 0 ? xPc : xNas);
-    const y = yProjet + rangee * pasProjet;
+    const x = compact ? MARGE : colonne === 0 ? xPc : xNas;
+    const y = compact ? Math.max(yProjet, hauteurProjets + 64) : prochainY.get(role)!;
     noeuds.push({ id: idProjet(projet.id), type: "projet", x, y, largeur: LARGEUR_PROJET, hauteur: HAUTEUR_PROJET, projet });
     jalons.forEach((etape, i) => {
       noeuds.push({
         id: idEtape(etape.runId, etape.id), type: "etape",
-        x: x + (i % 2) * (LARGEUR_ETAPE + ECART_ETAPE_X),
-        y: y + HAUTEUR_PROJET + 20 + Math.floor(i / 2) * (HAUTEUR_ETAPE + ECART_ETAPE_Y),
+        x: x + LARGEUR_PROJET - LARGEUR_ETAPE,
+        y: y + HAUTEUR_PROJET + 28 + i * (HAUTEUR_ETAPE + ECART_ETAPE_Y),
         largeur: LARGEUR_ETAPE, hauteur: HAUTEUR_ETAPE, etape,
       });
     });
-    hauteurProjets = Math.max(hauteurProjets, y + HAUTEUR_PROJET + (jalons.length ? Math.ceil(jalons.length / 2) * (HAUTEUR_ETAPE + ECART_ETAPE_Y) + 20 : 0));
+    const bas = y + HAUTEUR_PROJET + (jalons.length ? jalons.length * (HAUTEUR_ETAPE + ECART_ETAPE_Y) + 28 : 0);
+    prochainY.set(role, bas + 64);
+    hauteurProjets = Math.max(hauteurProjets, bas);
   }
 
-  const largeurProjets = 2 * LARGEUR_GROUPE + ECART_GROUPE;
+  const largeurProjets = compact ? LARGEUR_GROUPE : 2 * LARGEUR_GROUPE + ECART_GROUPE;
   return {
     noeuds,
     largeur: MARGE * 2 + largeurProjets,
-    hauteur: Math.max(220, projets.length ? hauteurProjets + MARGE : yMachine + 66 + MARGE),
+    hauteur: Math.max(220, projets.length ? hauteurProjets + MARGE : yMachine + 78 + MARGE),
   };
 }

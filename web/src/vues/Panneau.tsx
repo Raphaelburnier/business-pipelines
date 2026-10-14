@@ -3,7 +3,7 @@
 //
 // Le lancement est la première action de phase 5. Pause, stop et décisions migreront ici
 // ensuite ; chaque bouton n'apparaît que lorsque son chemin serveur existe réellement.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { VIDE, depuis, duree, jetons, mot, usd } from "../format";
 import type { Etape, EtapeAvecOutils, RunDetaille, RunDetailleAvecOutils } from "../types";
@@ -14,23 +14,30 @@ import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
 import { AttenteRun } from "./AttenteRun";
 import { PlanLisible } from "./PlanMission";
+import { Icone } from "../icones";
 
 const ETATS_CRITERE = { "a-venir": "À venir", "en-cours": "En cours", valide: "Validé", echec: "Échec", "non-verifie": "Non vérifié" } as const;
 
 export function Panneau({ selection, onSelection, onFermer, modePage = false }: { selection: Selection; onSelection: (s: Selection) => void; onFermer: () => void; modePage?: boolean }) {
+  const fermeture = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!modePage) fermeture.current?.focus({ preventScroll: true });
+  }, [modePage]);
   return (
-    <section className={`flex h-full flex-col gap-4 overflow-y-auto rounded-xl border border-trait bg-surface p-4 ${modePage ? "detail-page" : ""}`}>
-      <div className="flex items-center">
+    <section className={`flex h-full flex-col gap-4 overflow-y-auto rounded-xl border border-trait bg-surface p-4 ${modePage ? "detail-page" : "inspection-contenu"}`}>
+      <div className="ao-inspection-tete">
         <span className="text-xs font-bold uppercase tracking-wider text-douce">
-          {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : "Machine"}
+          <span className="ao-inspection-kicker">Inspection</span>
+          {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : selection.type === "orchestrateur" ? "Orchestrateur" : "Machine"}
         </span>
-        <button type="button" onClick={onFermer} className="ml-auto rounded px-2 py-0.5 text-xs text-douce hover:text-accent" aria-label="Fermer le panneau">
-          {modePage ? "← Retour au graphe" : "fermer"}
+        <button ref={fermeture} type="button" onClick={onFermer} className={modePage ? "ml-auto px-3 py-2 text-xs text-douce hover:text-accent" : "ao-bouton-icone"} aria-label="Fermer le panneau" title="Fermer (Échap)">
+          {modePage ? "← Retour au graphe" : <Icone nom="fermer" />}
         </button>
       </div>
       {selection.type === "projet" && <PanneauProjet key={selection.id} id={selection.id} onSelection={onSelection} />}
-      {selection.type === "run" && <PanneauRun id={selection.id} />}
+      {selection.type === "run" && <PanneauRun key={`${selection.id}:${selection.etapeId ?? ""}`} id={selection.id} etapeInitiale={selection.etapeId} />}
       {selection.type === "machine" && <PanneauMachine id={selection.id} />}
+      {selection.type === "orchestrateur" && <PanneauOrchestrateur onSelection={onSelection} />}
     </section>
   );
 }
@@ -152,10 +159,10 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
 
 // ---------- run ----------
 
-function PanneauRun({ id }: { id: string }) {
+function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string }) {
   const maintenant = useHorloge();
   const { donnees: run, erreur } = useCharge((s) => s.run(id), [id]);
-  const [choisie, setChoisie] = useState<string | null>(null);
+  const [choisie, setChoisie] = useState<string | null>(etapeInitiale ?? null);
 
   if (erreur) return <Erreur>{erreur}</Erreur>;
   if (run === null) return <p className="text-sm text-douce">Lecture du run…</p>;
@@ -192,6 +199,8 @@ function PanneauRun({ id }: { id: string }) {
           {run.mission.exclusions && <p className="mt-2 whitespace-pre-wrap">Hors périmètre : {run.mission.exclusions}</p>}
         </details>
       </div>}
+
+      {etape && <DetailEtape etape={etape} runId={run.id} />}
 
       {run.approbations.length > 0 && (
         <div className="rounded-lg border-l-4 border-alerte bg-alerte-fond p-2 text-sm">
@@ -252,7 +261,6 @@ function PanneauRun({ id }: { id: string }) {
         </ul>
       </div>
 
-      {etape && <DetailEtape etape={etape} runId={run.id} />}
     </>
   );
 }
@@ -369,6 +377,22 @@ function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille | 
 }
 
 // ---------- machine ----------
+
+function PanneauOrchestrateur({ onSelection }: { onSelection: (selection: Selection) => void }) {
+  const { donnees, erreur } = useCharge((s) => s.topologie(), []);
+  if (erreur) return <Erreur>{erreur}</Erreur>;
+  if (!donnees) return <p className="text-sm text-douce">Lecture de l’orchestrateur…</p>;
+  return (
+    <>
+      <div className="flex items-center gap-2"><h2 className="text-lg font-bold">{donnees.maitre.nom}</h2><Etat etat={donnees.maitre.etat} /></div>
+      <p className="text-sm text-douce">L’orchestrateur pilote les runs et les confie aux machines disponibles.</p>
+      <Titre compteur={donnees.machines.length}>Machines observées</Titre>
+      {donnees.machines.map((machine) => <button key={machine.machine} type="button" className="flex items-center gap-2 border border-trait bg-carte p-3 text-left hover:border-accent" onClick={() => onSelection({ type: "machine", id: machine.machine })}><span>{machine.nom ?? machine.machine}</span><span className="ml-auto"><Etat etat={machine.etat} /></span></button>)}
+      <Titre compteur={donnees.projets.filter((p) => p.aFiche).length}>Projets enregistrés</Titre>
+      {donnees.projets.filter((p) => p.aFiche).map((projet) => <button key={projet.id} type="button" className="flex items-center gap-2 border border-trait bg-carte p-3 text-left hover:border-accent" onClick={() => onSelection({ type: "projet", id: projet.id })}><span>{projet.nom}</span><span className="ml-auto"><Etat etat={projet.etat} /></span></button>)}
+    </>
+  );
+}
 
 function PanneauMachine({ id }: { id: string }) {
   const maintenant = useHorloge(5000);

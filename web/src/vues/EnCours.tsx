@@ -10,6 +10,7 @@ import { depuis, usd } from "../format";
 import { naviguer } from "../navigation";
 import type { Run } from "../types";
 import { Etat } from "../ui";
+import type { Selection } from "../topologie/Topologie";
 
 type Genre = "wait" | "run" | "pause";
 
@@ -35,7 +36,7 @@ function aDroite(run: Run, genre: Genre, faites: number): { texte: string; alert
   return { texte: `${faites}/${run.etapes.total}`, alerte: false };
 }
 
-export function EnCours() {
+export function EnCours({ onSelection }: { onSelection?: (selection: Selection) => void }) {
   const maintenant = useHorloge(5000);
   const { donnees, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
   // Une livraison du cockpit en cours se suit aussi d'ici ; le détail est sur Décisions.
@@ -121,7 +122,7 @@ export function EnCours() {
                         Décider
                       </a>
                     )}
-                    <button type="button" className="ao-btn" onClick={() => naviguer(`/runs/${encodeURIComponent(run.id)}`)}>
+                    <button type="button" className="ao-btn" onClick={() => onSelection ? onSelection({ type: "run", id: run.id }) : naviguer(`/runs/${encodeURIComponent(run.id)}`)}>
                       Ouvrir le run
                     </button>
                   </div>
