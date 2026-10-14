@@ -22,6 +22,7 @@ const TRACES = {
   mission: <path d="M6 21V4h12l-2.5 4 2.5 4H6" />,
   marketing: <path d="M4 10v4h3l8 4V6l-8 4H4zM18.5 9a4 4 0 0 1 0 6M7 14l1 5h2.5l-1-4.5" />,
   demander: <path d="M4 5h16v11H9l-5 4z" />,
+  finance: <path d="M4 20h16M6 16v-4M12 16V8M18 16V4M4 8l6-4 5 2 5-4" />,
   studio: (
     <>
       <rect x="3" y="5" width="18" height="14" />

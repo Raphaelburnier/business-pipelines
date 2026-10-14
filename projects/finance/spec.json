@@ -1,0 +1,5 @@
+{
+  "questions": ["Que permettent de conclure les données économiques et les cours disponibles, avec leurs limites ?"],
+  "perimetre": {"tresorerie": "Aucune donnée business fournie", "marches": "Mondial, selon les sources effectivement accessibles"},
+  "contraintes": ["Aucun ordre courtier", "Rapport privé", "Aucune trésorerie ou donnée manquante inventée", "Données datées ; aucun temps réel global promis"]
+}

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "finance-demo-2026-10-f08-v1",
+  "preparedAt": "2026-10-14T00:00:00+02:00",
+  "synthetic": true,
+  "description": "Jeu fictif dérivé des exemples CSV Finance F01 pour préparer la recette du pipeline finance-research@1.",
+  "period": {
+    "fromInclusive": "2026-10-01",
+    "toExclusive": "2026-11-01"
+  },
+  "business": {
+    "id": "demo-business",
+    "name": "Entreprise fictive de démonstration"
+  },
+  "sources": [
+    {
+      "id": "finance-csv-examples",
+      "kind": "synthetic_fixture",
+      "path": "docs/finance/exemples/",
+      "observedAt": "2026-10-14T00:00:00+02:00",
+      "limitations": [
+        "Exemples entièrement fictifs ; aucune donnée bancaire réelle.",
+        "Les dates métier sont des dates d'exemple et ne représentent pas l'activité de l'utilisateur."
+      ]
+    }
+  ],
+  "cashflow": {
+    "currencyPolicy": "Chaque devise reste indépendante ; aucune conversion ni agrégation multidevise.",
+    "currencies": [
+      {
+        "currency": "CHF",
+        "openingBalanceMinor": 100000,
+        "grossCustomerPaymentsMinor": 120000,
+        "customerRefundsMinor": 20000,
+        "netCustomerReceiptsMinor": 100000,
+        "operatingExpensesMinor": 40000,
+        "operatingSurplusMinor": 60000,
+        "ownerFundingNetMinor": 50000,
+        "internalTransfersNetMinor": 0,
+        "closingCashMinor": 210000,
+        "unpaidInvoicesMinor": 30000,
+        "accounts": ["demo-courant", "demo-epargne"],
+        "evidence": {
+          "openingBalance": ["s1", "s2"],
+          "customerPayment": ["m1"],
+          "customerRefund": ["m2"],
+          "operatingExpenses": ["m3", "m4"],
+          "ownerFunding": ["m5"],
+          "internalTransferPair": ["m6", "m7"],
+          "closingBalance": ["s4", "s5"],
+          "unpaidInvoice": ["f-unpaid"]
+        }
+      },
+      {
+        "currency": "EUR",
+        "openingBalanceMinor": 10000,
+        "grossCustomerPaymentsMinor": 0,
+        "customerRefundsMinor": 0,
+        "netCustomerReceiptsMinor": 0,
+        "operatingExpensesMinor": 5000,
+        "operatingSurplusMinor": -5000,
+        "ownerFundingNetMinor": 0,
+        "internalTransfersNetMinor": 0,
+        "closingCashMinor": 5000,
+        "unpaidInvoicesMinor": 0,
+        "accounts": ["demo-eur"],
+        "evidence": {
+          "openingBalance": ["s3"],
+          "operatingExpenses": ["m8"],
+          "closingBalance": ["s6"]
+        }
+      }
+    ]
+  },
+  "markets": {
+    "status": "not_provided",
+    "observations": [],
+    "missingData": [
+      "Aucun cours action/ETF ou indice observé.",
+      "Aucune série macroéconomique observée.",
+      "Aucun taux de change observé."
+    ],
+    "rule": "Ne pas inférer de prix ou de données macro ; rapporter ces absences comme limites."
+  },
+  "interpretationRules": [
+    "Les paiements clients moins remboursements donnent les encaissements nets.",
+    "Les apports du propriétaire ne sont pas des revenus.",
+    "Les deux jambes d'un virement interne s'annulent à la consolidation.",
+    "Les factures impayées sont hors trésorerie disponible.",
+    "L'excédent opérationnel est un indicateur de flux, pas un bénéfice comptable.",
+    "Ne jamais additionner les montants CHF et EUR."
+  ],
+  "expectedReport": {
+    "mustStateSynthetic": true,
+    "mustPreserveCurrencySeparation": true,
+    "mustStateMissingMarketData": true,
+    "mustAvoidInvestmentRecommendation": true,
+    "mustNotClaimRealTimeData": true
+  }
+}

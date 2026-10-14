@@ -6,6 +6,7 @@ const approval = require("./approval");
 const store = require("./store");
 // L'orientation, elle, s'écrit dans le workspace : c'est une entrée du tour, pas un état.
 const durable = require("./durable");
+const financeMissions = require("./finance/missions");
 
 // L'identité d'une approbation dans le store. Le dossier quand il est déclaré, sinon le nom
 // du plan gelé ou du registre, sans suffixe : `marketing.plan.json` et
@@ -22,6 +23,25 @@ function cleDossier(stage) {
 const maintenant = (ctx) => (ctx.maintenant ? ctx.maintenant() : Date.now());
 
 const handlers = {};
+const financeHandlerNames = ["finance-snapshot", "finance-report-validate", "finance-report-publish"];
+function financeConfig(env = process.env) {
+  const storageRoot = path.resolve(env.FINANCE_STORAGE_ROOT || path.join(__dirname, "..", "etat", "finance"));
+  return {
+    storageRoot,
+    reportsRoot: path.resolve(env.FINANCE_REPORTS_ROOT || path.join(storageRoot, "reports")),
+    token: env.EODHD_API_TOKEN || "",
+  };
+}
+function financeDisponible(handler, machine, env = process.env) {
+  if (machine !== "nas" || !financeHandlerNames.includes(handler)) return false;
+  try { financeMissions.creerHandlers(financeConfig(env)); return true; } catch { return false; }
+}
+for (const name of financeHandlerNames) {
+  handlers[name] = async (stage, ctx) => {
+    const runtime = financeMissions.creerHandlers(financeConfig(ctx.env || process.env));
+    return runtime.handlers[name](stage, ctx);
+  };
+}
 
 // Le type de stage `verify-couverture` : le gate du pipeline marketing, rendu par du code
 // plutôt que par un juge.
@@ -486,4 +506,4 @@ const validators = {
 
 };
 
-module.exports = { handlers, validators };
+module.exports = { handlers, validators, financeDisponible, financeHandlerNames };

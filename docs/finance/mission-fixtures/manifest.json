@@ -1,0 +1,51 @@
+{
+  "manifestVersion": 1,
+  "preparedAt": "2026-10-14T00:00:00+02:00",
+  "purpose": "F08 dry-run input packet; this manifest does not claim a runtime execution.",
+  "synthetic": true,
+  "mission": {
+    "projectId": "finance",
+    "pipeline": "finance-research@1",
+    "agent": "financial-research-analyst@1",
+    "runtime": "unresolved; verify on the selected worker before launch",
+    "publication": false
+  },
+  "pinnedDefinitions": {
+    "agent": {
+      "path": "agent-registry/agents/financial-research-analyst/v1/agent.md",
+      "sha256": "4293b0556c350a6830e0bc1b087d236b73f3d1ae8df166c1e1a794df1fcc4952"
+    },
+    "pipeline": {
+      "path": "agent-registry/pipelines/finance-research/v1/pipeline.json",
+      "sha256": "efa8ddea7ed4ffb11a363d104e87ecc4ab5d7bcf7ec9866a84cf3395e26f0dd7"
+    },
+    "procedure": {
+      "path": "agent-registry/agents/financial-research-analyst/v1/skills/finance-snapshot-analysis/SKILL.md",
+      "sha256": "456094499256df2269b5837a6c520c32f7d5dec5f9df3f4aaf92e545da27b941"
+    }
+  },
+  "inputs": [
+    {
+      "path": "finance-snapshot.json",
+      "sha256": "001b87d7fa28383b0de94249eb8b8b47a014e5cdf92219296eeaae8b271dbd73",
+      "readOnly": true,
+      "synthetic": true
+    }
+  ],
+  "workspaceRules": {
+    "isolation": "temporary local workspace, separate from production state",
+    "allowedInput": ["finance-snapshot.json"],
+    "expectedOutput": ["finance-report.json", "finance-validation.json"],
+    "preserveManifestOnResume": true,
+    "publishExternally": false,
+    "brokerAccess": false
+  },
+  "acceptanceChecks": [
+    "Record the exact runtime, worker, mission ID and loaded manifest hash before claiming a native trial.",
+    "Confirm the agent only receives the frozen snapshot and its declared report destination.",
+    "Confirm generated analysis labels the business figures synthetic and retains CHF/EUR separation.",
+    "Confirm absent market data remains absent and no live-price claim or investment recommendation is invented.",
+    "On resume, compare the manifest hash and confirm the report is not published twice."
+  ],
+  "notExecuted": true
+}

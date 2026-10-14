@@ -1,0 +1,9 @@
+source,source_record_id,business_id,account_id,booked_on,currency,amount_minor,category,transfer_group_id,document_id,label
+demo,m1,demo-business,demo-courant,2026-10-02,CHF,120000,customer_payment,,f1,Paiement client fictif
+demo,m2,demo-business,demo-courant,2026-10-03,CHF,-20000,customer_refund,,f1,Remboursement client fictif
+demo,m3,demo-business,demo-courant,2026-10-05,CHF,-30000,operating_expense,,f2,Hébergement fictif
+demo,m4,demo-business,demo-courant,2026-10-06,CHF,-10000,operating_expense,,f3,Abonnement IA fictif
+demo,m5,demo-business,demo-courant,2026-10-07,CHF,50000,owner_funding,,,Apport fictif
+demo,m6,demo-business,demo-courant,2026-10-08,CHF,-40000,internal_transfer,t1,,Virement fictif sortant
+demo,m7,demo-business,demo-epargne,2026-10-08,CHF,40000,internal_transfer,t1,,Virement fictif entrant
+demo,m8,demo-business,demo-eur,2026-10-09,EUR,-5000,operating_expense,,f4,Dépense fictive EUR

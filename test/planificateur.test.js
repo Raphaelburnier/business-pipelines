@@ -28,7 +28,7 @@ const ROSTER = [
   { id: "elise", nom: "Élise", role: "Économie", famille: "codex", llm: codex, registre: ["economy-analyst"], budgetMensuelUsd: null },
 ];
 
-function fixture({ securite = false, roster = ROSTER } = {}) {
+function fixture({ securite = false, roster = ROSTER, financeDisponible } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "planificateur-"));
   const reg = path.join(dir, "registre");
   fs.cpSync(REGISTRE_SOURCE, reg, { recursive: true });
@@ -45,15 +45,87 @@ function fixture({ securite = false, roster = ROSTER } = {}) {
     pipelines: [{ extends: "marketing@1", spec: "spec.json", overrides: { nodes: { consigne: { runsOn: "nas" }, couverture: { runsOn: "nas" } } }, budget: { usdPerRun: 2, usdPerMonth: 20 } }] },
   { "spec.json": { offre: "Cartes triées", marche: "Collectionneurs", questions: ["Quel prix ?"], contraintes: [] } });
   ecrire("vide", { id: "vide", name: "Sans pipeline", business: "x", homeMachine: "nas", repo: "/git/vide.git", pipelines: [{ extends: "marketing-dialogue@1" }] });
+  ecrire("finance", JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "project.json"))), {
+    "spec.json": JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "spec.json"))),
+  });
   process.env.ORCH_REGISTRE = reg;
   const store = new EventStore(path.join(dir, "events.sqlite"));
-  const params = { projetsDir: projets, roster, affectations: {} };
+  const params = { projetsDir: projets, roster, affectations: {}, financeDisponible };
   return { dir, reg, projets, store, params, fermer: () => { store.fermer(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 const spec = (surcharges = {}) => ({ projectId: "app", objectif: "Ajouter un tri par note", criteres: ["La liste se trie par note", "Les tests existants restent verts"], ...surcharges });
 const etatLibre = (surcharges = {}) => surcharges;
 const qui = { par: "raphael@test", canal: "tailnet" };
+const specFinance = (surcharges = {}) => spec({ projectId: "finance", objectif: "Observer l'économie et les cours disponibles", criteres: ["Le rapport conserve les dates et les sources"], ...surcharges });
+
+test("Finance reconnue sans capacité installée : blocages détaillés, aucune commande", () => {
+  const f = fixture();
+  try {
+    assert.equal(require("../src/missions").lire({ ...f.params, projectId: "finance" }).options.nature, "finance");
+    assert.equal(require("../src/missions").lire({ ...f.params, projectId: "finance" }).options.blocages.length, 3);
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} });
+    assert.equal(p.statut, "bloque");
+    assert.equal(p.plan, null);
+    assert.deepEqual(p.blocages.map((b) => [b.code, b.noeud]), [["capacite-absente", "collecte"], ["capacite-absente", "validation"], ["capacite-absente", "publication"]]);
+    assert.ok(p.blocages.every((b) => b.pipeline === "finance-research@1"));
+    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps: { spec: specFinance(), empreinte: "0".repeat(64), requestId: crypto.randomUUID() }, etat: {} }), /Plan non lançable/);
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands").get().n, 0);
+  } finally { f.fermer(); }
+});
+
+test("Finance : capacité serveur complète, proposition et mise en file du rapport figé, sans exécution", () => {
+  const appels = [];
+  const f = fixture({ roster: [...ROSTER, { id: "analyste-finance", nom: "Analyste Finance (test)", role: "Analyse financière", famille: "claude", llm: claudeSonnet, registre: ["financial-research-analyst"], budgetMensuelUsd: 20 }], financeDisponible: (handler, machine) => { appels.push([handler, machine]); return true; } });
+  try {
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} });
+    assert.equal(p.statut, "lancable", JSON.stringify(p.blocages));
+    assert.equal(p.plan.nature, "finance");
+    assert.deepEqual(p.plan.etapes.map((e) => [e.noeud, e.role]), [["collecte", "collecte"], ["analyse", "analyse"], ["validation", "validation"], ["publication", "publication"]]);
+    assert.deepEqual(p.plan.criteres[0], { texte: specFinance().criteres[0], realisePar: ["analyse"], jugePar: ["validation"] });
+    assert.equal(p.plan.resultat.type, "rapport");
+    assert.equal(p.plan.resultat.depot, null);
+    assert.deepEqual(p.plan.limites.corrections, [{ cycle: "correction", noeuds: ["analyse", "validation"], maxLoops: 1 }]);
+    assert.deepEqual([...new Set(appels.map((a) => JSON.stringify(a)))].map(JSON.parse), [["finance-snapshot", "nas"], ["finance-report-validate", "nas"], ["finance-report-publish", "nas"]]);
+    const corps = { spec: specFinance(), empreinte: p.empreinte, requestId: crypto.randomUUID() };
+    const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} });
+    assert.deepEqual(contrat.valider(c.payload.mission).plan, p.plan);
+    assert.equal(planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} }).id, c.id);
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands").get().n, 1);
+    assert.equal(f.store.runs().length, 0, "la recette valide la file, pas une analyse native");
+    f.params.financeDisponible = () => false;
+    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps: { ...corps, requestId: crypto.randomUUID() }, etat: {} }), /Plan non lançable/);
+  } finally { f.fermer(); }
+});
+
+test("Finance : capacité partielle ou non booléenne refusée, formulaire manuel également bloqué", () => {
+  const f = fixture({ financeDisponible: (handler) => handler === "finance-snapshot" });
+  try {
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} });
+    assert.deepEqual(p.blocages.map((b) => b.noeud), ["validation", "publication"]);
+    f.params.financeDisponible = () => "oui";
+    assert.equal(planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} }).blocages.length, 3);
+    const options = require("../src/missions").lire({ ...f.params, projectId: "finance" }).options;
+    const demande = { projectId: "finance", pipelineIndex: 0, requestId: crypto.randomUUID(), configuration: options.configuration,
+      demande: { objectif: specFinance().objectif, criteres: specFinance().criteres, spec: options.spec,
+        agents: options.roles.map((r) => ({ noeud: r.noeud, membre: null, llm: r.llm })) } };
+    assert.throws(() => require("../src/missions").demander({ store: f.store, qui, params: f.params, demande }), /étape Finance collecte.*pas installée/);
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands").get().n, 0);
+  } finally { f.fermer(); }
+});
+
+test("Finance : publication GitHub interdite et nature développement refusée", () => {
+  const f = fixture({ financeDisponible: () => true });
+  try {
+    const autre = planificateur.proposer({ spec: specFinance({ nature: "developpement" }), params: f.params, etat: {} });
+    assert.equal(autre.blocages[0].code, "aucun-pipeline");
+    const fiche = path.join(f.projets, "finance", "project.json");
+    fs.writeFileSync(fiche, JSON.stringify({ ...JSON.parse(fs.readFileSync(fiche)), publier: true, github: "Raphaelburnier/finance" }));
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} });
+    assert.equal(p.statut, "bloque");
+    assert.equal(p.blocages[0].code, "decision-requise");
+  } finally { f.fermer(); }
+});
 
 test("spec de développement : développeur, tests du projet et reviewer indépendant choisis dans l'équipe", () => {
   const f = fixture();
@@ -340,6 +412,11 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
       enfant.on("exit", (code) => rejeter(new Error(`cockpit arrêté (code ${code})`)));
     });
     assert.equal((await poster("/api/missions/plan", { spec: spec() }, { origin: "https://autre.example" })).code, 403);
+    const finance = await poster("/api/missions/plan", { spec: specFinance({ nature: "finance" }), financeDisponible: true });
+    assert.equal(finance.code, 200, JSON.stringify(finance.corps));
+    assert.equal(finance.corps.statut, "degrade", "la capacité est évaluée côté serveur ; le plan reste dégradé sans équipe Finance complète");
+    assert.equal(finance.corps.blocages.some((b) => b.code === "capacite-absente"), false, "un champ HTTP ne remplace pas la capacité réelle du serveur");
+    assert.equal((await poster("/api/missions/lancer", { spec: specFinance(), empreinte: "0".repeat(64), requestId: crypto.randomUUID() })).code, 409);
     const proposition = await poster("/api/missions/plan", { spec: spec() });
     assert.equal(proposition.code, 200, JSON.stringify(proposition.corps));
     assert.equal(proposition.corps.statut, "lancable");

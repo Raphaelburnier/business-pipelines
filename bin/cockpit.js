@@ -64,6 +64,12 @@ const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussion
 const plansMissions = require("../src/api-plans-missions");
 const { AIStudioService } = require("../src/ai-studio/service");
 const { creerRouteurAIStudio } = require("../src/ai-studio/http");
+const { FinanceService } = require("../src/finance/service");
+const { MacroSourceService } = require("../src/finance/sources");
+const { PriceSourceService } = require("../src/finance/prices");
+const { creerRouteurFinance } = require("../src/finance/http");
+const { FinanceReportArchive } = require("../src/finance/missions");
+const stageHandlersFinance = require("../src/stage-handlers");
 
 const RACINE = path.resolve(__dirname, "..");
 
@@ -277,6 +283,52 @@ async function traiterAIStudio(req, res) {
   return traiterAIStudioActif(req, res);
 }
 
+// Finance partage les contrôles d'identité et d'origine du serveur principal.
+let traiterFinanceActif = null;
+let rapportsFinance = null;
+let serviceFinance = null;
+const stockageFinance = ENV.FINANCE_STORAGE_ROOT || path.join(RACINE, "etat", "finance");
+let sourcesMacro = null;
+let sourcesCours = null;
+try {
+  sourcesMacro = new MacroSourceService({ storageRoot: stockageFinance });
+} catch (err) {
+  console.error(`Sources macro indisponibles : ${err.message}`);
+}
+try {
+  sourcesCours = new PriceSourceService({ storageRoot: stockageFinance, token: ENV.EODHD_API_TOKEN });
+} catch (err) {
+  console.error(`Sources cours indisponibles : ${err.message}`);
+}
+try {
+  rapportsFinance = new FinanceReportArchive({ root: ENV.FINANCE_REPORTS_ROOT || path.join(stockageFinance, "reports") });
+  serviceFinance = new FinanceService({ storageRoot: stockageFinance });
+  traiterFinanceActif = creerRouteurFinance({
+    service: serviceFinance,
+    macro: sourcesMacro,
+    prices: sourcesCours,
+    reports: rapportsFinance,
+    json, corpsJson, durcissement: DURCISSEMENT,
+  });
+} catch (err) {
+  console.error(`Finance indisponible : ${err.message}`);
+}
+const financeDisponible = (handler, machine) =>
+  machine === "nas" &&
+  ["finance-snapshot", "finance-report-validate", "finance-report-publish"].includes(handler) &&
+  typeof stageHandlersFinance.handlers[handler] === "function" &&
+  rapportsFinance !== null &&
+  serviceFinance !== null &&
+  traiterFinanceActif !== null &&
+  sourcesMacro !== null &&
+  sourcesCours !== null;
+async function traiterFinance(req, res) {
+  if (!/^\/api\/finance(?:\/|\?|$)/.test(req.url)) return false;
+  if (traiterFinanceActif) return traiterFinanceActif(req, res);
+  json(res, 503, { erreur: "Stockage Finance indisponible. Consulter les logs serveur." });
+  return true;
+}
+
 // La boîte métier et les approbations des runs du moteur (phase 5), dans une seule liste :
 // la page, le conseiller et la note du vault les traitent pareil. Sans event store, ou avec
 // un moteur antérieur à `approbationsOuvertes`, la boîte reste lisible seule.
@@ -362,6 +414,7 @@ async function traiter(req, res) {
   // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
+    chemin === "/finance" || chemin === "/finance/" ||
     chemin === "/missions" || chemin.startsWith("/missions/") ||
     chemin === "/marketing" || chemin.startsWith("/marketing/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
@@ -521,6 +574,7 @@ async function traiter(req, res) {
   }
 
   if (await traiterAIStudio(req, res)) return undefined;
+  if (await traiterFinance(req, res)) return undefined;
   if (await traiterDiscussions(req, res, chemin, qui)) return undefined;
 
   const preparationMission = chemin.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/mission$/);
@@ -529,14 +583,14 @@ async function traiter(req, res) {
       const index = Number(new URL(req.url, "http://cockpit").searchParams.get("pipeline") || 0);
       if (!Number.isInteger(index) || index < 0) throw new Error("index de pipeline invalide");
       const { options } = missions.lire({ projetsDir: PROJETS, projectId: preparationMission[1], pipelineIndex: index,
-        roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) });
+        roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible });
       return json(res, 200, options);
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
   // Le planificateur de missions (src/planificateur.js) : une spec, un plan, un lancement.
   if (await plansMissions.traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 128_000), store, qui,
-    params: () => ({ projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) }),
+    params: () => ({ projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible }),
     machines: api.machines, viaParMachine: VIA_PAR_MACHINE, origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
 
   const repriseRun =req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
@@ -579,7 +633,7 @@ async function traiter(req, res) {
       if (Object.hasOwn(demande, "demande")) {
         const etatMachines = api.machines(magasinOuvert);
         const commande = missions.demander({ store: magasinOuvert, qui, demande,
-          params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) },
+          params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible },
           verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }),
           verifierBrouillon: (id, projectId, nature) => discussions.origineBrouillon(magasinOuvert, id, projectId, nature) });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
