@@ -17,9 +17,10 @@ L'agent prépare des analyses à partir d'un snapshot figé des imports et des c
 collectés ; il ne collecte pas le web pendant sa mission. La validation vérifie les
 références aux sources avant l'archivage privé et l'onglet Analyses. Les investissements
 seront exécutés par l’utilisateur chez son courtier. Le [contrat des missions Finance](missions.md)
-est déclaré dans le registre, le moteur et le planificateur. Ces modifications sont dans
-La mission Finance est proposée dans la PR #94, ouverte pour revue ; son usage en production
-exige la fusion puis le déploiement de cette PR.
+est déclaré dans le registre, le moteur et le planificateur. Les PR #49 (moteur), #14
+(registre) et #94 (cockpit) sont fusionnées. Le code et les handlers passent les tests locaux,
+mais ne sont pas encore livrés sur le NAS. Aucun agent financier n'a encore exécuté une
+mission native ; la fixture F08 reste synthétique et n'atteste pas d'une analyse réelle.
 
 ## Premier usage
 
@@ -135,7 +136,8 @@ dans `npm test`, donc dans la CI existante. La recette navigateur utilise un sto
 temporaire et uniquement ces fixtures : vide → exemple → import → réimport → filtres →
 attribution → rechargement, navigation/retour, consultation clavier et largeur mobile.
 
-Prochain jalon : parcours de mission Finance, puis rapport réel d’analyse. La recette
-des cours internationaux attend une clé personnelle et reste distincte de la simulation.
-La livraison sur le NAS et la validation avec des relevés réels restent
-distinctes des essais locaux.
+Prochain jalon : livrer le parcours sur le NAS, puis exécuter la recette F08 dans un workspace
+isolé avec la fixture synthétique, le runtime et la procédure effectivement épinglés. Vérifier
+la reprise après interruption et l'absence de double archivage. La recette des cours
+internationaux attend une clé personnelle et reste distincte de la simulation. Les relevés
+business réels ne seront testés qu'après leur import volontaire par l'utilisateur.
