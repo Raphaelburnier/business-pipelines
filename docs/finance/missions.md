@@ -52,7 +52,7 @@ courtier ; aucun ordre ni accès courtier ne fait partie de ce pipeline.
 
 ## Versions compagnons
 
-Le cockpit utilise le moteur `257550c04c0527e5353906f402d5c0a3ef673a20`
+Le cockpit utilise le moteur `257a1ad6c4f3ba14ef4457dbd7bc82190793fe15`
 (`codex/finance-mission-contract`) et les déclarations du registre
 `796abe97abb024de5e694aab42f0feb84a74383e`
 (`codex/finance-research-pipeline`). Le moteur est épinglé à ce SHA dans la CI ;

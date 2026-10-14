@@ -49,7 +49,7 @@ jobs:
           repository: Raphaelburnier/agent-orchestrator
           # Moteur compagnon : contrat Finance documentaire, rapport privé et
           # blocages du formulaire manuel (PR moteur #49).
-          ref: 257550c04c0527e5353906f402d5c0a3ef673a20
+          ref: 257a1ad6c4f3ba14ef4457dbd7bc82190793fe15
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
