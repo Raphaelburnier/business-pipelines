@@ -9,7 +9,7 @@
 // diverger de la base le jour où un événement manque.
 import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
-import type { ReponseEquipe } from "./equipe";
+import type { ChangementProfil, ReponseEquipe } from "./equipe";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
 import type { OptionsMission, DemandeMission, SpecMission, PropositionPlan, LancementPlan } from "./missions";
 import type { OptionsDiscussion, OuvrirDiscussion, MessageEquipe, FilEquipe, ResumeFilEquipe, BrouillonEquipe, DemandeBrouillon } from "./discussions";
@@ -82,6 +82,8 @@ export interface Source {
   equipe(): Promise<ReponseEquipe>;
   /** Associe ces agents à un projet (existant ou nouveau), ou les libère avec `null`. */
   affecter(agents: string[], projet: string | null): Promise<void>;
+  /** Renomme un membre ou change sa photo ; `null` rend le nom du roster ou retire la photo. */
+  profil(agent: string, changement: ChangementProfil): Promise<void>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }

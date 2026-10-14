@@ -151,6 +151,9 @@ export function sourceApi(): Source {
     async affecter(agents, projet) {
       await ecrire<{ ok: true }>("/api/equipe/affectations", { agents, projet });
     },
+    async profil(agent, changement) {
+      await ecrire<{ ok: true }>("/api/equipe/profil", { agent, ...changement });
+    },
     ecouter(surEvenement, surConnexion, runId) {
       // `EventSource` reconnecte seul et renvoie `Last-Event-ID` : une coupure ne perd rien,
       // le serveur reprend après le dernier événement reçu.
