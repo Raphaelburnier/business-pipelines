@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { useTexteBrouillon } from "../donnees/brouillons";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis, usd } from "../format";
+import { retenirFilDemander } from "../navigation";
 import type { FilDetaille, MessageChat } from "../types";
 import { Erreur, Titre, Vide } from "../ui";
 
@@ -55,6 +56,8 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
       const lu = await source.fil(filId);
       setFil(lu);
       setErreur(lu ? null : "conversation introuvable");
+      // Le menu ramène à ce fil ; un fil disparu ne doit plus y ramener.
+      retenirFilDemander(lu ? filId : null);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : String(err));
     }
@@ -79,6 +82,11 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
   useEffect(() => {
     bas.current?.scrollIntoView({ block: "end" });
   }, [fil?.messages.length, fil?.messages.at(-1)?.contenu.length]);
+
+  const nouvelle = () => {
+    retenirFilDemander(null);
+    aller("/demander");
+  };
 
   const bloque = liste.donnees?.usage.bloque ?? false;
   const peutEnvoyer = !envoi && !actif && !bloque && question.trim().length > 0;
@@ -107,7 +115,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <aside className={`flex min-h-0 flex-col gap-2 rounded-xl border border-trait bg-surface p-3 ${filId ? "hidden lg:flex" : ""}`}>
-        <button type="button" onClick={() => aller("/demander")} className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-sur-accent">
+        <button type="button" onClick={nouvelle} className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-sur-accent">
           Nouvelle question
         </button>
         <Titre compteur={liste.donnees?.fils.length}>Conversations</Titre>
