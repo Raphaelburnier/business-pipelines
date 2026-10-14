@@ -7,7 +7,7 @@
 // Le flux ne porte pas l'état, il dit qu'il a changé : une vue recharge ce qu'elle affiche à
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
-import type { Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
+import type { AgentChat, Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
 import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ChangementProfil, ReponseEquipe } from "./equipe";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
@@ -58,7 +58,8 @@ export interface Source {
   /** « Demander au cockpit » : les fils, un fil, et poser une question (nouveau fil sans `filId`). */
   fils(): Promise<ListeFils>;
   fil(id: string): Promise<FilDetaille | null>;
-  poser(contenu: string, filId?: string | null): Promise<FilDetaille>;
+  /** `agent` : qui répond (l'assistant du cockpit, ou un conseiller Claude ou Codex). */
+  poser(contenu: string, filId?: string | null, agent?: AgentChat): Promise<FilDetaille>;
   /** Suit un fil pendant qu'une réponse s'écrit ; `surFin` quand plus rien n'est en cours. Rend l'arrêt. */
   ecouterFil(id: string, surFil: (fil: FilDetaille) => void, surFin: () => void): () => void;
   /** La livraison du cockpit : proposition du livreur, livraison en cours, historique. */

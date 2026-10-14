@@ -38,6 +38,8 @@ export type MessageChat = z.infer<typeof chat.message>;
 export type FilChat = z.infer<typeof chat.fil>;
 export type FilDetaille = z.infer<typeof chat.filDetaille>;
 export type ListeFils = z.infer<typeof chat.listeFils>;
+export type AgentChat = z.infer<typeof chat.agent>;
+export type ActionChat = z.infer<typeof chat.action>;
 
 export type VersionsLivraison = z.infer<typeof livraison.versions>;
 export type CommitLivraison = z.infer<typeof livraison.commit>;
