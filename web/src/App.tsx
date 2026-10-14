@@ -10,6 +10,7 @@ import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
 import { Decisions } from "./vues/Decisions";
 import { Demander } from "./vues/Demander";
+import { lienDemander } from "./navigation";
 import { EnCours } from "./vues/EnCours";
 import { Kpis } from "./vues/Kpis";
 import { Panneau } from "./vues/Panneau";
@@ -208,7 +209,7 @@ function Coquille() {
           <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
           <Lien href="/finance" actif={route.type === "finance"} aller={naviguer} icone="finance">Finance</Lien>
           <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
-          <Lien href="/demander" actif={route.type === "demander"} aller={naviguer} icone="demander">
+          <Lien href={lienDemander()} actif={route.type === "demander"} aller={naviguer} icone="demander">
             Demander
           </Lien>
           <Lien href="/ai-studio" actif={route.type === "ai-studio"} aller={naviguer} icone="studio">
