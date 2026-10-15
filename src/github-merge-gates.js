@@ -55,7 +55,7 @@ async function lireCI({ api, depot, numero, sha, baseSha, parDefaut }) {
     // relancerait (l'autofix ne réagit qu'à un échec). Le publieur met alors la branche à jour.
     if (association && association.head?.sha === sha && association.base?.ref === parDefaut && SHA.test(String(association.base?.sha))) {
       ci.basePerimee = true;
-      ci.raison = "CI verte sur une base dépassée : branche à mettre à jour";
+      ci.raison = "la CI ne prouve pas le merge testé sur la base courante (base dépassée : branche à mettre à jour)";
     }
     return ci;
   }

@@ -178,7 +178,7 @@ test("critère de réussite : une livraison suivie jusqu'à la fusion, à traver
   await suivi.suivreLivraisons({ api: gh.api, store, projets: [f.projet] });
   l = store.livraison(f.runId);
   assert.strictEqual(l.statut, "merge_blocked");
-  assert.match(l.raison, /CI verte sur une base dépassée : branche à mettre à jour/);
+  assert.match(l.raison, /ne prouve pas le merge testé sur la base courante/);
   await assert.rejects(() => pullRequests.fusionner({ api: gh.api, demande: { depot: DEPOT, numero: 7, sha: reprise, baseSha: BASE } }), /base a bougé/);
   assert.ok(!gh.appels.some((a) => a.methode === "PUT"), "aucune fusion tentée");
 
