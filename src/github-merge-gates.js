@@ -50,7 +50,15 @@ async function lireCI({ api, depot, numero, sha, baseSha, parDefaut }) {
   ci.raison = "la CI ne prouve pas le merge testé sur la base courante";
   if (!Number.isInteger(dernier.id) || !Number.isInteger(dernier.run_attempt) || dernier.run_attempt < 1) return ci;
   const association = dernier.pull_requests?.find((p) => p.number === numero);
-  if (!association || association.head?.sha !== sha || association.base?.ref !== parDefaut || association.base?.sha !== baseSha) return ci;
+  if (!association || association.head?.sha !== sha || association.base?.ref !== parDefaut || association.base?.sha !== baseSha) {
+    // La CI a réussi sur une base que la branche par défaut a dépassée depuis : rien ne la
+    // relancerait (l'autofix ne réagit qu'à un échec). Le publieur met alors la branche à jour.
+    if (association && association.head?.sha === sha && association.base?.ref === parDefaut && SHA.test(String(association.base?.sha))) {
+      ci.basePerimee = true;
+      ci.raison = "CI verte sur une base dépassée : branche à mettre à jour";
+    }
+    return ci;
+  }
   const jobs = await pages({ api, chemin: `/repos/${depot}/actions/runs/${dernier.id}/attempts/${dernier.run_attempt}/jobs`, cle: "jobs", limite: 1000 });
   const preuves = jobs
     .filter((j) => j.head_sha === sha && j.status === "completed" && j.conclusion === "success")

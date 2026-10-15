@@ -9,6 +9,8 @@ export interface EtatCI {
   preuve?: { runId: number; tentative: number; headSha: string; baseSha: string; mergeSha: string } | null;
   runId?: number | null;
   tentative?: number | null;
+  /** Verte, mais sur une base que la branche par défaut a dépassée : la branche est à mettre à jour. */
+  basePerimee?: boolean;
 }
 
 export interface PullRequestOuverte {

@@ -107,7 +107,9 @@ function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, de
   if (!pr.interne || !pr.versDefaut || pr.etat !== "open") {
     throw new RefusPullRequest(409, "la relance est réservée aux PR internes ouvertes vers la branche par défaut");
   }
-  if (pr.ci.etat !== "rouge" || pr.ci.runId !== runId || pr.ci.tentative !== tentative ||
+  // Une CI verte sur une base dépassée se relance aussi : le publieur met la branche à jour.
+  const perimee = pr.ci.etat === "verte" && pr.ci.basePerimee === true;
+  if ((pr.ci.etat !== "rouge" && !perimee) || pr.ci.runId !== runId || pr.ci.tentative !== tentative ||
       !Number.isSafeInteger(runId) || runId <= 0 || !Number.isSafeInteger(tentative) || tentative < 1) {
     throw new RefusPullRequest(409, "aucune CI rouge récente ne peut être relancée pour cette tête");
   }

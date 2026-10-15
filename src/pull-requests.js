@@ -244,13 +244,17 @@ async function relancerCI({ api, demande }) {
   const run = await api("GET", `/repos/${depot}/actions/runs/${runId}`);
   const association = run.pull_requests?.find((a) => a.number === numero && a.head?.sha === sha);
   if (run.name !== "CI" || run.event !== "pull_request" || run.head_sha !== sha || !association ||
-      run.status !== "completed" || run.conclusion !== "failure" || run.run_attempt !== tentative) {
-    throw new RefusFusion("la dernière CI n'est plus en échec sur cette tête");
+      run.status !== "completed" || run.run_attempt !== tentative) {
+    throw new RefusFusion("la dernière CI n'est plus celle affichée sur cette tête");
   }
   const infos = await api("GET", `/repos/${depot}`);
   const base = await api("GET", `/repos/${depot}/commits/${encodeURIComponent(infos.default_branch)}`);
   const basePerimee = pr.base?.ref === infos.default_branch && SHA.test(String(base?.sha)) &&
     SHA.test(String(association.base?.sha)) && association.base.sha !== base.sha;
+  // Une CI verte ne se relance que si sa base est dépassée : sinon elle prouve déjà le merge.
+  if (run.conclusion !== "failure" && !(run.conclusion === "success" && basePerimee)) {
+    throw new RefusFusion("la dernière CI n'est ni en échec ni sur une base dépassée");
+  }
   const resultat = { depot, numero, sha, runId, tentative };
   if (basePerimee) {
     try {
@@ -309,7 +313,36 @@ function lireInstantane(fichier) {
   }
 }
 
+// Les branches que les agents ouvrent, celles de la norme d'auto-merge.
+const BRANCHES_AGENT = /^(codex|claude|agent|automation)\//;
+
+/**
+ * Les PR d'agents dont la CI est verte sur une base dépassée. Personne ne relance leur CI :
+ * l'autofix ne réagit qu'à un échec, et la fusion exige un merge testé sur la base courante.
+ * Mettre la branche à jour crée un nouveau merge, donc une nouvelle CI.
+ * @param {{ depots?: Array<{ depot: string, ouvertes?: any[] }> }|null} instantane
+ */
+function aMettreAJour(instantane) {
+  const liste = [];
+  for (const d of (instantane && instantane.depots) || []) {
+    for (const pr of d.ouvertes || []) {
+      if (pr.etat !== "open" || pr.brouillon || !pr.interne || !pr.versDefaut || !BRANCHES_AGENT.test(String(pr.branche || ""))) continue;
+      if (!pr.ci || !pr.ci.basePerimee || pr.fusionnable === false || pr.etatFusion === "dirty") continue;
+      liste.push({ depot: d.depot, numero: pr.numero, sha: pr.sha, baseSha: pr.baseSha });
+    }
+  }
+  return liste;
+}
+
+/** Met la branche d'une PR à jour avec la base ; GitHub refuse si la tête a bougé. */
+async function mettreAJourBranche({ api, depot, numero, sha }) {
+  if (!DEPOT.test(String(depot)) || !Number.isInteger(numero) || numero < 1 || !SHA.test(String(sha))) throw new RefusFusion("mise à jour de branche incomplète");
+  await api("PUT", `/repos/${depot}/pulls/${numero}/update-branch`, { expected_head_sha: sha });
+}
+
 module.exports = {
+  aMettreAJour,
+  mettreAJourBranche,
   SENSIBLES,
   estSensible,
   pourquoiDe,

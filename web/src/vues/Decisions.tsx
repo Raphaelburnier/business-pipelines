@@ -337,10 +337,10 @@ function PullRequest({ depot, pr, peutFusionner, fusionner, relancerCI }: { depo
         {pr.titre} · {pr.branche} · {pr.fichiers} fichier{pr.fichiers > 1 ? "s" : ""}
       </p>
       {pr.raison && !pr.fusionEnCours && <p className="text-[12px] text-douce">Pas de fusion d'ici : {pr.raison}.</p>}
-      {pr.ci.etat === "rouge" && peutFusionner && !pr.ciRelanceEnCours && (
+      {(pr.ci.etat === "rouge" || pr.ci.basePerimee) && peutFusionner && !pr.ciRelanceEnCours && (
         <div className="ao-actions">
           <button type="button" className="ao-btn" disabled={envoi || !pr.ci.runId || !pr.ci.tentative} onClick={relancer}>
-            {envoi ? "Relance…" : "Relancer la CI"}
+            {envoi ? "Relance…" : pr.ci.basePerimee ? "Mettre à jour la branche" : "Relancer la CI"}
           </button>
         </div>
       )}

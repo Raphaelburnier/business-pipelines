@@ -33,6 +33,8 @@ const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun"];
 // Une PR d'agent prête, non sensible, dont tests et revues couvrent la tête, est fusionnée par
 // le publieur. `0` laisse toutes les fusions au clic du cockpit.
 const FUSION_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_FUSION_AUTO ?? "1").toLowerCase());
+// Remettre à jour les PR d'agents vertes dont la base a avancé. `0` les laisse au bouton du cockpit.
+const MAJ_BASE_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_MAJ_BASE_AUTO ?? "1").toLowerCase());
 
 if (!JETON) {
   console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
@@ -142,10 +144,30 @@ async function releverPullRequests() {
     pullRequests.ecrireInstantane(PR_INSTANTANE, { releveLe: new Date().toISOString(), erreur: "GITHUB_TOKEN_FUSION absent", depots: [] });
     return;
   }
+  let instantane = null;
   try {
-    pullRequests.ecrireInstantane(PR_INSTANTANE, await pullRequests.relever({ api: apiFusion, depots: PR_DEPOTS }));
+    instantane = await pullRequests.relever({ api: apiFusion, depots: PR_DEPOTS });
+    pullRequests.ecrireInstantane(PR_INSTANTANE, instantane);
   } catch (err) {
     console.error(`relevé des PR : ${String(err.message).split("\n")[0]}`);
+  }
+  if (instantane && MAJ_BASE_AUTO) await mettreAJourBasesDepassees(instantane);
+}
+
+// Une PR d'agent verte sur une base dépassée attendrait sans fin : sa branche est mise à jour
+// une fois par base, ce qui relance sa CI sur le merge courant. Un conflit est laissé à l'agent.
+const basesMisesAJour = new Set();
+async function mettreAJourBasesDepassees(instantane) {
+  for (const pr of pullRequests.aMettreAJour(instantane)) {
+    const cle = `${pr.depot}#${pr.numero}@${pr.baseSha}`;
+    if (basesMisesAJour.has(cle)) continue;
+    basesMisesAJour.add(cle);
+    try {
+      await pullRequests.mettreAJourBranche({ api: apiFusion, ...pr });
+      console.log(`${pr.depot}#${pr.numero} : CI verte sur une base dépassée, branche mise à jour pour une nouvelle CI`);
+    } catch (err) {
+      console.error(`${pr.depot}#${pr.numero} : mise à jour de la branche refusée : ${String(err.message).split("\n")[0]}`);
+    }
   }
 }
 
