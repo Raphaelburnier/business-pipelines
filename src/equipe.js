@@ -128,12 +128,24 @@ function lirePhoto(dossier, id) {
 }
 
 /**
- * Renomme un membre ou change sa photo depuis la page. `nom: null` rend le nom du roster,
- * `photo: null` retire la photo ; un champ absent n'est pas touché. Rend l'erreur, ou `null`.
- * @param {{ fichier: string, dossierPhotos: string, roster: ReturnType<typeof lireRoster>, agent: unknown, nom?: unknown, photo?: unknown, par?: string|null, maintenant?: number }} demande
+ * Renomme un membre, change sa photo ou son remplaçant depuis la page. `nom: null` rend le
+ * nom du roster, `photo: null` retire la photo, `secours: null` retire le remplaçant ; un champ
+ * absent n'est pas touché. Rend l'erreur, ou `null`.
+ *
+ * Le remplaçant prend les étapes du membre quand son quota tombe (moteur, src/relais.js). Il
+ * doit venir d'un autre fournisseur : un remplaçant Claude d'un membre Claude partage le quota
+ * épuisé et tomberait aussitôt.
+ * @param {{ fichier: string, dossierPhotos: string, roster: ReturnType<typeof lireRoster>, agent: unknown, nom?: unknown, photo?: unknown, secours?: unknown, par?: string|null, maintenant?: number }} demande
  */
-function ecrireProfil({ fichier, dossierPhotos, roster, agent, nom, photo, par = null, maintenant = Date.now() }) {
-  if (typeof agent !== "string" || !roster.some((m) => m.id === agent)) return "agent inconnu";
+function ecrireProfil({ fichier, dossierPhotos, roster, agent, nom, photo, secours, par = null, maintenant = Date.now() }) {
+  const membre = typeof agent === "string" ? roster.find((m) => m.id === agent) : null;
+  if (!membre) return "agent inconnu";
+  if (secours !== undefined && secours !== null) {
+    const remplacant = typeof secours === "string" ? roster.find((m) => m.id === secours) : null;
+    if (!remplacant) return "remplaçant inconnu";
+    if (remplacant.id === membre.id) return "un membre ne peut pas se remplacer lui-même";
+    if (remplacant.llm.via === membre.llm.via) return `${remplacant.nom} passe aussi par ${membre.llm.via} : il partagerait le quota épuisé`;
+  }
   let octets = null;
   if (typeof photo === "string") {
     const m = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(photo);
@@ -161,8 +173,10 @@ function ecrireProfil({ fichier, dossierPhotos, roster, agent, nom, photo, par =
       profil.photoMaj = new Date(maintenant).toISOString();
     } else delete profil.photoMaj;
   }
+  if (secours === null) delete profil.secours;
+  else if (secours !== undefined) profil.secours = secours;
   profil.par = par;
-  if (profil.nom === undefined && profil.photoMaj === undefined) delete profils[agent];
+  if (profil.nom === undefined && profil.photoMaj === undefined && profil.secours === undefined) delete profils[agent];
   else profils[agent] = profil;
   fs.mkdirSync(path.dirname(fichier), { recursive: true });
   ecrireJson(fichier, { profils });
@@ -229,6 +243,7 @@ function etat({ roster, affectations, profils = {}, benchmarks = { releve: null,
       nomRoster: membre.nom,
       // La date dans l'URL : une nouvelle photo n'est pas masquée par l'ancienne en cache.
       photo: photo ? `/api/equipe/photos/${membre.id}?v=${encodeURIComponent(profil.photoMaj)}` : null,
+      secours: profil.secours && roster.some((m) => m.id === profil.secours) ? profil.secours : null,
       competences: competencesDe(membre.llm, benchmarks),
       etapesMois: etapes.get(membre.id) || { total: 0, reussies: 0 },
       occupe: Boolean(affectation || travail),
@@ -296,4 +311,18 @@ function lancementEquipe({ roster, affectations, projet }) {
   return { lancement, membres };
 }
 
-module.exports = { lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe };
+/**
+ * Le roster tel que les missions le lisent : chaque membre porte l'id de son remplaçant
+ * choisi sur la page Agents, ou `null`. Il entre dans l'empreinte de configuration : changer
+ * de remplaçant entre la préparation et le lancement d'une mission la fait relire.
+ * @param {string} rosterFichier
+ * @param {string} profilsFichier
+ */
+function rosterAvecSecours(rosterFichier, profilsFichier) {
+  const roster = lireRoster(rosterFichier);
+  const profils = lireProfils(profilsFichier);
+  const ids = new Set(roster.map((m) => m.id));
+  return roster.map((m) => ({ ...m, secours: profils[m.id]?.secours && ids.has(profils[m.id].secours) ? profils[m.id].secours : null }));
+}
+
+module.exports = { rosterAvecSecours, lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe };

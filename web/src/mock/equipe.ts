@@ -47,7 +47,7 @@ export function equipeMaquette(maintenant: () => number) {
     ["margaux", { projet: "steam-tierlist", depuis: new Date(maintenant() - 3 * 86_400_000).toISOString() }],
     ["lea", { projet: "steam-tierlist", depuis: new Date(maintenant() - 3 * 86_400_000).toISOString() }],
   ]);
-  const profils = new Map<string, { nom?: string; photo?: string }>();
+  const profils = new Map<string, { nom?: string; photo?: string; secours?: string }>([["camille", { secours: "elise" }]]);
 
   return {
     async lecture(): Promise<ReponseEquipe> {
@@ -60,6 +60,7 @@ export function equipeMaquette(maintenant: () => number) {
           nom: profil.nom ?? b.nom,
           nomRoster: b.nom,
           photo: profil.photo ?? null,
+          secours: profil.secours ?? null,
           etapesMois: { total: 40 + i * 13, reussies: 36 + i * 11 },
           occupe: Boolean(affectation || enCours),
           projet: affectation?.projet ?? enCours?.projet ?? null,
@@ -87,6 +88,8 @@ export function equipeMaquette(maintenant: () => number) {
       else if (changement.nom !== undefined) profil.nom = changement.nom.trim();
       if (changement.photo === null) delete profil.photo;
       else if (changement.photo !== undefined) profil.photo = changement.photo;
+      if (changement.secours === null) delete profil.secours;
+      else if (changement.secours !== undefined) profil.secours = changement.secours;
       profils.set(agent, profil);
     },
   };
