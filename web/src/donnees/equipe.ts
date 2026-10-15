@@ -32,6 +32,8 @@ export interface MembreEquipe {
   nomRoster: string;
   /** L'URL de la photo choisie sur la page ; `null` : portrait généré. */
   photo: string | null;
+  /** L'id du remplaçant qui prend ses étapes quand son quota tombe ; `null` : le run attend. */
+  secours: string | null;
   role: string;
   famille: Famille;
   llm: Llm;
@@ -52,6 +54,8 @@ export interface ChangementProfil {
   nom?: string | null;
   /** Data URL jpeg, png ou webp. */
   photo?: string | null;
+  /** Un membre d'un autre fournisseur ; `null` retire le remplaçant. */
+  secours?: string | null;
 }
 
 export interface ReponseEquipe {

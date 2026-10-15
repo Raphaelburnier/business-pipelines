@@ -131,6 +131,7 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
             <Fiche
               key={fiche.id}
               agent={fiche}
+              membres={donnees.agents}
               projets={donnees.projets}
               envoi={envoi}
               onEcrire={ecrire}
@@ -149,12 +150,14 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
 
 function Fiche({
   agent: a,
+  membres,
   projets,
   envoi,
   onEcrire,
   onOuvrirRun,
 }: {
   agent: MembreEquipe;
+  membres: MembreEquipe[];
   projets: string[];
   envoi: boolean;
   onEcrire: (action: () => Promise<void>) => Promise<boolean>;
@@ -208,6 +211,8 @@ function Fiche({
           <Reste famille={a.famille} usage={a.usage} />
         </div>
 
+        <Remplacant agent={a} membres={membres} envoi={envoi} onChoisir={(secours) => onEcrire(() => source.profil(a.id, { secours }))} />
+
         <div className="etat">
           <span className={`ao-dispo ${a.enCours ? "run" : a.occupe ? "wait" : "ok"}`}>
             <i />
@@ -231,6 +236,36 @@ function Fiche({
         />
       </div>
     </article>
+  );
+}
+
+/**
+ * Le remplaçant : quand le quota du membre tombe, il prend ses étapes avec une passation
+ * (moteur, src/relais.js), puis le membre reprend la main après la remise à zéro. Seuls les
+ * membres d'un autre fournisseur sont proposés : les autres partagent le quota épuisé.
+ */
+function Remplacant({ agent: a, membres, envoi, onChoisir }: { agent: MembreEquipe; membres: MembreEquipe[]; envoi: boolean; onChoisir: (secours: string | null) => Promise<boolean> }) {
+  const candidats = membres.filter((m) => m.id !== a.id && m.llm.via !== a.llm.via);
+  const actuel = membres.find((m) => m.id === a.secours) ?? null;
+  return (
+    <div className="remplacant">
+      <label className="ao-etiquette" htmlFor={`secours-${a.id}`}>
+        Remplaçant
+      </label>
+      <select id={`secours-${a.id}`} value={a.secours ?? ""} disabled={envoi} onChange={(e) => void onChoisir(e.target.value || null)}>
+        <option value="">Aucun : le run attend la remise à zéro</option>
+        {candidats.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.nom} · {m.llm.via} {m.llm.model}
+          </option>
+        ))}
+      </select>
+      <span className="mission">
+        {actuel
+          ? `Quota ${a.llm.via} épuisé : ${actuel.nom} (${actuel.llm.via}) reprend ses étapes avec la passation, puis ${a.nom} revient après la remise à zéro.`
+          : `Quota ${a.llm.via} épuisé : ses runs attendent la remise à zéro.`}
+      </span>
+    </div>
   );
 }
 

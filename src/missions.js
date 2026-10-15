@@ -71,7 +71,22 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
       verifierBackend(null, n, { pipeline: resolution.pipeline });
     }
   }
-  resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm } : n);
+  // Le remplaçant du membre choisi (page Agents) suit le nœud : le moteur lui passe l'étape si
+  // le quota du titulaire tombe. Un remplaçant du même fournisseur, ou qu'aucune machine ne
+  // peut servir, n'aiderait pas : il n'est pas posé, et la mission attend comme avant.
+  const secoursDe = (n) => {
+    const c = parNoeud.get(n.id);
+    const m = c.membre ? params.roster.find((x) => x.id === c.membre) : null;
+    const s = m && m.secours ? params.roster.find((x) => x.id === m.secours) : null;
+    if (!s || s.llm.via === c.llm.via) return {};
+    try {
+      verifierBackend(s.llm, n, { pipeline: resolution.pipeline, agent: resolution.agents[n.agent] });
+    } catch {
+      return {};
+    }
+    return { secours: { ...s.llm } };
+  };
+  resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm, ...secoursDe(n) } : n);
   // La tranche métier reste structurée (questions marketing, etc.). L'objectif de cette
   // mission est aussi envoyé hors slicing à tous les développeurs et reviewers.
   resolution.spec = { ...d.demande.spec, project_name: d.projectId, task: d.demande.objectif,

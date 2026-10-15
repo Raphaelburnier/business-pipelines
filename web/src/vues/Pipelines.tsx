@@ -338,6 +338,9 @@ function InspecteurNoeud({
   const debut = noeud.tentatives[0]?.debut;
   const fin = noeud.tentatives[noeud.tentatives.length - 1]?.fin;
   const outils = [...new Set(noeud.tentatives.flatMap((t) => t.outils))];
+  // Un changement de fournisseur entre deux tentatives : le remplaçant a pris l'étape.
+  const fournisseurs = [...new Set(noeud.tentatives.map((t) => t.llm && `${t.llm.via}:${t.llm.model}`).filter((x): x is string => Boolean(x)))];
+  const relais = new Set(noeud.tentatives.map((t) => t.llm?.via).filter(Boolean)).size > 1 ? fournisseurs.join(" → ") : null;
   const decidable = noeud.approbation?.statut === "pending" && run.statut === "waiting_approval";
 
   async function decider(decision: "approved" | "rejected") {
@@ -394,6 +397,12 @@ function InspecteurNoeud({
             <dd>{jetons(jetonsTotal)}</dd>
             <dt>Tours</dt>
             <dd>{noeud.tentatives.length}</dd>
+            {relais && (
+              <>
+                <dt>Relais</dt>
+                <dd>{relais}</dd>
+              </>
+            )}
             <dt>Machine</dt>
             <dd>{noeud.tentatives[noeud.tentatives.length - 1]!.machine ?? VIDE}</dd>
           </>
