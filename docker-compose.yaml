@@ -101,6 +101,10 @@ services:
       # repoWorkers dans projects/marketing/project.json) et sa spec seule, pas tout specs/.
       - /volume1/docker/git/marketing.git:/git/marketing.git
       - ./specs/marketing.json:/app/specs/marketing.json:ro
+      # La connexion Codex du conseiller de « Demander » (codex login --device-auth, une
+      # fois). Hors de l'image et hors de specs/. Les agents de ce conteneur ont Bash et
+      # peuvent la lire, comme ils voient déjà le jeton d'abonnement Claude du runner.
+      - ./codex:/root/.codex
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite

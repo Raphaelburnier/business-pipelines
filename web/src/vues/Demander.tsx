@@ -1,29 +1,56 @@
 // « Demander au cockpit » (§11.7) : comprendre un run, un coût, un échec, sans rien lancer.
 //
-// Les réponses viennent de Claude par le runner du NAS : le chat reste disponible quand le
-// PC dort. Pendant une réponse, le fil arrive par son propre flux SSE (`/api/chat/<id>/flux`).
+// Le toggle choisit qui répond à la prochaine question : l'assistant du cockpit (instantané
+// des runs), ou un conseiller Claude ou Codex qui part du vault et lit le cockpit par ses
+// outils. Un conseiller peut proposer une mission, une livraison ou une fusion : la carte
+// s'affiche sous sa réponse et seul ton clic agit.
+// Les réponses viennent du runner du NAS : le chat reste disponible quand le PC dort.
+// Pendant une réponse, le fil arrive par son propre flux SSE (`/api/chat/<id>/flux`).
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTexteBrouillon } from "../donnees/brouillons";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { depuis, usd } from "../format";
 import { retenirFilDemander } from "../navigation";
-import type { FilDetaille, MessageChat } from "../types";
+import type { AgentChat, FilDetaille, ListeFils, MessageChat } from "../types";
 import { Erreur, Titre, Vide } from "../ui";
+import { ActionsChat } from "./ActionsChat";
 
-const EXEMPLES = ["Pourquoi le dernier run a échoué ?", "Qu'est-ce qui coûte le plus ce mois-ci ?", "Le PC est-il disponible pour lancer une tâche ?"];
+const AGENTS: AgentChat[] = ["cockpit", "claude", "codex"];
+const NOMS: Record<AgentChat, string> = { cockpit: "Cockpit", claude: "Claude", codex: "Codex" };
+
+const EXEMPLES: Record<AgentChat, string[]> = {
+  cockpit: ["Pourquoi le dernier run a échoué ?", "Qu'est-ce qui coûte le plus ce mois-ci ?", "Le PC est-il disponible pour lancer une tâche ?"],
+  claude: ["Que devrais-je prioriser cette semaine d'après mes notes ?", "Écris la mission pour la prochaine étape de steam-tierlist", "Y a-t-il une livraison prête ?"],
+  codex: ["Critique l'architecture du cockpit d'après mes notes", "Explique-moi le protocole MCP simplement", "Quelles PR peuvent être fusionnées ?"],
+};
+
+const INTRO: Record<AgentChat, string> = {
+  cockpit: "Pose une question sur tes runs, tes machines ou tes coûts. Le cockpit explique, il ne lance rien.",
+  claude: "Claude part de ton vault et lit le cockpit au besoin, en prenant le temps de réfléchir. Il peut écrire une mission ou préparer une livraison : tu confirmes d'un clic.",
+  codex: "Codex part de ton vault et lit le cockpit au besoin, avec un effort de raisonnement élevé. Il peut écrire une mission ou préparer une fusion : tu confirmes d'un clic.",
+};
+
+const lireAgent = (brut: string): AgentChat => (AGENTS.includes(brut as AgentChat) ? (brut as AgentChat) : "cockpit");
+const modeleDe = (liste: ListeFils | null, agent: AgentChat) => liste?.agents?.find((a) => a.id === agent)?.modele ?? (agent === "cockpit" ? liste?.modele : undefined);
 
 const enCours = (fil: FilDetaille | null) => !!fil?.messages.some((m) => m.role === "assistant" && (m.statut === "queued" || m.statut === "streaming"));
 
-function Bulle({ message }: { message: MessageChat }) {
+function Bulle({ message, aller }: { message: MessageChat; aller: (href: string) => void }) {
   if (message.role === "user") {
     return <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm bg-accent px-3 py-2 text-sm text-sur-accent">{message.contenu}</div>;
   }
+  const agent = message.agent ?? "cockpit";
   return (
-    <div className={`mr-auto max-w-[92%] whitespace-pre-wrap break-words rounded-xl rounded-bl-sm border px-3 py-2 text-sm ${message.statut === "failed" ? "border-danger bg-danger-fond text-danger" : "border-trait bg-carte"}`}>
-      {message.statut === "queued" && <span className="text-douce">En file sur le runner du NAS…</span>}
-      {message.contenu}
-      {message.statut === "streaming" && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" aria-label="réponse en cours" />}
-    </div>
+    <>
+      <div className={`mr-auto max-w-[92%] whitespace-pre-wrap break-words rounded-xl rounded-bl-sm border px-3 py-2 text-sm ${message.statut === "failed" ? "border-danger bg-danger-fond text-danger" : "border-trait bg-carte"}`}>
+        {agent !== "cockpit" && <span className="mb-1 block text-[11px] font-semibold text-douce">{NOMS[agent]}</span>}
+        {message.statut === "queued" && <span className="text-douce">En file sur le runner du NAS…</span>}
+        {message.statut === "streaming" && !message.contenu && agent !== "cockpit" && <span className="text-douce">Réfléchit et consulte le vault…</span>}
+        {message.contenu}
+        {message.statut === "streaming" && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" aria-label="réponse en cours" />}
+      </div>
+      <ActionsChat actions={message.actions} aller={aller} />
+    </>
   );
 }
 
@@ -48,6 +75,9 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
     }
   }, [setQuestion]);
   const [envoi, setEnvoi] = useState(false);
+  // Le répondant choisi est retenu pour les prochaines questions, sur cet appareil.
+  const [agentBrut, setAgentBrut] = useTexteBrouillon("demander:agent");
+  const agent = lireAgent(agentBrut);
   const bas = useRef<HTMLDivElement>(null);
 
   const relire = useCallback(async () => {
@@ -97,7 +127,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
     setEnvoi(true);
     setErreur(null);
     try {
-      const suite = await source.poser(question.trim(), filId);
+      const suite = await source.poser(question.trim(), filId, agent);
       oublierQuestion();
       setFil(suite);
       if (suite.id !== filId) aller(`/demander/${encodeURIComponent(suite.id)}`);
@@ -153,17 +183,31 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
           )}
           <span className="truncate text-sm font-semibold">{fil?.titre ?? "Nouvelle question"}</span>
           <span className="ml-auto hidden whitespace-nowrap text-[11px] text-douce sm:inline">
-            Claude{liste.donnees ? ` ${liste.donnees.modele}` : ""} via le NAS · lecture seule
+            {NOMS[agent]}{modeleDe(liste.donnees, agent) ? ` ${modeleDe(liste.donnees, agent)}` : ""} via le NAS · {agent === "cockpit" ? "lecture seule" : "propose, tu confirmes"}
           </span>
+          <div role="group" aria-label="Qui répond" className="flex shrink-0 overflow-hidden rounded-lg border border-trait text-xs">
+            {AGENTS.map((a) => (
+              <button
+                key={a}
+                type="button"
+                aria-pressed={agent === a}
+                onClick={() => setAgentBrut(a)}
+                title={modeleDe(liste.donnees, a) ?? undefined}
+                className={`px-2.5 py-1 ${agent === a ? "bg-accent font-semibold text-sur-accent" : "bg-carte hover:text-accent"}`}
+              >
+                {NOMS[a]}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
           {erreur && <Erreur>{erreur}</Erreur>}
           {!filId && (
             <Vide>
-              <span className="block">Pose une question sur tes runs, tes machines ou tes coûts. Le cockpit explique, il ne lance rien.</span>
+              <span className="block">{INTRO[agent]}</span>
               <span className="mt-3 flex flex-wrap justify-center gap-2">
-                {EXEMPLES.map((e) => (
+                {EXEMPLES[agent].map((e) => (
                   <button key={e} type="button" onClick={() => setQuestion(e)} className="rounded-full border border-trait bg-surface px-3 py-1 text-xs hover:border-accent">
                     {e}
                   </button>
@@ -171,7 +215,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
               </span>
             </Vide>
           )}
-          {fil?.messages.map((m) => <Bulle key={m.id} message={m} />)}
+          {fil?.messages.map((m) => <Bulle key={m.id} message={m} aller={aller} />)}
           <div ref={bas} />
         </div>
 
@@ -183,8 +227,8 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
             rows={2}
             maxLength={4000}
             disabled={bloque}
-            placeholder={bloque ? "Plafond mensuel atteint" : actif ? "Réponse en cours…" : "Ta question (Entrée pour envoyer, Maj+Entrée pour une ligne)"}
-            aria-label="Question au cockpit"
+            placeholder={bloque ? "Plafond mensuel atteint" : actif ? "Réponse en cours…" : `Ta question à ${NOMS[agent]} (Entrée pour envoyer, Maj+Entrée pour une ligne)`}
+            aria-label={`Question à ${NOMS[agent]}`}
             className="min-h-[2.75rem] min-w-0 flex-1 resize-none rounded-lg border border-trait bg-carte px-3 py-2 text-sm"
           />
           <button type="submit" disabled={!peutEnvoyer} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-sur-accent disabled:opacity-50">

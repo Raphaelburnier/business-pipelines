@@ -147,6 +147,12 @@ const traiterDiscussions = creerRouteurDiscussions({ store, json, corpsJson, pro
 // « Demander au cockpit » : Claude via le runner du NAS, dépense plafonnée à part (§11.7).
 const CHAT_PLAFOND_USD = Number(ENV.COCKPIT_CHAT_PLAFOND_USD || 10);
 const CHAT_MODELE = ENV.COCKPIT_CHAT_MODELE || "sonnet";
+// Les répondants du toggle de « Demander », avec les modèles du runner (bin/commande-runner.js).
+const CHAT_AGENTS = [
+  { id: "cockpit", nom: "Cockpit", modele: CHAT_MODELE },
+  { id: "claude", nom: "Claude", modele: ENV.COCKPIT_CHAT_CLAUDE_MODELE || "opus" },
+  { id: "codex", nom: "Codex", modele: ENV.COCKPIT_CHAT_CODEX_MODELE || "gpt-5.6-terra:high" },
+];
 // Le conseiller des approbations (src/conseiller.js) : sa base à côté de l'event store, hors
 // de celle des approbations, et l'empreinte du jeton de l'agent du PC. Sans empreinte, les
 // routes de l'agent répondent 503 et l'écran dit « PC endormi ».
@@ -864,7 +870,9 @@ async function traiter(req, res) {
   // ---- Demander au cockpit (§11.7) ----
   //
   // Lecture et questions derrière le même contrôle d'identité que les runs. Aucune route
-  // ici ne déclenche autre chose qu'une réponse écrite : le chat n'agit pas.
+  // ici ne déclenche autre chose qu'une réponse écrite : le chat n'agit pas. Les actions que
+  // proposent les conseillers passent, au clic, par les routes des runs, missions, livraisons
+  // et PR, avec leurs propres contrôles.
   const cheminChat = req.url.split("?")[0];
   if (cheminChat === "/api/chat" || cheminChat.startsWith("/api/chat/")) {
     const magasinOuvert = store();
@@ -872,7 +880,7 @@ async function traiter(req, res) {
     const morceaux = cheminChat.split("/").filter(Boolean).slice(2).map(decodeURIComponent);
 
     if (req.method === "GET" && morceaux.length === 0) {
-      return json(res, 200, apiChat.listeFils(magasinOuvert, { plafondUsd: CHAT_PLAFOND_USD, modele: CHAT_MODELE }));
+      return json(res, 200, apiChat.listeFils(magasinOuvert, { plafondUsd: CHAT_PLAFOND_USD, modele: CHAT_MODELE, agents: CHAT_AGENTS }));
     }
     // Tenu ouvert pendant la réponse ; `ouvrirFil` le referme quand elle est finie.
     if (req.method === "GET" && morceaux.length === 2 && morceaux[1] === "flux") {
@@ -892,6 +900,7 @@ async function traiter(req, res) {
         threadId: suite ? morceaux[0] : null,
         contenu: demande.contenu,
         projet: typeof demande.projet === "string" ? demande.projet : null,
+        agent: demande.agent ?? "cockpit",
         par: qui.par,
         canal: qui.canal,
         plafondUsd: CHAT_PLAFOND_USD,

@@ -1,13 +1,21 @@
 name: CI
 
+# Sur les PR, et aussi sur main après chaque fusion et chaque nuit : une PR du moteur peut
+# casser le cockpit sans toucher à ce dépôt (2026-10-15, moteur #54 sans cockpit #108). La
+# livraison l'aurait vu au moment de construire ; ces passages le voient avant.
 on:
   pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.repository }}-${{ github.event.pull_request.number }}
+  group: ci-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,6 +29,7 @@ jobs:
           fetch-depth: 2
 
       - name: "Verify tested merge (merge=${{ github.sha }}, head=${{ github.event.pull_request.head.sha }}, base=${{ github.event.pull_request.base.sha }})"
+        if: github.event_name == 'pull_request'
         working-directory: business-pipelines
         shell: bash
         env:
@@ -47,9 +56,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Raphaelburnier/agent-orchestrator
-          # Moteur compagnon : contrat Finance documentaire, rapport privé et
-          # blocages du formulaire manuel (PR moteur #49).
-          ref: 257a1ad6c4f3ba14ef4457dbd7bc82190793fe15
+          # La branche par défaut du moteur, celle que la livraison construit avec le cockpit
+          # (proposition « disponible » du livreur). Un SHA épinglé testait un autre moteur que
+          # celui livré : CI verte, livraison cassée. Une PR cockpit qui attend un changement du
+          # moteur passe donc après la fusion de celui-ci.
           path: agent-orchestrator
           ssh-key: ${{ secrets.AGENT_ORCHESTRATOR_DEPLOY_KEY }}
           persist-credentials: false
