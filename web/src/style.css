@@ -814,6 +814,10 @@ button.ao-puce { cursor: pointer; }
 .ao-fiche .xpk { margin-top: -6px; color: var(--color-douce); font: 400 11px/1.3 var(--font-mono); }
 .ao-fiche .roles { display: flex; flex-wrap: wrap; gap: 6px; }
 .ao-fiche .budget { display: grid; grid-template-columns: auto minmax(0, 280px); align-items: center; gap: 12px; }
+.ao-fiche .remplacant { display: grid; grid-template-columns: auto minmax(0, 280px); align-items: center; gap: 6px 12px; }
+.ao-fiche .remplacant select { height: 32px; min-width: 0; padding: 0 8px; border: 1px solid var(--color-trait-fort); background: var(--color-fond); color: var(--color-encre); font: 600 13px/1 var(--font-sans); }
+.ao-fiche .remplacant select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.ao-fiche .remplacant .mission { grid-column: 1 / -1; }
 .ao-fiche .etat { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .ao-fiche .mission { color: var(--color-douce); font: 400 12px/1.3 var(--font-mono); }
 .ao-fiche .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

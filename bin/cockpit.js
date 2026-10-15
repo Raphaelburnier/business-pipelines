@@ -58,6 +58,8 @@ const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
+const pipelinesNoms = require("../src/pipelines-noms");
+const { dossierRegistre } = require("agent-orchestrator/src/registre");
 const missions = require("../src/missions");
 const discussions = require("../src/discussions-equipe");
 const { creerRouteur: creerRouteurDiscussions } = require("../src/api-discussions-equipe");
@@ -137,6 +139,8 @@ const EQUIPE_AFFECTATIONS = path.join(
 // notes publiques des modèles sont versionnées à côté du roster.
 const EQUIPE_PROFILS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-profils.json");
 const EQUIPE_PHOTOS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "equipe-photos");
+// Les noms choisis depuis la page Pipelines : de l'état, comme les profils de l'équipe.
+const PIPELINES_NOMS = path.join(path.dirname(EQUIPE_AFFECTATIONS), "pipelines-noms.json");
 const EQUIPE_BENCHMARKS = ENV.COCKPIT_EQUIPE_BENCHMARKS || path.join(RACINE, "equipe", "benchmarks.json");
 const traiterDiscussions = creerRouteurDiscussions({ store, json, corpsJson, projetsDir: PROJETS,
   rosterFichier: EQUIPE_ROSTER, affectationsFichier: EQUIPE_AFFECTATIONS, viaParMachine: VIA_PAR_MACHINE });
@@ -594,14 +598,14 @@ async function traiter(req, res) {
       const index = Number(new URL(req.url, "http://cockpit").searchParams.get("pipeline") || 0);
       if (!Number.isInteger(index) || index < 0) throw new Error("index de pipeline invalide");
       const { options } = missions.lire({ projetsDir: PROJETS, projectId: preparationMission[1], pipelineIndex: index,
-        roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible });
+        roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible });
       return json(res, 200, options);
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
   // Le planificateur de missions (src/planificateur.js) : une spec, un plan, un lancement.
   if (await plansMissions.traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 128_000), store, qui,
-    params: () => ({ projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible }),
+    params: () => ({ projetsDir: PROJETS, roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible }),
     machines: api.machines, viaParMachine: VIA_PAR_MACHINE, origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
 
   const repriseRun =req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
@@ -644,7 +648,7 @@ async function traiter(req, res) {
       if (Object.hasOwn(demande, "demande")) {
         const etatMachines = api.machines(magasinOuvert);
         const commande = missions.demander({ store: magasinOuvert, qui, demande,
-          params: { projetsDir: PROJETS, roster: equipe.lireRoster(EQUIPE_ROSTER), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible },
+          params: { projetsDir: PROJETS, roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible },
           verifierBackend: plansMissions.verifierBackend({ viaParMachine: VIA_PAR_MACHINE, machines: etatMachines }),
           verifierBrouillon: (id, projectId, nature) => discussions.origineBrouillon(magasinOuvert, id, projectId, nature) });
         return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
@@ -806,8 +810,38 @@ async function traiter(req, res) {
         agent: corps.agent,
         nom: corps.nom,
         photo: corps.photo,
+        secours: corps.secours,
         par: qui.par,
       });
+      if (erreur) return json(res, 400, { erreur });
+      return json(res, 200, { ok: true });
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (lecture && lecture.pathname === "/api/pipelines") {
+    try {
+      // Sans event store, la page nomme quand même les pipelines du registre et des fiches.
+      const magasinOuvert = store();
+      return json(res, 200, {
+        pipelines: pipelinesNoms.liste({
+          fichier: PIPELINES_NOMS,
+          registre: dossierRegistre(),
+          fiches: api.lireFiches(PROJETS).fiches,
+          runs: magasinOuvert ? api.runs(magasinOuvert, { limite: 1000 }) : [],
+        }),
+      });
+    } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (req.method === "POST" && chemin === "/api/pipelines/nom") {
+    const corps = await corpsJson(req, res);
+    if (!corps) return undefined;
+    try {
+      const erreur = pipelinesNoms.renommer({ fichier: PIPELINES_NOMS, pipeline: corps.pipeline, nom: corps.nom === undefined ? null : corps.nom, par: qui.par });
       if (erreur) return json(res, 400, { erreur });
       return json(res, 200, { ok: true });
     } catch (err) {
