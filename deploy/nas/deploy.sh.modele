@@ -108,12 +108,16 @@ SWITCHED=1
 $DOCKER rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || true
 vider_code
 tar -xzf "$ARCHIVE" -C "$BUSINESS"
-mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data"
+# Tout dossier monté par docker-compose.yaml doit exister : Docker sur DSM ne crée pas la
+# source d'un bind mount, et la bascule échoue (./codex, 2026-10-15, version restaurée).
+mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data" "$BUSINESS/codex"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
 # livreur, ces noms n'existent pas.
 chown -R 1026:100 "$BUSINESS"
+# La connexion Codex du conseiller (auth.json) : lisible du seul propriétaire.
+chmod 700 "$BUSINESS/codex"
 
 cd "$BUSINESS"
 $DOCKER compose up -d --no-build cockpit runner tailscale-whois publieur
