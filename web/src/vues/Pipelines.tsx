@@ -1,11 +1,11 @@
 // L'écran Pipelines (design system AgenticOS, composant Pipelines) : les runs à gauche, le
 // graphe du run choisi au centre, l'inspecteur à droite. Un clic sur une étape, un lien ou
 // son étiquette ouvre son détail ; « { } » montre le JSON du graphe.
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import type { MembreEquipe } from "../donnees/equipe";
 import { construireGraphe, grapheJson, trierRuns, type EtatNoeud, type GraphePipeline, type LienPipeline, type NoeudPipeline } from "../donnees/pipelineGraphe";
-import { idPipeline, nomPipeline, versionPipeline, type PipelineConnu } from "../donnees/pipelines";
+import { idPipeline, nomPipeline, versionPipeline, type PipelineConnu, type Rattachement, type ReponsePipelines } from "../donnees/pipelines";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
 import { Icone } from "../icones";
 import type { RunDetailleAvecOutils } from "../types";
@@ -463,8 +463,109 @@ function InspecteurNoeud({
   );
 }
 
+const MOTS_RATTACHEMENT: Record<Rattachement["statut"], string> = { pending: "en file", taken: "PR en cours d'ouverture", done: "PR ouverte", refused: "refusé" };
+
+/**
+ * Ajouter ce pipeline à un autre projet. Le cockpit n'écrit pas la fiche : le publieur ouvre
+ * une PR sur `projects/<id>/project.json`, que la CI valide et que l'auto-merge fusionne.
+ */
+function Rattacher({ id, connu, catalogue, change }: { id: string; connu: PipelineConnu | undefined; catalogue: ReponsePipelines; change: () => void }) {
+  const { source } = useSource();
+  const [ouvert, setOuvert] = useState(false);
+  const [projet, setProjet] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const demandes = catalogue.rattachements.filter((r) => idPipeline(r.pipeline) === id);
+  const enAttente = demandes.some((r) => r.statut === "pending" || r.statut === "taken");
+  const dejaDemandes = new Set(demandes.filter((r) => r.statut !== "refused" && r.ok !== false).map((r) => r.projet));
+  const libres = catalogue.projets.filter((p) => !connu?.projets.includes(p.id) && !dejaDemandes.has(p.id));
+
+  // Le publieur sert la commande en quelques secondes ; la page relit jusqu'à la PR.
+  useEffect(() => {
+    if (!enAttente) return;
+    const minuterie = setTimeout(change, 3000);
+    return () => clearTimeout(minuterie);
+  }, [enAttente, catalogue, change]);
+
+  async function proposer() {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await source.rattacherPipeline(id, projet);
+      setOuvert(false);
+      setProjet("");
+      change();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <div className="pl-rattacher">
+      {catalogue.peutRattacher && !ouvert && libres.length > 0 && (
+        <button type="button" className="ao-btn" onClick={() => setOuvert(true)}>
+          Ajouter à un projet
+        </button>
+      )}
+      {ouvert && (
+        <form
+          className="pl-titre"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (projet) void proposer();
+          }}
+        >
+          <label className="sr-only" htmlFor="pl-projet">
+            Projet
+          </label>
+          <select id="pl-projet" className="pl-champ" value={projet} onChange={(e) => setProjet(e.target.value)}>
+            <option value="">Choisir un projet…</option>
+            {libres.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="ao-btn primaire" disabled={envoi || !projet}>
+            Proposer la PR
+          </button>
+          <button type="button" className="ao-btn" disabled={envoi} onClick={() => setOuvert(false)}>
+            Annuler
+          </button>
+        </form>
+      )}
+      {ouvert && <p className="pl-sous">La fiche du projet reçoit ce pipeline par une PR ; il apparaît dans Missions après sa fusion et la livraison du cockpit.</p>}
+      {erreur && <Erreur>{erreur}</Erreur>}
+      {demandes.length > 0 && (
+        <ul className="pl-demandes">
+          {demandes.map((r) => (
+            <li key={r.id} className={r.ok === false ? "refus" : ""}>
+              <span>
+                {r.pipeline} → {r.projet}
+              </span>
+              <small>
+                {r.ok === false ? `refusé : ${r.raison}` : MOTS_RATTACHEMENT[r.statut]}
+                {r.pr && (
+                  <>
+                    {" · "}
+                    <a href={r.pr.url} target="_blank" rel="noreferrer">
+                      PR #{r.pr.numero}
+                    </a>
+                  </>
+                )}
+              </small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Le nom du pipeline du run, ce qu'il est sous le capot, les projets qui s'en servent, et son renommage. */
-function EnTete({ refPipeline, connus, renomme }: { refPipeline: string; connus: ReadonlyMap<string, PipelineConnu>; renomme: () => void }) {
+function EnTete({ refPipeline, connus, catalogue, renomme }: { refPipeline: string; connus: ReadonlyMap<string, PipelineConnu>; catalogue: ReponsePipelines | null; renomme: () => void }) {
   const { source } = useSource();
   const id = idPipeline(refPipeline);
   const connu = connus.get(id);
@@ -535,6 +636,7 @@ function EnTete({ refPipeline, connus, renomme }: { refPipeline: string; connus:
         )}
       </p>
       {erreur && <Erreur>{erreur}</Erreur>}
+      {catalogue && <Rattacher id={id} connu={connu} catalogue={catalogue} change={renomme} />}
     </div>
   );
 }
@@ -543,6 +645,7 @@ export function Pipelines({ runId, aller }: { runId: string | null; aller: (href
   const { donnees: runs, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
   const { donnees: equipe } = useCharge((s) => s.equipe(), []);
   const [renommages, setRenommages] = useState(0);
+  const relire = useCallback(() => setRenommages((n) => n + 1), []);
   const { donnees: catalogue } = useCharge((s) => s.pipelines(), [renommages]);
   const connus = useMemo(() => new Map((catalogue?.pipelines ?? []).map((p) => [p.id, p])), [catalogue]);
   const tries = useMemo(() => trierRuns(runs ?? []), [runs]);
@@ -604,7 +707,7 @@ export function Pipelines({ runId, aller }: { runId: string | null; aller: (href
         {erreurRun && <Erreur>{erreurRun}</Erreur>}
         {run && graphe ? (
           <>
-            <EnTete refPipeline={run.pipeline} connus={connus} renomme={() => setRenommages((n) => n + 1)} />
+            <EnTete refPipeline={run.pipeline} connus={connus} catalogue={catalogue} renomme={relire} />
             <div className="ao-kpis pl-stats" role="group" aria-label="Indicateurs du run">
               <div className="ao-kpi">
                 <span className="k">Étape</span>

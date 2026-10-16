@@ -159,6 +159,9 @@ export function sourceApi(): Source {
     async renommerPipeline(pipeline, nom) {
       await ecrire<{ ok: true }>("/api/pipelines/nom", { pipeline, nom });
     },
+    async rattacherPipeline(pipeline, projet) {
+      return (await ecrire<{ commande: { id: string; statut: string } }>("/api/pipelines/rattacher", { pipeline, projet })).commande;
+    },
     ecouter(surEvenement, surConnexion, runId) {
       // `EventSource` reconnecte seul et renvoie `Last-Event-ID` : une coupure ne perd rien,
       // le serveur reprend après le dernier événement reçu.

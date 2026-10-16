@@ -90,6 +90,8 @@ export interface Source {
   pipelines(): Promise<ReponsePipelines>;
   /** Nomme un pipeline pour toutes ses versions ; `null` rend le titre du registre. */
   renommerPipeline(pipeline: string, nom: string | null): Promise<void>;
+  /** Demande au publieur la PR qui ajoute ce pipeline à la fiche du projet. */
+  rattacherPipeline(pipeline: string, projet: string): Promise<{ id: string; statut: string }>;
   /** Écoute le flux ; rend la fonction qui arrête l'écoute. */
   ecouter(surEvenement: (e: Evenement) => void, surConnexion: (connecte: boolean) => void, runId?: string): () => void;
 }

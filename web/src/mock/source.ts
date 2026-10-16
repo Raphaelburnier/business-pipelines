@@ -12,7 +12,7 @@ import { livraisonMaquette } from "./livraison";
 import { pullRequestsMaquette } from "./pullRequests";
 import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
-import { idPipeline, type PipelineConnu } from "../donnees/pipelines";
+import { idPipeline, type PipelineConnu, type Rattachement } from "../donnees/pipelines";
 
 const TITRES: Record<string, string> = { marketing: "Plan marketing à deux voix" };
 
@@ -25,6 +25,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const prs = pullRequestsMaquette(maintenant);
   const commandes = new Map<string, Commande>();
   const nomsPipelines = new Map<string, string>();
+  const rattachements: Rattachement[] = [];
 
   return {
     ...discussionsMaquette(),
@@ -139,8 +140,22 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
         parId.set(id, p);
       }
       return {
+        projets: etat().topologie.projets.filter((p) => p.aFiche).map((p) => ({ id: p.id, nom: p.nom })),
+        peutRattacher: true,
+        rattachements: [...rattachements].reverse(),
         pipelines: [...parId.values()].map((p) => ({ ...p, nom: nomsPipelines.get(p.id) ?? p.titreRegistre, perso: nomsPipelines.has(p.id), versions: p.versions.sort((a, b) => a - b) })),
       };
+    },
+    async rattacherPipeline(pipeline, projet) {
+      const id = `rattachement-${rattachements.length + 1}`;
+      const ref = pipeline.includes("@") ? pipeline : `${pipeline}@1`;
+      // La maquette joue le publieur : la PR « s'ouvre » une seconde plus tard.
+      rattachements.push({ id, projet, pipeline: ref, statut: "pending", ok: null, raison: null, pr: null, par: "maquette", le: new Date(maintenant()).toISOString() });
+      setTimeout(() => {
+        const r = rattachements.find((x) => x.id === id);
+        if (r) Object.assign(r, { statut: "done", ok: true, pr: { numero: 107 + rattachements.indexOf(r), url: "https://github.com/" } });
+      }, 1000);
+      return { id, statut: "pending" };
     },
     async renommerPipeline(pipeline, nom) {
       const id = idPipeline(pipeline);
