@@ -440,9 +440,9 @@ test("signalement : sorties du tri invalides refusées", () => {
 
 // ---------- 4. Isolement et emballage du patch dans le job de Claude ----------
 
-function depotDeBase() {
+function depotDeBase(branche = "claude/fix-tests") {
   const dir = tmp("ci-autofix-depot-");
-  git(dir, "init", "-q", "-b", "claude/fix-tests");
+  git(dir, "init", "-q", "-b", branche);
   fs.mkdirSync(path.join(dir, "src"));
   fs.mkdirSync(path.join(dir, "test"));
   fs.mkdirSync(path.join(dir, ".claude"));
@@ -498,8 +498,8 @@ test("isolement : refuse un checkout qui n'est pas le SHA attendu", () => {
 
 // ---------- 5. Validation, commit et push dans le job de publication ----------
 
-function fabriquerPatch(modifier) {
-  const { dir, sha } = depotDeBase();
+function fabriquerPatch(modifier, branche) {
+  const { dir, sha } = depotDeBase(branche);
   const travail = tmp("ci-autofix-travail-");
   execFileSync("cp", ["-a", `${dir}/.`, travail]);
   modifier(travail);
@@ -509,13 +509,14 @@ function fabriquerPatch(modifier) {
 }
 
 function publierAvec(modifier, options = {}) {
-  const { origine, sha, patch } = fabriquerPatch(modifier);
-  // Dépôt distant : une branche claude/fix-tests sur le SHA en échec.
+  const branche = options.branche || "claude/fix-tests";
+  const { origine, sha, patch } = fabriquerPatch(modifier, branche);
+  // Dépôt distant : la branche testée sur le SHA en échec.
   const distant = tmp("ci-autofix-distant-");
   fs.mkdirSync(path.join(distant, "r"));
   execFileSync("git", ["clone", "-q", "--bare", origine, path.join(distant, "r/p.git")]);
   const config = {
-    pr: { state: "open", head: { sha, ref: "claude/fix-tests", repo: { full_name: "r/p" } }, base: { ref: "main" } },
+    pr: { state: "open", head: { sha, ref: branche, repo: { full_name: "r/p" } }, base: { ref: "main" } },
     prBouge: options.prBouge,
     echangeImpossible: options.echangeImpossible,
     porteeRefusee: options.porteeRefusee,
@@ -534,7 +535,7 @@ function publierAvec(modifier, options = {}) {
   options.paquet?.(paquet);
   const env = {
     ...e.env,
-    NUMERO: "60", SHA: sha, BRANCHE: "claude/fix-tests", RUN_ID: "100", TENTATIVE: "1",
+    NUMERO: "60", SHA: sha, BRANCHE: branche, RUN_ID: "100", TENTATIVE: "1",
     RESULTAT_AGENT: options.resultatAgent ?? "success", DEPOT: "depot",
     GITHUB_SERVER_URL: `file://${distant}`,
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token?api-version=2.0",
@@ -553,8 +554,43 @@ function publierAvec(modifier, options = {}) {
   const rapportEnv = { ...env, VERDICT: v.sorties.verdict ?? "", POUSSE: p?.sorties.pousse ?? "" };
   const rapport = executer(SCRIPT_RAPPORT, rapportEnv, travail);
   const fin = e.lire();
-  const brancheDistante = git(path.join(distant, "r/p.git"), "rev-parse", "refs/heads/claude/fix-tests");
-  return { valider, v, pousser, p, rapport, fin, sha, brancheDistante, depot: path.join(travail, "depot"), distant: path.join(distant, "r/p.git") };
+  const brancheDistante = git(path.join(distant, "r/p.git"), "rev-parse", `refs/heads/${branche}`);
+  return { valider, v, pousser, p, rapport, fin, sha, branche, brancheDistante, depot: path.join(travail, "depot"), distant: path.join(distant, "r/p.git") };
+}
+
+for (const prefixe of ["codex", "claude", "agent", "automation"]) {
+  test(`publication ${prefixe}/ : le correctif est poussé sur la branche exacte`, () => {
+    const r = publierAvec((d) => fs.writeFileSync(path.join(d, "src/app.js"), "module.exports = 2;\n"), {
+      branche: `${prefixe}/fix-tests`,
+    });
+    assert.equal(r.v.sorties.verdict, "ok", r.v.sorties.raison);
+    assert.equal(r.p.sorties.pousse, "oui");
+    assert.notEqual(r.brancheDistante, r.sha);
+    assert.match(git(r.distant, "log", "-1", "--format=%s", `refs/heads/${r.branche}`), /\[ci-autofix\]$/);
+    assert.equal(git(r.distant, "show", `${r.brancheDistante}:src/app.js`), "module.exports = 2;");
+    assert.equal(git(r.distant, "rev-parse", `${r.brancheDistante}^`), r.sha);
+  });
+  test(`publication ${prefixe}/ : un workflow sensible reste refusé avant demande de jeton`, () => {
+    const r = publierAvec((d) => {
+      fs.mkdirSync(path.join(d, ".github/workflows"), { recursive: true });
+      fs.writeFileSync(path.join(d, ".github/workflows/intrus.yml"), "name: intrus\n");
+    }, { branche: `${prefixe}/fix-tests` });
+    assert.equal(r.v.sorties.verdict, "refus");
+    assert.equal(r.pousser, null);
+    assert.equal(r.brancheDistante, r.sha);
+    assert.equal(r.fin.curl.length, 0);
+  });
+}
+
+for (const branche of ["feature/fix-tests", "main"]) {
+  test(`publication : branche ${branche} hors préfixes refusée avant demande de jeton`, () => {
+    const r = publierAvec((d) => fs.writeFileSync(path.join(d, "src/app.js"), "module.exports = 2;\n"), { branche });
+    assert.equal(r.v.sorties.verdict, "refus");
+    assert.match(r.v.sorties.raison, /branche non admise/);
+    assert.equal(r.pousser, null);
+    assert.equal(r.brancheDistante, r.sha);
+    assert.equal(r.fin.curl.length, 0);
+  });
 }
 
 test("publication nominale : commit [ci-autofix] sur le SHA, poussé sur la seule branche validée", () => {
