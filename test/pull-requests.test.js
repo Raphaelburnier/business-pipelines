@@ -314,3 +314,51 @@ test("le script CI refuse une tête seule, de mauvais parents et une base devenu
   git("checkout", "-q", "integration");
   assert.notStrictEqual(lancer().status, 0, "le merge devenu ancien échoue");
 });
+
+test("le publieur écrit à l'agent d'une PR seulement sur la tête lue", async () => {
+  const poste = [];
+  const { api } = faussesAPI({ changer: ({ methode, chemin, corps }) => {
+    if (methode === "POST" && chemin === `/repos/${DEPOT}/issues/60/comments`) {
+      poste.push(corps);
+      return { html_url: "https://github.com/c/1" };
+    }
+    return undefined;
+  } });
+  const fait = await pullRequests.commenter({ api, demande: { depot: DEPOT, numero: 60, sha: SHA, corps: "@claude corrige le test" } });
+  assert.deepStrictEqual(fait, { depot: DEPOT, numero: 60, sha: SHA, url: "https://github.com/c/1" });
+  assert.deepStrictEqual(poste, [{ body: "@claude corrige le test" }]);
+  await assert.rejects(() => pullRequests.commenter({ api, demande: { depot: DEPOT, numero: 60, sha: "1".repeat(40), corps: "x" } }), /tête a changé/);
+  assert.strictEqual(poste.length, 1);
+});
+
+test("les conseillers du chat relancent une CI et écrivent aux agents par les contrôles de l'écran", async () => {
+  const chatOutils = require("../src/chat-outils");
+  const { api } = faussesAPI({ ci: "failure" });
+  const b = bac({ releve: await pullRequests.relever({ api, depots: [DEPOT] }) });
+  const dir = path.dirname(b.instantaneFichier);
+  const env = { ORCH_EVENT_STORE: path.join(dir, "events.sqlite"), LIVRAISON_AUTORISES_FICHIER: b.autorisesFichier };
+
+  assert.strictEqual(chatOutils.agir(b.store, { qui: RAPHAEL, agent: "claude", env: { ...env, COCKPIT_CHAT_AGIR: "0" } }), null);
+  const agir = chatOutils.agir(b.store, { qui: RAPHAEL, agent: "claude", env });
+  assert.deepStrictEqual(Object.keys(agir).sort(), ["consignerRun", "ecrireEquipe", "ecrirePR", "relancerCI"]);
+
+  const ci = agir.relancerCI({ depot: DEPOT, numero: 60, sha: SHA });
+  const relance = b.store.commande(ci.commande);
+  assert.strictEqual(relance.kind, "github.ci.rerun");
+  assert.strictEqual(relance.par, RAPHAEL.par);
+  assert.deepStrictEqual(relance.payload, { depot: DEPOT, numero: 60, sha: SHA, runId: 100, tentative: 1 });
+
+  const mot = agir.ecrirePR({ depot: DEPOT, numero: 60, sha: SHA, message: "Le test tier échoue : corrige-le." });
+  const commentaire = b.store.commande(mot.commande);
+  assert.strictEqual(commentaire.kind, "github.pr.comment");
+  assert.match(commentaire.payload.corps, /^@claude Le test tier échoue : corrige-le\.\n\n\(Claude, conseiller du cockpit, à la demande de raphael@example\.com\)$/);
+  assert.throws(() => agir.ecrirePR({ depot: DEPOT, numero: 60, sha: "1".repeat(40), message: "x" }), /a bougé/);
+
+  const intrus = chatOutils.agir(b.store, { qui: { par: "inconnu@example.com", canal: "tailnet" }, agent: "codex", env });
+  assert.throws(() => intrus.ecrirePR({ depot: DEPOT, numero: 60, sha: SHA, message: "x" }), /autorisée/);
+  assert.throws(() => intrus.relancerCI({ depot: DEPOT, numero: 60, sha: SHA }), /autorisée/);
+
+  assert.strictEqual(chatOutils.mentionAgent("codex/fix"), "@codex");
+  assert.strictEqual(chatOutils.mentionAgent("automation/x"), "@claude");
+  assert.strictEqual(chatOutils.mentionAgent("feature/x"), null);
+});

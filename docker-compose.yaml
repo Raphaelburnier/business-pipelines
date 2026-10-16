@@ -89,6 +89,9 @@ services:
       # jeton brut à l'image. Ce fichier seul, pas tout specs/ : les agents de ce conteneur
       # ont Bash, et specs/ contient les .env des autres projets et le jeton d'abonnement.
       - ./specs/workers.json:/app/specs/workers.json:ro
+      # Qui peut relancer une CI ou écrire sur une PR : les conseillers de « Demander »
+      # agissent au nom de la question, et leur droit se lit ici comme pour les boutons.
+      - ./specs/livraison.json:/app/specs/livraison.json:ro
       - ./projects:/app/projects:ro
       - ./agent-registry:/app/agent-registry:ro
       - ./workspaces:/app/workspaces

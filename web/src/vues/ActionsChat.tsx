@@ -1,6 +1,8 @@
-// Les actions qu'un conseiller de « Demander » propose sous sa réponse. Le conseiller n'a rien
-// lancé : chaque carte relit l'état réel au moment du clic et passe par la route habituelle
-// du cockpit, avec ses contrôles (identité tailnet, versions affichées, CI revérifiée).
+// Les actions d'un conseiller de « Demander », sous sa réponse. Mission, livraison et fusion
+// sont des propositions : chaque carte relit l'état réel au moment du clic et passe par la
+// route habituelle du cockpit, avec ses contrôles (identité tailnet, versions, CI revérifiée).
+// Relancer une CI et écrire aux agents, le conseiller le fait lui-même : la carte en garde la
+// trace, faite ou refusée, et renvoie là où l'issue se lit.
 import { useState } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { deposerSpecChat } from "../donnees/specChat";
@@ -137,6 +139,29 @@ function CarteFusion({ action, aller }: { action: Action<"fusion">; aller: (href
   );
 }
 
+const LIBELLES: Record<Action<"execution">["action"], { titre: string; suivre: string | null }> = {
+  ci: { titre: "CI relancée", suivre: "/decisions" },
+  message_pr: { titre: "Message à l'agent de la PR", suivre: "/decisions" },
+  message_equipe: { titre: "Message à l'équipe", suivre: null },
+  consigne_run: { titre: "Consigne au run", suivre: "/decisions" },
+};
+
+function CarteExecution({ action, aller }: { action: Action<"execution">; aller: (href: string) => void }) {
+  const libelle = LIBELLES[action.action];
+  return (
+    <div className={`flex flex-col gap-1 rounded-lg border p-3 text-sm ${action.ok ? "border-trait bg-surface" : "border-danger bg-surface"}`}>
+      <p className="font-semibold">
+        {action.ok ? "Fait" : "Refusé"} · {libelle.titre} · <span className="font-mono text-xs">{action.cible}</span>
+      </p>
+      <p className={action.ok ? "text-xs" : "text-xs text-danger"}>{action.detail}</p>
+      <Raison texte={action.raison} />
+      {action.ok && libelle.suivre && (
+        <button type="button" onClick={() => aller(libelle.suivre ?? "/")} className={secondaire}>Suivre l'issue</button>
+      )}
+    </div>
+  );
+}
+
 export function ActionsChat({ actions, aller }: { actions: ActionChat[]; aller: (href: string) => void }) {
   if (!actions.length) return null;
   return (
@@ -144,6 +169,7 @@ export function ActionsChat({ actions, aller }: { actions: ActionChat[]; aller: 
       {actions.map((a) =>
         a.type === "mission" ? <CarteMission key={a.id} action={a} aller={aller} />
         : a.type === "livraison" ? <CarteLivraison key={a.id} action={a} aller={aller} />
+        : a.type === "execution" ? <CarteExecution key={a.id} action={a} aller={aller} />
         : <CarteFusion key={a.id} action={a} aller={aller} />
       )}
     </div>
