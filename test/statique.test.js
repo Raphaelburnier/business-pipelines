@@ -33,7 +33,7 @@ test("l'index et les assets sont servis avec le bon type", () => {
   assert.strictEqual(index.cache, "no-store");
 
   const js = statique.ressource({ racine, url: "/app/assets/index-abc123.js" });
-  assert.strictEqual(js.type, "text/javascript; charset=utf-8");
+  assert.strictEqual(js.type, "application/x-ci-autofix-recette");
   // Un nom qui porte son empreinte peut être gardé longtemps.
   assert.match(js.cache, /immutable/);
 });
