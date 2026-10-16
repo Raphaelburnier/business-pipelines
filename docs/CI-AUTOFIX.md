@@ -1,10 +1,17 @@
 # Correction automatique des échecs CI
 
-`.github/workflows/ci-autofix.yml` renvoie une CI rouge à l'agent qui a ouvert la branche.
-Une branche `codex/` reçoit un commentaire `@codex` avec le log. Une branche `claude/`,
-`agent/` ou `automation/` reçoit un correctif proposé par Claude, publié seulement s'il passe
-les contrôles. Le cockpit peut relancer les jobs échoués : un nouvel échec est alors une
-nouvelle tentative de CI, transmise à son tour.
+`.github/workflows/ci-autofix.yml` déclenche une correction cloud quand la CI d'une PR
+sur une branche `codex/`, `claude/`, `agent/` ou `automation/` échoue. Claude propose un
+patch dans le job `corriger`, puis `publier` le contrôle et le pousse sur la branche.
+Il s'agit d'un agent distinct de la session qui a ouvert la PR. Aucune reprise de cette
+session et aucun environnement Codex Cloud ne sont nécessaires.
+
+Le précédent chemin `codex/` publiait seulement un commentaire `@codex`. Sur la PR #92,
+le connecteur a répondu « create an environment for this repo » : le signalement était
+vert sans tâche de correction. Depuis cette correction, tous les préfixes utilisent le
+circuit Claude déjà vérifié jusqu'au push et à la CI verte sur la PR #90.
+Le cockpit peut relancer les jobs échoués : un nouvel échec est alors une nouvelle
+tentative de CI, transmise à son tour.
 
 Le contenu de la branche n'est pas fiable. Le code, les tests, la documentation, les fichiers
 d'instructions et la sortie des tests (donc le log) peuvent contenir des consignes destinées à
@@ -19,7 +26,6 @@ CI (pull_request) en échec
   └─ trier      lecture seule, aucun code de la PR exécuté
        ├─ rien     (hors périmètre, déjà traité, PR fermée ou déplacée…)
        ├─ boucle → signaler : arrêt commenté sur la PR
-       ├─ codex  → signaler : commentaire @codex avec le log nettoyé
        └─ claude → signaler : marqueur de transmission
                    └─ corriger : Claude propose un patch (sans droit d'écriture)
                         └─ publier : validation, commit [ci-autofix], push, compte rendu
@@ -32,7 +38,7 @@ Le workflow déclare `permissions: {}` ; chaque job ouvre les siennes.
 | Job | Jeton GitHub | Secret | Exécute le code de la PR | Rôle |
 |---|---|---|---|---|
 | `trier` | `actions: read`, `contents: read`, `pull-requests: read` | aucun | non | relit le run, la PR, les commits et les commentaires ; collecte et nettoie le log |
-| `signaler` | `pull-requests: write` | aucun | non | poste le marqueur, l'arrêt ou la transmission à Codex |
+| `signaler` | `pull-requests: write` | aucun | non | poste le marqueur de correction ou l'arrêt |
 | `corriger` | `contents: read` | `CLAUDE_CODE_OAUTH_TOKEN`, à la seule étape Claude | l'agent le lit, ne l'exécute pas | produit un patch |
 | `publier` | `contents: read`, `pull-requests: write`, `id-token: write` | jeton de l'app Claude, obtenu par OIDC dans ce job, puis révoqué | non | valide, commite, pousse, rend compte |
 
@@ -146,13 +152,13 @@ correctif refusé reste sept jours dans les artefacts du run.
   agir sur les étapes suivantes du même job. Les étapes sensibles neutralisent les variables
   connues, mais un job GitHub n'offre pas d'isolement complet entre ses étapes. Aucun workflow
   du dépôt n'utilise `actions/cache` ; en ajouter un demande de revoir ce point.
-- Codex reçoit un log nettoyé et agit hors de ce dépôt avec ses propres droits : ce workflow ne
-  les contrôle pas.
+- Toutes les corrections utilisent l'abonnement Claude configuré dans le dépôt, y compris
+  pour les PR ouvertes par Codex. Un quota épuisé ou un jeton expiré fait échouer le job
+  `corriger` ; le compte rendu sur la PR indique alors que rien n'a été publié.
 - Sur GitHub Free privé, rien n'empêche un push direct hors de ce workflow.
-- `claude.yml` (mentions `@claude`) et `claude-code-review.yml` ne sont pas modifiés ici. Les
-  cinq autres dépôts qui portent une copie de l'ancien `ci-autofix.yml` (agent-orchestrator,
-  agent-registry, steam_tierList, tcg-generator, Saas-generator) restent à aligner, par une PR
-  dédiée chacun.
+- `claude.yml` (mentions `@claude`) et `claude-code-review.yml` ne sont pas modifiés ici.
+  Les copies de `ci-autofix.yml` dans agent-orchestrator, agent-registry, steam_tierList,
+  tcg-generator et Saas-generator doivent suivre ce même routage, par une PR dédiée chacun.
 
 ## Recette après fusion
 
@@ -166,7 +172,8 @@ la fusion.
 3. Même PR, CI encore rouge sur le commit `[ci-autofix]` : commentaire d'arrêt, rien d'autre.
    Le cockpit affiche « escaladée ».
 4. Relance depuis le cockpit : la tentative 2 est transmise une fois, pas deux.
-5. Branche `codex/` en échec : commentaire `@codex` avec un log sans mention ni séquence de
-   contrôle.
+5. Branche `codex/` en échec : les jobs `corriger` et `publier` tournent comme pour `claude/` ;
+   un commit `[ci-autofix]` arrive et la CI redevient verte, sans mention `@codex`.
+   Un commentaire seul ne prouve pas la correction.
 6. Branche `claude/` qui ajoute `.claude/settings.json` avec un hook : le log de `corriger`
    montre la suppression, le hook ne tourne pas.

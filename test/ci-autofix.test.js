@@ -284,10 +284,23 @@ test("tri nominal : la PR claude/ est confiée à Claude avec un log nettoyé", 
   assert.equal(r.posts.length, 0, "le tri n'écrit rien");
 });
 
-test("tri : une branche codex/ part chez Codex", () => {
-  const r = trierAvec({ branche: "codex/fix" });
-  assert.equal(r.sorties.decision, "codex", r.resume);
-});
+for (const prefixe of ["codex", "claude", "agent", "automation"]) {
+  test(`tri : ${prefixe}/ déclenche une correction cloud, sans connecteur Codex`, () => {
+    const r = trierAvec({ branche: `${prefixe}/fix` });
+    assert.equal(r.sorties.decision, "claude", r.resume);
+    assert.match(corriger.if, /needs\.trier\.outputs\.decision == 'claude'/);
+    const signal = signalerAvec(r.sorties.decision);
+    assert.equal(signal.status, 0, signal.stderr);
+    assert.match(signal.posts[0].corps, /Claude prépare un correctif/);
+    assert.doesNotMatch(signal.posts[0].corps, /@codex/);
+  });
+  test(`tri : ${prefixe}/ conserve la limite de trois corrections cloud`, () => {
+    const r = trierAvec({ branche: `${prefixe}/fix`, modifier: (c) => {
+      c.commits = Array.from({ length: 3 }, () => ({ commit: { message: "fix: x [ci-autofix]" } }));
+    } });
+    assert.equal(r.sorties.decision, "boucle", r.resume);
+  });
+}
 
 for (const [nom, modif, raison] of [
   ["autre workflow", { modifier: (c) => { c.event.workflow_run.name = "Deploy"; } }, /pas le workflow CI/],
@@ -375,18 +388,9 @@ function signalerAvec(decision, modif = {}) {
   return { ...r, ...e.lire() };
 }
 
-test("signalement Codex : marqueur, mention et log nettoyé dans un bloc", () => {
+test("signalement : l'ancien routage Codex ne peut plus annoncer une transmission sans correcteur", () => {
   const r = signalerAvec("codex");
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.posts.length, 1);
-  assert.equal(r.posts[0].route, "repos/r/p/issues/60/comments");
-  assert.match(r.posts[0].corps, new RegExp(`^<!-- ci-autofix:${SHA}:1 -->\n@codex `));
-  assert.match(r.posts[0].corps, /```\nnot ok 1 - route\n```/);
-});
-
-test("signalement Codex : rien si la PR a bougé depuis l'échec", () => {
-  const r = signalerAvec("codex", { prBouge: true });
-  assert.equal(r.status, 0, r.stderr);
+  assert.notEqual(r.status, 0);
   assert.equal(r.posts.length, 0);
 });
 
