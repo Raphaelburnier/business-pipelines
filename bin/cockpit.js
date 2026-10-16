@@ -59,6 +59,9 @@ const { creerRouteurConseiller } = require("../src/api-conseiller");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
 const pipelinesNoms = require("../src/pipelines-noms");
+const rattachements = require("../src/rattachements");
+// Le dépôt du cockpit, où le publieur propose les fiches projet modifiées.
+const DEPOT_COCKPIT = process.env.COCKPIT_DEPOT || "Raphaelburnier/business-pipelines";
 const { dossierRegistre } = require("agent-orchestrator/src/registre");
 const missions = require("../src/missions");
 const discussions = require("../src/discussions-equipe");
@@ -831,8 +834,31 @@ async function traiter(req, res) {
           fiches: api.lireFiches(PROJETS).fiches,
           runs: magasinOuvert ? api.runs(magasinOuvert, { limite: 1000 }) : [],
         }),
+        projets: api.lireFiches(PROJETS).fiches.map((f) => ({ id: f.id, nom: f.name })),
+        peutRattacher: apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES),
+        rattachements: rattachements.etat(magasinOuvert),
       });
     } catch (err) {
+      return json(res, 500, { erreur: err.message });
+    }
+  }
+
+  if (req.method === "POST" && chemin === "/api/pipelines/rattacher") {
+    const corps = await corpsJson(req, res);
+    if (!corps) return undefined;
+    try {
+      const commande = rattachements.demander({
+        store: store(),
+        projetsDir: PROJETS,
+        dossierRegistre: dossierRegistre(),
+        depot: DEPOT_COCKPIT,
+        autorise: apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES),
+        qui,
+        demande: corps,
+      });
+      return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
+    } catch (err) {
+      if (err instanceof rattachements.RefusRattachement) return json(res, err.code, { erreur: err.message });
       return json(res, 500, { erreur: err.message });
     }
   }
