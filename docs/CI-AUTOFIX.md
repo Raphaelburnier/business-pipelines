@@ -10,6 +10,12 @@ Le précédent chemin `codex/` publiait seulement un commentaire `@codex`. Sur l
 le connecteur a répondu « create an environment for this repo » : le signalement était
 vert sans tâche de correction. Depuis cette correction, tous les préfixes utilisent le
 circuit Claude déjà vérifié jusqu'au push et à la CI verte sur la PR #90.
+La recette #116 a ensuite montré que le validateur de publication excluait encore
+`codex/` : Claude produisait le bon patch, puis `publier` le refusait avec « branche
+non admise ». La même liste de quatre préfixes est désormais vérifiée au tri et à
+la publication. Les tests exécutent le commit et le push sur un dépôt temporaire
+pour chacun des quatre préfixes ; les branches hors périmètre et les fichiers
+sensibles restent refusés avant toute demande de jeton.
 Le cockpit peut relancer les jobs échoués : un nouvel échec est alors une nouvelle
 tentative de CI, transmise à son tour.
 
