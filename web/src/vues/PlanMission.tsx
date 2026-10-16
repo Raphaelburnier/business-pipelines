@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { suivreCommande } from "../donnees/lancement";
 import { lignes, specStructuree, type PropositionPlan, type SpecMission } from "../donnees/missions";
+import { lireSpecChat, oublierSpecChat } from "../donnees/specChat";
 import { Erreur, Titre } from "../ui";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
@@ -13,15 +14,18 @@ const ROLES: Record<string, string> = { planification: "Planification", developp
 export function PlanMission({ projetInitial, aller }: { projetInitial: string | null; aller: (href: string) => void }) {
   const { source } = useSource();
   const topo = useCharge((s) => s.topologie(), []);
-  const [projetId, setProjetId] = useState(projetInitial ?? "");
-  const [nature, setNature] = useState<"" | "developpement" | "marketing" | "finance">("");
-  const [objectif, setObjectif] = useState("");
-  const [criteres, setCriteres] = useState("");
-  const [document, setDocument] = useState("");
-  const [directives, setDirectives] = useState("");
-  const [exclusions, setExclusions] = useState("");
-  const [contexte, setContexte] = useState("{}");
-  const [securite, setSecurite] = useState(false);
+  // Une spec écrite par un conseiller de « Demander » préremplit le formulaire, une fois.
+  const [depuisChat] = useState(() => lireSpecChat());
+  useEffect(() => oublierSpecChat(), []);
+  const [projetId, setProjetId] = useState(depuisChat?.projectId ?? projetInitial ?? "");
+  const [nature, setNature] = useState<"" | "developpement" | "marketing" | "finance">(depuisChat?.nature ?? "");
+  const [objectif, setObjectif] = useState(depuisChat?.objectif ?? "");
+  const [criteres, setCriteres] = useState((depuisChat?.criteres ?? []).join("\n"));
+  const [document, setDocument] = useState(depuisChat?.document ?? "");
+  const [directives, setDirectives] = useState(depuisChat?.directives ?? "");
+  const [exclusions, setExclusions] = useState(depuisChat?.exclusions ?? "");
+  const [contexte, setContexte] = useState(depuisChat?.contexte && Object.keys(depuisChat.contexte).length ? JSON.stringify(depuisChat.contexte, null, 2) : "{}");
+  const [securite, setSecurite] = useState(Boolean(depuisChat?.exigences?.includes("revue-securite")));
   const [proposition, setProposition] = useState<{ spec: SpecMission; reponse: PropositionPlan } | null>(null);
   const [accepte, setAccepte] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -52,7 +56,9 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
     setErreur(null);
     try {
       const spec: SpecMission = { projectId: projetId, objectif: objectif.trim(), criteres: lignes(criteres), document, directives, exclusions,
-        contexte: specStructuree(contexte), exigences: securite ? ["revue-securite"] : [], ...(nature ? { nature } : {}) };
+        contexte: specStructuree(contexte), exigences: securite ? ["revue-securite"] : [], ...(nature ? { nature } : {}),
+        // Le formulaire n'expose pas les runtimes exclus : ceux d'une spec du chat sont gardés.
+        ...(depuisChat?.runtimesExclus?.length ? { runtimesExclus: depuisChat.runtimesExclus } : {}) };
       if (!spec.projectId || !spec.objectif || !spec.criteres.length) throw new Error("Choisis le projet, l'objectif et au moins un critère de réussite.");
       setAttente(true);
       setProposition({ spec, reponse: await source.proposerPlan(spec) });
@@ -74,6 +80,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
 
   const r = proposition?.reponse;
   return <div className="flex flex-col gap-4">
+    {depuisChat && <p className="rounded-lg border border-trait bg-carte p-3 text-sm">Spec rédigée dans « Demander ». Relis-la, puis propose le plan : rien n'est lancé avant ton clic sur « Lancer ce plan ».</p>}
     <form onSubmit={proposer} className="flex flex-col gap-4">
       <fieldset disabled={attente || Boolean(commandeId)} className="flex flex-col gap-4 disabled:opacity-70">
         {topo.erreur && <Erreur>{topo.erreur}</Erreur>}

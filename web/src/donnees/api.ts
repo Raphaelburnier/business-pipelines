@@ -107,8 +107,8 @@ export function sourceApi(): Source {
         if (minuterie) clearInterval(minuterie);
       };
     },
-    poser: (contenu, filId = null) =>
-      ecrire<FilDetaille>(filId ? `/api/chat/${encodeURIComponent(filId)}/messages` : "/api/chat", { contenu }),
+    poser: (contenu, filId = null, agent = "cockpit") =>
+      ecrire<FilDetaille>(filId ? `/api/chat/${encodeURIComponent(filId)}/messages` : "/api/chat", { contenu, agent }),
     async lancerRun(projectId, pipelineIndex = 0, llm = null) {
       const corps = llm ? { projectId, pipelineIndex, llmOverrides: { "*": llm } } : { projectId, pipelineIndex };
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", corps);

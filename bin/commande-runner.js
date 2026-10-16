@@ -6,7 +6,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWorkers, wol } = require("agent-orchestrator");
 const api = require("../src/api-lecture");
-const conseiller = require("../src/conseiller");
+const chatOutils = require("../src/chat-outils");
 const registre = require("agent-orchestrator/src/registre");
 const { reprendreRun } = require("../src/reprises-runs");
 
@@ -15,8 +15,14 @@ const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects")
 const STORE = process.env.ORCH_EVENT_STORE || path.join(RACINE, "etat", "events.sqlite");
 const INTERVALLE = Number(process.env.COMMAND_POLL_MS || 1000);
 const MODELE_CHAT = process.env.COCKPIT_CHAT_MODELE || "sonnet";
-// Même emplacement que dans bin/cockpit.js : à côté de l'event store.
-const CONSEILLER_BASE = process.env.CONSEILLER_BASE || path.join(path.dirname(STORE), "conseiller.sqlite");
+// Les conseillers de « Demander » : Claude garde sa réflexion adaptative, à cet effort ;
+// Codex tourne sur l'abonnement connecté dans ce conteneur (codex login).
+const MODELE_CLAUDE = process.env.COCKPIT_CHAT_CLAUDE_MODELE || "opus";
+const EFFORT_CLAUDE = process.env.COCKPIT_CHAT_CLAUDE_EFFORT || "high";
+const MODELE_CODEX = process.env.COCKPIT_CHAT_CODEX_MODELE || "gpt-5.6-terra:high";
+// Codex ne transmet pas tout l'environnement aux serveurs MCP qu'il lance : le script des
+// outils reçoit explicitement de quoi retrouver la base, les projets, l'équipe et le vault.
+const ENV_OUTILS = ["ORCH_EVENT_STORE", "ORCH_REGISTRE", "ORCH_MACHINE", "COCKPIT_PROJETS_DIR", "COCKPIT_EQUIPE_ROSTER", "COCKPIT_VIA_MACHINES", "CONSEILLER_BASE"];
 const CODES_ATTENDUS = new Set([0, 75, 76, 77, 78]);
 
 let arret = false;
@@ -81,29 +87,31 @@ function contexteCockpit(store) {
   };
 }
 
-// Les outils du chat lisent par les mêmes fonctions que l'API : le chat voit ce que voit
-// l'écran, jamais plus. Le vault est l'index que l'agent du PC tient à jour sur le NAS
-// (src/vault-index.js), dans son périmètre : sans cette base, le chat n'a pas d'outil vault.
-function outilsCockpit(store) {
-  return cockpitRead.serveurCockpitRead({
-    store,
-    runs: ({ projet, statut, limite }) => api.runs(store, { projet, statut, limite }),
-    run: (id) => api.run(store, id),
-    etat: () => ({ machines: api.machines(store), usage: api.usage(store) }),
-    vault: fs.existsSync(CONSEILLER_BASE) ? conseiller.vaultPourChat(CONSEILLER_BASE) : null,
-  });
+// Les outils du chat lisent par les mêmes fonctions que l'API (src/chat-outils.js) : le chat
+// voit ce que voit l'écran, jamais plus. `propositions` n'est fourni qu'aux conseillers.
+function outilsCockpit(store, { propositions = null } = {}) {
+  return cockpitRead.serveurCockpitRead({ ...chatOutils.sources(store), propositions });
+}
+
+// Le serveur stdio que Codex lance, et les noms de ses outils pour le prompt.
+function codexChat(store) {
+  const noms = cockpitRead.definitionsOutils({ ...chatOutils.sources(store), propositions: { ajouter: () => undefined, nombre: () => 0 } }).map((o) => o.nom);
+  const env = Object.fromEntries(ENV_OUTILS.filter((k) => process.env[k]).map((k) => [k, String(process.env[k])]));
+  return {
+    modele: MODELE_CODEX,
+    outils: noms,
+    mcp: (fichier) => ({ command: process.execPath, args: [path.join(RACINE, "bin", "chat-outils-mcp.js"), fichier], env }),
+  };
 }
 
 async function repondre(store, commande) {
-  const { threadId, responseMessageId } = commande.payload;
-  return chat.repondreChat({
-    store,
-    threadId,
-    responseMessageId,
-    contexte: contexteCockpit(store),
-    modele: MODELE_CHAT,
-    outils: await outilsCockpit(store),
-  });
+  const { threadId, responseMessageId, agent = "cockpit" } = commande.payload;
+  const commun = { store, threadId, responseMessageId, agent };
+  if (agent === "claude") {
+    return chat.repondreChat({ ...commun, modele: MODELE_CLAUDE, effort: EFFORT_CLAUDE, outils: ({ propositions }) => outilsCockpit(store, { propositions }) });
+  }
+  if (agent === "codex") return chat.repondreChat({ ...commun, codex: codexChat(store) });
+  return chat.repondreChat({ ...commun, contexte: contexteCockpit(store), modele: MODELE_CHAT, outils: await outilsCockpit(store) });
 }
 
 // Deux files dans le même processus : un run tient sa boucle pendant des minutes, une
