@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { financeRequest } from "./api";
+import { financeRequest, money } from "./api";
 
 type Entree = { id: string; projectId: string; publishedAt: string; reportSha256: string };
 type Rapport = Entree & {
@@ -60,8 +60,8 @@ export function Analyses() {
           <p className="fin-eyebrow">Rapport {selected.id} · {new Date(selected.publishedAt).toLocaleString("fr-CH")}</p>
           <p>{selected.validation?.version === 2 ? "Valeurs comparées au snapshot et contraintes relues par une session distincte. Les conclusions restent des analyses, sans garantie de performance." : "Rapport historique : contrôles de structure et références uniquement ; relecture de fond non attestée."}</p>
           {!!selected.report.metriques?.length && <><h3>Chiffres vérifiés dans le snapshot</h3>
-            <ul>{selected.report.metriques.map((m) => <li key={m.id}><strong>{m.id}</strong> : {m.value} {m.unit} {m.currency ?? ""} · {m.date}
-              <details><summary>Consulter la preuve</summary><p>Valeur exacte de {m.path}</p><p>Sources : {m.sources.join(", ")}</p>
+            <ul>{selected.report.metriques.map((m) => <li key={m.id}><strong>{m.id}</strong> : {m.unit === "minor" && m.currency ? money(m.value, m.currency) : `${m.value} ${m.unit} ${m.currency ?? ""}`} · {m.date}
+              <details><summary>Consulter la preuve</summary><p>Valeur exacte de {m.path} : {m.value} {m.unit === "minor" ? "centimes" : m.unit}</p><p>Sources : {m.sources.join(", ")}</p>
                 {selected.snapshot?.sources.filter((s) => m.sources.includes(s.id)).map((s) => <p key={s.id}>{s.id} · observée le {s.observedAt ?? "date non fournie"} · {s.limitations?.join(" ; ")}</p>)}
               </details></li>)}</ul></>}
           {!!selected.validation?.checks?.length && <details><summary>Preuves de relecture des exigences</summary>
