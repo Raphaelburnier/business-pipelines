@@ -22,7 +22,7 @@ const EFFORT_CLAUDE = process.env.COCKPIT_CHAT_CLAUDE_EFFORT || "high";
 const MODELE_CODEX = process.env.COCKPIT_CHAT_CODEX_MODELE || "gpt-5.6-terra:high";
 // Codex ne transmet pas tout l'environnement aux serveurs MCP qu'il lance : le script des
 // outils reçoit explicitement de quoi retrouver la base, les projets, l'équipe et le vault.
-const ENV_OUTILS = ["ORCH_EVENT_STORE", "ORCH_REGISTRE", "ORCH_MACHINE", "COCKPIT_PROJETS_DIR", "COCKPIT_EQUIPE_ROSTER", "COCKPIT_VIA_MACHINES", "CONSEILLER_BASE"];
+const ENV_OUTILS = ["ORCH_EVENT_STORE", "ORCH_REGISTRE", "ORCH_MACHINE", "COCKPIT_PROJETS_DIR", "COCKPIT_EQUIPE_ROSTER", "COCKPIT_VIA_MACHINES", "CONSEILLER_BASE", "LIVRAISON_AUTORISES_FICHIER", "COCKPIT_CHAT_AGIR"];
 const CODES_ATTENDUS = new Set([0, 75, 76, 77, 78]);
 
 let arret = false;
@@ -88,19 +88,28 @@ function contexteCockpit(store) {
 }
 
 // Les outils du chat lisent par les mêmes fonctions que l'API (src/chat-outils.js) : le chat
-// voit ce que voit l'écran, jamais plus. `propositions` n'est fourni qu'aux conseillers.
-function outilsCockpit(store, { propositions = null } = {}) {
-  return cockpitRead.serveurCockpitRead({ ...chatOutils.sources(store), propositions });
+// voit ce que voit l'écran, jamais plus. `propositions` et `agir` (relancer une CI, écrire
+// aux agents) ne vont qu'aux conseillers.
+function outilsCockpit(store, { propositions = null, agir = null } = {}) {
+  return cockpitRead.serveurCockpitRead({ ...chatOutils.sources(store), propositions, agir });
 }
 
-// Le serveur stdio que Codex lance, et les noms de ses outils pour le prompt.
-function codexChat(store) {
-  const noms = cockpitRead.definitionsOutils({ ...chatOutils.sources(store), propositions: { ajouter: () => undefined, nombre: () => 0 } }).map((o) => o.nom);
+// Le conseiller agit au nom de celui qui a posé la question, tel que le cockpit l'a établi.
+const agirPour = (store, commande, agent) => chatOutils.agir(store, { qui: { par: commande.par, canal: commande.canal }, agent });
+
+// Le serveur stdio que Codex lance, et les noms de ses outils pour le prompt. L'identité de
+// la question lui passe par l'environnement.
+function codexChat(store, commande) {
+  const agir = agirPour(store, commande, "codex");
+  const noms = cockpitRead.definitionsOutils({ ...chatOutils.sources(store), propositions: { ajouter: () => undefined, nombre: () => 0 }, agir }).map((o) => o.nom);
   const env = Object.fromEntries(ENV_OUTILS.filter((k) => process.env[k]).map((k) => [k, String(process.env[k])]));
+  if (agir) Object.assign(env, { COCKPIT_CHAT_PAR: String(commande.par), COCKPIT_CHAT_CANAL: String(commande.canal ?? "") });
   return {
     modele: MODELE_CODEX,
     outils: noms,
-    mcp: (fichier) => ({ command: process.execPath, args: [path.join(RACINE, "bin", "chat-outils-mcp.js"), fichier], env }),
+    // Avec approval_policy="never", Codex refuse un outil qui écrit tant que le serveur ne
+    // déclare pas ses outils approuvés : ici seulement relancer une CI et écrire aux agents.
+    mcp: (fichier) => ({ command: process.execPath, args: [path.join(RACINE, "bin", "chat-outils-mcp.js"), fichier], env, ...(agir ? { approbation: "approve" } : {}) }),
   };
 }
 
@@ -108,9 +117,10 @@ async function repondre(store, commande) {
   const { threadId, responseMessageId, agent = "cockpit" } = commande.payload;
   const commun = { store, threadId, responseMessageId, agent };
   if (agent === "claude") {
-    return chat.repondreChat({ ...commun, modele: MODELE_CLAUDE, effort: EFFORT_CLAUDE, outils: ({ propositions }) => outilsCockpit(store, { propositions }) });
+    const agir = agirPour(store, commande, agent);
+    return chat.repondreChat({ ...commun, modele: MODELE_CLAUDE, effort: EFFORT_CLAUDE, outils: ({ propositions }) => outilsCockpit(store, { propositions, agir }) });
   }
-  if (agent === "codex") return chat.repondreChat({ ...commun, codex: codexChat(store) });
+  if (agent === "codex") return chat.repondreChat({ ...commun, codex: codexChat(store, commande) });
   return chat.repondreChat({ ...commun, contexte: contexteCockpit(store), modele: MODELE_CHAT, outils: await outilsCockpit(store) });
 }
 

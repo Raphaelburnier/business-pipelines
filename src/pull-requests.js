@@ -269,6 +269,23 @@ async function relancerCI({ api, demande }) {
   return { ...resultat, statut: "relancee" };
 }
 
+/**
+ * Écrit à l'agent d'une PR (commande `github.pr.comment`, déposée par un conseiller du chat).
+ * Le message vise l'état lu : PR interne, ouverte, même tête, sinon rien n'est posté.
+ * @returns {Promise<{ depot: string, numero: number, sha: string, url: string|null }>}
+ */
+async function commenter({ api, demande }) {
+  const { depot, numero, sha, corps } = demande || {};
+  if (!DEPOT.test(String(depot)) || !Number.isInteger(numero) || numero < 1 || !SHA.test(String(sha)) || typeof corps !== "string" || !corps.trim()) {
+    throw new RefusFusion("demande de commentaire incomplète");
+  }
+  const pr = await api("GET", `/repos/${depot}/pulls/${numero}`);
+  if (pr.state !== "open" || pr.head?.sha !== sha) throw new RefusFusion("la PR est fermée ou sa tête a changé");
+  if (pr.head?.repo?.full_name?.toLowerCase() !== String(depot).toLowerCase()) throw new RefusFusion("PR d'un fork : pas de commentaire depuis le cockpit");
+  const commentaire = await api("POST", `/repos/${depot}/issues/${numero}/comments`, { body: corps });
+  return { depot, numero, sha, url: commentaire?.html_url || null };
+}
+
 const DEPOT =/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /**
@@ -353,6 +370,7 @@ module.exports = {
   raisonDeNePasFusionner,
   fusionner,
   relancerCI,
+  commenter,
   RefusFusion,
   depotsSurveilles,
   ecrireInstantane,
