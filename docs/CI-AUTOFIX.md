@@ -192,7 +192,6 @@ Les contrôles du dépôt, de la branche, du SHA et de tentative précèdent tou
 La recette du 17 octobre a reproduit le refus par défaut sur `claude[bot]` après une relance
 humaine (run39021317003). Le test de configuration impose cette valeur exacte.
 
-Cette recette a aussi exposé une incompatibilité préexistante de `ActionsChat` avec le
-nouveau type `execution` du moteur. Le rendu réserve désormais `CarteFusion` au type
-`fusion` ; les autres variantes ne sont pas transmises à ce composant. Le rendu complet
-des exécutions reste porté par la PR118 distincte.
+La recette a aussi reproduit une incompatibilité de `ActionsChat` avec le nouveau type
+`execution` du moteur. La PR118, fusionnée pendant la recette, fournit le rendu de cette
+variante ; ce correctif conserve son implémentation.
