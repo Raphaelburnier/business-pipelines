@@ -176,6 +176,7 @@ test("Claude travaille sur le SHA exact, sans écriture, sans shell ni réseau, 
 
   assert.match(ETAPE_CLAUDE.uses, /^anthropics\/claude-code-action@[0-9a-f]{40}( |$)/, "action épinglée par SHA");
   assert.equal(ETAPE_CLAUDE.with.github_token, "${{ github.token }}", "sans jeton fourni, l'action obtiendrait le jeton d'écriture de l'app");
+  assert.equal(ETAPE_CLAUDE.with.allowed_bots, "claude", "une relance humaine garde l’acteur original du push ; seule l’app de publication est admise");
   assert.equal(ETAPE_CLAUDE.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "1");
   const args = ETAPE_CLAUDE.with.claude_args;
   const autorises = args.match(/--allowedTools (\S+)/)[1].split(",");
