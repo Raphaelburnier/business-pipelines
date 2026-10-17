@@ -62,8 +62,8 @@ Conservés depuis la version précédente :
 - branche du dépôt lui-même, préfixe `codex/`, `claude/`, `agent/` ou `automation/` ;
 - PR ouverte dont la tête est le SHA exact du run en échec ;
 - une transmission par tentative de CI (`<!-- ci-autofix:<sha>:<tentative> -->`) ;
-- pas de seconde correction sur un échec d'un commit `[ci-autofix]` en première tentative ;
-  une relance depuis le cockpit (tentative suivante) est transmise ;
+- une CI encore rouge sur un commit `[ci-autofix]` déclenche une nouvelle correction
+  automatiquement, tant que le budget de la PR n'est pas épuisé ;
 - refus des chemins sensibles.
 
 Ajoutés :
@@ -75,7 +75,9 @@ Ajoutés :
 - le nom de branche suit un jeu de caractères fermé avant d'apparaître dans un prompt ou une
   commande ;
 - seuls les marqueurs postés par `github-actions[bot]` comptent pour la déduplication ;
-- au plus 3 commits `[ci-autofix]` par PR, relances comprises ;
+- au plus 3 démarrages du correcteur ET 3 commits `[ci-autofix]` par PR, relances comprises ;
+  les démarrages sont comptés via les marqueurs de transmission du workflow, même si
+  l'agent échoue ou produit un patch vide/refusé. Un commit humain ne remet pas ce budget à zéro ;
 - un échec limité à l'étape « Verify tested merge » (base périmée) n'appelle aucun agent :
   un commentaire demande de mettre la branche à jour. Relancer les jobs échoués depuis le
   cockpit réutilise l'ancien merge et échoue de la même façon dès que `main` a avancé ;
@@ -120,6 +122,10 @@ Dans `publier`, sur un checkout propre du SHA :
 
 Le compte rendu cite la note de Claude comme non vérifiée, sans HTML ni mention active. Un
 correctif refusé reste sept jours dans les artefacts du run.
+Si rien n'est poussé, le compte rendu porte `ci-autofix-echec:<sha>:<tentative>` : le cockpit
+affiche l'escalade même si aucun commit de correction n'existe. Une nouvelle transmission
+sur la même tête remplace cet arrêt ; un arrêt portant sur une ancienne tête ne bloque pas
+la tête courante. L'arrêt pour merge périmé reste distinct et demande une mise à jour de branche.
 
 ## Tests
 
@@ -162,7 +168,7 @@ correctif refusé reste sept jours dans les artefacts du run.
   pour les PR ouvertes par Codex. Un quota épuisé ou un jeton expiré fait échouer le job
   `corriger` ; le compte rendu sur la PR indique alors que rien n'a été publié.
 - Sur GitHub Free privé, rien n'empêche un push direct hors de ce workflow.
-- `claude.yml` (mentions `@claude`) et `claude-code-review.yml` ne sont pas modifiés ici.
+- `claude.yml` (mentions `@claude`) conserve son fonctionnement.
   Les copies de `ci-autofix.yml` dans agent-orchestrator, agent-registry, steam_tierList,
   tcg-generator et Saas-generator doivent suivre ce même routage, par une PR dédiée chacun.
 
@@ -175,9 +181,11 @@ la fusion.
 1. PR `claude/` de test avec un test volontairement cassé : les quatre jobs tournent, un commit
    `… [ci-autofix]` arrive sur la branche et la CI repart dessus.
 2. Résumé du job `publier` : noter si la portée réduite `contents: write` a été acceptée.
-3. Même PR, CI encore rouge sur le commit `[ci-autofix]` : commentaire d'arrêt, rien d'autre.
-   Le cockpit affiche « escaladée ».
-4. Relance depuis le cockpit : la tentative 2 est transmise une fois, pas deux.
+3. Même PR, CI encore rouge sur le commit `[ci-autofix]` : deuxième correcteur sans relance
+   humaine. Une nouvelle CI teste le nouveau commit. Après trois démarrages au plus, tout
+   nouvel échec est arrêté et le cockpit affiche « escaladée ».
+4. Relance depuis le cockpit : la tentative 2 est transmise une fois, pas deux, et seulement
+   s'il reste du budget. Vérifier aussi l'arrêt sans commit (quota, patch vide ou refusé).
 5. Branche `codex/` en échec : les jobs `corriger` et `publier` tournent comme pour `claude/` ;
    un commit `[ci-autofix]` arrive et la CI redevient verte, sans mention `@codex`.
    Un commentaire seul ne prouve pas la correction.
@@ -195,3 +203,16 @@ humaine (run39021317003). Le test de configuration impose cette valeur exacte.
 La recette a aussi reproduit une incompatibilité de `ActionsChat` avec le nouveau type
 `execution` du moteur. La PR118, fusionnée pendant la recette, fournit le rendu de cette
 variante ; ce correctif conserve son implémentation.
+
+## Revue après un correctif publié automatiquement
+
+`claude-code-review.yml` autorise uniquement `claude` dans `allowed_bots`, comme le correcteur.
+La revue tourne sur les PR internes prêtes à relire ; les brouillons sont ignorés. Un nouveau
+commit annule la revue précédente de la même PR ; chaque job reste limité à 30 minutes et
+40 tours. L'action est épinglée sur la même version que le correcteur, et le checkout ne
+conserve aucun identifiant. La revue reste consultative et distincte du workflow `CI`.
+
+La recette PR120 prouvait deux corrections avec une relance humaine entre les deux. Elle
+ne prouve pas encore la nouvelle succession automatique : après fusion de ce lot sensible,
+recetter deux erreurs successives sans relance et vérifier la revue sur le commit du bot.
+Un quota Claude épuisé reste un arrêt explicite : ce lot n'ajoute aucun basculement Codex.

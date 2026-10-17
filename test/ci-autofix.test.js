@@ -352,10 +352,10 @@ test("tri : un marqueur posté par un autre auteur ne bloque pas", () => {
   assert.equal(r.sorties.decision, "claude", r.resume);
 });
 
-test("tri : un échec sur un commit [ci-autofix] arrête la boucle", () => {
+test("tri : un échec sur un commit [ci-autofix] est repris automatiquement sous la limite", () => {
   const r = trierAvec({ modifier: (c) => { c.commit.commit.message = "fix: x [ci-autofix]"; } });
-  assert.equal(r.sorties.decision, "boucle");
-  assert.match(r.sorties.raison, /pas de seconde tentative/);
+  assert.equal(r.sorties.decision, "claude", r.resume);
+  assert.equal(r.sorties.tentative, "1");
 });
 
 test("tri : une relance humaine (tentative 2) d'un commit [ci-autofix] est retransmise", () => {
@@ -368,11 +368,13 @@ test("tri : une relance humaine (tentative 2) d'un commit [ci-autofix] est retra
   assert.equal(r.sorties.tentative, "2");
 });
 
-test("tri : au-delà de 3 corrections automatiques sur la PR, plus de Claude", () => {
+test("tri : après 3 appels même sans aucun commit, plus de Claude ni de contournement par relance", () => {
   const r = trierAvec({ modifier: (c) => {
     c.event.workflow_run.run_attempt = 3;
     c.run.run_attempt = 3;
-    c.commits = Array.from({ length: 3 }, () => ({ commit: { message: "fix: y [ci-autofix]" } }));
+    c.commentaires = ["b", "c", "d"].map((s) => ({
+      user: { login: "github-actions[bot]" }, body: `<!-- ci-autofix:${s.repeat(40)}:1 -->`,
+    }));
   } });
   assert.equal(r.sorties.decision, "boucle");
   assert.match(r.sorties.raison, /limite 3/);
