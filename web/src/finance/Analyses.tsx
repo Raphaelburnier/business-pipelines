@@ -3,8 +3,11 @@ import { financeRequest } from "./api";
 
 type Entree = { id: string; projectId: string; publishedAt: string; reportSha256: string };
 type Rapport = Entree & {
+  validation?: { version: number; sessions?: { auteur: string; reviewer: string }; checks?: { kind: string; text: string; status: string; expected: string; reason: string; observations: string[]; metriques: string[] }[] };
+  snapshot?: { sources: { id: string; observedAt?: string; limitations?: string[] }[] };
   report: {
     version: number; resume: string;
+    metriques?: { id: string; path: string; value: number; unit: string; currency: string | null; date: string; sources: string[] }[];
     observations: { id: string; question: string; texte: string; nature: string; sources: string[]; confiance: string }[];
     scenarios: { id: string; hypotheses: string[]; effets_possibles: string[]; risques: string[]; conditions_a_verifier: string[] }[];
     risques: string[]; limites: string[];
@@ -55,6 +58,16 @@ export function Analyses() {
         <article className="fin-report">
           <h3>Résumé</h3><p>{selected.report.resume}</p>
           <p className="fin-eyebrow">Rapport {selected.id} · {new Date(selected.publishedAt).toLocaleString("fr-CH")}</p>
+          <p>{selected.validation?.version === 2 ? "Valeurs comparées au snapshot et contraintes relues par une session distincte. Les conclusions restent des analyses, sans garantie de performance." : "Rapport historique : contrôles de structure et références uniquement ; relecture de fond non attestée."}</p>
+          {!!selected.report.metriques?.length && <><h3>Chiffres vérifiés dans le snapshot</h3>
+            <ul>{selected.report.metriques.map((m) => <li key={m.id}><strong>{m.id}</strong> : {m.value} {m.unit} {m.currency ?? ""} · {m.date}
+              <details><summary>Consulter la preuve</summary><p>Valeur exacte de {m.path}</p><p>Sources : {m.sources.join(", ")}</p>
+                {selected.snapshot?.sources.filter((s) => m.sources.includes(s.id)).map((s) => <p key={s.id}>{s.id} · observée le {s.observedAt ?? "date non fournie"} · {s.limitations?.join(" ; ")}</p>)}
+              </details></li>)}</ul></>}
+          {!!selected.validation?.checks?.length && <details><summary>Preuves de relecture des exigences</summary>
+            <p>Session indépendante : {selected.validation.sessions?.reviewer}</p>
+            {selected.validation.checks.map((c, i) => <section key={i}><h4>{c.text} · {c.status}</h4><p>Attendu : {c.expected}</p><p>{c.reason}</p><p>Observations : {c.observations.join(", ")} · métriques : {c.metriques.join(", ") || "aucune"}</p></section>)}
+          </details>}
           <h3>Observations</h3>
           {selected.report.observations.map((item) => <section key={item.id}><h4>{item.question}</h4><p>{item.texte}</p><small>{item.nature} · confiance {item.confiance} · sources : {item.sources.join(", ") || "aucune"}</small></section>)}
           <h3>Scénarios conditionnels</h3>

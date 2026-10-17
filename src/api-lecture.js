@@ -99,7 +99,7 @@ function run(store, runId) {
     ...ligneRun(store, brut),
     ...(mission ? { mission } : {}),
     // Critères du plan reliés aux étapes qui les réalisent et les jugent (src/planificateur.js).
-    ...(mission?.plan ? { criteres: require("./planificateur").resultatCriteres(mission.plan, etapes) } : {}),
+    ...(mission?.plan ? { criteres: require("./planificateur").resultatCriteres(mission.plan, etapes, derniers, arbreCourant(store, runId, derniers)) } : {}),
     etapes,
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
     revues: revues.vueRevues(derniers, arbreCourant(store, runId, derniers)),

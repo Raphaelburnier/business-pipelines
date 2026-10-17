@@ -5,5 +5,14 @@
   "homeMachine": "pc",
   "repo": "/git/finance.git",
   "publier": false,
-  "pipelines": [{"extends": "finance-research@1", "spec": "spec.json", "budget": {"usdPerRun": 2, "usdPerMonth": 20}}]
+  "pipelines": [
+    {
+      "extends": "finance-research@2",
+      "spec": "spec.json",
+      "budget": {
+        "usdPerRun": 2,
+        "usdPerMonth": 20
+      }
+    }
+  ]
 }

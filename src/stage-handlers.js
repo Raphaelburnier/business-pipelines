@@ -23,7 +23,7 @@ function cleDossier(stage) {
 const maintenant = (ctx) => (ctx.maintenant ? ctx.maintenant() : Date.now());
 
 const handlers = {};
-const financeHandlerNames = ["finance-snapshot", "finance-report-validate", "finance-report-publish"];
+const financeHandlerNames = ["finance-snapshot", "finance-report-check", "finance-report-validate", "finance-report-publish"];
 function financeConfig(env = process.env) {
   const storageRoot = path.resolve(env.FINANCE_STORAGE_ROOT || path.join(__dirname, "..", "etat", "finance"));
   return {

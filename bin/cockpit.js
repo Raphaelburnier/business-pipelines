@@ -333,7 +333,7 @@ try {
 }
 const financeDisponible = (handler, machine) =>
   machine === "nas" &&
-  ["finance-snapshot", "finance-report-validate", "finance-report-publish"].includes(handler) &&
+  ["finance-snapshot", "finance-report-check", "finance-report-validate", "finance-report-publish"].includes(handler) &&
   typeof stageHandlersFinance.handlers[handler] === "function" &&
   rapportsFinance !== null &&
   serviceFinance !== null &&
