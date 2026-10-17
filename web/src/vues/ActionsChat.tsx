@@ -144,7 +144,8 @@ export function ActionsChat({ actions, aller }: { actions: ActionChat[]; aller: 
       {actions.map((a) =>
         a.type === "mission" ? <CarteMission key={a.id} action={a} aller={aller} />
         : a.type === "livraison" ? <CarteLivraison key={a.id} action={a} aller={aller} />
-        : <CarteFusion key={a.id} action={a} aller={aller} />
+        : a.type === "fusion" ? <CarteFusion key={a.id} action={a} aller={aller} />
+        : null
       )}
     </div>
   );

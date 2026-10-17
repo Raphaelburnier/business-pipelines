@@ -183,3 +183,16 @@ la fusion.
    Un commentaire seul ne prouve pas la correction.
 6. Branche `claude/` qui ajoute `.claude/settings.json` avec un hook : le log de `corriger`
    montre la suppression, le hook ne tourne pas.
+
+## Relance d’un commit publié par l’application Claude
+
+L’acteur GitHub d’une CI reste celui du push initial même si une personne relance ses jobs.
+`corriger` autorise donc uniquement l’application `claude` dans `allowed_bots`, sans wildcard.
+Les contrôles du dépôt, de la branche, du SHA et de tentative précèdent toujours l’agent.
+La recette du 17 octobre a reproduit le refus par défaut sur `claude[bot]` après une relance
+humaine (run39021317003). Le test de configuration impose cette valeur exacte.
+
+Cette recette a aussi exposé une incompatibilité préexistante de `ActionsChat` avec le
+nouveau type `execution` du moteur. Le rendu réserve désormais `CarteFusion` au type
+`fusion` ; les autres variantes ne sont pas transmises à ce composant. Le rendu complet
+des exécutions reste porté par la PR118 distincte.

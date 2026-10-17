@@ -315,6 +315,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Jeton en lecture seule : sans lui, l'action obtiendrait par OIDC le jeton d'écriture de l'app.
           github_token: ${{ github.token }}
+          # Une relance humaine conserve l’acteur claude[bot] du commit corrigé.
+          allowed_bots: claude
           classify_inline_comments: "false"
           settings: |
             {
