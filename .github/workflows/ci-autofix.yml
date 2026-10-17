@@ -480,7 +480,7 @@ jobs:
 
           [[ "$NUMERO" =~ ^[1-9][0-9]{0,9}$ && "$SHA" =~ ^[0-9a-f]{40}$ && "$RUN_ID" =~ ^[1-9][0-9]{0,19}$ && "$TENTATIVE" =~ ^[1-9][0-9]{0,3}$ ]] \
             || conclure refus "sorties du tri invalides"
-          [[ "$BRANCHE" =~ ^(claude|agent|automation)/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ && "$BRANCHE" != *..* ]] \
+          [[ "$BRANCHE" =~ ^(codex|claude|agent|automation)/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ && "$BRANCHE" != *..* ]] \
             || conclure refus "branche non admise"
           [[ "$RESULTAT_AGENT" == "success" ]] || conclure echec "le job de Claude n'a pas abouti ($RESULTAT_AGENT)"
           for f in correctif.patch message.txt resume.md base.txt; do
