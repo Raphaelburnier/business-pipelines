@@ -30,7 +30,7 @@ const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUES
 // vérifie aussi, mais l'event store où arrive la commande est écrit par d'autres services.
 const AUTORISES = process.env.LIVRAISON_AUTORISES_FICHIER || path.join(RACINE, "specs", "livraison.json");
 const SONDE_COMMANDES_MS = 3000;
-const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun", rattachements.KIND];
+const COMMANDES_GITHUB = ["github.merge", "github.ci.rerun", "github.pr.comment", rattachements.KIND];
 // Le seul dépôt où un rattachement de pipeline peut écrire : celui des fiches du cockpit.
 const DEPOT_COCKPIT = process.env.COCKPIT_DEPOT || "Raphaelburnier/business-pipelines";
 // Une PR d'agent prête, non sensible, dont tests et revues couvrent la tête, est fusionnée par
@@ -204,6 +204,13 @@ async function servirFusions(store) {
       } catch (err) {
         resultat = { ok: false, raison: String(err.message).split("\n")[0] };
       }
+    } else if (commande.kind === "github.pr.comment") {
+      try {
+        const detail = await pullRequests.commenter({ api: apiFusion, demande: commande.payload });
+        resultat = { ok: true, detail };
+      } catch (err) {
+        resultat = { ok: false, raison: String(err.message).split("\n")[0] };
+      }
     } else if (commande.kind === "github.ci.rerun") {
       try {
         const detail = await pullRequests.relancerCI({ api: apiFusion, demande: { depot, numero, sha, runId, tentative } });
@@ -223,7 +230,8 @@ async function servirFusions(store) {
     if (commande.kind === rattachements.KIND) {
       console.log(`rattachement ${commande.payload.pipeline} → ${commande.payload.projet} demandé par ${commande.par} : ${resultat.ok ? `PR #${resultat.detail.numero}` : resultat.raison}`);
     } else {
-      console.log(`${commande.kind === "github.ci.rerun" ? "relance CI" : "fusion"} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? (resultat.detail?.statut || "faite") : resultat.raison}`);
+      const quoi = { "github.ci.rerun": "relance CI", "github.pr.comment": "commentaire" }[commande.kind] || "fusion";
+      console.log(`${quoi} ${depot}#${numero} demandée par ${commande.par} : ${resultat.ok ? (resultat.detail?.statut || "faite") : resultat.raison}`);
     }
     // Une fusion confirmée remonte au run sans attendre le passage suivant.
     await suivreLivraisons();
