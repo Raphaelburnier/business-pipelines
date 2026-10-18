@@ -27,25 +27,26 @@ const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.mod
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
 function natureDe(pipeline) {
   const nature = detection.natureLancable(pipeline);
-  if (nature === "finance") finance.validerFinance(pipeline);
+  if (nature) detection.reglesDe(nature).valider?.(pipeline);
   return nature;
 }
 
 /** Rôle de chaque nœud actif, déduit de la structure du pipeline. */
 function roles(pipeline, nature) {
+  const regles = detection.reglesDe(nature);
   const noeuds = pipeline.nodes.filter((n) => !n.disabled);
   const parId = new Map(noeuds.map((n) => [n.id, n]));
   const aretes = pipeline.edges || [];
-  const dev = new Set(noeuds.filter((n) => n.type === "agent" && nature === "developpement" && n.mustChange).map((n) => n.id));
+  const dev = new Set(noeuds.filter((n) => n.type === "agent" && regles.developpementParMustChange && n.mustChange).map((n) => n.id));
   const role = (n) => {
-    if (nature === "finance") return finance.roleFinance(n);
+    if (regles.roleDuNoeud) return regles.roleDuNoeud(n);
     if (n.type === "review") return "revue";
     if (n.type === "approval") return "decision";
     if (n.type === "script") return n.handler === "verify-project" ? "verification" : "controle";
     if (dev.has(n.id)) return "developpement";
     if (aretes.some((e) => e.from === n.id && dev.has(e.to))) return "planification";
     if (aretes.filter((e) => e.to === n.id && parId.get(e.from)?.type === "agent").length >= 2) return "synthese";
-    return nature === "marketing" ? "analyse" : "production";
+    return regles.roleParDefaut;
   };
   return new Map(noeuds.map((n) => [n.id, role(n)]));
 }
@@ -118,6 +119,7 @@ function evaluer({ spec, index, params, etat }) {
   const p = resolution.pipeline;
   const ref = `${p.name}@${p.version}`;
   const nature = natureDe(p);
+  const regles = detection.reglesDe(nature);
   const blocages = [];
   const bloquer = (code, message, arbitrage = null, noeud = null) => blocages.push({ code, message, arbitrage, noeud, pipeline: ref });
   const roleDe = roles(p, nature);
@@ -125,20 +127,15 @@ function evaluer({ spec, index, params, etat }) {
   const avertissements = [];
   let degrade = false;
 
-  if (nature === "finance") {
-    if (resolution.projet.publier === true) bloquer("decision-requise", "Le projet Finance doit désactiver la publication GitHub.", "Définir publier: false dans la fiche Finance.");
+  if (regles.publicationInterdite && resolution.projet.publier === true) bloquer("decision-requise", "Le projet Finance doit désactiver la publication GitHub.", "Définir publier: false dans la fiche Finance.");
+  if (regles.scriptsInstalles) {
     for (const n of actifs.filter((n) => n.type === "script")) {
       if (params.financeDisponible?.(n.handler, roleEffectif(n)) !== true) {
         bloquer("capacite-absente", `L'étape Finance ${n.id} n'est pas installée sur ${roleEffectif(n)}.`, "Terminer l'intégration de l'analyse financière avant de lancer cette mission.", n.id);
       }
     }
   }
-
-  if (nature === "developpement") {
-    if (![...roleDe.values()].includes("developpement")) bloquer("pipeline-incomplet", `${ref} n'a aucun nœud de développement (agent avec mustChange).`);
-    if (!actifs.some((n) => n.handler === "verify-project")) bloquer("pipeline-incomplet", `${ref} n'exécute pas les tests du projet (verify-project).`);
-    if (!actifs.some((n) => n.type === "review")) bloquer("pipeline-incomplet", `${ref} n'a aucune revue indépendante active.`);
-  }
+  for (const e of regles.exige) if (!e.present({ actifs, roles: [...roleDe.values()] })) bloquer("pipeline-incomplet", e.manque(ref));
   if (spec.exigences.includes("revue-securite")) {
     const securite = p.nodes.filter((n) => n.type === "review" && nomAgent(n.agent) === "security-reviewer");
     if (!securite.length) bloquer("capacite-absente", `${ref} ne contient aucune revue security-reviewer : la revue de sécurité exigée n'est pas disponible.`, "Choisir un autre pipeline ou retirer l'exigence.");
@@ -210,15 +207,15 @@ function evaluer({ spec, index, params, etat }) {
   });
 
   const ids = (role) => actifs.filter((n) => roleDe.get(n.id) === role).map((n) => n.id);
-  const realisePar = nature === "developpement" ? ids("developpement") : ids("synthese").length ? ids("synthese") : [...ids("analyse"), ...ids("production")];
+  const realisePar = regles.realisePar ? regles.realisePar.flatMap(ids) : ids("synthese").length ? ids("synthese") : [...ids("analyse"), ...ids("production")];
   // Un script ne juge que s'il rend un verdict (outcomeFrom) : `consigne` prépare, il ne juge pas.
-  const jugePar = actifs.filter((n) => nature === "finance" ? n.handler === "finance-report-validate" : n.type === "review" || n.type === "approval" || (n.type === "script" && n.outcomeFrom)).map((n) => n.id);
+  const jugePar = actifs.filter(regles.jugePar).map((n) => n.id);
   if (!jugePar.length) { degrade = true; avertissements.push("Aucune étape ne juge les critères : ils ne seront pas vérifiés."); }
 
   const projet = resolution.projet;
   const approbation = actifs.some((n) => n.type === "approval");
-  const resultat = nature === "finance"
-    ? { type: "rapport", depot: null, description: "Rapport financier privé, daté et sourcé, archivé après validation déterministe des références. Les scénarios restent à examiner par l'opérateur." }
+  const resultat = regles.resultat
+    ? { ...regles.resultat }
     : approbation
     ? { type: "approbation", depot: null, description: "Le run s'arrête sur une approbation : la décision se prend dans Décisions, question par question. Aucun déploiement n'est prévu par le plan." }
     : projet.publier === true && projet.github

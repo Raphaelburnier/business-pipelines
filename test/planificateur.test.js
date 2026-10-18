@@ -229,6 +229,15 @@ test("nature unique : planificateur et missions lisent la même détection", () 
   } finally { f.fermer(); }
 });
 
+test("règles par nature : chaque nature détectée a ses règles, le planificateur ne teste aucun nom", () => {
+  const natures = require("../src/natures");
+  for (const nature of Object.values(natures.TAGS_NATURE)) assert.ok(natures.reglesDe(nature), nature);
+  assert.throws(() => natures.reglesDe("autre"), /nature sans règles : autre/);
+  assert.throws(() => natures.reglesDe("constructor"), /nature sans règles/);
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "planificateur.js"), "utf-8");
+  assert.doesNotMatch(source, /nature === "/);
+});
+
 test("quota Codex atteint : un autre runtime est choisi s'il existe, sinon blocage avec la raison", () => {
   const f = fixture();
   try {
