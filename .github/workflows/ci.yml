@@ -107,3 +107,6 @@ jobs:
           fi
           bash bin/preparer-image.sh
           docker build --target verification --tag cockpit-ci-verification .
+
+      - name: Synthetic bounded-autofix refusal test (intentional failure)
+        run: exit 1
