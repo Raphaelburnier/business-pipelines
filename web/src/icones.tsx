@@ -46,6 +46,7 @@ const TRACES = {
       <path d="M6 9v3h12V9M12 12v3" />
     </>
   ),
+  avenir: <path d="M4 6h9M4 12h9M4 18h9M16 5l2 2 3-4M16 17l2 2 3-4" />,
   decision: <path d="M5 12.5 9.5 17 19 7" />,
   soleil: (
     <>
