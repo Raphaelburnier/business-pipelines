@@ -10,6 +10,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { EventStore } = require("agent-orchestrator");
 const livreur = require("../src/livreur");
+const signature = require("../src/signature-commandes");
 
 const BUSINESS = process.env.LIVREUR_BUSINESS || "/volume1/docker/business-pipelines";
 const STORE = process.env.ORCH_EVENT_STORE || path.join(BUSINESS, "etat", "events.sqlite");
@@ -91,6 +92,9 @@ async function livrer(store, commande) {
   let etape = "verifier";
   try {
     emettre("livraison.etape", { etape });
+    const preuve = signature.verifier(signature.cleEnv(), commande);
+    if (!preuve.ok) throw new Error(preuve.raison);
+    if (preuve.transition) console.error(`livraison ${commande.id} acceptée sans vérification de signature (transition)`);
     livreur.verifierDemande({
       git,
       miroirs,

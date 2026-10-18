@@ -106,11 +106,19 @@ function origineAutorisee(entetes, opts) {
 
 // Le corps d'une requête ne peut pas dire qui l'envoie. L'identité se lit dans le canal
 // par lequel elle est arrivée, jamais dans ce qu'elle raconte d'elle-même.
-function identite(entetes, { tailnet = null, operateurLocal = null } = {}) {
+//
+// Sur le NAS, le runner partage le réseau de l'hôte et ses agents ont Bash : ils joignent
+// 127.0.0.1:4600 comme `tailscale serve`. Quand `serve` relaie vers le socket Unix du cockpit
+// (COCKPIT_SOCKET), que le runner ne monte pas, `socketSeul` refuse tout en-tête d'identité
+// arrivé autrement : c'est le chemin qui atteste que Tailscale l'a posé.
+function identite(entetes, { tailnet = null, operateurLocal = null, viaSocket = false, socketSeul = false } = {}) {
   const e = entetes || {};
   const login = String(e[EN_TETE_LOGIN] || "").trim();
   const nom = String(e[EN_TETE_NOM] || "").trim();
 
+  if (login && socketSeul && !viaSocket) {
+    throw new Refus("en-tête d'identité Tailscale reçu hors du socket de tailscale serve : refusé");
+  }
   if (login) {
     return { par: login, nom: nom || null, canal: "tailnet" };
   }
@@ -137,8 +145,19 @@ function identite(entetes, { tailnet = null, operateurLocal = null } = {}) {
   return { par: local, nom: null, canal: "local" };
 }
 
+// Dans le conteneur du NAS, le canal « local » n'est plus la console de Raphaël : c'est
+// n'importe quel processus de l'hôte, agents du runner compris. Il garde la lecture (contrôle
+// de santé de deploy.sh), jamais l'écriture.
+function verifierEcriture(qui, { methode, conteneur = false }) {
+  const lecture = ["GET", "HEAD", "OPTIONS"].includes(String(methode || "").toUpperCase());
+  if (!lecture && conteneur && qui && qui.canal === "local") {
+    throw new Refus("écriture refusée : dans le conteneur, seul le tailnet identifie qui décide");
+  }
+}
+
 module.exports = {
   identite,
+  verifierEcriture,
   adresseEcoute,
   hotesAutorises,
   hoteAutorise,

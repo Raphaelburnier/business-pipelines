@@ -114,10 +114,11 @@ test("une origine absente passe, une origine étrangère non", () => {
 
 // ------------------------------------------------------------------- le vrai serveur HTTP
 
-function demander({ methode = "GET", chemin = "/", entetes = {}, corps = null }) {
+function demander({ methode = "GET", chemin = "/", entetes = {}, corps = null, socket = null }) {
   return new Promise((resolve, reject) => {
+    const cible = socket ? { socketPath: socket } : { host: "127.0.0.1", port: PORT };
     const req = http.request(
-      { host: "127.0.0.1", port: PORT, method: methode, path: chemin, headers: { Host: `127.0.0.1:${PORT}`, ...entetes } },
+      { ...cible, method: methode, path: chemin, headers: { Host: `127.0.0.1:${PORT}`, ...entetes } },
       (res) => {
         let brut = "";
         res.on("data", (m) => (brut += m));
@@ -456,6 +457,36 @@ test("dans un conteneur déclaré, lier toutes les interfaces est le seul montag
   assert.strictEqual(acces.adresseEcoute({ hote: "0.0.0.0", conteneur: true }), "0.0.0.0");
   // La boucle locale reste acceptée avec la clé : elle ne force rien, elle autorise.
   assert.strictEqual(acces.adresseEcoute({ hote: "127.0.0.1", conteneur: true }), "127.0.0.1");
+});
+
+test("socket seul : un en-tête d'identité hors du socket est refusé, par le socket il signe", () => {
+  const entetes = { host: TAILNET, "tailscale-user-login": "destrobi28@gmail.com" };
+  assert.throws(
+    () => acces.identite(entetes, { tailnet: TAILNET, socketSeul: true }),
+    (e) => e instanceof cockpit.Refus && /hors du socket/.test(e.message)
+  );
+  assert.strictEqual(acces.identite(entetes, { tailnet: TAILNET, socketSeul: true, viaSocket: true }).canal, "tailnet");
+  // Sans le mode socket seul, le comportement d'avant reste : transition sans coupure.
+  assert.strictEqual(acces.identite(entetes, { tailnet: TAILNET }).canal, "tailnet");
+});
+test("dans le conteneur, le canal local lit mais n'écrit pas", () => {
+  const local = { par: "root", nom: null, canal: "local" };
+  assert.doesNotThrow(() => acces.verifierEcriture(local, { methode: "GET", conteneur: true }));
+  assert.throws(() => acces.verifierEcriture(local, { methode: "POST", conteneur: true }), (e) => e instanceof cockpit.Refus);
+  assert.doesNotThrow(() => acces.verifierEcriture(local, { methode: "POST", conteneur: false }));
+  assert.doesNotThrow(() => acces.verifierEcriture({ par: "r", nom: null, canal: "tailnet" }, { methode: "POST", conteneur: true }));
+});
+test("le cockpit sert aussi le socket et n'y croit l'identité qu'avec COCKPIT_IDENTITE_SOCKET_SEULE", async () => {
+  demonter();
+  const socket = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cockpit-sock-")), "cockpit.sock");
+  await monter({ COCKPIT_SOCKET: socket, COCKPIT_IDENTITE_SOCKET_SEULE: "1" });
+  for (let i = 0; i < 50 && !fs.existsSync(socket); i += 1) await new Promise((r) => setTimeout(r, 100));
+  assert.strictEqual(fs.statSync(socket).mode & 0o777, 0o600);
+  const parTcp = await demander({ chemin: "/api/approbations", entetes: ENTETE_TAILNET });
+  assert.strictEqual(parTcp.code, 403, "un agent qui joint le port TCP ne doit pas pouvoir se dire Raphaël");
+  const parSocket = await demander({ chemin: "/api/approbations", entetes: ENTETE_TAILNET, socket });
+  assert.strictEqual(parSocket.code, 200, parSocket.corps);
+  assert.strictEqual(JSON.parse(parSocket.corps).qui.canal, "tailnet");
 });
 
 (async () => {

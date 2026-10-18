@@ -10,6 +10,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const registre = require("agent-orchestrator/src/registre");
+const signature = require("./signature-commandes");
 
 const KIND = "github.project.attach";
 const ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -115,7 +116,7 @@ function etat(store) {
  * autorisées à livrer : la PR qui en sort sera fusionnée sans autre clic.
  * @param {{ store: any, projetsDir: string, dossierRegistre: string, depot: string, autorise: boolean, qui: any, demande: any }} options
  */
-function demander({ store, projetsDir, dossierRegistre, depot, autorise, qui, demande }) {
+function demander({ store, projetsDir, dossierRegistre, depot, autorise, qui, demande, cleSignature = signature.cleEnv() }) {
   if (!autorise) throw new RefusRattachement(403, "seule une identité tailnet autorisée à livrer peut rattacher un pipeline");
   if (!store) throw new RefusRattachement(503, "event store indisponible");
   const ref = verifier({ projetsDir, dossierRegistre, projet: demande && demande.projet, pipeline: demande && demande.pipeline });
@@ -124,7 +125,7 @@ function demander({ store, projetsDir, dossierRegistre, depot, autorise, qui, de
   );
   if (enCours) throw new RefusRattachement(409, `un rattachement de ${base(ref)} à ${demande.projet} est déjà demandé`);
   try {
-    return store.creerCommande({ kind: KIND, payload: { depot, projet: demande.projet, pipeline: ref }, par: qui.par, canal: qui.canal });
+    return store.creerCommande({ kind: KIND, payload: { depot, projet: demande.projet, pipeline: ref }, par: qui.par, canal: qui.canal, signer: signature.signataire(cleSignature, KIND) });
   } catch (err) {
     throw new RefusRattachement(400, err.message);
   }

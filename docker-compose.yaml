@@ -30,6 +30,9 @@ services:
       # l'image, et en lecture seule : rien du conteneur n'a de raison de les réécrire.
       - ./specs:/app/specs:ro
       - ./logs:/app/logs
+      # Le socket vers lequel `tailscale serve` relaie (docs/SECURITE-COMMANDES.md). Le runner
+      # ne monte pas ce dossier : ses agents ne peuvent pas emprunter ce chemin d'identité.
+      - ./run-cockpit:/run/cockpit
       # L'event store des runs (§9). Le cockpit le lit ; le moteur et le maître y écrivent.
       # Monté en écriture parce que SQLite pose un journal WAL à l'ouverture, même pour
       # une lecture — pas parce que le cockpit y écrirait quoi que ce soit.
@@ -51,6 +54,12 @@ services:
       - COCKPIT_VIA_MACHINES=nas:claude;pc:claude,omniroute,codex
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
+      - COCKPIT_SOCKET=/run/cockpit/cockpit.sock
+      # 1 une fois `tailscale serve` passé sur le socket : un en-tête d'identité arrivé par le
+      # port TCP, que les agents du runner joignent, est alors refusé.
+      - COCKPIT_IDENTITE_SOCKET_SEULE=${COCKPIT_IDENTITE_SOCKET_SEULE:-0}
+      # La clé qui signe fusions, rattachements et livraisons ; absente du runner.
+      - COMMANDES_CLE_FICHIER=/app/specs/cles/commandes.key
       # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
       # la publication ci-dessus relaie vers l'adresse du conteneur sur son réseau, jamais
       # vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du NAS a
@@ -153,9 +162,12 @@ services:
       # Qui peut fusionner une PR depuis le cockpit : la liste de ceux qui livrent, relue à
       # chaque commande `github.merge`. Ce fichier seul, en lecture.
       - ./specs/livraison.json:/app/specs/livraison.json:ro
+      # La clé qui vérifie les commandes signées par le cockpit.
+      - ./specs/cles:/app/cles:ro
     environment:
       - NODE_ENV=production
       - PUBLIEUR_ETAT=/app/etat/publications.json
+      - COMMANDES_CLE_FICHIER=/app/cles/commandes.key
       # La file des fusions demandées depuis le cockpit (src/pull-requests.js).
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
       # Miroirs des dépôts système, lus sans jeton par le livreur (docs/SPEC-livraison.md).
@@ -192,6 +204,7 @@ services:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/volume1/docker/business-pipelines/etat/events.sqlite
       - DOCKER=/usr/bin/docker
+      - COMMANDES_CLE_FICHIER=/volume1/docker/business-pipelines/specs/cles/commandes.key
     # deploy.sh contrôle le cockpit sur 127.0.0.1:4600, publié sur la boucle locale de l'hôte.
     network_mode: host
 

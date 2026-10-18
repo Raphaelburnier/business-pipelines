@@ -6,6 +6,7 @@
 // événements `livraison.*` du livreur. Pour livrer, il dépose une commande signée, rien de
 // plus. La forme rendue est `livraison.reponse` de agent-orchestrator/packages/schemas.
 const fs = require("fs");
+const signature = require("./signature-commandes");
 
 const KIND = "livraison.start";
 const DEPOTS = ["cockpit", "moteur", "registre"];
@@ -123,7 +124,7 @@ function etat({ store, propositionFichier, autorisesFichier, qui }) {
  * vérification et l'écriture : deux clics rapides ne peuvent pas déposer deux livraisons.
  * @returns la commande créée ; lève RefusLivraison (code HTTP + raison) sinon.
  */
-function demander({ store, demande, propositionFichier, autorisesFichier, qui }) {
+function demander({ store, demande, propositionFichier, autorisesFichier, qui, cleSignature = signature.cleEnv() }) {
   if (!qui || qui.canal !== "tailnet") {
     throw new RefusLivraison(403, "livrer exige une identité établie par le tailnet");
   }
@@ -144,7 +145,7 @@ function demander({ store, demande, propositionFichier, autorisesFichier, qui })
     .prepare("SELECT COUNT(*) AS n FROM commands WHERE kind = ? AND status IN ('pending', 'taken')")
     .get(KIND);
   if (Number(ouvertes.n) > 0) throw new RefusLivraison(409, "une livraison est déjà en cours");
-  return store.creerCommande({ kind: KIND, payload: cible, par: qui.par, canal: qui.canal });
+  return store.creerCommande({ kind: KIND, payload: cible, par: qui.par, canal: qui.canal, signer: signature.signataire(cleSignature, KIND) });
 }
 
 module.exports = { KIND, RefusLivraison, autorises, peutLivrer, etat, demander };

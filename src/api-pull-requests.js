@@ -6,6 +6,7 @@
 // Seule une identité tailnet autorisée à livrer (specs/livraison.json) peut fusionner.
 const fs = require("fs");
 const pullRequests = require("./pull-requests");
+const signature = require("./signature-commandes");
 
 const KIND = "github.merge";
 const KIND_CI = "github.ci.rerun";
@@ -126,7 +127,7 @@ function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, de
  * revérifie de toute façon contre GitHub au moment de fusionner.
  * @param {{ store: any, instantaneFichier: string, autorisesFichier: string, qui: any, demande: any }} opts
  */
-function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) {
+function demander({ store, instantaneFichier, autorisesFichier, qui, demande, cleSignature = signature.cleEnv() }) {
   if (!peutFusionner(qui, autorisesFichier)) {
     throw new RefusPullRequest(403, "seule une identité tailnet autorisée peut fusionner (specs/livraison.json sur le NAS)");
   }
@@ -147,7 +148,7 @@ function demander({ store, instantaneFichier, autorisesFichier, qui, demande }) 
   if (pr.fusionEnCours) throw new RefusPullRequest(409, "une fusion est déjà demandée pour cette PR");
   if (pr.raison) throw new RefusPullRequest(409, `PR non fusionnable : ${pr.raison}`);
   try {
-    return store.creerCommande({ kind: KIND, payload: { depot, numero, sha, baseSha }, par: qui.par, canal: qui.canal });
+    return store.creerCommande({ kind: KIND, payload: { depot, numero, sha, baseSha }, par: qui.par, canal: qui.canal, signer: signature.signataire(cleSignature, KIND) });
   } catch (err) {
     throw new RefusPullRequest(400, err.message);
   }
