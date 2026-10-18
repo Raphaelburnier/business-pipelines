@@ -17,9 +17,9 @@ name: CI autofix
 #            si sa tête est encore le SHA en échec. Le push utilise le jeton de l'app Claude
 #            (obtenu par OIDC dans ce job seulement, puis révoqué) pour que la CI reparte.
 #
-# Pas de boucle : un échec sur un commit [ci-autofix] n'est pas renvoyé (sauf relance humaine
-# depuis le cockpit, tentative > 1), une PR reçoit au plus 3 corrections automatiques, et chaque
-# tentative de CI n'est transmise qu'une fois (marqueur posté par github-actions[bot]).
+# Reprises automatiques bornées : au plus 3 appels du correcteur et 3 commits de correction
+# par PR, relances humaines comprises. Un correctif encore rouge peut donc être repris sans
+# intervention. Chaque tentative de CI n'est transmise qu'une fois (marqueur du workflow).
 
 on:
   workflow_run:
@@ -160,9 +160,12 @@ jobs:
             conclure perime "le merge testé est périmé : mettre la branche à jour avec la branche par défaut pour relancer la CI"
           fi
 
-          message="$(gh api "repos/$REPOSITORY/commits/$sha" --jq '.commit.message')" || conclure rien "commit illisible"
-          if grep -Fq '[ci-autofix]' <<<"$message" && [[ "$tentative" == "1" ]]; then
-            conclure boucle "pas de seconde tentative sur un commit de correction automatique"
+          # Compter les démarrages, même si l'agent échoue ou ne propose aucun patch.
+          # Les relances depuis le cockpit consomment le même budget : aucun contournement
+          # en réexécutant la CI, ni remise à zéro lors d'un nouveau commit humain.
+          transmissions="$(grep -Ec '^<!-- ci-autofix:[0-9a-f]{40}:[1-9][0-9]{0,3} -->$' <<<"$marqueurs" || true)"
+          if [[ "$transmissions" -ge "$MAX_CORRECTIONS" ]]; then
+            conclure boucle "la PR a déjà déclenché $transmissions appels du correcteur (limite $MAX_CORRECTIONS)"
           fi
           messages="$(gh api --paginate "repos/$REPOSITORY/pulls/$numero/commits?per_page=100" --jq '.[].commit.message')" \
             || conclure rien "commits de la PR illisibles"
@@ -632,6 +635,9 @@ jobs:
             entete="Correction automatique non publiée : ${raison:-raison inconnue}. Le patch reste dans les artefacts du [run]($lien) ; à reprendre à la main."
           fi
           {
+            if [[ "$VERDICT" != "ok" || "$POUSSE" != "oui" ]]; then
+              echo "<!-- ci-autofix-echec:$SHA:$TENTATIVE -->"
+            fi
             echo "$entete"
             if [[ -s "$PAQUET/resume.md" && ! -L "$PAQUET/resume.md" ]]; then
               echo

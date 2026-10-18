@@ -17,6 +17,8 @@ const pullRequests = require("./pull-requests");
 const MARQUE_TRANSMISE = /ci-autofix:([0-9a-f]{40})/;
 const MARQUE_CORRECTION = /\[ci-autofix\]/;
 const MARQUE_ESCALADE = /La CI échoue encore après la correction automatique/;
+const MARQUE_ARRET = /<!-- ci-autofix-(?:arret|echec):([0-9a-f]{40}):[1-9][0-9]{0,3} -->/;
+const MARQUE_ECHEC = /<!-- ci-autofix-echec:([0-9a-f]{40}):[1-9][0-9]{0,3} -->/;
 
 const court = (sha) => String(sha || "").slice(0, 7);
 
@@ -27,17 +29,19 @@ const court = (sha) => String(sha || "").slice(0, 7);
  */
 function correctionDe({ commentaires, commits, tete }) {
   const transmises = commentaires.filter((c) => MARQUE_TRANSMISE.test(String(c.body || "")));
-  const escalades = commentaires.filter((c) => MARQUE_ESCALADE.test(String(c.body || "")));
+  const escalades = commentaires.filter((c) => MARQUE_ESCALADE.test(String(c.body || "")) || MARQUE_ECHEC.test(String(c.body || "")));
   const corrections = commits.filter((c) => MARQUE_CORRECTION.test(String(c.commit?.message || "")));
   if (!transmises.length && !escalades.length && !corrections.length) return null;
   const derniere = transmises.at(-1);
   const echecSha = derniere ? MARQUE_TRANSMISE.exec(String(derniere.body))[1] : null;
   const correction = corrections.at(-1);
   const correctionSha = correction && SHA.test(correction.sha) ? correction.sha : null;
-  // Le workflow n'escalade qu'un échec sur un commit de correction : la tête en est un.
+  // Un correcteur peut échouer avant le premier commit (quota, patch vide ou refusé).
+  // Un nouveau départ explicite sur la même tête remplace l'ancien arrêt.
   const escalade = escalades.at(-1);
-  if (escalade && correctionSha && correctionSha === tete) {
-    return { etat: "escaladee", echecSha, correctionSha, url: escalade.html_url || null };
+  const arretSha = escalade && (MARQUE_ARRET.exec(String(escalade.body || ""))?.[1] || correctionSha);
+  if (escalade && arretSha === tete && (!derniere || commentaires.indexOf(escalade) > commentaires.indexOf(derniere))) {
+    return { etat: "escaladee", echecSha: echecSha || arretSha, correctionSha, url: escalade.html_url || null };
   }
   // Une correction poussée après le dernier échec transmis.
   if (correctionSha && (!echecSha || commits.findIndex((c) => c.sha === correctionSha) > commits.findIndex((c) => c.sha === echecSha))) {
@@ -72,7 +76,7 @@ function etatLivraison({ pr, detail, correction, depot, preuves = null }) {
   }
   if (ci.etat === "rouge") {
     if (correction && correction.etat === "escaladee") {
-      return { ...commun, ...champsCI, statut: "failed", raison: `CI encore rouge après la correction automatique ${sur} : reprise à la main` };
+      return { ...commun, ...champsCI, statut: "failed", raison: `Correction automatique arrêtée ${sur} : reprise à la main` };
     }
     const suite =
       correction && correction.etat === "transmise" && correction.echecSha === detail.sha
