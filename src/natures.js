@@ -31,4 +31,67 @@ function natureLancable(pipeline) {
   return c.gabarit ? null : c.nature;
 }
 
-module.exports = { classer, natureLancable, TAGS_NATURE };
+const jugeParDefaut = (n) => n.type === "review" || n.type === "approval" || (n.type === "script" && Boolean(n.outcomeFrom));
+
+/**
+ * Ce qui change d'une nature à l'autre dans un plan. Le planificateur n'a aucun test sur le nom
+ * d'une nature : une nature nouvelle s'ajoute ici.
+ * - `valider` : contrôle propre à la nature, qui lève une erreur sur un pipeline invalide ;
+ * - `roleDuNoeud` : rôle imposé à chaque nœud, à la place de la déduction structurelle ;
+ * - `developpementParMustChange` : un agent `mustChange` est un développeur ;
+ * - `roleParDefaut` : rôle d'un agent que la structure ne classe pas ;
+ * - `exige` : éléments sans lesquels le pipeline est incomplet ;
+ * - `publicationInterdite`, `scriptsInstalles` : contrôles du projet et des machines ;
+ * - `realisePar` : rôles qui réalisent les critères (sinon synthèse, puis analyse et production) ;
+ * - `jugePar` : nœuds qui jugent les critères ;
+ * - `resultat` : résultat fixe du plan, sinon déduit de l'approbation et de la publication.
+ */
+const REGLES = {
+  developpement: {
+    roleDuNoeud: null,
+    developpementParMustChange: true,
+    roleParDefaut: "production",
+    exige: [
+      { present: ({ roles }) => roles.includes("developpement"), manque: (ref) => `${ref} n'a aucun nœud de développement (agent avec mustChange).` },
+      { present: ({ actifs }) => actifs.some((n) => n.handler === "verify-project"), manque: (ref) => `${ref} n'exécute pas les tests du projet (verify-project).` },
+      { present: ({ actifs }) => actifs.some((n) => n.type === "review"), manque: (ref) => `${ref} n'a aucune revue indépendante active.` },
+    ],
+    publicationInterdite: false,
+    scriptsInstalles: false,
+    realisePar: ["developpement"],
+    jugePar: jugeParDefaut,
+    resultat: null,
+  },
+  marketing: {
+    roleDuNoeud: null,
+    developpementParMustChange: false,
+    roleParDefaut: "analyse",
+    exige: [],
+    publicationInterdite: false,
+    scriptsInstalles: false,
+    realisePar: null,
+    jugePar: jugeParDefaut,
+    resultat: null,
+  },
+  finance: {
+    valider: finance.validerFinance,
+    roleDuNoeud: finance.roleFinance,
+    developpementParMustChange: false,
+    roleParDefaut: "production",
+    exige: [],
+    publicationInterdite: true,
+    scriptsInstalles: true,
+    realisePar: null,
+    jugePar: (n) => n.handler === "finance-report-validate",
+    resultat: { type: "rapport", depot: null, description: "Rapport financier privé, daté et sourcé, archivé après validation déterministe des références. Les scénarios restent à examiner par l'opérateur." },
+  },
+};
+
+/** Règles d'une nature lançable ; une nature sans règles est une erreur de programmation. */
+function reglesDe(nature) {
+  const regles = Object.hasOwn(REGLES, nature) ? REGLES[nature] : null;
+  if (!regles) throw new Error(`nature sans règles : ${nature}`);
+  return regles;
+}
+
+module.exports = { classer, natureLancable, reglesDe, REGLES, TAGS_NATURE };
