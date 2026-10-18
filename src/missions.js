@@ -5,6 +5,7 @@ const schemas = require("agent-orchestrator/packages/schemas/mission");
 const contrat = require("agent-orchestrator/src/mission");
 const finance = require("agent-orchestrator/packages/schemas/finance");
 const { roleEffectif } = require("agent-orchestrator/src/dispatch");
+const natures = require("./natures");
 
 const lancement = schemas.lancement;
 
@@ -25,7 +26,8 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
       membre: associes.length === 1 ? associes[0].id : null, membres };
   });
   // Une mission dev repart d'une demande nouvelle, sans les détails d'un ancien run.
-  const developpement = resolution.pipeline.tags?.includes("code") || resolution.pipeline.nodes.some((n) => n.handler === "verify-project");
+  const nature = natures.classer(resolution.pipeline).nature;
+  const developpement = nature === "developpement";
   const blocages = [];
   if (finance.estFinance(resolution.pipeline)) {
     if (resolution.projet.publier === true) blocages.push("Le projet Finance doit désactiver la publication GitHub.");
@@ -36,7 +38,7 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
   return { resolution, options: schemas.options.parse({ projectId, nom: resolution.projet.name, repo: resolution.projet.repo,
     pipelineIndex, pipeline: `${resolution.pipeline.name}@${resolution.pipeline.version}`,
     titre: resolution.pipeline.title || resolution.pipeline.name,
-    nature: finance.estFinance(resolution.pipeline) ? "finance" : developpement ? "developpement" : resolution.pipeline.tags?.includes("marketing") ? "marketing" : "autre",
+    nature: nature || "autre",
     configuration, roles, spec: developpement ? { project_name: projectId } : resolution.spec,
     budget: resolution.budget, publication: resolution.projet.publier,
     ...(finance.estFinance(resolution.pipeline) ? { blocages } : {}) }) };
