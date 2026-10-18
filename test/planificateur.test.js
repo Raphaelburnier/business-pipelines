@@ -475,7 +475,7 @@ test("Finance v2 : quota Claude bascule vers l’analyste Codex et garde une ses
     assert.deepEqual(parNoeud.revue.llm, codex);
     assert.notEqual(parNoeud.analyse.membre, parNoeud.revue.membre, "la revue reste une session opérée par un autre membre");
     assert.ok(parNoeud.analyse.raisons.some((r) => /quota Claude atteint/.test(r)));
-    assert.ok(parNoeud.revue.raisons.some((r) => /quota Claude atteint/.test(r)), "la revue reste disponible même quand Claude est bloqué");
+    assert.notEqual(parNoeud.revue.llm.via, "claude", "la revue utilise aussi un runtime disponible");
 
     const corps = { spec: specFinance(), empreinte: p.empreinte, requestId: crypto.randomUUID() };
     const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: etatLibre({
