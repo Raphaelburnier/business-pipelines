@@ -40,6 +40,19 @@ const SENSIBLES = [
   /^bin\/publieur\.js$/,
   /^packages\/schemas\/commandes\.js$/,
   /^specs\/livraison\.json$/,
+  // Règles d'agents et dépendances : ci-autofix les refuse déjà dans ses propres correctifs.
+  /(^|\/)\.claude\//,
+  /(^|\/)\.mcp\.json$/,
+  /(^|\/)CLAUDE\.local\.md$/,
+  /(^|\/)(\.gitattributes|\.npmrc)$/,
+  /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/,
+  // Le code qui décide qui signe, qui livre et ce qu'un agent peut faire.
+  /^src\/(acces|api-livraison|livreur|chat-outils|conseiller|signature-commandes)\.js$/,
+  /^bin\/(cockpit|livreur|commande-runner)\.js$/,
+  /^bin\/tailnet-relais\.sh$/,
+  /^src\/(agent-runner|codex-runner|cockpit-read|chat|workers|tailnet)\.js$/,
+  /^src\/(worker|maitre)[^/]*\.js$/,
+  /^agents\//,
 ];
 
 const estSensible = (fichier) => SENSIBLES.some((re) => new RegExp(re.source, "i").test(String(fichier)));
