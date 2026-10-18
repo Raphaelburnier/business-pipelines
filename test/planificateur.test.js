@@ -28,7 +28,7 @@ const ROSTER = [
   { id: "elise", nom: "Élise", role: "Économie", famille: "codex", llm: codex, registre: ["economy-analyst"], budgetMensuelUsd: null },
 ];
 
-function fixture({ securite = false, roster = ROSTER, financeDisponible } = {}) {
+function fixture({ securite = false, roster = ROSTER, financeDisponible, financeVersion = 1 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "planificateur-"));
   const reg = path.join(dir, "registre");
   fs.cpSync(REGISTRE_SOURCE, reg, { recursive: true });
@@ -45,7 +45,9 @@ function fixture({ securite = false, roster = ROSTER, financeDisponible } = {}) 
     pipelines: [{ extends: "marketing@1", spec: "spec.json", overrides: { nodes: { consigne: { runsOn: "nas" }, couverture: { runsOn: "nas" } } }, budget: { usdPerRun: 2, usdPerMonth: 20 } }] },
   { "spec.json": { offre: "Cartes triées", marche: "Collectionneurs", questions: ["Quel prix ?"], contraintes: [] } });
   ecrire("vide", { id: "vide", name: "Sans pipeline", business: "x", homeMachine: "nas", repo: "/git/vide.git", pipelines: [{ extends: "marketing-dialogue@1" }] });
-  ecrire("finance", JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "project.json"))), {
+  const financeProject = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "project.json")));
+  financeProject.pipelines[0].extends = `finance-research@${financeVersion}`;
+  ecrire("finance", financeProject, {
     "spec.json": JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "spec.json"))),
   });
   process.env.ORCH_REGISTRE = reg;
@@ -360,7 +362,7 @@ test("le run rapporte chaque critère avec la dernière tentative des étapes qu
   assert.equal(r([etape("implement", "succeeded"), etape("verify", "succeeded", "FAIL")]), "echec");
   // La correction rejoue les étapes : seule la dernière tentative compte.
   assert.equal(r([etape("implement", "succeeded"), etape("verify", "succeeded", "FAIL"), etape("implement", "succeeded"),
-    etape("verify", "succeeded", "PASS"), etape("review", "succeeded", "PASS")]), "valide");
+    etape("verify", "succeeded", "PASS"), etape("review", "succeeded", "PASS")]), "non-verifie");
   assert.equal(planificateur.resultatCriteres({ criteres: [{ texte: "x", realisePar: ["a"], jugePar: [] }] }, [])[0].etat, "non-verifie");
 });
 
@@ -432,4 +434,40 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     assert.equal(commande.payload.mission.plan.pipeline.ref, "improve-app@7");
     assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands WHERE kind = 'run.start'").get().n, 1);
   } finally { enfant.kill(); f.fermer(); }
+});
+
+test("A4 : critères distincts, preuve consultable, absence et péremption restent visibles", () => {
+  const plan = { criteres: ["Tri", "Parcours visuel"].map((texte) => ({ texte, realisePar: ["implement"], jugePar: ["verify", "review"] })) };
+  const etapes = [{ noeud: "implement", statut: "succeeded", fin: "2026-10-17T10:00:00Z" }, { noeud: "verify", statut: "succeeded", outcome: "PASS" },
+    { noeud: "review", statut: "succeeded", outcome: "PASS", session: "review-current" }];
+  const report = { criteria: [{ criterion: "Tri", status: "verified", method: "lecture", expected: "Trier par note", evidence: "Le comparateur utilise la note", locations: [{ file: "app.js", line: 1, excerpt: "notes.sort(comparer)", sha256: "a".repeat(64) }] }] };
+  const event = { type: "review.finished", payload: { node: "review", treeSha: "b".repeat(40), sessionId: "review-current", finishedAt: "2026-10-17T10:01:00Z", report,
+    reportHash: crypto.createHash("sha256").update(JSON.stringify(report)).digest("hex") } };
+  const resultat = (events = [event], stages = etapes, arbre = "b".repeat(40)) => planificateur.resultatCriteres(plan, stages, events, arbre);
+  assert.deepEqual(resultat().map((r) => r.etat), ["valide", "non-verifie"]);
+  assert.equal(resultat()[0].preuves[0].fichiers[0].extrait, "notes.sort(comparer)");
+  assert.equal(resultat([])[0].etat, "non-verifie", "un PASS global ne prouve aucun critère");
+  assert.equal(resultat([event], etapes, "c".repeat(40))[0].etat, "non-verifie");
+  assert.equal(resultat([event], [...etapes, { ...etapes[2], session: "reprise" }])[0].etat, "non-verifie");
+  assert.equal(resultat([event], [...etapes, { ...etapes[0], fin: "2026-10-17T10:02:00Z" }])[0].etat, "non-verifie");
+  const altered = structuredClone(event); altered.payload.report.criteria[0].evidence = "altéré";
+  assert.equal(resultat([altered])[0].etat, "non-verifie");
+});
+
+
+test("A4 : Finance v2 prépare six étapes, deux sessions métier et une seule correction partagée", () => {
+  const f = fixture({ financeVersion: 2, financeDisponible: () => true, roster: [...ROSTER,
+    { id: "analyse-finance", nom: "Analyse Finance", role: "Analyse", famille: "claude", llm: claudeSonnet, registre: ["financial-research-analyst"], budgetMensuelUsd: null },
+    { id: "revue-finance", nom: "Revue Finance", role: "Revue", famille: "codex", llm: codex, registre: ["financial-research-reviewer"], budgetMensuelUsd: null },
+  ] });
+  try {
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: {} });
+    assert.equal(p.statut, "lancable", JSON.stringify(p.blocages));
+    assert.equal(p.plan.pipeline.ref, "finance-research@2");
+    assert.deepEqual(p.plan.etapes.map((e) => e.role), ["collecte", "analyse", "controle", "revue", "validation", "publication"]);
+    assert.deepEqual(p.plan.criteres[0].realisePar, ["analyse"]);
+    assert.equal(p.plan.limites.corrections[0].maxLoops, 1);
+    const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps: { spec: specFinance(), empreinte: p.empreinte, requestId: crypto.randomUUID() }, etat: {} });
+    assert.equal(f.store.commande(c.id).payload.mission.resolution.pipeline.version, 2);
+  } finally { f.fermer(); }
 });

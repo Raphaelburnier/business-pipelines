@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { FinanceService } = require("./service");
 const { MacroSourceService } = require("./sources");
 const { PriceSourceService } = require("./prices");
+const { catalogue, validerMetriques, exigences, validerRelecture } = require("./preuves");
 
 const MAX_SNAPSHOT_BYTES = 700_000;
 const MAX_REPORT_BYTES = 400_000;
@@ -101,6 +102,7 @@ function construireSnapshot({ finance, macro, prices, projectId, now }) {
     },
     sources,
   };
+  snapshot.metriquesDisponibles = catalogue(snapshot);
   const bytes = Buffer.byteLength(JSON.stringify(snapshot));
   if (bytes > MAX_SNAPSHOT_BYTES) throw new Error(`Snapshot Finance trop volumineux (${bytes} octets ; limite ${MAX_SNAPSHOT_BYTES}). Réduire les données importées ou le suivi marché.`);
   return snapshot;
@@ -109,7 +111,7 @@ function validateReport(snapshot, report, spec = {}) {
   const manques = [];
   const manque = (message) => manques.push(message);
   if (!snapshot || snapshot.schemaVersion !== 1 || !Array.isArray(snapshot.sources)) manque("Snapshot Finance absent ou version incompatible.");
-  if (!report || report.version !== 1 || typeof report.resume !== "string" || !report.resume.trim()) manque("Le rapport doit contenir version: 1 et un résumé non vide.");
+  if (!report || report.version !== 2 || typeof report.resume !== "string" || !report.resume.trim()) manque("Le rapport doit contenir version: 2 et un résumé non vide.");
   for (const field of ["observations", "scenarios", "risques", "limites", "questions_sans_reponse"]) if (!Array.isArray(report?.[field])) manque(`Le champ ${field} doit être un tableau.`);
   if (manques.length) return manques;
 
@@ -140,6 +142,7 @@ function validateReport(snapshot, report, spec = {}) {
     if (!scenario || typeof scenario.id !== "string" || !Array.isArray(scenario.hypotheses) || !Array.isArray(scenario.effets_possibles) || !Array.isArray(scenario.risques) || !Array.isArray(scenario.conditions_a_verifier)) manque("Chaque scénario doit préciser ses hypothèses, effets, risques et conditions à vérifier.");
   }
   if (snapshot.synthetic && !/synth[eé]tique|fictif/i.test(`${report.resume} ${(report.limites || []).join(" ")}`)) manque("Le rapport doit signaler que les données du snapshot sont synthétiques.");
+  if (!manques.length) manques.push(...validerMetriques(snapshot, report, spec));
   return manques;
 }
 
@@ -149,7 +152,7 @@ class FinanceReportArchive {
     if (!/^[a-f0-9-]{16,64}$/i.test(String(runId || ""))) throw new Error("Identifiant de run absent ou invalide ; publication refusée.");
     const snapshotHash = sha(snapshotText), reportHash = sha(reportText), validationHash = sha(validationText);
     const validation = JSON.parse(validationText);
-    if (validation.verdict !== "PASS" || validation.snapshotSha256 !== snapshotHash || validation.reportSha256 !== reportHash) throw new Error("La validation PASS ne correspond pas aux artefacts de cette publication.");
+    if (validation.version !== 2 || !validation.sessions?.auteur || !validation.sessions?.reviewer || validation.sessions.auteur === validation.sessions.reviewer || validation.verdict !== "PASS" || validation.snapshotSha256 !== snapshotHash || validation.reportSha256 !== reportHash) throw new Error("La validation PASS ne correspond pas aux artefacts de cette publication.");
     fs.mkdirSync(this.root, { recursive: true, mode: 0o700 });
     fs.chmodSync(this.root, 0o700);
     const dir = path.join(this.root, runId);
@@ -185,7 +188,7 @@ class FinanceReportArchive {
       const reportText = fs.readFileSync(path.join(dir, "finance-report.json"), "utf8");
       const validationText = fs.readFileSync(path.join(dir, "finance-validation.json"), "utf8");
       if (sha(snapshotText) !== manifest.snapshotSha256 || sha(reportText) !== manifest.reportSha256 || sha(validationText) !== manifest.validationSha256) throw new Error("Empreinte des artefacts archivés invalide.");
-      return { ...manifest, report: JSON.parse(reportText) };
+      return { ...manifest, report: JSON.parse(reportText), snapshot: JSON.parse(snapshotText), validation: JSON.parse(validationText) };
     } catch (error) { if (error.code === "ENOENT") throw Object.assign(new Error("Rapport introuvable."), { status: 404 }); throw error; }
   }
 }
@@ -195,6 +198,15 @@ function creerHandlers({ storageRoot = process.env.FINANCE_STORAGE_ROOT || path.
   const sourceMacro = macro || new MacroSourceService({ storageRoot });
   const sourcePrices = prices || new PriceSourceService({ storageRoot, token });
   const archive = new FinanceReportArchive({ root: reportsRoot, now });
+  const controler = (stage, ctx) => {
+    const snapshotName = safeName(stage.snapshot || "finance-snapshot.json");
+    const reportName = safeName(stage.report || "finance-report.json");
+    const snapshot = lireJson(ctx.workspaceDir, snapshotName, MAX_SNAPSHOT_BYTES);
+    const report = lireJson(ctx.workspaceDir, reportName, MAX_REPORT_BYTES);
+    const reportText = fs.readFileSync(path.join(ctx.workspaceDir, reportName), "utf8");
+    const snapshotText = fs.readFileSync(path.join(ctx.workspaceDir, snapshotName), "utf8");
+    return { snapshot, report, reportText, snapshotText, manques: validateReport(snapshot, report, ctx.spec || {}) };
+  };
   const handlers = {
     "finance-snapshot": async (stage, ctx) => {
       const projectId = String(ctx.spec?.project_name || "");
@@ -202,19 +214,42 @@ function creerHandlers({ storageRoot = process.env.FINANCE_STORAGE_ROOT || path.
       const snapshot = construireSnapshot({ finance: sourceFinance, macro: sourceMacro, prices: sourcePrices, projectId, now });
       ecrireJson(ctx.workspaceDir, stage.output || "finance-snapshot.json", snapshot, MAX_SNAPSHOT_BYTES);
     },
+    "finance-report-check": async (stage, ctx) => {
+      const { snapshot, reportText, snapshotText, manques } = controler(stage, ctx);
+      ecrireJson(ctx.workspaceDir, stage.output || "finance-review-input.json", { version: 1, verdict: manques.length ? "FAIL" : "PASS", manques,
+        snapshotSha256: sha(snapshotText), reportSha256: sha(reportText), metriquesDisponibles: catalogue(snapshot),
+        exigences: [...exigences(ctx.spec || {}), { kind: "fond", text: "Cohérence économique, limites des données et absence de chiffres inventés" }],
+      }, MAX_SNAPSHOT_BYTES);
+    },
     "finance-report-validate": async (stage, ctx) => {
-      const snapshot = lireJson(ctx.workspaceDir, stage.snapshot || "finance-snapshot.json", MAX_SNAPSHOT_BYTES);
-      const report = lireJson(ctx.workspaceDir, stage.report || "finance-report.json", MAX_REPORT_BYTES);
-      const reportText = fs.readFileSync(path.join(ctx.workspaceDir, safeName(stage.report || "finance-report.json")), "utf8");
-      const snapshotText = fs.readFileSync(path.join(ctx.workspaceDir, safeName(stage.snapshot || "finance-snapshot.json")), "utf8");
-      const manques = validateReport(snapshot, report, ctx.spec || {});
-      const validation = { version: 1, verdict: manques.length ? "FAIL" : "PASS", manques, snapshotSha256: sha(snapshotText), reportSha256: sha(reportText), validatedAt: new Date(now()).toISOString() };
+      const { report, reportText, snapshotText, manques } = controler(stage, ctx);
+      let review = null;
+      try { review = lireJson(ctx.workspaceDir, stage.review || "finance-review.json", MAX_REPORT_BYTES); }
+      catch { manques.push("Rapport de relecture indépendant absent ou invalide."); }
+      const etapes = ctx.reporter?.store?.etapes(ctx.reporter.runId) || [];
+      const derniere = (agent) => [...etapes].reverse().find((e) => e.agent_ref?.startsWith(`${agent}@`));
+      const auteur = derniere("financial-research-analyst"), reviewer = derniere("financial-research-reviewer");
+      const sessions = { auteur: auteur?.status === "succeeded" ? auteur.session_id : null, reviewer: reviewer?.status === "succeeded" && reviewer.started_at >= auteur?.finished_at ? reviewer.session_id : null };
+      manques.push(...validerRelecture({ snapshotText, reportText, review, spec: ctx.spec || {}, sessions }));
+      const checks = Array.isArray(review?.checks) ? review.checks : [];
+      const validation = { version: 2, verdict: manques.length ? "FAIL" : "PASS", manques, sessions, checks, reviewSha256: review ? sha(JSON.stringify(review)) : null,
+        snapshotSha256: sha(snapshotText), reportSha256: sha(reportText), validatedAt: new Date(now()).toISOString() };
       ecrireJson(ctx.workspaceDir, stage.output || "finance-validation.json", validation, 64_000);
+      const validationStep = [...etapes].reverse().find((e) => e.node_id === stage.id);
+      ctx.reporter?.event?.("finance.validation.finished", { stepId: validationStep?.id || null, node: stage.id, ...validation,
+        preuvesCriteres: checks.filter((c) => c?.kind === "critere").map((c) => ({
+          texte: c.text, attendu: c.expected, motif: c.reason, statut: c.status,
+          extrait: JSON.stringify({ observations: (report.observations || []).filter((o) => c.observations?.includes(o.id)),
+            metriques: (report.metriques || []).filter((m) => c.metriques?.includes(m.id)) }).slice(0, 8000),
+        })),
+      });
     },
     "finance-report-publish": async (stage, ctx) => {
       const snapshotName = stage.snapshot || "finance-snapshot.json";
       const reportName = stage.report || "finance-report.json";
       const validationName = stage.validation || "finance-validation.json";
+      const validation = lireJson(ctx.workspaceDir, validationName, 64_000);
+      if (validation.version !== 2 || !validation.sessions?.reviewer || validation.sessions.auteur === validation.sessions.reviewer) throw new Error("Publication Finance : validation indépendante v2 requise.");
       const published = archive.publier({
         runId: ctx.reporter?.runId,
         projectId: ctx.spec?.project_name,
