@@ -455,6 +455,36 @@ test("A4 : critères distincts, preuve consultable, absence et péremption reste
 });
 
 
+test("Finance v2 : quota Claude bascule vers l’analyste Codex et garde une session de revue distincte", () => {
+  const roster = ROSTER.map((m) => m.id === "elise"
+    ? { ...m, registre: [...m.registre, "financial-research-analyst"] }
+    : m);
+  const f = fixture({ financeVersion: 2, financeDisponible: () => true, roster: [...roster,
+    { id: "analyste-finance-claude", nom: "Analyste Finance Claude", role: "Analyse", famille: "claude", llm: claudeSonnet, registre: ["financial-research-analyst"], budgetMensuelUsd: null },
+    { id: "revue-finance-codex", nom: "Revue Finance Codex", role: "Revue", famille: "codex", llm: codex, registre: ["financial-research-reviewer"], budgetMensuelUsd: null },
+  ] });
+  try {
+    const p = planificateur.proposer({ spec: specFinance(), params: f.params, etat: etatLibre({
+      runtimesBloques: { claude: "quota Claude atteint, échéance inconnue" },
+    }) });
+    assert.equal(p.statut, "lancable", JSON.stringify(p.blocages));
+    const parNoeud = Object.fromEntries(p.plan.etapes.map((e) => [e.noeud, e]));
+    assert.equal(parNoeud.analyse.membre, "elise");
+    assert.deepEqual(parNoeud.analyse.llm, { via: "codex", model: "gpt-5.6-terra:medium" });
+    assert.equal(parNoeud.revue.membre, "revue-finance-codex");
+    assert.deepEqual(parNoeud.revue.llm, codex);
+    assert.notEqual(parNoeud.analyse.membre, parNoeud.revue.membre, "la revue reste une session opérée par un autre membre");
+    assert.ok(parNoeud.analyse.raisons.some((r) => /quota Claude atteint/.test(r)));
+    assert.ok(parNoeud.revue.raisons.some((r) => /quota Claude atteint/.test(r)), "la revue reste disponible même quand Claude est bloqué");
+
+    const corps = { spec: specFinance(), empreinte: p.empreinte, requestId: crypto.randomUUID() };
+    const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: etatLibre({
+      runtimesBloques: { claude: "quota Claude atteint, échéance inconnue" },
+    }) });
+    assert.deepEqual(c.payload.mission.plan, p.plan, "le repli est figé dans la commande avant exécution");
+  } finally { f.fermer(); }
+});
+
 test("A4 : Finance v2 prépare six étapes, deux sessions métier et une seule correction partagée", () => {
   const f = fixture({ financeVersion: 2, financeDisponible: () => true, roster: [...ROSTER,
     { id: "analyse-finance", nom: "Analyse Finance", role: "Analyse", famille: "claude", llm: claudeSonnet, registre: ["financial-research-analyst"], budgetMensuelUsd: null },
