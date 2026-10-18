@@ -167,7 +167,7 @@ export function ActionsChat({ actions, aller }: { actions: ActionChat[]; aller: 
   return (
     <div className="mr-auto flex w-full max-w-[92%] flex-col gap-2">
       {actions.map((a) =>
-        a.type === "mission" ? <CarteMission key={a.id} action={0} aller={aller} />
+        a.type === "mission" ? <CarteMission key={a.id} action={a} aller={aller} />
         : a.type === "livraison" ? <CarteLivraison key={a.id} action={a} aller={aller} />
         : a.type === "execution" ? <CarteExecution key={a.id} action={a} aller={aller} />
         : <CarteFusion key={a.id} action={a} aller={aller} />
