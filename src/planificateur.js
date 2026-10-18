@@ -20,6 +20,7 @@ const finance = require("agent-orchestrator/packages/schemas/finance");
 
 const nomAgent = (ref) => String(ref || "").split("@")[0];
 const incarne = (membre, noeud) => membre.registre.includes(nomAgent(noeud.agent));
+const estRelecteur = (n) => n.type === "review" || finance.roleFinance(n) === "revue";
 const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.model);
 
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
@@ -53,7 +54,7 @@ function roles(pipeline, nature) {
 
 /** Les auteurs du travail relu par une revue : ceux qui le produisent, pas ceux qui le planifient. */
 function auteursDe(actifs, roleDe) {
-  return actifs.filter((n) => n.type === "agent" && roleDe.get(n.id) !== "planification").map((n) => n.id);
+  return actifs.filter((n) => n.type === "agent" && !["planification", "revue"].includes(roleDe.get(n.id))).map((n) => n.id);
 }
 
 /** Pipelines du registre (dernière version de chacun) d'une nature, pour suggérer un rattachement. */
@@ -96,12 +97,12 @@ function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contex
       const depense = etat.depensesMembres[o.membre.id] || 0;
       if (affectation && affectation.projet !== projectId) rejet = `affecté au projet ${affectation.projet}`;
       else if (o.membre.budgetMensuelUsd !== null && depense >= o.membre.budgetMensuelUsd) rejet = `budget mensuel épuisé (${depense.toFixed(2)} / ${o.membre.budgetMensuelUsd} $)`;
-      else if (noeud.type === "review" && auteurs.some((a) => a.membre === o.membre.id)) rejet = "déjà auteur du travail à relire";
+      else if (estRelecteur(noeud) && auteurs.some((a) => a.membre === o.membre.id)) rejet = "déjà auteur du travail à relire";
       if (!rejet && affectation) { score += 100; raisons.push(`${o.membre.nom} est affecté à ce projet.`); }
       // Un membre de l'équipe passe devant l'agent du workflow, même sur un runtime moins varié.
       if (!rejet) { score += 30; raisons.push(`${o.membre.nom} (${o.membre.role}) incarne ${nomAgent(noeud.agent)} dans l'équipe.`); }
     }
-    if (!rejet && noeud.type === "review" && viasAuteurs.size && !viasAuteurs.has(o.llm.via)) {
+    if (!rejet && estRelecteur(noeud) && viasAuteurs.size && !viasAuteurs.has(o.llm.via)) {
       score += 20;
       raisons.push(`Runtime ${o.llm.via} distinct de celui du développement (${[...viasAuteurs].join(", ")}).`);
     }
@@ -168,9 +169,9 @@ function evaluer({ spec, index, params, etat }) {
 
   // Agents d'abord (les auteurs), revues ensuite : une revue connaît ceux qu'elle relit.
   const choisis = new Map();
-  const ordre = [...actifs.filter((n) => n.type === "agent"), ...actifs.filter((n) => n.type === "review")];
+  const ordre = [...actifs.filter((n) => n.type === "agent" && !estRelecteur(n)), ...actifs.filter(estRelecteur)];
   for (const n of ordre) {
-    const auteurs = n.type === "review" ? auteursDe(actifs, roleDe).map((id) => choisis.get(id)).filter(Boolean) : [];
+    const auteurs = estRelecteur(n) ? auteursDe(actifs, roleDe).map((id) => choisis.get(id)).filter(Boolean) : [];
     const { choix, ecartes } = choisir(n, { projectId: spec.projectId, roster: params.roster, affectations: params.affectations, etat, auteurs,
       contexte: { pipeline: p, agent: resolution.agents[n.agent] } });
     if (!choix) {
@@ -213,7 +214,7 @@ function evaluer({ spec, index, params, etat }) {
   const ids = (role) => actifs.filter((n) => roleDe.get(n.id) === role).map((n) => n.id);
   const realisePar = nature === "developpement" ? ids("developpement") : ids("synthese").length ? ids("synthese") : [...ids("analyse"), ...ids("production")];
   // Un script ne juge que s'il rend un verdict (outcomeFrom) : `consigne` prépare, il ne juge pas.
-  const jugePar = actifs.filter((n) => n.type === "review" || n.type === "approval" || (n.type === "script" && n.outcomeFrom)).map((n) => n.id);
+  const jugePar = actifs.filter((n) => nature === "finance" ? n.handler === "finance-report-validate" : n.type === "review" || n.type === "approval" || (n.type === "script" && n.outcomeFrom)).map((n) => n.id);
   if (!jugePar.length) { degrade = true; avertissements.push("Aucune étape ne juge les critères : ils ne seront pas vérifiés."); }
 
   const projet = resolution.projet;
@@ -340,12 +341,12 @@ class RefusPlan extends Error {}
 const VERDICTS_OK = new Set(["PASS", "COMPLETE"]);
 /**
  * Les critères d'un plan face au run : la dernière tentative de chaque étape qui les réalise
- * ou les juge (une correction rejoue les étapes, seule la dernière compte). Un reviewer juge
- * l'ensemble des critères : son verdict n'est pas ventilé critère par critère.
+ * ou les juge. Un PASS global ne suffit jamais : chaque critère a son constat
+ * documenté sur la dernière tentative. Les anciens runs restent non vérifiés.
  * @param {any} plan
  * @param {Array<{ noeud: string, statut: string, outcome: string|null }>} etapes  dans l'ordre du run
  */
-function resultatCriteres(plan, etapes) {
+function resultatCriteres(plan, etapes, evenements = [], arbre = null) {
   const derniere = new Map();
   for (const e of etapes) derniere.set(e.noeud, e);
   const vue = (id) => { const e = derniere.get(id); return { noeud: id, statut: e ? e.statut : "a-venir", outcome: e ? e.outcome ?? null : null }; };
@@ -354,11 +355,45 @@ function resultatCriteres(plan, etapes) {
   return plan.criteres.map((c) => {
     const realisation = c.realisePar.map(vue);
     const jugements = c.jugePar.map(vue);
-    const etat = jugements.some(echoue) || realisation.some((e) => e.statut === "failed") ? "echec"
+    const preuves = [];
+    let refuse = false;
+    for (const id of c.jugePar) {
+      const etape = derniere.get(id);
+      const financier = [...evenements].reverse().find((e) => e.type === "finance.validation.finished" && e.payload?.node === id);
+      const f = financier?.payload;
+      if (f?.version === 2 && financier.step_id === etape?.id && etape?.statut === "succeeded" && f.sessions?.reviewer && f.sessions.auteur !== f.sessions.reviewer &&
+          c.realisePar.every((n) => derniere.get(n)?.session === f.sessions.auteur && derniere.get(n)?.fin <= f.validatedAt)) {
+        const constats = (f.preuvesCriteres || []).filter((x) => x.texte === c.texte);
+        if (constats.length === 1 && constats[0].statut === "failed") refuse = true;
+        if (f.verdict === "PASS" && constats.length === 1 && constats[0].statut === "verified") {
+          const constat = constats[0];
+          preuves.push({ noeud: id, arbre: `snapshot:${f.snapshotSha256}`, methode: "relecture-finance", attendu: constat.attendu, motif: constat.motif,
+            fichiers: [{ fichier: "finance-report.json", ligne: 1, extrait: constat.extrait, sha256: f.reportSha256 }] });
+        }
+      }
+      const event = [...evenements].reverse().find((e) => ["review.finished", "review.invalid"].includes(e.type) && e.payload?.node === id);
+      const p = event?.type === "review.finished" ? event.payload : null;
+      if (!p || !arbre || p.treeSha !== arbre || !etape?.session || p.sessionId !== etape.session || etape.statut !== "succeeded") continue;
+      // Une nouvelle réalisation rend les constats précédents caducs, même avant
+      // que la prochaine revue n'ait publié son arbre.
+      if (c.realisePar.some((n) => derniere.get(n)?.fin && derniere.get(n).fin > p.finishedAt)) continue;
+      const hash = require("node:crypto").createHash("sha256").update(JSON.stringify(p.report)).digest("hex");
+      if (hash !== p.reportHash) continue;
+      const constats = (p.report?.criteria || []).filter((x) => x.criterion === c.texte);
+      if (constats.length !== 1) continue;
+      const constat = constats[0];
+      if (constat.status === "failed") refuse = true;
+      if (constat.status !== "verified" || constat.method !== "lecture" || !constat.expected || !constat.evidence || !constat.locations?.length) continue;
+      if (constat.locations.some((f) => !f.file || !f.line || !f.excerpt || !/^[a-f0-9]{64}$/.test(f.sha256))) continue;
+      preuves.push({ noeud: id, arbre, methode: constat.method, attendu: constat.expected, motif: constat.evidence,
+        fichiers: constat.locations.map((f) => ({ fichier: f.file, ligne: f.line, extrait: f.excerpt, sha256: f.sha256 })) });
+    }
+    const etat = refuse || jugements.some(echoue) || realisation.some((e) => e.statut === "failed") ? "echec"
       : !jugements.length ? "non-verifie"
-        : jugements.every(reussi) && realisation.every(reussi) ? "valide"
+        : jugements.every(reussi) && realisation.every(reussi) ? preuves.length ? "valide" : "non-verifie"
           : realisation.every((e) => e.statut === "a-venir") ? "a-venir" : "en-cours";
-    return { texte: c.texte, etat, realisation, jugements };
+    return { texte: c.texte, etat, realisation, jugements, preuves,
+      motif: etat === "non-verifie" ? "Aucune preuve propre à ce critère sur la tentative et l’arbre courants." : etat === "valide" ? "Constat documenté ; voir ses preuves, sa méthode et ses limites." : "" };
   });
 }
 

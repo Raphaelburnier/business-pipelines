@@ -189,7 +189,13 @@ function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string 
         <p className="whitespace-pre-wrap">{run.mission.objectif}</p>
         {run.criteres
           ? <ul className="mt-2 flex flex-col gap-1">{run.criteres.map((c, i) => <li key={i}><span className={c.etat === "valide" ? "text-ok" : c.etat === "echec" ? "text-alerte" : "text-douce"}>{ETATS_CRITERE[c.etat]}</span> · {c.texte}
-            <span className="text-xs text-douce"> ({c.jugements.map((j) => `${j.noeud} ${j.outcome ?? j.statut}`).join(", ") || "aucun juge"})</span></li>)}</ul>
+            <span className="text-xs text-douce"> ({c.jugements.map((j) => `${j.noeud} ${j.outcome ?? j.statut}`).join(", ") || "aucun juge"})</span>
+            {c.motif && <p className="text-xs text-douce">{c.motif}</p>}
+            {c.preuves?.map((p, j) => <details key={j} className="mt-1 text-xs"><summary className="cursor-pointer">Consulter la preuve · {p.noeud} · {p.methode}</summary>
+              <p>Attendu : {p.attendu}</p><p>{p.motif}</p><p className="font-mono break-all">Artefact / arbre {p.arbre}</p>
+              {p.fichiers.map((f, k) => <div key={k}><p>{f.fichier}:{f.ligne}</p><pre className="overflow-auto whitespace-pre-wrap">{f.extrait}</pre><p className="break-all">SHA-256 {f.sha256}</p></div>)}
+            </details>)}
+          </li>)}</ul>
           : <ul className="mt-2 list-disc pl-5">{run.mission.criteres.map((c, i) => <li key={i}>{c}</li>)}</ul>}
         {run.mission.plan && <details className="mt-2"><summary className="cursor-pointer text-xs">Plan figé du planificateur</summary><div className="mt-2"><PlanLisible plan={run.mission.plan} /></div></details>}
         <p className="mt-2 text-xs text-douce">{run.mission.participants.map((p) => `${p.nom} (${p.noeud}, ${p.llm.via}:${p.llm.model})`).join(" · ")}</p>

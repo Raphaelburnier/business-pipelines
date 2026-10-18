@@ -1,0 +1,199 @@
+{
+  "name": "finance-research",
+  "version": 2,
+  "title": "Rapport financier avec preuves chiffrées et relecture indépendante",
+  "workspace": "documents",
+  "tags": [
+    "finance",
+    "research"
+  ],
+  "description": "Compare les métriques au snapshot, fait relire chaque exigence par une session distincte, valide puis archive en privé.",
+  "notes": "A4 : requiert les handlers Finance v2 et le moteur compatible. Recette native métier A5 distincte.",
+  "budget": {
+    "maxTurnsPerAgent": 8,
+    "maxTotalTurns": 24,
+    "usdPerRun": 2
+  },
+  "nodes": [
+    {
+      "id": "collecte",
+      "type": "script",
+      "handler": "finance-snapshot",
+      "runsOn": "nas",
+      "outputs": [
+        "finance-snapshot.json"
+      ],
+      "params": {
+        "output": "finance-snapshot.json"
+      }
+    },
+    {
+      "id": "analyse",
+      "type": "agent",
+      "agent": "financial-research-analyst@2",
+      "runsOn": "pc",
+      "inputs": [
+        "finance-snapshot.json"
+      ],
+      "outputs": [
+        "finance-report.json"
+      ],
+      "outputSchema": {
+        "finance-report.json": {
+          "version": "number",
+          "resume": "string",
+          "observations": "array",
+          "scenarios": "array",
+          "risques": "array",
+          "limites": "array",
+          "questions_sans_reponse": "array",
+          "snapshotId": "string",
+          "metriques": "array"
+        }
+      },
+      "slice": [
+        "questions",
+        "perimetre",
+        "contraintes"
+      ],
+      "maxTurns": 8
+    },
+    {
+      "id": "controle",
+      "type": "script",
+      "handler": "finance-report-check",
+      "runsOn": "nas",
+      "inputs": [
+        "finance-snapshot.json",
+        "finance-report.json"
+      ],
+      "outputs": [
+        "finance-review-input.json"
+      ],
+      "params": {
+        "output": "finance-review-input.json"
+      },
+      "outcomeFrom": {
+        "report": "finance-review-input.json",
+        "field": "verdict",
+        "items": "manques"
+      }
+    },
+    {
+      "id": "revue",
+      "type": "agent",
+      "agent": "financial-research-reviewer@1",
+      "runsOn": "pc",
+      "inputs": [
+        "finance-snapshot.json",
+        "finance-report.json",
+        "finance-review-input.json"
+      ],
+      "outputs": [
+        "finance-review.json"
+      ],
+      "outputSchema": {
+        "finance-review.json": {
+          "version": "number",
+          "snapshotSha256": "string",
+          "reportSha256": "string",
+          "checks": "array"
+        }
+      },
+      "slice": [
+        "questions",
+        "perimetre",
+        "contraintes"
+      ],
+      "maxTurns": 8
+    },
+    {
+      "id": "validation",
+      "type": "script",
+      "handler": "finance-report-validate",
+      "runsOn": "nas",
+      "inputs": [
+        "finance-snapshot.json",
+        "finance-report.json",
+        "finance-review.json"
+      ],
+      "outputs": [
+        "finance-validation.json"
+      ],
+      "params": {
+        "snapshot": "finance-snapshot.json",
+        "report": "finance-report.json",
+        "output": "finance-validation.json",
+        "review": "finance-review.json"
+      },
+      "outcomeFrom": {
+        "report": "finance-validation.json",
+        "field": "verdict",
+        "items": "manques"
+      }
+    },
+    {
+      "id": "publication",
+      "type": "script",
+      "handler": "finance-report-publish",
+      "runsOn": "nas",
+      "inputs": [
+        "finance-report.json",
+        "finance-validation.json",
+        "finance-snapshot.json",
+        "finance-review.json"
+      ],
+      "params": {
+        "report": "finance-report.json",
+        "validation": "finance-validation.json",
+        "snapshot": "finance-snapshot.json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "collecte",
+      "to": "analyse"
+    },
+    {
+      "from": "analyse",
+      "to": "controle"
+    },
+    {
+      "from": "controle",
+      "to": "revue",
+      "on": "PASS"
+    },
+    {
+      "from": "controle",
+      "to": "analyse",
+      "on": "FAIL"
+    },
+    {
+      "from": "revue",
+      "to": "validation"
+    },
+    {
+      "from": "validation",
+      "to": "analyse",
+      "on": "FAIL"
+    },
+    {
+      "from": "validation",
+      "to": "publication",
+      "on": "PASS"
+    }
+  ],
+  "cycles": [
+    {
+      "id": "correction",
+      "nodes": [
+        "analyse",
+        "controle",
+        "revue",
+        "validation"
+      ],
+      "maxLoops": 1
+    }
+  ]
+}

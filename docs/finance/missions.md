@@ -57,3 +57,29 @@ et registre #14 (`796abe97abb024de5e694aab42f0feb84a74383e`). Le cockpit les con
 via `agent-orchestrator` et ses fixtures versionnées. Le code Finance du cockpit a été livré
 par la PR #94. Ces fusions ne prouvent pas que les dépôts sont déployés sur le NAS : le run
 F08 natif et la vérification du runtime restent à faire après livraison.
+
+## A4 — Finance v2
+
+La fiche du projet référence maintenant `finance-research@2`. Il ajoute un contrôle
+déterministe (`finance-report-check`), puis un reviewer dans une session propre,
+avant la validation finale et l'archive. Les quatre nœuds analyse/contrôle/revue/
+validation partagent une seule correction ; ils ne multiplient pas les essais.
+Le moteur, le registre et le cockpit compagnons doivent être livrés ensemble.
+
+Le rapport porte `version: 2`, `snapshotId` et `metriques`. Les métriques recopient
+exactement un chemin du catalogue du snapshot, sa valeur brute, son unité, sa
+devise, sa date et ses sources. La trésorerie utilise des centimes (`minor`) ;
+aucun nouveau calcul ou change n'est délégué au modèle. Les quantités restent hors
+du texte libre ; elles sont rendues par l'onglet Analyses avec leur provenance.
+
+`finance-review-input.json` lie les empreintes et toutes les exigences à relire.
+Le reviewer examine chaque critère, question, contrainte, directive, exclusion,
+document et périmètre ainsi que la cohérence économique. La validation exige des
+références précises au rapport et deux identifiants de session distincts issus
+de l'event store, dans le bon ordre. Un oubli, FAIL ou non-vérifié bloque l'archive.
+Le manifeste et le rapport doivent toujours correspondre aux empreintes validées.
+
+Les rapports v1 archivés restent consultables avec une mention de leurs contrôles
+limités. Une nouvelle publication v1 est refusée. L'absence de donnée reste visible.
+Ce contrôle de fond est une revue de modèle : il reste faillible et ne garantit
+aucun rendement. La première recette métier native sur le NAS appartient à A5.
