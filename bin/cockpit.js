@@ -436,6 +436,7 @@ async function traiter(req, res) {
     chemin === "/missions" || chemin.startsWith("/missions/") ||
     chemin === "/marketing" || chemin.startsWith("/marketing/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
+    chemin === "/a-venir" || chemin === "/a-venir/" ||
     chemin === "/decisions" || chemin === "/decisions/" ||
     chemin === "/decisions/pipelines" || chemin === "/decisions/pipelines/" ||
     chemin === "/demander" || chemin.startsWith("/demander/") ||
