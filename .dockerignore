@@ -39,6 +39,8 @@ agent-registry
 
 # Secrets.
 specs/*.env
+specs/cles
+run-cockpit
 *.env
 
 *.log

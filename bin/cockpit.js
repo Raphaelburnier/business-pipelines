@@ -39,6 +39,7 @@
 //   - l'identifiant d'une action voyage dans un attribut de données, pas dans un nom de
 //     champ à redécouper. Le découpage supposait qu'un nom de dossier tenait en un
 //     segment, et rendait un autre identifiant dès qu'il portait un underscore.
+const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { envLoader, EventStore } = require("agent-orchestrator");
@@ -95,10 +96,16 @@ const PORTEE = { port: PORT, tailnet: TAILNET };
 // L'adresse d'écoute est 127.0.0.1 partout sauf dans un conteneur, où lier la boucle
 // locale rend le service injoignable même publié. Le raisonnement complet, et le refus
 // qui empêche d'ouvrir le cockpit sur le LAN par mégarde, sont dans src/acces.js.
-const HOTE = acces.adresseEcoute({
-  hote: ENV.COCKPIT_HOTE,
-  conteneur: String(ENV.COCKPIT_CONTENEUR || "").trim() === "1",
-});
+const CONTENEUR = String(ENV.COCKPIT_CONTENEUR || "").trim() === "1";
+const HOTE = acces.adresseEcoute({ hote: ENV.COCKPIT_HOTE, conteneur: CONTENEUR });
+// Le socket Unix vers lequel `tailscale serve` relaie (docs/SECURITE-COMMANDES.md). Avec
+// COCKPIT_IDENTITE_SOCKET_SEULE=1, une identité Tailscale n'est crue que par ce chemin.
+const SOCKET = (ENV.COCKPIT_SOCKET || "").trim() || null;
+const SOCKET_SEUL = String(ENV.COCKPIT_IDENTITE_SOCKET_SEULE || "").trim() === "1";
+if (SOCKET_SEUL && !SOCKET) {
+  console.error("COCKPIT_IDENTITE_SOCKET_SEULE=1 exige COCKPIT_SOCKET : aucune identité Tailscale ne serait acceptée.");
+  process.exit(1);
+}
 
 // Surchargeable comme APPROVALS_DIR, et pour la même raison : ce qui n'est pas déplaçable
 // ne se teste que contre le dossier réel du dépôt.
@@ -404,7 +411,8 @@ async function traiter(req, res) {
 
   let qui;
   try {
-    qui = acces.identite(req.headers, { tailnet: TAILNET, operateurLocal: OPERATEUR });
+    qui = acces.identite(req.headers, { tailnet: TAILNET, operateurLocal: OPERATEUR, viaSocket: req.viaSocketTailscale === true, socketSeul: SOCKET_SEUL });
+    acces.verifierEcriture(qui, { methode: req.method, conteneur: CONTENEUR });
   } catch (err) {
     // Refus d'identité avant même de lire la boîte : si on ne sait pas à qui on parle, on
     // ne lui montre pas non plus les prix, les marges et les annonces.
@@ -1040,7 +1048,7 @@ async function traiter(req, res) {
   return json(res, 404, { erreur: "route inconnue" });
 }
 
-const serveur = http.createServer(async (req, res) => {
+async function servir(req, res) {
   try {
     await traiter(req, res);
   } catch (err) {
@@ -1060,7 +1068,26 @@ const serveur = http.createServer(async (req, res) => {
     if (!res.headersSent) json(res, 500, { erreur: `panne du cockpit : ${err.message}` });
     else res.end();
   }
-});
+}
+
+const serveur = http.createServer(servir);
+
+if (SOCKET) {
+  // Même application, un seul signe distinctif : la requête est arrivée par le socket.
+  const parSocket = http.createServer((req, res) => {
+    req.viaSocketTailscale = true;
+    return servir(req, res);
+  });
+  try {
+    fs.unlinkSync(SOCKET);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  parSocket.listen(SOCKET, () => {
+    fs.chmodSync(SOCKET, 0o600);
+    console.log(`Relais tailscale serve attendu sur unix:${SOCKET}${SOCKET_SEUL ? " (seul chemin d'identité)" : ""}`);
+  });
+}
 
 serveur.listen(PORT, HOTE, () => {
   console.log(`Cockpit sur http://${HOTE}:${PORT}`);

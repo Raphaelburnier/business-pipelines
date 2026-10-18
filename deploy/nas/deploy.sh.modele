@@ -19,6 +19,13 @@ BACKUP=$BACKUPS/business-pipelines-before-@RELEASE@-$STAMP.tar.gz
 # Le binaire de DSM sur l'hôte ; le livreur, dans son conteneur, pose DOCKER=/usr/bin/docker.
 DOCKER=${DOCKER:-/usr/local/bin/docker}
 export COMPOSE_PROJECT_NAME=business-pipelines
+# L'interpolation du compose (docs/SECURITE-COMMANDES.md) vient de specs/, que la bascule
+# garde ; un .env à la racine serait effacé par vider_code. Une seule variable, lue par motif
+# et jamais sourcée.
+if [ -f "$BUSINESS/specs/compose.env" ]; then
+  COCKPIT_IDENTITE_SOCKET_SEULE=$(sed -n 's/^COCKPIT_IDENTITE_SOCKET_SEULE=\([01]\)$/\1/p' "$BUSINESS/specs/compose.env" | tail -n 1)
+  export COCKPIT_IDENTITE_SOCKET_SEULE
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Cette bascule doit être lancée avec sudo." >&2
@@ -49,7 +56,7 @@ ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
 # instantané plus ancien, peut-être incohérent.
 est_etat() {
   case "$1" in
-    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|passer-abonnement.sh) return 0 ;;
+    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|run-cockpit|passer-abonnement.sh) return 0 ;;
   esac
   return 1
 }
@@ -70,7 +77,7 @@ tar -czf "$BACKUP" -C /volume1/docker \
   --exclude=business-pipelines/logs --exclude=business-pipelines/runs \
   --exclude=business-pipelines/workspace --exclude=business-pipelines/workspaces \
   --exclude=business-pipelines/etat --exclude=business-pipelines/ai-studio-data \
-  --exclude=business-pipelines/passer-abonnement.sh \
+  --exclude=business-pipelines/run-cockpit --exclude=business-pipelines/passer-abonnement.sh \
   business-pipelines
 
 SWITCHED=0
@@ -110,7 +117,7 @@ vider_code
 tar -xzf "$ARCHIVE" -C "$BUSINESS"
 # Tout dossier monté par docker-compose.yaml doit exister : Docker sur DSM ne crée pas la
 # source d'un bind mount, et la bascule échoue (./codex, 2026-10-15, version restaurée).
-mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data" "$BUSINESS/codex"
+mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data" "$BUSINESS/codex" "$BUSINESS/run-cockpit" "$BUSINESS/specs/cles"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du

@@ -7,6 +7,7 @@ const pullRequests = require("../src/pull-requests");
 const suivi = require("../src/suivi-livraisons");
 const { lireAutorises } = require("../src/livreur");
 const rattachements = require("../src/rattachements");
+const signature = require("../src/signature-commandes");
 const { EventStore } = require("agent-orchestrator");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -43,6 +44,10 @@ if (!JETON) {
   console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
   process.exit(1);
 }
+// Clé partagée avec le cockpit seul (COMMANDES_CLE_FICHIER) : une fusion ou un rattachement
+// non signé est refusé. Sans clé, transition : accepté avec un avertissement à chaque fois.
+const CLE_COMMANDES = signature.cleEnv();
+if (!CLE_COMMANDES) console.error("COMMANDES_CLE_FICHIER absent ou vide : les fusions ne sont pas vérifiées. Voir docs/SECURITE-COMMANDES.md.");
 const apiFusion = JETON_FUSION ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_FUSION }) : null;
 if (!apiFusion) console.error("GITHUB_TOKEN_FUSION absent : le cockpit ne voit ni ne fusionne les PR. Voir specs/publieur.env.example.");
 
@@ -192,8 +197,12 @@ async function servirFusions(store) {
     }
     const { depot, numero, sha, baseSha, runId, tentative } = commande.payload;
     let resultat;
+    const preuve = signature.verifier(CLE_COMMANDES, commande);
+    if (preuve.ok && preuve.transition) console.error(`${commande.kind} ${commande.id} accepté sans vérification de signature (transition)`);
     if (!apiFusion) {
       resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };
+    } else if (!preuve.ok) {
+      resultat = { ok: false, raison: preuve.raison };
     } else if (!lireAutorises(AUTORISES).has(String(commande.par))) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
     } else if (commande.kind === rattachements.KIND) {
