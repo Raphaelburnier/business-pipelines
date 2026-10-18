@@ -83,7 +83,7 @@ export const LOTS: Lot[] = [
     prerequis: "Lot 1",
     etapes: [
       { id: "3.1", titre: "Registre des natures en données", detail: "agent-registry/natures/<id>.json au lieu de l'enum developpement | marketing | finance.", fichiers: ["AO packages/schemas/plan.js:60,75", "AO packages/schemas/mission.js:23"], statut: "a-faire" },
-      { id: "3.2", titre: "Une seule détection de nature", detail: "Tag inconnu signalé au lieu d'un null silencieux.", fichiers: ["BP src/planificateur.js:26-50", "BP src/missions.js:29-39"], statut: "a-faire" },
+      { id: "3.2", titre: "Une seule détection de nature", detail: "Tag inconnu signalé au lieu d'un null silencieux.", fichiers: ["BP src/natures.js", "BP src/planificateur.js", "BP src/missions.js"], statut: "fait" },
       { id: "3.3", titre: "Règles par nature déclarées", detail: "Remplacer les if par nature.", fichiers: ["BP src/planificateur.js:120-140"], statut: "a-faire" },
       { id: "3.4", titre: "UI générique et page Branche", detail: "Natures servies par l'API pour la navigation et les vues.", fichiers: ["BP web/src/App.tsx", "BP web/src/vues/PlanMission.tsx"], statut: "a-faire" },
       { id: "3.5", titre: "Discussions d'équipe par nature", detail: "Compétences et gabarit déclarés dans la nature.", fichiers: ["BP src/discussions-equipe.js:9,41,217"], statut: "a-faire" },
@@ -169,7 +169,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "O1", severite: "moyenne", titre: "Événements alerte sans lecteur, alerter.js jamais lancé", fichiers: "AO src/maitre.js:483 ; BP bin/alerter.js", correctif: "Lot 4.2", statut: "a-faire" },
   { id: "O2", severite: "moyenne", titre: "deploy.sh coupe le runner sans vérifier les runs", fichiers: "BP deploy/nas/deploy.sh.modele:106-110", correctif: "Lot 7.3", statut: "a-faire" },
   { id: "O3", severite: "moyenne", titre: "POST /api/runs sans contrôle du budget mensuel", fichiers: "BP bin/cockpit.js:633-698", correctif: "Lot 4.4", statut: "a-faire" },
-  { id: "O4", severite: "moyenne", titre: "Tag de pipeline inconnu ignoré sans message", fichiers: "BP src/planificateur.js:26-33", correctif: "Lot 3.2", statut: "a-faire" },
+  { id: "O4", severite: "moyenne", titre: "Tag de pipeline inconnu ignoré sans message", fichiers: "BP src/planificateur.js:26-33", correctif: "Lot 3.2", statut: "fait" },
   { id: "O5", severite: "moyenne", titre: "Hook Stop qui injecte un log brut de PR", fichiers: "~/.claude/hooks/ci-pr/stop_ci.py:53-64", correctif: "Lot 6.5", statut: "a-faire" },
   { id: "F13", severite: "basse", titre: "Actions GitHub épinglées par tag", fichiers: "ci.yml ; ci-autofix.yml", correctif: "Lot 0.8", statut: "a-faire" },
   { id: "F14", severite: "basse", titre: "Jetons Codex et Claude lisibles par les agents du runner", fichiers: "BP docker-compose.yaml:110,133", correctif: "Lot 0.6", statut: "a-faire" },

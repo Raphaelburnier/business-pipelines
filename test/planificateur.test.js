@@ -186,6 +186,49 @@ test("projet inconnu ou sans pipeline lançable : blocage expliqué", () => {
   } finally { f.fermer(); }
 });
 
+test("pipeline au tag de nature inconnu : signalé au lieu d'être ignoré en silence", () => {
+  const f = fixture();
+  try {
+    const source = path.join(f.reg, "pipelines", "marketing", "v1", "pipeline.json");
+    const brut = JSON.parse(fs.readFileSync(source, "utf-8"));
+    fs.mkdirSync(path.join(f.reg, "pipelines", "seo", "v1"), { recursive: true });
+    fs.writeFileSync(path.join(f.reg, "pipelines", "seo", "v1", "pipeline.json"), JSON.stringify({ ...brut, name: "seo", tags: ["markting", "plan"] }));
+    const ficheApp = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json"), "utf-8"));
+    for (const [id, pipelines] of [["seo", [{ extends: "seo@1" }]], ["mixte", [...ficheApp.pipelines, { extends: "seo@1" }]]]) {
+      fs.mkdirSync(path.join(f.projets, id), { recursive: true });
+      fs.writeFileSync(path.join(f.projets, id, "project.json"), JSON.stringify({ ...ficheApp, id, pipelines }));
+    }
+
+    const seul = planificateur.proposer({ spec: spec({ projectId: "seo" }), params: f.params, etat: {} });
+    assert.equal(seul.statut, "bloque");
+    const ignore = seul.blocages.find((b) => b.pipeline === "seo@1");
+    assert.equal(ignore.code, "nature-indeterminee");
+    assert.match(ignore.message, /seo@1 est ignoré : aucun tag de nature .* markting, plan/);
+    assert.match(ignore.arbitrage, /code, marketing, finance/);
+
+    const mixte = planificateur.proposer({ spec: spec({ projectId: "mixte" }), params: f.params, etat: etatLibre() });
+    assert.equal(mixte.plan.nature, "developpement");
+    assert.ok(mixte.plan.avertissements.some((a) => /seo@1 est ignoré/.test(a)));
+
+    const gabarit = planificateur.proposer({ spec: spec({ projectId: "vide" }), params: f.params, etat: {} });
+    assert.ok(!gabarit.blocages.some((b) => /est ignoré/.test(b.message)), "un gabarit de discussion n'est pas un défaut");
+  } finally { f.fermer(); }
+});
+
+test("nature unique : planificateur et missions lisent la même détection", () => {
+  const natures = require("../src/natures");
+  assert.deepEqual(natures.classer({ tags: ["marketing", "discussion"], workspace: "documents" }), { nature: "marketing", gabarit: true, raison: "gabarit de discussion, lancé depuis une discussion d'équipe" });
+  assert.equal(natures.natureLancable({ tags: ["marketing", "discussion"], workspace: "documents" }), null);
+  assert.equal(natures.natureLancable({ tags: [], nodes: [{ handler: "verify-project" }] }), "developpement");
+  assert.equal(natures.natureLancable({ tags: ["finance", "research"], workspace: "documents" }), "finance");
+  assert.match(natures.classer({ tags: [] }).raison, /aucun tag/);
+  const f = fixture();
+  try {
+    assert.equal(require("../src/missions").lire({ ...f.params, projectId: "vide" }).options.nature, "marketing");
+    assert.equal(require("../src/missions").lire({ ...f.params, projectId: "app" }).options.nature, "developpement");
+  } finally { f.fermer(); }
+});
+
 test("quota Codex atteint : un autre runtime est choisi s'il existe, sinon blocage avec la raison", () => {
   const f = fixture();
   try {

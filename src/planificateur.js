@@ -16,6 +16,7 @@ const contrat = require("agent-orchestrator/src/mission");
 const { roleEffectif } = require("agent-orchestrator/src/dispatch");
 const schemas = require("agent-orchestrator/packages/schemas/plan");
 const missions = require("./missions");
+const detection = require("./natures");
 const finance = require("agent-orchestrator/packages/schemas/finance");
 
 const nomAgent = (ref) => String(ref || "").split("@")[0];
@@ -25,12 +26,9 @@ const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.mod
 
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
 function natureDe(pipeline) {
-  const tags = pipeline.tags || [];
-  if (finance.estFinance(pipeline)) { finance.validerFinance(pipeline); return "finance"; }
-  if (pipeline.workspace === "documents" || tags.includes("discussion")) return null;
-  if (tags.includes("code") || pipeline.nodes.some((n) => n.handler === "verify-project")) return "developpement";
-  if (tags.includes("marketing")) return "marketing";
-  return null;
+  const nature = detection.natureLancable(pipeline);
+  if (nature === "finance") finance.validerFinance(pipeline);
+  return nature;
 }
 
 /** Rôle de chaque nœud actif, déduit de la structure du pipeline. */
@@ -269,11 +267,17 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const projet = { id: spec.projectId, nom: String(ficheLue.name || spec.projectId) };
   const candidats = [];
   const illisibles = [];
+  const ignores = [];
   (ficheLue.pipelines || []).forEach((attache, index) => {
     try {
       const brut = registre.lirePipelineBrut(registre.dossierRegistre(), attache.extends);
       const nature = natureDe({ ...brut, nodes: brut.nodes || [] });
       if (nature) candidats.push({ index, ref: attache.extends, nature });
+      else {
+        const { gabarit, raison } = detection.classer(brut);
+        if (!gabarit) ignores.push({ code: "nature-indeterminee", message: `${attache.extends} est ignoré : ${raison}.`,
+          arbitrage: `Ajouter au pipeline ${attache.extends} le tag de sa nature (${Object.keys(detection.TAGS_NATURE).join(", ")}) dans le registre.`, noeud: null, pipeline: attache.extends });
+      }
     } catch (err) {
       illisibles.push({ code: "pipeline-illisible", message: `${attache.extends} : ${err.message}`, arbitrage: null, noeud: null, pipeline: attache.extends });
     }
@@ -282,14 +286,14 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const natures = [...new Set(candidats.map((c) => c.nature))];
   const nature = spec.nature || (natures.length === 1 ? natures[0] : null);
   if (!nature) {
-    return sans("bloque", [...illisibles, { code: "nature-indeterminee", message: natures.length
+    return sans("bloque", [...illisibles, ...ignores, { code: "nature-indeterminee", message: natures.length
       ? `Le projet accepte plusieurs natures de mission (${natures.join(", ")}) : la spec doit préciser la sienne.`
       : "Le projet n'a aucun pipeline de développement, de marketing ou de finance.", arbitrage: natures.length ? "Préciser la nature de la mission." : null, noeud: null, pipeline: null }], projet);
   }
   const retenus = candidats.filter((c) => c.nature === nature);
   if (!retenus.length) {
     const suggestions = pipelinesDuRegistre(nature);
-    return sans("bloque", [...illisibles, { code: "aucun-pipeline", message: `Aucun pipeline ${nature} n'est attaché au projet ${spec.projectId}.`,
+    return sans("bloque", [...illisibles, ...ignores, { code: "aucun-pipeline", message: `Aucun pipeline ${nature} n'est attaché au projet ${spec.projectId}.`,
       arbitrage: suggestions.length ? `Attacher l'un de ces pipelines du registre à la fiche du projet : ${suggestions.join(", ")}.` : "Aucun pipeline du registre ne couvre cette nature.", noeud: null, pipeline: null }], projet);
   }
 
@@ -304,6 +308,7 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const ecartes = essais.filter((e) => e !== elu).map((e) => e.plan ? `${e.ref} (dégradé)` : `${e.ref} (${e.blocages.map((b) => b.code).join(", ")})`);
   elu.plan.pipeline.raison = [`Pipeline ${nature} attaché à la fiche du projet${retenus.length > 1 ? `, retenu parmi ${retenus.length}` : ""}.`,
     ...(ecartes.length ? [`Écartés : ${ecartes.join(" ; ")}.`] : [])].join(" ").slice(0, 600);
+  elu.plan.avertissements = [...ignores.map((b) => b.message.slice(0, 600)), ...elu.plan.avertissements].slice(0, 30);
   const plan = schemas.plan.parse(elu.plan);
   // Gel à blanc : le contrat refuse un plan qui ne décrit pas exactement la résolution, et
   // `construire` revérifie la configuration, les rôles et les tranches de spec.
