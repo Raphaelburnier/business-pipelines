@@ -269,10 +269,46 @@ test("branches : chaque nature avec ses pipelines du registre et ses projets, ga
     assert.ok(par.developpement.pipelines.includes("improve-app@7"));
     assert.equal(par.finance.regles, "dediees");
     assert.match(par.finance.description, /Recherche financière/);
+    assert.equal(par.marketing.discussion.gabarit, "marketing-dialogue@1");
+    assert.equal(par.finance.discussion, null);
+  } finally { f.fermer(); }
+});
+
+test("discussions d'équipe : gabarit, compétences et nature cible viennent de la nature du projet", () => {
+  const f = fixture();
+  try {
+    const discussions = require("../src/discussions-equipe");
+    const marketing = discussions.discussionDuProjet({ projetsDir: f.projets, projectId: "marketing", dossier: f.reg });
+    assert.deepEqual({ nature: marketing.nature, gabarit: marketing.gabarit, versNature: marketing.versNature },
+      { nature: "marketing", gabarit: "marketing-dialogue@1", versNature: "developpement" });
+    assert.equal(discussions.discussionDuProjet({ projetsDir: f.projets, projectId: "app", dossier: f.reg }).nature, "marketing", "un projet de code garde la discussion marketing");
+    const { options, discussion } = discussions.lireOptions({ ...f.params, projectId: "vide" });
+    assert.equal(discussion.libelle, "Marketing");
+    assert.deepEqual(options.membres.map((m) => m.membre).sort(), ["camille", "elise", "margaux"], "seuls les membres aux compétences déclarées");
+    const fil = { resolution_json: JSON.stringify({ pipeline: { name: "marketing-dialogue", version: 1 } }) };
+    assert.equal(discussions.discussionDuFil(fil).versNature, "developpement");
+    assert.throws(() => discussions.discussionDuFil({ resolution_json: JSON.stringify({ pipeline: { name: "inconnu", version: 1 } }) }), /ne déclare plus le gabarit inconnu@1/);
   } finally { f.fermer(); }
 });
 
 const moteurSansNatures = typeof require("agent-orchestrator/src/registre").lireNatures !== "function" && "moteur sans lireNatures";
+const moteurSansDiscussion = !require("agent-orchestrator/packages/schemas").schemas.nature?.shape?.discussion && "schéma nature sans discussion";
+
+test("discussions déclarées dans le registre : elles remplacent la définition intégrée", { skip: moteurSansNatures || moteurSansDiscussion }, () => {
+  const f = fixture();
+  try {
+    fs.mkdirSync(path.join(f.reg, "natures"));
+    const ecrire = (n) => fs.writeFileSync(path.join(f.reg, "natures", `${n.id}.json`), JSON.stringify(n));
+    const natures = require("../src/natures");
+    for (const n of natures.INTEGREES) ecrire(n);
+    assert.equal(natures.discussionsDeclarees(natures.naturesDeclarees(f.reg))[0].gabarit, "marketing-dialogue@1", "aucune discussion déclarée : l'intégrée reste");
+    ecrire({ ...natures.INTEGREES.find((n) => n.id === "marketing"), discussion: { gabarit: "marketing-dialogue@1", competences: ["brand-analyst"] } });
+    const [seule] = natures.discussionsDeclarees(natures.naturesDeclarees(f.reg));
+    assert.deepEqual({ competences: seule.competences, versNature: seule.versNature }, { competences: ["brand-analyst"], versNature: null });
+    const { options } = require("../src/discussions-equipe").lireOptions({ ...f.params, projectId: "marketing" });
+    assert.deepEqual(options.membres.map((m) => m.membre), ["camille"]);
+  } finally { f.fermer(); }
+});
 test("natures du registre : une branche déclarée en données est planifiée sans code dédié", { skip: moteurSansNatures }, () => {
   const f = fixture();
   try {

@@ -17,11 +17,35 @@ const INTEGREES = [
 /**
  * Les natures connues, par priorité croissante : celles du registre, sinon les intégrées.
  * @param {string} [dossier]
- * @returns {Array<{ id: string, libelle: string, description: string, tags: string[], handlers: string[], priorite: number }>}
+ * @returns {Array<{ id: string, libelle: string, description: string, tags: string[], handlers: string[], priorite: number,
+ *   discussion?: { gabarit: string, competences: string[], versNature?: string } }>}
  */
 function naturesDeclarees(dossier = registre.dossierRegistre()) {
   const lues = typeof registre.lireNatures === "function" ? registre.lireNatures(dossier) : [];
   return lues.length ? lues : INTEGREES;
+}
+
+// Discussions d'équipe tant qu'aucune nature du registre n'en déclare : le gabarit lancé à
+// chaque tour, les agents du registre dont un membre peut prendre la parole, et la nature
+// du workflow qui reçoit les specs nées de la discussion.
+const DISCUSSIONS_INTEGREES = {
+  marketing: {
+    gabarit: "marketing-dialogue@1",
+    competences: ["brand-analyst", "economy-analyst", "content-writer", "content-planner", "plan-synthesist", "marketing-plan-writer", "channel-strategy-analyst", "market-opportunity-analyst"],
+    versNature: "developpement",
+  },
+};
+
+/**
+ * Les discussions d'équipe déclarées, une par nature qui en a une.
+ * @param {ReturnType<typeof naturesDeclarees>} [natures]
+ * @returns {Array<{ nature: string, libelle: string, gabarit: string, competences: string[], versNature: string | null }>}
+ */
+function discussionsDeclarees(natures = naturesDeclarees()) {
+  const avec = (n, d) => ({ nature: n.id, libelle: n.libelle, gabarit: d.gabarit, competences: d.competences, versNature: d.versNature ?? null });
+  const declarees = natures.filter((n) => n.discussion).map((n) => avec(n, n.discussion));
+  if (declarees.length) return declarees;
+  return natures.filter((n) => Object.hasOwn(DISCUSSIONS_INTEGREES, n.id)).map((n) => avec(n, DISCUSSIONS_INTEGREES[n.id]));
 }
 
 /** Les tags qui donnent une nature, pour les messages. */
@@ -129,4 +153,4 @@ function reglesDe(nature) {
   return Object.hasOwn(REGLES, nature) ? REGLES[nature] : GENERIQUES;
 }
 
-module.exports = { classer, natureLancable, naturesDeclarees, tagsConnus, reglesDe, REGLES, GENERIQUES, INTEGREES };
+module.exports = { classer, natureLancable, naturesDeclarees, discussionsDeclarees, tagsConnus, reglesDe, REGLES, GENERIQUES, INTEGREES, DISCUSSIONS_INTEGREES };

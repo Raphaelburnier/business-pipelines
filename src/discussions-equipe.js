@@ -1,12 +1,15 @@
-// Fil marketing durable. Les modèles passent par run.start et le maître existants.
+// Fil d'équipe durable. Les modèles passent par run.start et le maître existants. Le gabarit,
+// les compétences admises et la nature qui reçoit les specs viennent de la nature du projet.
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const registre = require("agent-orchestrator/src/registre");
 const mission = require("agent-orchestrator/src/mission");
 const { validerPipeline } = require("agent-orchestrator/packages/schemas");
 const schema = require("agent-orchestrator/packages/schemas/equipes");
 const missions = require("./missions");
+const natures = require("./natures");
 
-const COMPETENCES = new Set(["brand-analyst", "economy-analyst", "content-writer", "content-planner", "plan-synthesist", "marketing-plan-writer", "channel-strategy-analyst", "market-opportunity-analyst"]);
 const MAX_TOURS = 40;
 const OCCUPE = new Set(["pending", "taken", "running", "waiting_auth", "waiting_quota", "waiting_machine", "waiting_approval", "cancelled"]);
 const maintenant = () => new Date().toISOString();
@@ -36,14 +39,41 @@ function initialiser(store) {
   `);
 }
 
+/**
+ * La discussion d'équipe d'un projet : celle d'une nature de ses pipelines, sinon la première
+ * déclarée (un projet de code peut ouvrir une discussion marketing, comme avant).
+ * @param {{ projetsDir: string, projectId: string, dossier?: string }} entree
+ */
+function discussionDuProjet({ projetsDir, projectId, dossier = registre.dossierRegistre() }) {
+  const declarees = natures.naturesDeclarees(dossier);
+  const possibles = natures.discussionsDeclarees(declarees);
+  if (!possibles.length) throw new Error("Aucune nature ne déclare de discussion d'équipe.");
+  const fiche = JSON.parse(fs.readFileSync(path.join(projetsDir, projectId, "project.json"), "utf-8"));
+  const duProjet = (fiche.pipelines || []).map((a) => {
+    try { return natures.classer(registre.lirePipelineBrut(dossier, a.extends), declarees).nature; } catch { return null; }
+  });
+  return possibles.find((d) => duProjet.includes(d.nature)) || possibles[0];
+}
+
 function lireOptions({ projetsDir, projectId, roster, affectations }) {
   const { resolution } = missions.lire({ projetsDir, projectId, roster, affectations });
-  const gabarit = registre.chargerPipeline(registre.dossierRegistre(), "marketing-dialogue@1");
-  const membres = roster.filter((m) => m.registre.some((r) => COMPETENCES.has(r)) && ["claude", "codex"].includes(m.llm.via))
+  const discussion = discussionDuProjet({ projetsDir, projectId });
+  const competences = new Set(discussion.competences);
+  const gabarit = registre.chargerPipeline(registre.dossierRegistre(), discussion.gabarit);
+  const membres = roster.filter((m) => m.registre.some((r) => competences.has(r)) && ["claude", "codex"].includes(m.llm.via))
     .map((m) => ({ membre: m.id, nom: m.nom, role: m.role, llm: m.llm }));
   const base = { projet: { ...resolution.projet, publier: false }, ...gabarit, budget: gabarit.pipeline.budget };
   const configuration = mission.empreinte({ base, membres });
-  return { base, options: schema.options.parse({ projectId, nom: resolution.projet.name, configuration, membres }) };
+  return { base, discussion, options: schema.options.parse({ projectId, nom: resolution.projet.name, configuration, membres }) };
+}
+
+/** La discussion dont un fil a lancé le gabarit, retrouvée par la référence du gabarit. */
+function discussionDuFil(row) {
+  const p = JSON.parse(row.resolution_json).pipeline;
+  const ref = `${p.name}@${p.version}`;
+  const discussion = natures.discussionsDeclarees().find((d) => d.gabarit === ref);
+  if (!discussion) throw new Error(`Aucune nature ne déclare plus le gabarit ${ref} de cette discussion.`);
+  return discussion;
 }
 
 function ligneFil(store, id) {
@@ -166,12 +196,12 @@ function mettreEnFile(store, row, demande, qui, verifierBackend) {
 function ouvrir({ store, qui, params, demande, verifierBackend }) {
   const d = schema.ouverture.parse(demande);
   const result = unique(store, qui, d.requestId, "ouvrir", d, () => {
-    const { options, base } = lireOptions({ ...params, projectId: d.projectId });
+    const { options, base, discussion } = lireOptions({ ...params, projectId: d.projectId });
     if (options.configuration !== d.configuration) throw new Error("L'équipe ou le projet a changé : relire avant ouverture.");
     if (new Set(d.participants.map((p) => p.membre)).size !== d.participants.length) throw new Error("Un membre a été sélectionné deux fois.");
     const participants = d.participants.map((p) => {
       const membre = options.membres.find((m) => m.membre === p.membre);
-      if (!membre) throw new Error("Membre incompatible avec l'équipe marketing.");
+      if (!membre) throw new Error(`Membre incompatible avec l'équipe ${discussion.libelle.toLowerCase()}.`);
       return { ...membre, llm: p.llm };
     });
     const date = maintenant();
@@ -214,7 +244,9 @@ function lireBrouillon(store, id) {
 }
 function origineBrouillon(store, id, projectId, nature) {
   const d = lireBrouillon(store, id);
-  if (d.projectId !== projectId || nature !== "developpement") throw new Error("Cette spec doit être envoyée à un workflow dev du même projet.");
+  const versNature = discussionDuFil(ligneFil(store, d.origine.fil)).versNature;
+  if (!versNature) throw new Error("La nature de cette discussion ne transmet ses specs à aucun workflow.");
+  if (d.projectId !== projectId || nature !== versNature) throw new Error(`Cette spec doit être envoyée à un workflow ${versNature} du même projet.`);
   return { origine: d.origine, contexte: { objectifProjet: d.objectifProjet, directives: d.directives, propositionOriginale: { titre: d.titre, objectif: d.objectif, criteres: d.criteres, document: d.document } } };
 }
-module.exports = { lireOptions, liste, fil, ouvrir, envoyer, preparerBrouillon, lireBrouillon, origineBrouillon };
+module.exports = { lireOptions, discussionDuProjet, discussionDuFil, liste, fil, ouvrir, envoyer, preparerBrouillon, lireBrouillon, origineBrouillon };

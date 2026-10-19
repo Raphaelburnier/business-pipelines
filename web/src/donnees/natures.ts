@@ -18,6 +18,8 @@ export interface Branche extends Nature {
   regles: "dediees" | "generiques";
   pipelines: string[];
   projets: Array<{ id: string; nom: string }>;
+  /** La discussion d'équipe de la branche, ou null si elle n'en a pas. */
+  discussion: { gabarit: string; competences: string[]; versNature: string | null } | null;
 }
 
 export interface ReponseNatures {

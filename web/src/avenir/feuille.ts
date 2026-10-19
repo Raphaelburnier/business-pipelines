@@ -98,7 +98,7 @@ export const LOTS: Lot[] = [
       { id: "3.2", titre: "Une seule détection de nature", detail: "Tag inconnu signalé au lieu d'un null silencieux.", fichiers: ["BP src/natures.js", "BP src/planificateur.js", "BP src/missions.js"], statut: "fait" },
       { id: "3.3", titre: "Règles par nature déclarées", detail: "Remplacer les if par nature.", fichiers: ["BP src/natures.js", "BP src/planificateur.js"], statut: "fait" },
       { id: "3.4", titre: "UI générique et page Branche", detail: "Natures servies par l'API pour la navigation et les vues.", fichiers: ["BP src/branches.js", "BP web/src/vues/Branches.tsx", "BP web/src/vues/PlanMission.tsx"], statut: "fait" },
-      { id: "3.5", titre: "Discussions d'équipe par nature", detail: "Compétences et gabarit déclarés dans la nature.", fichiers: ["BP src/discussions-equipe.js:9,41,217"], statut: "a-faire" },
+      { id: "3.5", titre: "Discussions d'équipe par nature", detail: "Compétences et gabarit déclarés dans la nature.", fichiers: ["BP src/discussions-equipe.js", "BP src/natures.js", "AO packages/schemas/index.js", "REG natures/marketing.json"], statut: "en-cours" },
       { id: "3.6", titre: "Créer un projet depuis le cockpit", detail: "PR automation/ avec gabarits CI et gate.", fichiers: ["BP src/rattachements.js"], statut: "a-faire" },
       { id: "3.7", titre: "Handlers en plugins, dépôts sans Docker", detail: "Dossier de handlers par convention, montage générique.", fichiers: ["BP src/stage-handlers.js", "BP Dockerfile:25-27"], statut: "a-faire" },
       { id: "3.8", titre: "Exécuter les plans approuvés", detail: "Nœud générique pour les branches sans PR.", fichiers: ["AO src/graphe.js"], statut: "a-faire" },
