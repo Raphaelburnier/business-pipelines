@@ -9,6 +9,18 @@ const { execFileSync } = require("child_process");
 const publieur = require("../src/publieur");
 const checkpoints = require("agent-orchestrator/src/checkpoints");
 
+test("le publieur préfère le jeton de fusion et garde le jeton dédié en repli", () => {
+  assert.deepStrictEqual(publieur.choisirJetonPublication({ fusion: "fusion", publieur: "publication" }), {
+    jeton: "fusion",
+    source: "GITHUB_TOKEN_FUSION",
+  });
+  assert.deepStrictEqual(publieur.choisirJetonPublication({ publieur: "publication" }), {
+    jeton: "publication",
+    source: "GITHUB_TOKEN_PUBLIEUR",
+  });
+  assert.deepStrictEqual(publieur.choisirJetonPublication({}), { jeton: "", source: null });
+});
+
 const g = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "utf-8" }).trim();
 const gd = (depot, ...args) => execFileSync("git", ["--git-dir", depot, ...args], { encoding: "utf-8" }).trim();
 

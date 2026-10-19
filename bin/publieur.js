@@ -14,17 +14,20 @@ const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
 const ETAT = process.env.PUBLIEUR_ETAT || path.join(RACINE, "etat", "publications.json");
 const INTERVALLE = Number(process.env.PUBLIEUR_INTERVALLE_MS || 60000);
-const JETON = process.env.GITHUB_TOKEN_PUBLIEUR || "";
+const JETON_PUBLIEUR = process.env.GITHUB_TOKEN_PUBLIEUR || "";
 // Les miroirs des dépôts système, que le livreur lit sans jeton (docs/SPEC-livraison.md, §4.1).
-// Leur propre jeton, en lecture seule : celui du dessus écrit, et un jeton GitHub donne les
-// mêmes droits à tous ses dépôts. Jamais de repli sur lui : sans jeton de miroirs, pas de miroirs.
+// Leur propre jeton, en lecture seule : ne pas réutiliser les jetons de publication/fusion,
+// qui ont des droits d'écriture. Sans jeton de miroirs, pas de miroirs.
 const MIROIRS = publieur.miroirsSysteme(process.env.PUBLIEUR_MIROIRS);
 const MIROIRS_DIR = process.env.PUBLIEUR_MIROIRS_DIR || "/git/systeme";
 const JETON_MIROIRS = process.env.GITHUB_TOKEN_MIROIRS || "";
 
-// Les PR vues et fusionnées depuis le cockpit (src/pull-requests.js) : un troisième jeton,
-// qui seul peut fusionner. Absent, le cockpit le dit et ne propose aucune fusion.
+// Les PR vues et fusionnées depuis le cockpit (src/pull-requests.js) : ce jeton a également
+// les droits d'écriture nécessaires au publieur. On le privilégie pour inclure les dépôts
+// système ; le jeton publication dédié reste un repli limité aux projets auxquels il a accès.
 const JETON_FUSION = process.env.GITHUB_TOKEN_FUSION || "";
+const CHOIX_JETON_PUBLICATION = publieur.choisirJetonPublication({ fusion: JETON_FUSION, publieur: JETON_PUBLIEUR });
+const JETON_PUBLICATION = CHOIX_JETON_PUBLICATION.jeton;
 const PR_INSTANTANE = process.env.PULL_REQUESTS_ETAT || path.join(RACINE, "etat", "pull-requests.json");
 const PR_DEPOTS = pullRequests.depotsSurveilles({ texte: process.env.PULL_REQUESTS_DEPOTS, miroirs: MIROIRS, projetsDir: PROJETS });
 // Qui peut fusionner : la même liste que pour livrer, relue à chaque commande. Le cockpit la
@@ -40,8 +43,8 @@ const FUSION_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PU
 // Remettre à jour les PR d'agents vertes dont la base a avancé. `0` les laisse au bouton du cockpit.
 const MAJ_BASE_AUTO = !["0", "false", "non", "off"].includes(String(process.env.PUBLIEUR_MAJ_BASE_AUTO ?? "1").toLowerCase());
 
-if (!JETON) {
-  console.error("GITHUB_TOKEN_PUBLIEUR absent : rien ne sera publié. Voir specs/publieur.env.example.");
+if (!JETON_PUBLICATION) {
+  console.error("GITHUB_TOKEN_FUSION et GITHUB_TOKEN_PUBLIEUR absents : rien ne sera publié. Voir specs/publieur.env.example.");
   process.exit(1);
 }
 // Clé partagée avec le cockpit seul (COMMANDES_CLE_FICHIER) : une fusion ou un rattachement
@@ -51,8 +54,9 @@ if (!CLE_COMMANDES) console.error("COMMANDES_CLE_FICHIER absent ou vide : les fu
 const apiFusion = JETON_FUSION ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_FUSION }) : null;
 if (!apiFusion) console.error("GITHUB_TOKEN_FUSION absent : le cockpit ne voit ni ne fusionne les PR. Voir specs/publieur.env.example.");
 
-const git = publieur.gitAvec({ jeton: JETON });
-const api = publieur.apiAvec({ fetchImpl: fetch, jeton: JETON });
+console.log(`Authentification GitHub du publieur : ${CHOIX_JETON_PUBLICATION.source}`);
+const git = publieur.gitAvec({ jeton: JETON_PUBLICATION });
+const api = publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_PUBLICATION });
 const gitMiroirs = JETON_MIROIRS ? publieur.gitAvec({ jeton: JETON_MIROIRS }) : null;
 const apiMiroirs = JETON_MIROIRS ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_MIROIRS }) : null;
 if (MIROIRS.length && !JETON_MIROIRS) {
