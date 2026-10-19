@@ -1,6 +1,7 @@
 // Feuille de route et défauts issus de l'audit du 17 octobre 2026 (rapport « Boucle agentique
 // business pipelines »). Préfixes : AO = agent-orchestrator, BP = business-pipelines,
 // REG = agent-registry, AS = agent-secrets. Mettre `statut` à jour à chaque PR qui avance un point.
+import objectifsAttribuables from "./objectifs.json";
 
 export type Statut = "a-faire" | "en-cours" | "fait";
 export type Severite = "critique" | "haute" | "moyenne" | "basse";
@@ -29,6 +30,17 @@ export interface Defaut {
   fichiers: string;
   correctif: string;
   statut: Statut;
+}
+
+const IDS_ATTRIBUABLES = new Set(objectifsAttribuables.map((objectif) => objectif.id));
+const REVISION_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.revision]));
+
+export function estAttribuable(etape: Pick<Etape, "id" | "statut">): boolean {
+  return etape.statut === "a-faire" && IDS_ATTRIBUABLES.has(etape.id);
+}
+
+export function revisionObjectif(id: string): number | null {
+  return REVISION_OBJECTIFS.get(id) ?? null;
 }
 
 export const DATE_AUDIT = "2026-10-17";

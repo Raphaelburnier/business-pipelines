@@ -51,7 +51,7 @@ let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entre
 `,{mode:0o755});
   const file=path.join(dir,"events.sqlite"), store=new EventStore(file);
   const resolution=registre.resoudreProjet(fiche,{registre:reg});
-  resolution.spec._mission={objectif:"OBJECTIF_FIGE",criteres:["livrable"],document:"SPEC_FIGEE"};
+  resolution.spec._mission={objectif:"OBJECTIF_FIGE",criteres:["livrable"],document:"SPEC_FIGEE",objectifFeuille:{id:"1.1",revision:1}};
   const contrat=mission.figer({resolution,demande:{objectif:"OBJECTIF_FIGE",criteres:["livrable"],directives:"DIRECTIVE_FIGEE",exclusions:"",document:"SPEC_FIGEE"},participants:[{noeud:"code",membre:null,llm:{via:"codex",model:"gpt"},nom:"Codeur",agent:"codeur@1",type:"agent"}]});
   const commande=store.creerCommande({kind:"run.start",payload:{projectId:"demo",mission:contrat},par:"recette"});
   const pret=path.join(dir,"pret"), appels=path.join(dir,"appels.jsonl");
@@ -75,6 +75,8 @@ test("quota connu, redémarrage : même run, mission, workspace et session, sans
     const runId=await jusqua(()=>f.store.commande(f.commande.id).status==="done"&&f.store.commande(f.commande.id).run_id,()=>premier.sortie);
     const attente=f.store.attentes.vue(runId);
     assert.equal(attente.statut,"waiting_quota");assert.ok(attente.prochaineReprise);assert.equal(attente.resetSource,"provider.resets_at");
+    const affectationInitiale=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="1.1");
+    assert.equal(affectationInitiale.runId,runId);assert.equal(affectationInitiale.statut,"waiting_quota");
     await f.arreter(premier);
     fs.writeFileSync(f.pret,"oui");
     fs.writeFileSync(path.join(f.projets,"demo/project.json"),"fiche modifiée et invalide");
@@ -82,12 +84,19 @@ test("quota connu, redémarrage : même run, mission, workspace et session, sans
     const second=f.runner();
     await jusqua(()=>f.store.run(runId).status==="succeeded",()=>second.sortie);
     await jusqua(()=>f.store.commandes().some(c=>c.kind==="run.resume"&&c.status==="done"),()=>second.sortie);
+    const affectationReprise=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="1.1");
+    assert.equal(affectationReprise.commandeId,affectationInitiale.commandeId,"la reprise conserve la commande qui porte l'objectif");
+    assert.equal(affectationReprise.runId,runId,"la reprise conserve le run d'origine");
+    assert.equal(f.store.run(runId).status,"succeeded");
+    assert.equal(affectationReprise.statut,"completed");
+    assert.equal(affectationReprise.livraison.statut,null,"l'exécution et la livraison sont projetées dans des champs distincts");
     const appels=f.lectures();assert.equal(appels.length,2);assert.equal(appels[0].cwd,appels[1].cwd);
     assert.ok(appels[1].args.includes("resume"));assert.ok(appels[1].args.includes("session-native"));
     assert.ok(appels[1].entree.includes("OBJECTIF_FIGE"));assert.ok(appels[1].entree.includes("SPEC_FIGEE"));assert.ok(!appels[1].entree.includes("AUTRE_OBJECTIF"));
     assert.equal(fs.readFileSync(path.join(appels[1].cwd,"compteur.txt"),"utf8"),"1");
     assert.equal(fs.readFileSync(path.join(appels[1].cwd,"partiel.txt"),"utf8"),"travail à conserver");
-    assert.equal(f.store.runs().length,1);assert.deepEqual(f.store.commandeLancementRun(runId).payload.mission,JSON.parse(JSON.stringify(f.contrat)));
+    assert.equal(f.store.runs().length,1);assert.equal(f.store.commandes().filter(c=>c.kind==="run.start").length,1);
+    assert.deepEqual(f.store.commandeLancementRun(runId).payload.mission,JSON.parse(JSON.stringify(f.contrat)));
     await f.arreter(second);const troisieme=f.runner();await pause(300);assert.equal(f.lectures().length,2);await f.arreter(troisieme);
   } finally {await f.fermer();}
 });
