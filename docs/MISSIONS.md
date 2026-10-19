@@ -59,6 +59,19 @@ Le panneau de run restitue objectif, critères, participants et modèles, spec e
 depuis la commande d'origine. Les anciens lancements `projectId/pipelineIndex/llmOverrides`
 restent pris en charge par l'API ; le panneau projet utilise désormais le formulaire.
 
+## Objectifs « À venir »
+
+Une ligne explicitement admissible de la feuille de route peut être lancée depuis le cockpit.
+La demande conserve `{id, revision}` dans la spec de mission ; le serveur vérifie cette
+référence, puis la signe avec le contrat et réserve l'objectif au plus une fois tant que son
+run ou sa livraison est actif. Le client relit l'attribution depuis `GET /api/avenir/objectifs`.
+
+L'attribution pointe toujours vers la commande initiale et le même `runId`, même si une
+reprise quota crée une commande `run.resume`. Un quota avec échéance fiable peut être repris
+automatiquement dans les bornes de `QUOTAS-REPRISES.md`; une échéance inconnue reste une
+action manuelle. L'état du run et celui de la livraison sont distincts : un run réussi qui
+attend encore sa PR ou sa fusion est affiché « en revue », pas comme une livraison terminée.
+
 ## Livraison
 
 Ce lot dépend du moteur avec `packages/schemas/mission.js` et du worker annonçant

@@ -33,7 +33,7 @@ ordonnée par dépendance et reste sous cinq fichiers de production/tests.
     `web/src/donnees/source.ts`, `web/src/donnees/api.ts`,
     `web/src/avenir/AVenir.test.tsx`.
 
-- [ ] **T4 — Reprise de quota, redémarrage et documentation** (dépend de T2 et T3)
+- [x] **T4 — Reprise de quota, redémarrage et documentation** (dépend de T2 et T3)
   - Acceptation : une attribution reste active à quota connu ou inconnu ; le reset connu
     reprend le run avec le même ID ; quota inconnu reste manuel ; après redémarrage, aucune
     seconde commande n’est créée ; état d’exécution et état de livraison restent distincts.

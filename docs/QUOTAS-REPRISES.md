@@ -31,6 +31,12 @@ aucune reconstruction de mission et aucune nouvelle publication après résultat
 - la programmation des quotas connus à chaque passage de cette file ;
 - le branchement vers `reprendreRun` et la clôture du lien de commande.
 
+Pour une mission issue d'un objectif « À venir », ces reprises ne créent jamais de deuxième
+`run.start`. La projection de l'objectif continue à pointer sur sa commande et son `runId`
+d'origine pendant l'attente et après redémarrage du runner. La commande `run.resume` est une
+action de reprise liée au même run. L'état du run peut être terminé alors que la livraison
+reste en attente de revue ou de fusion ; consulter séparément `livraison` dans la projection.
+
 Les commandes de conversations et d'approbations restent compatibles. Les nouveaux
 modules/pages de conversation, la préparation de missions, les handlers et les
 pipelines marketing restent au chantier marketing. Lors de son intégration, conserver
