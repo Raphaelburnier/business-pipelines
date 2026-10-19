@@ -25,8 +25,8 @@ const estRelecteur = (n) => n.type === "review" || finance.roleFinance(n) === "r
 const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.model);
 
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
-function natureDe(pipeline) {
-  const nature = detection.natureLancable(pipeline);
+function natureDe(pipeline, natures) {
+  const nature = detection.natureLancable(pipeline, natures);
   if (nature) detection.reglesDe(nature).valider?.(pipeline);
   return nature;
 }
@@ -61,11 +61,12 @@ function pipelinesDuRegistre(nature, dossier = registre.dossierRegistre()) {
   const racine = path.join(dossier, "pipelines");
   if (!fs.existsSync(racine)) return [];
   const refs = [];
+  const declarees = detection.naturesDeclarees(dossier);
   for (const nom of fs.readdirSync(racine).sort()) {
     const versions = fs.readdirSync(path.join(racine, nom)).map((v) => /^v([1-9][0-9]*)$/.exec(v)?.[1]).filter(Boolean).map(Number);
     if (!versions.length) continue;
     const ref = `${nom}@${Math.max(...versions)}`;
-    try { if (natureDe(registre.lirePipelineBrut(dossier, ref)) === nature) refs.push(ref); } catch { /* pipeline illisible : pas une suggestion */ }
+    try { if (natureDe(registre.lirePipelineBrut(dossier, ref), declarees) === nature) refs.push(ref); } catch { /* pipeline illisible : pas une suggestion */ }
   }
   return refs;
 }
@@ -262,18 +263,24 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   }
   const ficheLue = JSON.parse(fs.readFileSync(fiche, "utf-8"));
   const projet = { id: spec.projectId, nom: String(ficheLue.name || spec.projectId) };
+  let declarees;
+  try { declarees = detection.naturesDeclarees(); }
+  catch (err) {
+    return sans("bloque", [{ code: "nature-indeterminee", message: `Natures du registre illisibles : ${err.message}`.slice(0, 600),
+      arbitrage: "Corriger les fichiers natures/ du registre.", noeud: null, pipeline: null }], projet);
+  }
   const candidats = [];
   const illisibles = [];
   const ignores = [];
   (ficheLue.pipelines || []).forEach((attache, index) => {
     try {
       const brut = registre.lirePipelineBrut(registre.dossierRegistre(), attache.extends);
-      const nature = natureDe({ ...brut, nodes: brut.nodes || [] });
+      const nature = natureDe({ ...brut, nodes: brut.nodes || [] }, declarees);
       if (nature) candidats.push({ index, ref: attache.extends, nature });
       else {
-        const { gabarit, raison } = detection.classer(brut);
+        const { gabarit, raison } = detection.classer(brut, declarees);
         if (!gabarit) ignores.push({ code: "nature-indeterminee", message: `${attache.extends} est ignoré : ${raison}.`,
-          arbitrage: `Ajouter au pipeline ${attache.extends} le tag de sa nature (${Object.keys(detection.TAGS_NATURE).join(", ")}) dans le registre.`, noeud: null, pipeline: attache.extends });
+          arbitrage: `Ajouter au pipeline ${attache.extends} le tag de sa nature (${detection.tagsConnus(declarees).join(", ")}) dans le registre.`, noeud: null, pipeline: attache.extends });
       }
     } catch (err) {
       illisibles.push({ code: "pipeline-illisible", message: `${attache.extends} : ${err.message}`, arbitrage: null, noeud: null, pipeline: attache.extends });
@@ -285,7 +292,7 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   if (!nature) {
     return sans("bloque", [...illisibles, ...ignores, { code: "nature-indeterminee", message: natures.length
       ? `Le projet accepte plusieurs natures de mission (${natures.join(", ")}) : la spec doit préciser la sienne.`
-      : "Le projet n'a aucun pipeline de développement, de marketing ou de finance.", arbitrage: natures.length ? "Préciser la nature de la mission." : null, noeud: null, pipeline: null }], projet);
+      : `Le projet n'a aucun pipeline d'une nature connue (${declarees.map((n) => n.libelle).join(", ")}).`, arbitrage: natures.length ? "Préciser la nature de la mission." : null, noeud: null, pipeline: null }], projet);
   }
   const retenus = candidats.filter((c) => c.nature === nature);
   if (!retenus.length) {

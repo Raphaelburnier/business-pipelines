@@ -204,7 +204,7 @@ test("pipeline au tag de nature inconnu : signalé au lieu d'être ignoré en si
     const ignore = seul.blocages.find((b) => b.pipeline === "seo@1");
     assert.equal(ignore.code, "nature-indeterminee");
     assert.match(ignore.message, /seo@1 est ignoré : aucun tag de nature .* markting, plan/);
-    assert.match(ignore.arbitrage, /code, marketing, finance/);
+    assert.match(ignore.arbitrage, /finance, code, marketing/);
 
     const mixte = planificateur.proposer({ spec: spec({ projectId: "mixte" }), params: f.params, etat: etatLibre() });
     assert.equal(mixte.plan.nature, "developpement");
@@ -231,11 +231,42 @@ test("nature unique : planificateur et missions lisent la même détection", () 
 
 test("règles par nature : chaque nature détectée a ses règles, le planificateur ne teste aucun nom", () => {
   const natures = require("../src/natures");
-  for (const nature of Object.values(natures.TAGS_NATURE)) assert.ok(natures.reglesDe(nature), nature);
-  assert.throws(() => natures.reglesDe("autre"), /nature sans règles : autre/);
-  assert.throws(() => natures.reglesDe("constructor"), /nature sans règles/);
+  for (const n of natures.INTEGREES) assert.equal(natures.reglesDe(n.id), natures.REGLES[n.id], n.id);
+  assert.equal(natures.reglesDe("seo"), natures.GENERIQUES);
+  assert.equal(natures.reglesDe("constructor"), natures.GENERIQUES);
   const source = fs.readFileSync(path.join(__dirname, "..", "src", "planificateur.js"), "utf-8");
   assert.doesNotMatch(source, /nature === "/);
+});
+
+const moteurSansNatures = typeof require("agent-orchestrator/src/registre").lireNatures !== "function" && "moteur sans lireNatures";
+test("natures du registre : une branche déclarée en données est planifiée sans code dédié", { skip: moteurSansNatures }, () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(require("../src/natures").naturesDeclarees(f.reg).map((n) => n.id), ["finance", "developpement", "marketing"], "registre sans natures/ : natures intégrées");
+    const dossier = path.join(f.reg, "natures");
+    fs.mkdirSync(dossier);
+    const ecrire = (n) => fs.writeFileSync(path.join(dossier, `${n.id}.json`), JSON.stringify(n));
+    for (const n of require("../src/natures").INTEGREES) ecrire({ ...n, description: n.libelle });
+    ecrire({ id: "seo", libelle: "SEO", description: "Audits de référencement.", tags: ["seo"], priorite: 40 });
+    const brut = JSON.parse(fs.readFileSync(path.join(f.reg, "pipelines", "marketing", "v1", "pipeline.json"), "utf-8"));
+    fs.mkdirSync(path.join(f.reg, "pipelines", "seo", "v1"), { recursive: true });
+    fs.writeFileSync(path.join(f.reg, "pipelines", "seo", "v1", "pipeline.json"), JSON.stringify({ ...brut, name: "seo", tags: ["seo"] }));
+    const fiche = JSON.parse(fs.readFileSync(path.join(f.projets, "marketing", "project.json"), "utf-8"));
+    fs.mkdirSync(path.join(f.projets, "seo"));
+    fs.writeFileSync(path.join(f.projets, "seo", "project.json"), JSON.stringify({ ...fiche, id: "seo", pipelines: [{ ...fiche.pipelines[0], extends: "seo@1" }] }));
+    fs.copyFileSync(path.join(f.projets, "marketing", "spec.json"), path.join(f.projets, "seo", "spec.json"));
+
+    const p = planificateur.proposer({ spec: spec({ projectId: "seo", objectif: "Auditer le site", criteres: ["Chaque page a un titre"] }), params: f.params, etat: etatLibre() });
+    assert.equal(p.statut, "lancable");
+    assert.equal(p.plan.nature, "seo");
+    assert.ok(p.plan.etapes.some((e) => e.role === "production"), "règles génériques : rôle production par défaut");
+    assert.equal(require("../src/missions").lire({ ...f.params, projectId: "seo" }).options.nature, "seo");
+
+    ecrire({ id: "doublon", libelle: "Doublon", description: "x", tags: ["seo"] });
+    const casse = planificateur.proposer({ spec: spec({ projectId: "seo" }), params: f.params, etat: {} });
+    assert.equal(casse.statut, "bloque");
+    assert.match(casse.blocages[0].message, /Natures du registre illisibles : .*le tag seo est déclaré deux fois/);
+  } finally { f.fermer(); }
 });
 
 test("quota Codex atteint : un autre runtime est choisi s'il existe, sinon blocage avec la raison", () => {
