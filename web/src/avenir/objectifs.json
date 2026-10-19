@@ -6,6 +6,7 @@
   { "id": "1.4", "revision": 1, "projet": null },
   { "id": "2.6", "revision": 1, "projet": "business-pipelines" },
   { "id": "2.7", "revision": 1, "projet": "agent-orchestrator" },
+  { "id": "2.8", "revision": 1, "projet": "agent-orchestrator" },
   { "id": "3.6", "revision": 1, "projet": "business-pipelines" },
   { "id": "3.7", "revision": 1, "projet": "business-pipelines" },
   { "id": "3.8", "revision": 1, "projet": "agent-orchestrator" },
