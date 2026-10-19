@@ -50,6 +50,26 @@ test("un run attendant la connexion reste vivant et lisible dans le cockpit", ()
   } finally { store.fermer(); }
 });
 
+test("un run bloqué par la fraîcheur expose le conflit et la reprise manuelle", () => {
+  const { store } = bac();
+  try {
+    const id = store.creerRun({ pipelineRef: "dev@1", projectId: "dev" });
+    const etape = store.creerEtape({ runId: id, nodeId: "code", type: "agent", llmVia: "codex", llmModel: "gpt" });
+    store.majEtape(etape, { status: "waiting_freshness", sessionId: "session-conservee" });
+    const fraicheur = { ref: "origin/main", baseSha: "a".repeat(40), headSha: "b".repeat(40), fichiers: ["src/app.js"] };
+    const erreur = Object.assign(new Error("Conflit avec origin/main"), { name: "FraicheurBloquee", detail: fraicheur });
+    store.attentes.enregistrer(id, erreur);
+
+    const detail = api.run(store, id);
+    cockpit.runDetaille.parse(detail);
+    assert.strictEqual(api.runs(store)[0].vivant, true);
+    assert.strictEqual(detail.statut, "waiting_freshness");
+    assert.deepStrictEqual(detail.attente.fraicheur, fraicheur);
+    assert.deepStrictEqual(detail.attente.actions, ["reprendre"]);
+    assert.strictEqual(detail.attente.prochaineReprise, null);
+  } finally { store.fermer(); }
+});
+
 // Un run comme le moteur en écrit un : une étape déterministe sur le NAS, une étape
 // d'agent sur le PC, des événements, et une décision qui attend.
 function runComplet(store, { projet = "marketing" } = {}) {
