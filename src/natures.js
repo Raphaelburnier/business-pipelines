@@ -31,7 +31,7 @@ function naturesDeclarees(dossier = registre.dossierRegistre()) {
 const DISCUSSIONS_INTEGREES = {
   marketing: {
     gabarit: "marketing-dialogue@1",
-    competences: ["brand-analyst", "economy-analyst", "content-writer", "content-planner", "plan-synthesist", "marketing-plan-writer", "channel-strategy-analyst", "market-opportunity-analyst"],
+    competences: ["brand-analyst", "economy-analyst", "content-writer", "content-planner", "plan-synthesist"],
     versNature: "developpement",
   },
 };
