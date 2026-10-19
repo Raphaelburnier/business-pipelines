@@ -17,7 +17,7 @@ const { validerProjet } = require("agent-orchestrator/packages/schemas");
 const { revues } = require("agent-orchestrator");
 const { vueLivraison } = require("./suivi-livraisons");
 
-const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
+const ETATS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine", "waiting_freshness"]);
 
 function ligneRun(store, run) {
   const etapes = store.etapes(run.id);

@@ -10,6 +10,11 @@ Une connexion expirée montre la commande de reconnexion sur la machine concern�
 Le bouton de reprise exige que l'opérateur confirme avoir reconnecté le runtime.
 Le précontrôle d'abonnement repasse ensuite lors du vrai lancement.
 
+Une attente `waiting_freshness` signifie que le worker n'a pas pu vérifier ou intégrer la
+branche par défaut du projet avant l'étape suivante. Le cockpit montre les fichiers en
+conflit ou l'erreur de lecture et permet de reprendre le même run manuellement après
+résolution. Cette attente est durable et n'est jamais programmée automatiquement.
+
 ## API et runner
 
 `POST /api/runs/<id>/reprise` reçoit `{ waitId, reconnexionConfirmee? }`. L'identité

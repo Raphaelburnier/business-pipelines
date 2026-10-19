@@ -11,7 +11,7 @@ const missions = require("./missions");
 const natures = require("./natures");
 
 const MAX_TOURS = 40;
-const OCCUPE = new Set(["pending", "taken", "running", "waiting_auth", "waiting_quota", "waiting_machine", "waiting_approval", "cancelled"]);
+const OCCUPE = new Set(["pending", "taken", "running", "waiting_auth", "waiting_quota", "waiting_machine", "waiting_freshness", "waiting_approval", "cancelled"]);
 const maintenant = () => new Date().toISOString();
 const noeudDe = (membre) => `repond-${membre}`;
 

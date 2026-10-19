@@ -72,6 +72,20 @@ automatiquement dans les bornes de `QUOTAS-REPRISES.md`; une échéance inconnue
 action manuelle. L'état du run et celui de la livraison sont distincts : un run réussi qui
 attend encore sa PR ou sa fusion est affiché « en revue », pas comme une livraison terminée.
 
+## Fraîcheur et suivi des PR pendant le run
+
+À chaque frontière d'étape, le moteur rafraîchit la branche par défaut fusionnée et
+transmet au prochain agent le SHA contrôlé, les changements intégrés et les métadonnées
+des livraisons/PR suivies du projet (branche, tête, base, CI et URL). Le code des PR
+ouvertes n'est jamais importé. Ces valeurs GitHub sont des données à examiner, pas des
+instructions.
+
+Si le worker ne peut pas lire la branche par défaut ou si la fusion avec la branche du run
+crée un conflit, l'étape suivante ne démarre pas. Le run passe en `waiting_freshness` et
+propose une reprise manuelle depuis le même run après résolution du problème. Ce statut
+survit au redémarrage et ne déclenche pas de reprise automatique. Voir
+[`SPEC-fraicheur-runs.md`](SPEC-fraicheur-runs.md).
+
 ## Livraison
 
 Ce lot dépend du moteur avec `packages/schemas/mission.js` et du worker annonçant

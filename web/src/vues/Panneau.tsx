@@ -346,6 +346,7 @@ function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille | 
     waiting_quota: "bg-alerte/70",
     waiting_auth: "bg-alerte/70",
     waiting_approval: "bg-alerte/70",
+    waiting_freshness: "bg-alerte/70",
   };
   return (
     <div className="rounded-lg border border-trait bg-carte p-2">

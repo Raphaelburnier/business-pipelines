@@ -1,5 +1,22 @@
 # Plan technique : objectifs À venir durables
 
+## Lot T6 — Fraîcheur et coordination des runs
+
+- Le maître relit les livraisons suivies du projet depuis l'event store à chaque dispatch et transmet aux agents les métadonnées utiles (PR, URL, statut, tête, base, CI et branche). Le worker les présente comme données non fiables, sans charger le code des PR.
+- Le worker récupère `origin/HEAD` avant toute étape de code ou revue, compare la tête du run à la branche par défaut et intègre les commits fusionnés au run. Les mises à jour produisent des événements durables indiquant les SHAs observés et intégrés.
+- Si le fetch échoue ou si la fusion crée des conflits, l'étape ne démarre pas. Le moteur met le run en `waiting_freshness`, stocke une cause manuelle dans le mécanisme de reprise commun et montre le conflit au cockpit. La reprise retente le contrôle depuis le dernier checkpoint.
+- Avant le départ d'un nouveau run, la préparation existante prend déjà `origin/HEAD`; le nouveau contrôle conserve ce comportement et enregistre le SHA de base.
+- La livraison conserve le contrôle d'attestation sur l'arbre testé/revu ; le gate GitHub vérifie la CI sur le merge ref courant. Si la branche par défaut avance après le dernier stage, la fusion est bloquée, mais la revue n'est pas relancée automatiquement dans ce lot. Les PR non fusionnées restent de simples métadonnées.
+
+### Ordre de réalisation
+
+1. Contrat événementiel et attente durable `waiting_freshness` dans agent-orchestrator.
+2. Synchronisation de la base et contexte PR à chaque dispatch worker.
+3. Projection cockpit de l'attente et de la chronologie fraîcheur.
+4. Documentation, CI coordonnée des deux dépôts et recette ; le contrôle final avec relance automatique de la revue est reporté.
+
+Les contrats moteur sont livrés avant le cockpit qui les consomme.
+
 ## Décisions de conception
 
 - Garder la feuille de route Git comme définition des objectifs ; l’état d’exécution vient

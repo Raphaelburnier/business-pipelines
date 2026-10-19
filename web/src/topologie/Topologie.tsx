@@ -244,9 +244,9 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     const etapes = disposition.noeuds.filter((noeud) => noeud.type === "etape" && noeud.etape?.runId === execution.run.id);
     for (const etape of etapes) {
       const statut = etape.etape?.statut;
-      const attente = statut === "waiting_approval" || statut === "waiting_quota" || statut === "waiting_auth";
+      const attente = statut === "waiting_approval" || statut === "waiting_quota" || statut === "waiting_auth" || statut === "waiting_freshness";
       const actif = statut === "running";
-      const libelle = statut === "waiting_approval" ? "à valider" : statut === "waiting_quota" ? "quota" : statut === "waiting_auth" ? "connexion requise" : "étape clé";
+      const libelle = statut === "waiting_approval" ? "à valider" : statut === "waiting_quota" ? "quota" : statut === "waiting_auth" ? "connexion requise" : statut === "waiting_freshness" ? "base à synchroniser" : "étape clé";
       relier(idProjet(projet.id), etape.id, "etape", libelle, actif, aFocal && !estFocal, attente);
     }
   }
