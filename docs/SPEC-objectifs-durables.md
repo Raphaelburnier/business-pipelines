@@ -116,9 +116,8 @@ résultat vérifié et le statut de livraison du run, pas seulement la fin d’u
 5. Une échéance inconnue reste en attente et requiert la reprise manuelle existante.
 6. Les fusions et livraisons continuent d’appliquer leurs contrôles habituels.
 
-## Question ouverte
+## Décision UX validée
 
-- Pour le premier écran, le choix du projet, de l’agent et des critères doit-il être
-  entièrement manuel, ou les critères du lot doivent-ils être préremplis avec possibilité
-  de les ajuster ? Hypothèse proposée : préremplir titre et détail depuis À venir, puis
-  demander projet, agent et critères vérifiables avant le lancement.
+- Le formulaire préremplit le titre et le détail depuis « À venir ».
+- L’utilisateur choisit le projet et l’agent, puis peut ajuster les critères de réussite
+  avant le lancement.
