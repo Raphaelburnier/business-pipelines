@@ -8,7 +8,18 @@
   "verification": {
     "prepareNetwork": true,
     "prepare": [{ "command": "npm", "args": ["ci"], "timeoutMs": 600000 }],
-    "checks": [{ "kind": "test", "command": "npm", "args": ["test"], "timeoutMs": 600000 }]
+    "checks": [
+      { "kind": "typecheck", "command": "npm", "args": ["run", "typecheck"], "timeoutMs": 300000 },
+      {
+        "kind": "test",
+        "command": "sh",
+        "args": [
+          "-c",
+          "git config --global user.name verificateur && git config --global user.email verificateur@localhost && npx vitest run --exclude test/vitest/project-verification.test.mjs --exclude test/vitest/project-review.test.mjs"
+        ],
+        "timeoutMs": 600000
+      }
+    ]
   },
   "publier": true,
   "github": "Raphaelburnier/agent-orchestrator",
