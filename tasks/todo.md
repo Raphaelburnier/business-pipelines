@@ -51,6 +51,21 @@ ordonnée par dépendance et reste sous cinq fichiers de production/tests.
     redémarrage des services ; noter les preuves et limites dans la fiche projet.
   - Fichiers : aucun changement de code prévu ; mise à jour du vault après la recette.
 
+- [x] **T6.1 — Contrat moteur et attente de fraîcheur**
+  - Acceptation : `waiting_freshness` survit au redémarrage, ne programme aucune reprise automatique, et permet une reprise manuelle idempotente ; l'API expose motif et fichiers conflictuels.
+  - Vérifier : schémas, commande de reprise et réconciliation du runner.
+  - Dépôt/fichiers : `agent-orchestrator/packages/schemas/`, `src/event-store.js`, `src/run-waits.js`, runner et protocole worker.
+
+- [x] **T6.2 — Base à jour et contexte projet à chaque étape** (dépend de T6.1)
+  - Acceptation : avant chaque lot d'étapes, le maître puis le worker synchronisent la branche par défaut fusionnée, enregistrent le snapshot et transmettent les PR/livraisons suivies au prompt ; conflit ou indisponibilité réseau bloque l'étape sans perdre le checkpoint.
+  - Vérifier : CI du moteur et recette distante à planifier ; dépôts distants simulés non exécutés dans cette session.
+  - Dépôt/fichiers : `agent-orchestrator/src/checkpoints.js`, `src/worker-exec.js`, `src/dispatch.js`, `src/stage-executor.js`, `src/graphe.js`.
+
+- [ ] **T6.3 — Cockpit, publication, docs et recette** (dépend de T6.1 et T6.2)
+  - Acceptation : l'attente de fraîcheur et les conflits sont visibles et reprenables dans le cockpit ; les PR suivies sont transmises comme métadonnées. L'attestation et le gate CI continuent de bloquer une fusion si la base avance après le dernier stage ; la revue n'est pas relancée automatiquement dans ce lot.
+  - Vérifier : CI des deux dépôts, recette run avec fusion concurrente et conflit persistant après redémarrage.
+  - Dépôt/fichiers : cockpit API/front/docs, `docs/SPEC-fraicheur-runs.md`, vault Obsidian.
+
 ## Garde-fous
 
 - Ne commencer T2 qu’après validation T1 ; ne raccorder le formulaire qu’après le contrat

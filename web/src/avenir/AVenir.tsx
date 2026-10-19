@@ -23,7 +23,7 @@ function Pastille({ statut }: { statut: Statut }) {
 }
 
 const STATUT_ATTRIBUTION: Record<string, string> = {
-  queued: "en file", running: "en cours", waiting_quota: "en attente de quota", waiting_machine: "en attente du worker",
+  queued: "en file", running: "en cours", waiting_quota: "en attente de quota", waiting_machine: "en attente du worker", waiting_freshness: "base à synchroniser",
   waiting_approval: "en attente d'arbitrage", waiting_auth: "en attente d'authentification", paused: "en pause", succeeded: "terminé", completed: "terminé", failed: "échoué",
   cancelled: "annulé", review: "en revue",
 };
@@ -93,7 +93,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, projets, onRefre
   }
 
   const plan = proposition?.reponse;
-  const indisponible = ["queued", "running", "paused", "waiting_quota", "waiting_machine", "waiting_approval", "waiting_auth", "review"].includes(attribution.statut);
+  const indisponible = ["queued", "running", "paused", "waiting_quota", "waiting_machine", "waiting_freshness", "waiting_approval", "waiting_auth", "review"].includes(attribution.statut);
   return <div className="av-attribution">
     <div className="av-attribution-meta">
       <span>{agentNom}</span><span>{projetNom}</span>

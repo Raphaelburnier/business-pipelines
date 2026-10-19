@@ -22,6 +22,7 @@ const GENRES: Partial<Record<Run["statut"], Genre>> = {
   waiting_quota: "pause",
   waiting_auth: "pause",
   waiting_machine: "pause",
+  waiting_freshness: "pause",
 };
 
 const RANG: Record<Genre, number> = { wait: 0, run: 1, pause: 2 };
@@ -31,6 +32,7 @@ function aDroite(run: Run, genre: Genre, faites: number): { texte: string; alert
   if (run.statut === "waiting_quota") return { texte: "quota", alerte: false };
   if (run.statut === "waiting_auth") return { texte: "connexion requise", alerte: true };
   if (run.statut === "waiting_machine") return { texte: "machine", alerte: false };
+  if (run.statut === "waiting_freshness") return { texte: "base à synchroniser", alerte: true };
   if (genre === "pause") return { texte: "pause", alerte: false };
   if (run.statut === "queued") return { texte: "en file", alerte: false };
   return { texte: `${faites}/${run.etapes.total}`, alerte: false };

@@ -142,7 +142,7 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
   } catch (err) { store.db.exec("ROLLBACK"); throw err; }
 }
 
-const RUNS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
+const RUNS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine", "waiting_freshness"]);
 
 function objectifActif(store, objectifId) {
   const lignes = store.db.prepare(`

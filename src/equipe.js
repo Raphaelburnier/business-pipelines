@@ -212,7 +212,7 @@ function etat({ roster, affectations, profils = {}, benchmarks = { releve: null,
   if (store) {
     for (const run of store.runs({ limite: limiteRuns })) {
       const recent = run.started_at && Date.parse(run.started_at) >= debutMois;
-      const vivant = run.status === "running" || run.status === "waiting_approval";
+      const vivant = ["running", "waiting_approval", "waiting_freshness"].includes(run.status);
       if (!recent && !vivant) continue;
       for (const etape of store.etapes(run.id)) {
         const id = membreDe.get(nomAgent(etape.agent_ref));

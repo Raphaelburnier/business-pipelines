@@ -211,7 +211,7 @@ export const BRIQUES: Brique[] = [
     resume: "L'état d'exécution et rien d'autre : runs, étapes, événements, approbations, commandes. Les définitions vivent dans git, jamais ici.",
     faits: [
       "Tables : machines, runs, steps, events, approvals, commands, eval_results",
-      "Statuts de run : queued, running, paused, waiting_approval, waiting_quota, waiting_machine, succeeded, failed, cancelled",
+      "Statuts de run : queued, running, paused, waiting_approval, waiting_quota, waiting_machine, waiting_freshness, succeeded, failed, cancelled",
       "Commandes durables : creerCommande, prendreCommande (atomique), terminerCommande",
       "reprendreCommandesInterrompues filtre par type : le runner ne rejoue que les siennes (#33)",
       "Si ce n'est pas dans l'event store, le cockpit ne le montre pas",
