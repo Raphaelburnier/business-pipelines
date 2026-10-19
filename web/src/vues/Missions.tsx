@@ -3,6 +3,7 @@ import { useCharge, useSource } from "../donnees/contexte";
 import { suivreCommande } from "../donnees/lancement";
 import { classer } from "../donnees/modeles";
 import { lignes, specStructuree, type OptionsMission, type ChoixAgentMission } from "../donnees/missions";
+import { libelleNature } from "../donnees/natures";
 import { Erreur, Titre } from "../ui";
 import { PlanMission } from "./PlanMission";
 import type { ReponseModeles } from "../types";
@@ -56,6 +57,7 @@ export function Missions({ projetInitial, brouillonId = null, aller }: { projetI
 function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { projectId: string; index: number; brouillon: BrouillonEquipe | null; aller: (href: string) => void; surEnvoi: (envoi: boolean) => void }) {
   const { source } = useSource();
   const catalogue = useCharge((s) => s.modeles(), []);
+  const { donnees: natures } = useCharge((s) => s.natures(), []);
   const [options, setOptions] = useState<OptionsMission | null>(null);
   const [agents, setAgents] = useState<ChoixAgentMission[]>([]);
   const [objectif, setObjectif] = useState(brouillon?.objectif ?? "");
@@ -126,7 +128,7 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
   if (!options) return <div>{erreur ? <><Erreur>{erreur}</Erreur><button className={champ} onClick={() => setChargement((n) => n + 1)}>Relire le projet</button></> : <p>Préparation de l'équipe…</p>}</div>;
   const changerAgent = (noeud: string, suite: Partial<ChoixAgentMission>) => { setAgents((a) => a.map((c) => c.noeud === noeud ? { ...c, ...suite } : c)); setRelecture(false); };
   return <form onSubmit={envoyer} className="flex flex-col gap-4">
-    <p className="text-sm text-douce">{options.titre} · {options.nature === "developpement" ? "Développement" : options.nature === "marketing" ? "Marketing" : options.nature === "finance" ? "Finance" : "Mission"}</p>
+    <p className="text-sm text-douce">{options.titre} · {libelleNature(natures?.natures, options.nature)}</p>
     {!!options.blocages?.length && <div role="status" className="rounded-lg border border-alerte p-3 text-sm"><p className="font-semibold">Mission indisponible</p>{options.blocages.map((b) => <p key={b}>{b}</p>)}</div>}
     {catalogue.erreur && <p role="status" className="text-sm text-alerte">Catalogue indisponible : les modèles configurés restent affichés. {catalogue.erreur}</p>}
     <fieldset disabled={envoi} className="flex flex-col gap-4 disabled:opacity-70" onChange={() => setRelecture(false)}>

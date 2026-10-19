@@ -115,6 +115,7 @@ export function sourceApi(): Source {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", corps);
       return reponse.commande;
     },
+    natures: () => lire<import("./natures").ReponseNatures>("/api/natures"),
     preparerMission: (projectId, index) => lire(`/api/projects/${encodeURIComponent(projectId)}/mission?pipeline=${index}`),
     async lancerMission(demande) {
       return (await ecrire<{ commande: { id: string; statut: string } }>("/api/runs", demande)).commande;

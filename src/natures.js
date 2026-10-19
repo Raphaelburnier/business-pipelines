@@ -6,15 +6,18 @@ const registre = require("agent-orchestrator/src/registre");
 const finance = require("agent-orchestrator/packages/schemas/finance");
 
 const INTEGREES = [
-  { id: "finance", libelle: "Finance", tags: ["finance"], handlers: [], priorite: 10 },
-  { id: "developpement", libelle: "Développement", tags: ["code"], handlers: ["verify-project"], priorite: 20 },
-  { id: "marketing", libelle: "Marketing", tags: ["marketing"], handlers: [], priorite: 30 },
+  { id: "finance", libelle: "Finance", description: "Recherche financière privée : collecte, analyse sourcée et rapport validé, sans publication GitHub ni ordre courtier.",
+    tags: ["finance"], handlers: [], priorite: 10 },
+  { id: "developpement", libelle: "Développement", description: "Changement de code dans un dépôt : planification, édition, tests du projet et revue indépendante, jusqu'à la PR.",
+    tags: ["code"], handlers: ["verify-project"], priorite: 20 },
+  { id: "marketing", libelle: "Marketing", description: "Analyses de marque, de marché et d'économie, synthétisées puis soumises à une décision.",
+    tags: ["marketing"], handlers: [], priorite: 30 },
 ];
 
 /**
  * Les natures connues, par priorité croissante : celles du registre, sinon les intégrées.
  * @param {string} [dossier]
- * @returns {Array<{ id: string, libelle: string, tags: string[], handlers: string[], priorite: number }>}
+ * @returns {Array<{ id: string, libelle: string, description: string, tags: string[], handlers: string[], priorite: number }>}
  */
 function naturesDeclarees(dossier = registre.dossierRegistre()) {
   const lues = typeof registre.lireNatures === "function" ? registre.lireNatures(dossier) : [];

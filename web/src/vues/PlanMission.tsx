@@ -14,6 +14,7 @@ const ROLES: Record<string, string> = { planification: "Planification", developp
 export function PlanMission({ projetInitial, aller }: { projetInitial: string | null; aller: (href: string) => void }) {
   const { source } = useSource();
   const topo = useCharge((s) => s.topologie(), []);
+  const { donnees: natures } = useCharge((s) => s.natures(), []);
   // Une spec écrite par un conseiller de « Demander » préremplit le formulaire, une fois.
   const [depuisChat] = useState(() => lireSpecChat());
   useEffect(() => oublierSpecChat(), []);
@@ -94,9 +95,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
           <label className="flex flex-col gap-1 text-sm">Nature
             <select className={champ} value={nature} onChange={(e) => modifier(setNature)(e.target.value as typeof nature)}>
               <option value="">Déduite du projet</option>
-              <option value="developpement">Développement</option>
-              <option value="marketing">Marketing</option>
-              <option value="finance">Finance</option>
+              {natures?.natures.map((n) => <option key={n.id} value={n.id}>{n.libelle}</option>)}
             </select>
           </label>
         </div>

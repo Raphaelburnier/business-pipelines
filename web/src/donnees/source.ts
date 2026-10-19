@@ -13,6 +13,7 @@ import type { ChangementProfil, ReponseEquipe } from "./equipe";
 import type { ReponsePipelines } from "./pipelines";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
 import type { OptionsMission, DemandeMission, SpecMission, PropositionPlan, LancementPlan } from "./missions";
+import type { ReponseNatures } from "./natures";
 import type { OptionsDiscussion, OuvrirDiscussion, MessageEquipe, FilEquipe, ResumeFilEquipe, BrouillonEquipe, DemandeBrouillon } from "./discussions";
 
 export interface FiltreRuns {
@@ -54,6 +55,8 @@ export interface Source {
   attributionsAvenir(): Promise<AttributionAvenir[]>;
   /** `llm` s'applique à tous les nœuds agents du run ; absent, chaque nœud garde le sien. */
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
+  /** Les branches métier déclarées, avec leurs pipelines et leurs projets. */
+  natures(): Promise<ReponseNatures>;
   preparerMission(projectId: string, pipelineIndex: number): Promise<OptionsMission>;
   lancerMission(demande: DemandeMission): Promise<{ id: string; statut: string }>;
   /** Le planificateur choisit pipeline et agents pour une spec ; rien n'est mis en file. */
