@@ -18,7 +18,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
   const [depuisChat] = useState(() => lireSpecChat());
   useEffect(() => oublierSpecChat(), []);
   const [projetId, setProjetId] = useState(depuisChat?.projectId ?? projetInitial ?? "");
-  const [nature, setNature] = useState<"" | "developpement" | "marketing" | "finance">(depuisChat?.nature ?? "");
+  const [nature, setNature] = useState<NonNullable<SpecMission["nature"]> | "">(depuisChat?.nature ?? "");
   const [objectif, setObjectif] = useState(depuisChat?.objectif ?? "");
   const [criteres, setCriteres] = useState((depuisChat?.criteres ?? []).join("\n"));
   const [document, setDocument] = useState(depuisChat?.document ?? "");
