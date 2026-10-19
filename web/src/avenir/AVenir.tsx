@@ -31,14 +31,16 @@ const STATUT_ATTRIBUTION: Record<string, string> = {
 const PREFIXES: Record<string, string> = { "business-pipelines": "BP ", "agent-orchestrator": "AO " };
 const prefixeDepot = (projectId: string) => PREFIXES[projectId] ?? `${projectId} `;
 
-export function construireSpecAttribution(etape: Etape, projectId: string, runtime: "codex" | "claude", criteres: string[]): SpecMission {
+// Pas de choix de runtime : un pipeline de développement planifie et relit avec Claude et code
+// avec Codex. Exclure l'un des deux bloquait le plan ; le planificateur choisit étape par étape.
+export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[]): SpecMission {
   const ailleurs = etape.fichiers.filter((f) => !f.startsWith(prefixeDepot(projectId)));
   return {
     projectId, objectif: `${etape.titre} — ${etape.detail}`, criteres,
     document: `${etape.detail}\n\nFichiers repérés par l'audit : ${etape.fichiers.join(", ")}.`,
     directives: "Respecter les instructions du dépôt et produire une PR vérifiable.",
     exclusions: ailleurs.length ? `Ce run ne modifie que ${projectId}. Hors périmètre, à traiter dans une autre mission : ${ailleurs.join(", ")}.` : "",
-    exigences: [], runtimesExclus: runtime === "codex" ? ["claude", "omniroute"] : ["codex", "omniroute"],
+    exigences: [], runtimesExclus: ["omniroute"],
     contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
   };
 }
@@ -68,11 +70,10 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   async function proposer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formulaire = new FormData(event.currentTarget);
-    const runtime = String(formulaire.get("runtime") || "codex");
     const criteres = lignes(String(formulaire.get("criteres") || ""));
     if (!projectId) return;
     if (!criteres.length) { setErreur("Renseigne au moins un critère."); return; }
-    const spec = construireSpecAttribution(etape, projectId, runtime === "claude" ? "claude" : "codex", criteres);
+    const spec = construireSpecAttribution(etape, projectId, criteres);
     setErreur(null); setAttente(true);
     try { setProposition({ spec, reponse: await source.proposerPlan(spec) }); setAccepteDegrade(false); }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
@@ -115,7 +116,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {erreur && <p className="av-attribution-erreur" role="alert">{erreur}</p>}
     {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
       <p className="av-form-depot">Dépôt : <code>{projectId}</code></p>
-      <label>Agent<select name="runtime" defaultValue="codex"><option value="codex">Codex (GPT)</option><option value="claude">Claude</option></select></label>
+      <p className="av-form-depot">Agents : choisis par le planificateur, visibles dans le plan.</p>
       <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
       <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
     </form>}
