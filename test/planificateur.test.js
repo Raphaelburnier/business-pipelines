@@ -14,6 +14,25 @@ const contrat = require("agent-orchestrator/src/mission");
 const planificateur = require("../src/planificateur");
 const plansMissions = require("../src/api-plans-missions");
 const api = require("../src/api-lecture");
+const objectifsAvenirs = require("../src/objectifs-avenirs");
+const catalogueObjectifs = require("../web/src/avenir/objectifs.json");
+
+test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec la feuille", () => {
+  const feuille = fs.readFileSync(path.join(__dirname, "..", "web/src/avenir/feuille.ts"), "utf8").split("\n");
+  assert.ok(catalogueObjectifs.length > 0);
+  assert.equal(new Set(catalogueObjectifs.map((o) => o.id)).size, catalogueObjectifs.length);
+  for (const objectif of catalogueObjectifs) {
+    assert.equal(objectifsAvenirs.validerReference(objectif).id, objectif.id);
+    const ligne = feuille.find((l) => l.includes(`id: "${objectif.id}"`));
+    assert.ok(ligne, `${objectif.id} doit exister dans la feuille de route`);
+    assert.match(ligne, /statut: "a-faire"/, `${objectif.id} doit rester à faire`);
+    assert.equal(Number.isInteger(objectif.revision) && objectif.revision > 0, true);
+  }
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "inconnu", revision: 1 }), /objectif.*inconnu/i);
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "0.1", revision: 1 }), /non attribuable/i, "une ligne déjà en cours doit être refusée");
+  assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: 2 }), /révision/i);
+  assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: "1" }), /référence/i);
+});
 
 const claudeSonnet = { via: "claude", model: "sonnet" };
 const claudeOpus = { via: "claude", model: "opus" };

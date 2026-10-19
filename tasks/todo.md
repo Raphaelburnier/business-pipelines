@@ -4,13 +4,13 @@ Le suivi d’avancement de ces tâches est maintenu dans la liste claude-mem
 `objectifs-durables-cockpit` ; ce fichier fixe le découpage approuvé. Chaque tâche est
 ordonnée par dépendance et reste sous cinq fichiers de production/tests.
 
-- [ ] **T1 — Catalogue admissible et référence de mission**
+- [x] **T1 — Catalogue admissible et référence de mission**
   - Acceptation : un manifeste partagé déclare les objectifs attribuables et leur révision ;
     le serveur rejette les IDs/révisions inconnus ; le front ne propose pas les lignes
     marquées faites ; chaque entrée du manifeste existe dans la feuille de route.
   - Vérifier : tests du manifeste avec ID valide, inconnu, retiré et révision périmée.
   - Fichiers : `web/src/avenir/objectifs.json`, `src/objectifs-avenirs.js`,
-    `web/src/avenir/feuille.ts`, `test/objectifs-avenirs.test.js`.
+    `web/src/avenir/feuille.ts`, `web/tsconfig.json`, `test/planificateur.test.js`.
 
 - [ ] **T2 — Réservation atomique et projection API** (dépend de T1)
   - Acceptation : la création `run.start` conserve la référence d’objectif dans sa charge
