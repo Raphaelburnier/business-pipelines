@@ -12,7 +12,7 @@ ordonnée par dépendance et reste sous cinq fichiers de production/tests.
   - Fichiers : `web/src/avenir/objectifs.json`, `src/objectifs-avenirs.js`,
     `web/src/avenir/feuille.ts`, `web/tsconfig.json`, `test/planificateur.test.js`.
 
-- [ ] **T2 — Réservation atomique et projection API** (dépend de T1)
+- [x] **T2 — Réservation atomique et projection API** (dépend de T1)
   - Acceptation : la création `run.start` conserve la référence d’objectif dans sa charge
     signée ; répétition idempotente retourne la même commande ; une autre demande active sur
     le même objectif est refusée ; un objectif terminal peut être repris ; l’API retourne

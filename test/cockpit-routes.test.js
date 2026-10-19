@@ -183,6 +183,9 @@ test("les routes de lecture servent les runs, les machines et le front", async (
 
     const liste = JSON.parse((await requete(PORT, "/api/runs?project=marketing&status=succeeded")).corps);
     assert.strictEqual(liste.runs.length, 1);
+    const objectifs = await requete(PORT, "/api/avenir/objectifs");
+    assert.strictEqual(objectifs.code, 200);
+    assert.deepStrictEqual(JSON.parse(objectifs.corps).attributions, []);
     assert.strictEqual((await requete(PORT, "/api/runs?status=fini")).code, 400, "un statut inconnu est une faute de requête");
     assert.strictEqual((await requete(PORT, "/api/usage")).code, 200);
 

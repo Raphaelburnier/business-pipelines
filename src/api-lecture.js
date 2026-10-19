@@ -107,6 +107,65 @@ function run(store, runId) {
   };
 }
 
+function statutObjectif(ligne, mission) {
+  if (!ligne.run_id) return ["pending", "taken"].includes(ligne.commande_statut) ? "queued" : "failed";
+  if (ETATS_VIVANTS.has(String(ligne.run_statut))) return ligne.run_statut;
+  if (ligne.run_statut === "cancelled") return "cancelled";
+  if (ligne.run_statut !== "succeeded") return "failed";
+  if (ligne.livraison_statut === "merged") return "completed";
+  if (ligne.livraison_fin) return ligne.livraison_statut === "failed" ? "failed" : "completed";
+  if (ligne.livraison_statut || ligne.publication === 1) return "review";
+  return mission.resolution.projet.publier === true ? "review" : "completed";
+}
+
+/**
+ * Dernière attribution de chaque objectif : projection de la commande, du run et de la
+ * livraison existants. L'historique de l'event store reste la seule source persistante.
+ * @param {any} store
+ * @param {{ limite?: number }} [options]
+ */
+function objectifsAvenirs(store, { limite = 100 } = {}) {
+  const limiteSure = Math.max(1, Math.min(200, Math.trunc(Number(limite) || 100)));
+  const lignes = store.db.prepare(`
+    WITH attributions AS (
+      SELECT c.id AS commande_id, c.status AS commande_statut, c.run_id AS run_id,
+        c.created_at AS creee_le, c.payload_json AS payload_json,
+        r.status AS run_statut, r.project_id AS project_id,
+        d.status AS livraison_statut, d.finished_at AS livraison_fin,
+        json_extract(c.payload_json, '$.mission.resolution.projet.publier') AS publication,
+        json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id') AS objectif_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id')
+          ORDER BY c.created_at DESC, c.rowid DESC
+        ) AS rang
+      FROM commands c
+      LEFT JOIN runs r ON r.id = c.run_id
+      LEFT JOIN deliveries d ON d.run_id = r.id
+      WHERE c.kind = 'run.start'
+        AND json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id') IS NOT NULL
+    )
+    SELECT * FROM attributions WHERE rang = 1 ORDER BY creee_le DESC LIMIT ?`).all(limiteSure);
+  return lignes.map((ligne) => {
+    const payload = JSON.parse(String(ligne.payload_json));
+    const mission = payload.mission;
+    const objectif = mission.resolution.spec._mission.objectifFeuille;
+    const agent = mission.participants.find((participant) => participant.type === "agent") || mission.participants[0] || null;
+    const resultat = ligne.run_id ? store.commandeLancementRun(String(ligne.run_id)) : null;
+    const raison = resultat?.resultat && !resultat.resultat.ok ? resultat.resultat.raison || null : null;
+    return {
+      objectif,
+      commandeId: ligne.commande_id,
+      runId: ligne.run_id,
+      projetId: ligne.project_id || payload.projectId,
+      agent: agent ? { id: agent.membre, nom: agent.nom, llm: agent.llm } : null,
+      statut: statutObjectif(ligne, mission),
+      creeLe: ligne.creee_le,
+      raison,
+      livraison: ligne.run_id ? { statut: ligne.livraison_statut, termineeLe: ligne.livraison_fin } : null,
+    };
+  });
+}
+
 // Le dernier arbre jugé du run : celui de sa livraison attestée, sinon celui de son dernier
 // juge (tests ou revue). Une revue sur un autre arbre est périmée.
 function arbreCourant(store, runId, evenements) {
@@ -345,4 +404,4 @@ function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
   };
 }
 
-module.exports = { runs, run, machines, evenements, topologie, usage, resumerApprobation, lireFiches, ETATS_VIVANTS };
+module.exports = { runs, run, objectifsAvenirs, machines, evenements, topologie, usage, resumerApprobation, lireFiches, ETATS_VIVANTS };

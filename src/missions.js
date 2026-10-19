@@ -6,6 +6,7 @@ const contrat = require("agent-orchestrator/src/mission");
 const finance = require("agent-orchestrator/packages/schemas/finance");
 const { roleEffectif } = require("agent-orchestrator/src/dispatch");
 const natures = require("./natures");
+const { validerReference } = require("./objectifs-avenirs");
 
 const lancement = schemas.lancement;
 
@@ -46,6 +47,9 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
 
 function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
+  const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
+    ? validerReference(d.demande.spec._roadmapObjective)
+    : null;
   const { resolution, options } = lire({ ...params, projectId: d.projectId, pipelineIndex: d.pipelineIndex });
   if (options.configuration !== d.configuration) throw new Error("La configuration du projet ou de l'équipe a changé : relire la mission.");
   if (options.blocages?.length) throw new Error(options.blocages.join(" "));
@@ -91,10 +95,13 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
   resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm, ...secoursDe(n) } : n);
   // La tranche métier reste structurée (questions marketing, etc.). L'objectif de cette
   // mission est aussi envoyé hors slicing à tous les développeurs et reviewers.
-  resolution.spec = { ...d.demande.spec, project_name: d.projectId, task: d.demande.objectif,
+  const specContexte = { ...d.demande.spec };
+  delete specContexte._roadmapObjective;
+  resolution.spec = { ...specContexte, project_name: d.projectId, task: d.demande.objectif,
     acceptance_criteria: d.demande.criteres,
     _mission: { projectId: d.projectId, objectif: d.demande.objectif, criteres: d.demande.criteres,
       directives: d.demande.directives, exclusions: d.demande.exclusions, document: d.demande.document,
+      ...(objectifFeuille ? { objectifFeuille } : {}),
       ...(origine ? { origine, contexteEquipe: brouillon.contexte } : {}) } };
   for (const n of roles) {
     if (Array.isArray(n.slice)) for (const key of n.slice) {
@@ -108,6 +115,9 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
 function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
+  const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
+    ? validerReference(d.demande.spec._roadmapObjective)
+    : null;
   store.db.exec("BEGIN IMMEDIATE");
   try {
     const ancienne = store.db.prepare("SELECT id FROM commands WHERE kind = 'run.start' AND json_extract(payload_json, '$.requestId') = ? LIMIT 1").get(d.requestId);
@@ -118,6 +128,11 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
         throw new Error("Cette demande a déjà été utilisée avec un autre contenu ou auteur.");
       }
     } else {
+      if (objectifFeuille && objectifActif(store, objectifFeuille.id)) {
+        const occupe = new Error(`L'objectif ${objectifFeuille.id} est déjà attribué à un run actif.`);
+        occupe.code = "OBJECTIF_OCCUPE";
+        throw occupe;
+      }
       const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
         pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash }, par: qui.par, canal: qui.canal });
@@ -125,5 +140,26 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
     store.db.exec("COMMIT");
     return commande;
   } catch (err) { store.db.exec("ROLLBACK"); throw err; }
+}
+
+const RUNS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine"]);
+
+function objectifActif(store, objectifId) {
+  const lignes = store.db.prepare(`
+    SELECT c.status AS commande_statut, c.run_id AS run_id,
+      r.status AS run_statut, d.status AS livraison_statut, d.finished_at AS livraison_fin,
+      json_extract(c.payload_json, '$.mission.resolution.projet.publier') AS publication
+    FROM commands c
+    LEFT JOIN runs r ON r.id = c.run_id
+    LEFT JOIN deliveries d ON d.run_id = r.id
+    WHERE c.kind = 'run.start'
+      AND json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id') = ?
+    ORDER BY c.created_at DESC, c.rowid DESC`).all(objectifId);
+  return lignes.find((ligne) => {
+    if (!ligne.run_id) return ["pending", "taken"].includes(ligne.commande_statut);
+    if (RUNS_VIVANTS.has(ligne.run_statut)) return true;
+    if (ligne.run_statut === "succeeded" && (ligne.publication === 1 || (ligne.livraison_statut && !ligne.livraison_fin))) return true;
+    return false;
+  }) || null;
 }
 module.exports = { lire, construire, demander };

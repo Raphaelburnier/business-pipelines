@@ -441,6 +441,41 @@ test("lancement refusé si le plan a changé depuis sa présentation ou s'il est
   } finally { f.fermer(); }
 });
 
+test("objectif À venir : référence signée, lancement idempotent, réservation exclusive et état projeté", () => {
+  const f = fixture();
+  const missions = require("../src/missions");
+  const reference = { id: "1.1", revision: 1 };
+  const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference) => {
+    const preparation = planificateur.planifier({ spec: spec(), params: f.params, etat: {} });
+    const demande = structuredClone(preparation.lancement);
+    demande.requestId = requestId;
+    demande.demande.spec._roadmapObjective = objectif;
+    return missions.demander({ store: f.store, qui, params: f.params, demande, plan: preparation.proposition.plan });
+  };
+  try {
+    const demandeId = crypto.randomUUID();
+    const premiere = lancerObjectif(demandeId);
+    assert.deepEqual(premiere.payload.mission.resolution.spec._mission.objectifFeuille, reference);
+    assert.equal(lancerObjectif(demandeId).id, premiere.id, "la même demande rend la même commande");
+    assert.throws(() => lancerObjectif(), (err) => err.code === "OBJECTIF_OCCUPE");
+    assert.throws(() => lancerObjectif(crypto.randomUUID(), { id: "0.1", revision: 1 }), /non attribuable/i);
+
+    let affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
+    assert.equal(affectation.statut, "queued");
+    f.store.prendreCommande({ kinds: ["run.start"] });
+    const { run } = f.store.ouvrirRunCommande(premiere.id, { projectId: "app", pipelineRef: "improve-app@7" });
+    f.store.statutRun(run.id, "waiting_quota");
+    affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
+    assert.equal(affectation.runId, run.id);
+    assert.equal(affectation.statut, "waiting_quota");
+
+    f.store.statutRun(run.id, "failed");
+    affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
+    assert.equal(affectation.statut, "failed");
+    assert.notEqual(lancerObjectif().id, premiere.id, "un objectif terminal peut recevoir une nouvelle attribution");
+  } finally { f.fermer(); }
+});
+
 test("un contrat dont le plan contredit la résolution est refusé par le moteur", () => {
   const f = fixture();
   try {

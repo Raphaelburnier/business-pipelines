@@ -705,7 +705,7 @@ async function traiter(req, res) {
       });
       return json(res, 202, { commande: { id: commande.id, statut: commande.status } });
     } catch (err) {
-      return json(res, 400, { erreur: err.message });
+      return json(res, err.code === "OBJECTIF_OCCUPE" ? 409 : 400, { erreur: err.message });
     }
   }
 
@@ -715,6 +715,13 @@ async function traiter(req, res) {
   // ce sont des prompts, des coûts et des noms de machines. Les routes et leurs paramètres
   // suivent la spec (décision 7 du 2026-09-18).
   const lecture = req.method === "GET" ? new URL(req.url, "http://cockpit") : null;
+
+  if (lecture && lecture.pathname === "/api/avenir/objectifs") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const limite = Math.min(Number(lecture.searchParams.get("limite") || 100) || 100, 200);
+    return json(res, 200, { attributions: api.objectifsAvenirs(magasinOuvert, { limite }) });
+  }
 
   if (lecture && lecture.pathname.startsWith("/api/commands/")) {
     const magasinOuvert = store();
