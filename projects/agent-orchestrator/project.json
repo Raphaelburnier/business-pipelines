@@ -1,0 +1,29 @@
+{
+  "id": "agent-orchestrator",
+  "name": "Moteur (agent-orchestrator)",
+  "business": "systeme",
+  "homeMachine": "pc",
+  "repo": "/git/agent-orchestrator.git",
+  "repoWorkers": "admindunas@192.168.1.18:/volume1/docker/git/agent-orchestrator.git",
+  "verification": {
+    "prepareNetwork": true,
+    "prepare": [{ "command": "npm", "args": ["ci"], "timeoutMs": 600000 }],
+    "checks": [{ "kind": "test", "command": "npm", "args": ["test"], "timeoutMs": 600000 }]
+  },
+  "publier": true,
+  "github": "Raphaelburnier/agent-orchestrator",
+  "pipelines": [
+    {
+      "extends": "improve-app@7",
+      "overrides": {
+        "nodes": {
+          "review-security": { "enabled": true }
+        }
+      },
+      "budget": {
+        "usdPerRun": 4,
+        "usdPerMonth": 30
+      }
+    }
+  ]
+}

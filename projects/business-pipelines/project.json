@@ -1,0 +1,32 @@
+{
+  "id": "business-pipelines",
+  "name": "Cockpit (business-pipelines)",
+  "business": "systeme",
+  "homeMachine": "pc",
+  "repo": "/git/business-pipelines.git",
+  "repoWorkers": "admindunas@192.168.1.18:/volume1/docker/git/business-pipelines.git",
+  "verification": {
+    "prepareNetwork": true,
+    "prepare": [{ "command": "npm", "args": ["ci"], "cwd": "web", "timeoutMs": 600000 }],
+    "checks": [
+      { "kind": "typecheck", "command": "npm", "args": ["run", "typecheck"], "cwd": "web", "timeoutMs": 300000 },
+      { "kind": "test", "command": "npm", "args": ["test"], "cwd": "web", "timeoutMs": 300000 }
+    ]
+  },
+  "publier": true,
+  "github": "Raphaelburnier/business-pipelines",
+  "pipelines": [
+    {
+      "extends": "improve-app@7",
+      "overrides": {
+        "nodes": {
+          "review-security": { "enabled": true }
+        }
+      },
+      "budget": {
+        "usdPerRun": 4,
+        "usdPerMonth": 30
+      }
+    }
+  ]
+}

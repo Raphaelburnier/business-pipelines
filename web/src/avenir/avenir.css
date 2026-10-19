@@ -71,6 +71,7 @@
 .av-form select, .av-form textarea { width: 100%; padding: 8px; border: 1px solid var(--color-trait-fort); border-radius: 4px; background: var(--color-surface); color: var(--color-encre); font: 400 13px/1.4 var(--font-sans); }
 .av-form textarea { resize: vertical; }
 .av-form-criteres { grid-column: 1 / -1; }
+.av-form-depot { margin: 0; align-self: center; font-size: 12px; color: var(--color-douce); }
 .av-form button { grid-column: 1 / -1; }
 .av-form button:disabled, .av-plan button:disabled { cursor: wait; opacity: .55; }
 .av-plan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-left: 2px solid var(--color-accent); background: var(--color-surface); font-size: 12px; }
