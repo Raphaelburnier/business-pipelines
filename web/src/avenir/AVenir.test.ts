@@ -38,15 +38,13 @@ describe("attribution depuis À venir", () => {
     expect(html).toContain("en cours");
   });
 
-  it("prépare la référence, le projet, les critères et le runtime choisi", () => {
+  it("prépare la référence, le projet et les critères sans exclure Claude ni Codex", () => {
     const etape = toutesLesEtapes.find((e) => e.id === "0.7")!;
-    const specCodex = construireSpecAttribution(etape, "business-pipelines", "codex", ["Tests verts"]);
-    const specClaude = construireSpecAttribution(etape, "business-pipelines", "claude", ["Revue faite"]);
-    expect(specCodex.projectId).toBe("business-pipelines");
-    expect(specCodex.contexte).toEqual({ _roadmapObjective: { id: "0.7", revision: 1 } });
-    expect(specCodex.runtimesExclus).toEqual(["claude", "omniroute"]);
-    expect(specClaude.runtimesExclus).toEqual(["codex", "omniroute"]);
-    expect(specClaude.criteres).toEqual(["Revue faite"]);
+    const spec = construireSpecAttribution(etape, "business-pipelines", ["Revue faite"]);
+    expect(spec.projectId).toBe("business-pipelines");
+    expect(spec.contexte).toEqual({ _roadmapObjective: { id: "0.7", revision: 1 } });
+    expect(spec.runtimesExclus).toEqual(["omniroute"]);
+    expect(spec.criteres).toEqual(["Revue faite"]);
   });
 
   it("explique un conflit de réservation concurrente", () => {
