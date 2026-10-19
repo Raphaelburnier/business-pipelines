@@ -34,6 +34,7 @@ export interface Defaut {
 
 const IDS_ATTRIBUABLES = new Set(objectifsAttribuables.map((objectif) => objectif.id));
 const REVISION_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.revision]));
+const PROJET_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.projet]));
 
 export function estAttribuable(etape: Pick<Etape, "id" | "statut">): boolean {
   return etape.statut === "a-faire" && IDS_ATTRIBUABLES.has(etape.id);
@@ -41,6 +42,11 @@ export function estAttribuable(etape: Pick<Etape, "id" | "statut">): boolean {
 
 export function revisionObjectif(id: string): number | null {
   return REVISION_OBJECTIFS.get(id) ?? null;
+}
+
+// Le dépôt système où l'objectif se traite. null : plusieurs dépôts, à faire hors du cockpit.
+export function projetObjectif(id: string): string | null {
+  return PROJET_OBJECTIFS.get(id) ?? null;
 }
 
 export const DATE_AUDIT = "2026-10-17";

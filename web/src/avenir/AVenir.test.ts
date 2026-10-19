@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AVenir, construireSpecAttribution, expliquerConflitAttribution } from "./AVenir";
-import { LOTS, estAttribuable } from "./feuille";
+import { LOTS, estAttribuable, projetObjectif } from "./feuille";
 import type { AttributionAvenir } from "../donnees/source";
 import type { Topologie } from "../types";
 
@@ -31,7 +31,7 @@ describe("attribution depuis À venir", () => {
   it("n'affiche l'action que pour les objectifs attribuables et montre l'assignation active", () => {
     const html = renderToStaticMarkup(createElement(AVenir));
     const actions = (html.match(/>Attribuer<\/button>/g) ?? []).length;
-    expect(actions).toBe(toutesLesEtapes.filter(estAttribuable).length - 1);
+    expect(actions).toBe(toutesLesEtapes.filter((e) => estAttribuable(e) && projetObjectif(e.id)).length - 1);
     expect(html).toContain("Sacha");
     expect(html).toContain("Projet démo");
     expect(html).toContain("Run run-1234");
@@ -40,9 +40,9 @@ describe("attribution depuis À venir", () => {
 
   it("prépare la référence, le projet, les critères et le runtime choisi", () => {
     const etape = toutesLesEtapes.find((e) => e.id === "0.7")!;
-    const specCodex = construireSpecAttribution(etape, "repo-a", "codex", ["Tests verts"]);
-    const specClaude = construireSpecAttribution(etape, "repo-b", "claude", ["Revue faite"]);
-    expect(specCodex.projectId).toBe("repo-a");
+    const specCodex = construireSpecAttribution(etape, "business-pipelines", "codex", ["Tests verts"]);
+    const specClaude = construireSpecAttribution(etape, "business-pipelines", "claude", ["Revue faite"]);
+    expect(specCodex.projectId).toBe("business-pipelines");
     expect(specCodex.contexte).toEqual({ _roadmapObjective: { id: "0.7", revision: 1 } });
     expect(specCodex.runtimesExclus).toEqual(["claude", "omniroute"]);
     expect(specClaude.runtimesExclus).toEqual(["codex", "omniroute"]);

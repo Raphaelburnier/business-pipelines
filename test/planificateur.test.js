@@ -22,7 +22,8 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   assert.ok(catalogueObjectifs.length > 0);
   assert.equal(new Set(catalogueObjectifs.map((o) => o.id)).size, catalogueObjectifs.length);
   for (const objectif of catalogueObjectifs) {
-    assert.equal(objectifsAvenirs.validerReference(objectif).id, objectif.id);
+    if (objectif.projet) assert.equal(objectifsAvenirs.validerReference(objectif, objectif.projet).id, objectif.id);
+    else assert.throws(() => objectifsAvenirs.validerReference(objectif), /hors du cockpit/);
     const ligne = feuille.find((l) => l.includes(`id: "${objectif.id}"`));
     assert.ok(ligne, `${objectif.id} doit exister dans la feuille de route`);
     assert.match(ligne, /statut: "a-faire"/, `${objectif.id} doit rester à faire`);
@@ -32,6 +33,7 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   assert.throws(() => objectifsAvenirs.validerReference({ id: "0.1", revision: 1 }), /non attribuable/i, "une ligne déjà en cours doit être refusée");
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: 2 }), /révision/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: "1" }), /référence/i);
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "3.7", revision: 1 }, "steam-tierlist"), /se traite dans business-pipelines/);
 });
 
 const claudeSonnet = { via: "claude", model: "sonnet" };
@@ -498,8 +500,11 @@ test("objectif À venir : référence signée, lancement idempotent, réservatio
   const f = fixture();
   const missions = require("../src/missions");
   const reference = { id: "1.1", revision: 1 };
-  const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference) => {
-    const preparation = planificateur.planifier({ spec: spec(), params: f.params, etat: {} });
+  const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
+  fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
+  fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
+  const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference, projectId = "agent-orchestrator") => {
+    const preparation = planificateur.planifier({ spec: spec({ projectId }), params: f.params, etat: {} });
     const demande = structuredClone(preparation.lancement);
     demande.requestId = requestId;
     demande.demande.spec._roadmapObjective = objectif;
@@ -512,11 +517,12 @@ test("objectif À venir : référence signée, lancement idempotent, réservatio
     assert.equal(lancerObjectif(demandeId).id, premiere.id, "la même demande rend la même commande");
     assert.throws(() => lancerObjectif(), (err) => err.code === "OBJECTIF_OCCUPE");
     assert.throws(() => lancerObjectif(crypto.randomUUID(), { id: "0.1", revision: 1 }), /non attribuable/i);
+    assert.throws(() => lancerObjectif(crypto.randomUUID(), reference, "app"), /se traite dans agent-orchestrator/);
 
     let affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
     assert.equal(affectation.statut, "queued");
     f.store.prendreCommande({ kinds: ["run.start"] });
-    const { run } = f.store.ouvrirRunCommande(premiere.id, { projectId: "app", pipelineRef: "improve-app@7" });
+    const { run } = f.store.ouvrirRunCommande(premiere.id, { projectId: "agent-orchestrator", pipelineRef: "improve-app@7" });
     f.store.statutRun(run.id, "waiting_quota");
     affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
     assert.equal(affectation.runId, run.id);

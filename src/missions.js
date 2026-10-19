@@ -48,7 +48,7 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
 function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
-    ? validerReference(d.demande.spec._roadmapObjective)
+    ? validerReference(d.demande.spec._roadmapObjective, d.projectId)
     : null;
   const { resolution, options } = lire({ ...params, projectId: d.projectId, pipelineIndex: d.pipelineIndex });
   if (options.configuration !== d.configuration) throw new Error("La configuration du projet ou de l'équipe a changé : relire la mission.");
@@ -101,7 +101,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     acceptance_criteria: d.demande.criteres,
     _mission: { projectId: d.projectId, objectif: d.demande.objectif, criteres: d.demande.criteres,
       directives: d.demande.directives, exclusions: d.demande.exclusions, document: d.demande.document,
-      ...(objectifFeuille ? { objectifFeuille } : {}),
+      ...(objectifFeuille ? { objectifFeuille: { id: objectifFeuille.id, revision: objectifFeuille.revision } } : {}),
       ...(origine ? { origine, contexteEquipe: brouillon.contexte } : {}) } };
   for (const n of roles) {
     if (Array.isArray(n.slice)) for (const key of n.slice) {
@@ -116,7 +116,7 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
-    ? validerReference(d.demande.spec._roadmapObjective)
+    ? validerReference(d.demande.spec._roadmapObjective, d.projectId)
     : null;
   store.db.exec("BEGIN IMMEDIATE");
   try {

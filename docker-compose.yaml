@@ -113,6 +113,11 @@ services:
       # repoWorkers dans projects/marketing/project.json) et sa spec seule, pas tout specs/.
       - /volume1/docker/git/marketing.git:/git/marketing.git
       - ./specs/marketing.json:/app/specs/marketing.json:ro
+      # Les objectifs « À venir » se traitent dans le cockpit et le moteur. Dépôts de travail
+      # distincts des miroirs de /git/systeme, que le livreur lit comme source de confiance :
+      # un agent n'y pousse jamais.
+      - /volume1/docker/git/business-pipelines.git:/git/business-pipelines.git
+      - /volume1/docker/git/agent-orchestrator.git:/git/agent-orchestrator.git
       # La connexion Codex du conseiller de « Demander » (codex login --device-auth, une
       # fois). Hors de l'image et hors de specs/. Les agents de ce conteneur ont Bash et
       # peuvent la lire, comme ils voient déjà le jeton d'abonnement Claude du runner.
