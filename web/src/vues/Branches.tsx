@@ -1,6 +1,7 @@
 // Les branches métier du cockpit, telles que le registre les déclare : ce qui désigne chaque
 // nature, les pipelines qui la portent et les projets d'où lancer une mission.
 import { useCharge } from "../donnees/contexte";
+import { libelleNature } from "../donnees/natures";
 import { Erreur, Titre, Vide } from "../ui";
 
 export function Branches({ aller }: { aller: (href: string) => void }) {
@@ -36,6 +37,10 @@ export function Branches({ aller }: { aller: (href: string) => void }) {
             : <p className="mt-1 text-douce">Aucun projet n'y est rattaché.</p>}
         </div>
       </div>
+      {n.discussion && <p className="text-xs text-douce">
+        Discussion d'équipe : gabarit <code>{n.discussion.gabarit}</code>, ouverte aux membres qui incarnent {n.discussion.competences.join(", ")}
+        {n.discussion.versNature ? `. Les specs du fil partent vers un workflow ${libelleNature(donnees?.natures, n.discussion.versNature).toLowerCase()}.` : "."}
+      </p>}
     </article>)}
   </section>;
 }

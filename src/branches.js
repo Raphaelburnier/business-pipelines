@@ -10,10 +10,12 @@ const planificateur = require("./planificateur");
 /**
  * @param {{ projetsDir: string, dossier?: string }} entree
  * @returns {{ natures: Array<{ id: string, libelle: string, description: string, tags: string[], handlers: string[], priorite: number,
- *   regles: "dediees" | "generiques", pipelines: string[], projets: Array<{ id: string, nom: string }> }> }}
+ *   regles: "dediees" | "generiques", pipelines: string[], projets: Array<{ id: string, nom: string }>,
+ *   discussion: { gabarit: string, competences: string[], versNature: string | null } | null }> }}
  */
 function branches({ projetsDir, dossier = registre.dossierRegistre() }) {
   const declarees = natures.naturesDeclarees(dossier);
+  const discussions = new Map(natures.discussionsDeclarees(declarees).map((d) => [d.nature, { gabarit: d.gabarit, competences: d.competences, versNature: d.versNature }]));
   /** @type {Map<string, Array<{ id: string, nom: string }>>} */
   const projetsParNature = new Map();
   const ids = fs.existsSync(projetsDir) ? fs.readdirSync(projetsDir).filter((id) => /^[a-z0-9][a-z0-9-]*$/.test(id)).sort() : [];
@@ -38,6 +40,7 @@ function branches({ projetsDir, dossier = registre.dossierRegistre() }) {
       regles: Object.hasOwn(natures.REGLES, n.id) ? "dediees" : "generiques",
       pipelines: planificateur.pipelinesDuRegistre(n.id, dossier),
       projets: projetsParNature.get(n.id) || [],
+      discussion: discussions.get(n.id) || null,
     })),
   };
 }

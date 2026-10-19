@@ -86,11 +86,12 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
       const de = (motif: RegExp) => projets.filter((p) => p.pipelines.some((r) => motif.test(r))).map((p) => ({ id: p.id, nom: p.nom }));
       return { natures: [
         { id: "finance", libelle: "Finance", description: "Recherche financière privée, rapport validé, sans publication.", tags: ["finance"], handlers: [], priorite: 10,
-          regles: "dediees" as const, pipelines: ["finance-research@2"], projets: de(/finance/) },
+          regles: "dediees" as const, pipelines: ["finance-research@2"], projets: de(/finance/), discussion: null },
         { id: "developpement", libelle: "Développement", description: "Changement de code jusqu'à la PR, tests et revue indépendante.", tags: ["code"], handlers: ["verify-project"], priorite: 20,
-          regles: "dediees" as const, pipelines: ["improve-app@7"], projets: de(/^(?!.*(marketing|finance))/) },
+          regles: "dediees" as const, pipelines: ["improve-app@7"], projets: de(/^(?!.*(marketing|finance))/), discussion: null },
         { id: "marketing", libelle: "Marketing", description: "Analyses de marque et de marché, synthèse puis décision.", tags: ["marketing"], handlers: [], priorite: 30,
-          regles: "dediees" as const, pipelines: ["marketing@1"], projets: de(/marketing/) },
+          regles: "dediees" as const, pipelines: ["marketing@1"], projets: de(/marketing/),
+          discussion: { gabarit: "marketing-dialogue@1", competences: ["brand-analyst", "economy-analyst", "plan-synthesist"], versNature: "developpement" } },
       ] };
     },
     async preparerMission(projectId, pipelineIndex) {
