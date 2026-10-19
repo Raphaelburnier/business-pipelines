@@ -15,6 +15,7 @@ import { EnCours } from "./vues/EnCours";
 import { Kpis } from "./vues/Kpis";
 import { Panneau } from "./vues/Panneau";
 import { Missions } from "./vues/Missions";
+import { Branches } from "./vues/Branches";
 import { Pipelines } from "./vues/Pipelines";
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 
@@ -29,6 +30,7 @@ type Route =
   | { type: "agents" }
   | { type: "pipelines"; runId: string | null }
   | { type: "missions"; projetId: string | null; brouillonId: string | null }
+  | { type: "branches" }
   | { type: "marketing"; projetId: string | null; filId: string | null }
   | { type: "demander"; filId: string | null }
   | { type: "decisions" }
@@ -46,6 +48,7 @@ function lireRoute(): Route {
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
   if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", runId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   if (morceaux[0] === "finance" && morceaux.length === 1) return { type: "finance" };
+  if (morceaux[0] === "missions" && morceaux[1] === "branches" && morceaux.length === 2) return { type: "branches" };
   if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
   if (morceaux[0] === "marketing" && morceaux.length <= 3) return { type: "marketing", projetId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null, filId: morceaux[2] ? decodeURIComponent(morceaux[2]) : null };
   if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
@@ -123,6 +126,7 @@ function titreDe(route: Route): string {
   if (route.type === "graph") return "Accueil";
   if (route.type === "agents") return "Agents";
   if (route.type === "missions") return "Missions";
+  if (route.type === "branches") return "Branches";
   if (route.type === "pipelines") return "Pipelines";
   if (route.type === "marketing") return "Équipe marketing";
   if (route.type === "demander") return "Demander";
@@ -215,6 +219,7 @@ function Coquille() {
             Agents
           </Lien>
           <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
+          <Lien href="/missions/branches" actif={route.type === "branches"} aller={naviguer} icone="branche">Branches</Lien>
           <Lien href="/pipelines" actif={route.type === "pipelines"} aller={naviguer} icone="pipeline">Pipelines</Lien>
           <Lien href="/finance" actif={route.type === "finance"} aller={naviguer} icone="finance">Finance</Lien>
           <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
@@ -281,6 +286,7 @@ function Coquille() {
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "pipelines" && <Pipelines runId={route.runId} aller={naviguer} />}
           {route.type === "missions" && <Missions key={`${route.projetId}:${route.brouillonId}`} projetInitial={route.projetId} brouillonId={route.brouillonId} aller={naviguer} />}
+          {route.type === "branches" && <Branches aller={naviguer} />}
           {route.type === "finance" && <Suspense fallback={<section className="page-vide"><p>Chargement de Finance…</p></section>}><Finance /></Suspense>}
           {route.type === "marketing" && <Suspense fallback={<p>Chargement de l'équipe marketing…</p>}><Marketing key={`${route.projetId}:${route.filId}`} projetInitial={route.projetId} filId={route.filId} aller={naviguer} /></Suspense>}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}

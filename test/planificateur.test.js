@@ -257,6 +257,21 @@ test("règles par nature : chaque nature détectée a ses règles, le planificat
   assert.doesNotMatch(source, /nature === "/);
 });
 
+test("branches : chaque nature avec ses pipelines du registre et ses projets, gabarits exclus", () => {
+  const f = fixture();
+  try {
+    const { natures } = require("../src/branches").branches({ projetsDir: f.projets, dossier: f.reg });
+    const par = Object.fromEntries(natures.map((n) => [n.id, n]));
+    assert.deepEqual(natures.map((n) => n.id), ["finance", "developpement", "marketing"]);
+    assert.deepEqual(par.developpement.projets, [{ id: "app", nom: "Application" }]);
+    assert.deepEqual(par.marketing.projets, [{ id: "marketing", nom: "Plan marketing" }], "le projet vide n'a qu'un gabarit de discussion");
+    assert.deepEqual(par.marketing.pipelines, ["marketing@1"]);
+    assert.ok(par.developpement.pipelines.includes("improve-app@7"));
+    assert.equal(par.finance.regles, "dediees");
+    assert.match(par.finance.description, /Recherche financière/);
+  } finally { f.fermer(); }
+});
+
 const moteurSansNatures = typeof require("agent-orchestrator/src/registre").lireNatures !== "function" && "moteur sans lireNatures";
 test("natures du registre : une branche déclarée en données est planifiée sans code dédié", { skip: moteurSansNatures }, () => {
   const f = fixture();
@@ -280,6 +295,8 @@ test("natures du registre : une branche déclarée en données est planifiée sa
     assert.equal(p.plan.nature, "seo");
     assert.ok(p.plan.etapes.some((e) => e.role === "production"), "règles génériques : rôle production par défaut");
     assert.equal(require("../src/missions").lire({ ...f.params, projectId: "seo" }).options.nature, "seo");
+    const seo = require("../src/branches").branches({ projetsDir: f.projets, dossier: f.reg }).natures.find((n) => n.id === "seo");
+    assert.deepEqual({ regles: seo.regles, pipelines: seo.pipelines, projets: seo.projets.map((p) => p.id) }, { regles: "generiques", pipelines: ["seo@1"], projets: ["seo"] });
 
     ecrire({ id: "doublon", libelle: "Doublon", description: "x", tags: ["seo"] });
     const casse = planificateur.proposer({ spec: spec({ projectId: "seo" }), params: f.params, etat: {} });

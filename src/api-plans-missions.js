@@ -3,6 +3,7 @@
 const equipe = require("./equipe");
 const runtimeMission = require("./runtime-mission");
 const planificateur = require("./planificateur");
+const { branches } = require("./branches");
 
 /**
  * Le contrôle de lancement d'un nœud de mission : backend joignable, worker à jour pour les
@@ -55,13 +56,19 @@ function etatPlanification({ store, machines, viaParMachine, roster, affectation
 }
 
 /**
- * `POST /api/missions/plan` rend la proposition ; `POST /api/missions/lancer` met le plan
+ * `GET /api/natures` rend les branches métier ; `POST /api/missions/plan` rend la proposition ;
+ * `POST /api/missions/lancer` met le plan
  * présenté en file. Rend false si la route n'est pas la sienne.
  * @param {{ req: any, res: any, chemin: string, json: Function, corps: () => Promise<any>, store: () => any,
  *   qui: { par: string, canal: string }, params: () => any, machines: (store: any) => any[], viaParMachine: Record<string, string[]>,
  *   origineAutorisee: (req: any) => boolean }} ctx
  */
 async function traiter({ req, res, chemin, json, corps, store, qui, params, machines, viaParMachine, origineAutorisee }) {
+  if (req.method === "GET" && chemin === "/api/natures") {
+    try { json(res, 200, branches({ projetsDir: params().projetsDir })); }
+    catch (err) { json(res, 500, { erreur: `natures illisibles : ${err.message}` }); }
+    return true;
+  }
   if (req.method !== "POST" || !["/api/missions/plan", "/api/missions/lancer"].includes(chemin)) return false;
   if (!origineAutorisee(req)) { json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" }); return true; }
   const magasin = store();

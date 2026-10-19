@@ -81,6 +81,18 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
         resultat: run ? { ok: true } : { ok: false, raison: "La maquette ne contient pas de run pour ce projet." } });
       return { id, statut: "pending" };
     },
+    async natures() {
+      const projets = etat().topologie.projets.filter((p) => p.pipelines.length);
+      const de = (motif: RegExp) => projets.filter((p) => p.pipelines.some((r) => motif.test(r))).map((p) => ({ id: p.id, nom: p.nom }));
+      return { natures: [
+        { id: "finance", libelle: "Finance", description: "Recherche financière privée, rapport validé, sans publication.", tags: ["finance"], handlers: [], priorite: 10,
+          regles: "dediees" as const, pipelines: ["finance-research@2"], projets: de(/finance/) },
+        { id: "developpement", libelle: "Développement", description: "Changement de code jusqu'à la PR, tests et revue indépendante.", tags: ["code"], handlers: ["verify-project"], priorite: 20,
+          regles: "dediees" as const, pipelines: ["improve-app@7"], projets: de(/^(?!.*(marketing|finance))/) },
+        { id: "marketing", libelle: "Marketing", description: "Analyses de marque et de marché, synthèse puis décision.", tags: ["marketing"], handlers: [], priorite: 30,
+          regles: "dediees" as const, pipelines: ["marketing@1"], projets: de(/marketing/) },
+      ] };
+    },
     async preparerMission(projectId, pipelineIndex) {
       const projet = etat().topologie.projets.find((p) => p.id === projectId);
       if (!projet) throw new Error("Projet inconnu");
