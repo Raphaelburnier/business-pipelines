@@ -30,6 +30,18 @@ export interface Commande {
   resultat: { ok: boolean; raison?: string; detail?: Record<string, unknown> } | null;
 }
 
+export interface AttributionAvenir {
+  objectif: { id: string; revision: number };
+  commandeId: string;
+  runId: string | null;
+  projetId: string;
+  agent: { id: string | null; nom: string; llm: import("../types").Llm } | null;
+  statut: string;
+  creeLe: string;
+  raison: string | null;
+  livraison: { statut: string | null; termineeLe: string | null } | null;
+}
+
 export interface Source {
   readonly nom: "maquette" | "api";
   topologie(): Promise<Topologie>;
@@ -38,6 +50,8 @@ export interface Source {
   usage(): Promise<Usage>;
   /** Le dernier relevé des modèles poussé par le PC. */
   modeles(): Promise<ReponseModeles>;
+  /** Dernière attribution connue par objectif de la feuille de route. */
+  attributionsAvenir(): Promise<AttributionAvenir[]>;
   /** `llm` s'applique à tous les nœuds agents du run ; absent, chaque nœud garde le sien. */
   lancerRun(projectId: string, pipelineIndex?: number, llm?: Llm | null): Promise<{ id: string; statut: string }>;
   preparerMission(projectId: string, pipelineIndex: number): Promise<OptionsMission>;

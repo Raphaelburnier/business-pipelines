@@ -61,6 +61,24 @@
 .av-suggestions { display: flex; flex-direction: column; gap: 8px; }
 .av-suggestions li { padding: 10px 16px; border: 1px solid var(--color-trait); border-left: 3px solid var(--color-accent); background: var(--color-surface); color: var(--color-encre); }
 
+.av-attribution { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--color-trait); background: var(--color-carte); }
+.av-attribution-meta { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 12px; color: var(--color-douce); }
+.av-attribution-meta a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.av-action, .av-form button, .av-plan button { align-self: flex-start; min-height: 36px; padding: 7px 12px; border: 1px solid var(--color-accent); background: var(--color-surface); color: var(--color-encre); font: 600 12px/1.3 var(--font-sans); cursor: pointer; }
+.av-action:hover, .av-form button:hover, .av-plan button:hover { background: var(--color-accent); color: var(--color-sur-accent); }
+.av-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, .7fr); gap: 10px; align-items: end; }
+.av-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-douce); }
+.av-form select, .av-form textarea { width: 100%; padding: 8px; border: 1px solid var(--color-trait-fort); border-radius: 4px; background: var(--color-surface); color: var(--color-encre); font: 400 13px/1.4 var(--font-sans); }
+.av-form textarea { resize: vertical; }
+.av-form-criteres { grid-column: 1 / -1; }
+.av-form button { grid-column: 1 / -1; }
+.av-form button:disabled, .av-plan button:disabled { cursor: wait; opacity: .55; }
+.av-plan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-left: 2px solid var(--color-accent); background: var(--color-surface); font-size: 12px; }
+.av-plan p, .av-attribution-erreur { margin: 0; color: var(--color-douce); }
+.av-attribution-erreur { color: var(--color-danger); }
+.av-plan label { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 540px) { .av-form { grid-template-columns: 1fr; } .av-form-criteres, .av-form button { grid-column: auto; } }
+
 @media (max-width: 720px) {
   .av-hero { grid-template-columns: 1fr; padding: 16px; }
   .av-avancement { position: static; display: inline-block; margin-top: 6px; }

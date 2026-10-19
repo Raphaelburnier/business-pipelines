@@ -33,9 +33,14 @@ export interface Defaut {
 }
 
 const IDS_ATTRIBUABLES = new Set(objectifsAttribuables.map((objectif) => objectif.id));
+const REVISION_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.revision]));
 
 export function estAttribuable(etape: Pick<Etape, "id" | "statut">): boolean {
   return etape.statut === "a-faire" && IDS_ATTRIBUABLES.has(etape.id);
+}
+
+export function revisionObjectif(id: string): number | null {
+  return REVISION_OBJECTIFS.get(id) ?? null;
 }
 
 export const DATE_AUDIT = "2026-10-17";

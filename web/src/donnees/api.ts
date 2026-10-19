@@ -3,7 +3,7 @@ import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModele
 import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
 import type { ReponsePipelines } from "./pipelines";
-import type { Commande, FiltreRuns, Source } from "./source";
+import type { AttributionAvenir, Commande, FiltreRuns, Source } from "./source";
 import type { EtatPullRequests } from "./pullRequests";
 
 class ErreurApi extends Error {
@@ -61,6 +61,7 @@ export function sourceApi(): Source {
     },
     usage: () => lire<Usage>("/api/usage"),
     modeles: () => lire<ReponseModeles>("/api/modeles"),
+    attributionsAvenir: async () => (await lire<{ attributions: AttributionAvenir[] }>("/api/avenir/objectifs")).attributions,
     optionsDiscussion: (id) => lire(`/api/equipes/marketing/options?projet=${encodeURIComponent(id)}`),
     filsEquipe: async (id) => (await lire<{ fils: import("./discussions").ResumeFilEquipe[] }>(`/api/equipes/marketing${id ? `?projet=${encodeURIComponent(id)}` : ""}`)).fils,
     filEquipe: (id) => lire(`/api/equipes/marketing/${encodeURIComponent(id)}`),

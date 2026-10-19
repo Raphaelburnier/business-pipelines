@@ -22,7 +22,7 @@ ordonnée par dépendance et reste sous cinq fichiers de production/tests.
   - Fichiers : `src/missions.js`, `src/api-lecture.js`, `bin/cockpit.js`,
     `test/planificateur.test.js`, `test/cockpit-routes.test.js`.
 
-- [ ] **T3 — Attribution depuis la page « À venir »** (dépend de T1 et T2)
+- [x] **T3 — Attribution depuis la page « À venir »** (dépend de T1 et T2)
   - Acceptation : une ligne admissible ouvre un formulaire avec titre/détail préremplis ;
     l’utilisateur choisit projet et agent Codex/Claude, ajuste les critères, puis lance par
     le contrat existant ; la page affiche propriétaire, projet, run et état après

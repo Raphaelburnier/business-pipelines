@@ -1,8 +1,11 @@
 // « Fix et fonctionnalités à venir » : la feuille de route de l'audit et les défauts à corriger.
 // Les données vivent dans feuille.ts ; une PR qui avance un point met son statut à jour.
 import "./avenir.css";
-import { useMemo, useState } from "react";
-import { DATE_AUDIT, DEFAUTS, LOTS, SUGGESTIONS, type Severite, type Statut } from "./feuille";
+import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useCharge, useSource } from "../donnees/contexte";
+import { lignes, type PropositionPlan, type SpecMission } from "../donnees/missions";
+import type { AttributionAvenir } from "../donnees/source";
+import { DATE_AUDIT, DEFAUTS, LOTS, SUGGESTIONS, estAttribuable, revisionObjectif, type Etape, type Severite, type Statut } from "./feuille";
 
 type Onglet = "feuille" | "defauts" | "suggestions";
 
@@ -19,7 +22,112 @@ function Pastille({ statut }: { statut: Statut }) {
   return <span className={`av-statut ${statut}`}>{MOT_STATUT[statut]}</span>;
 }
 
+const STATUT_ATTRIBUTION: Record<string, string> = {
+  queued: "en file", running: "en cours", waiting_quota: "en attente de quota", waiting_machine: "en attente du worker",
+  waiting_approval: "en attente d'arbitrage", waiting_auth: "en attente d'authentification", paused: "en pause", succeeded: "terminé", completed: "terminé", failed: "échoué",
+  cancelled: "annulé", review: "en revue",
+};
+
+export function construireSpecAttribution(etape: Etape, projectId: string, runtime: "codex" | "claude", criteres: string[]): SpecMission {
+  return {
+    projectId, objectif: `${etape.titre} — ${etape.detail}`, criteres,
+    document: etape.detail, directives: "Respecter les instructions du dépôt et produire une PR vérifiable.", exclusions: "",
+    exigences: [], runtimesExclus: runtime === "codex" ? ["claude", "omniroute"] : ["codex", "omniroute"],
+    contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
+  };
+}
+
+export function expliquerConflitAttribution(message: string): string {
+  return /déjà attribué|objectif.*actif|OBJECTIF_OCCUPE/i.test(message)
+    ? "Cet objectif vient d'être pris par un autre run. Son attribution affichée ci-dessus va être actualisée."
+    : message;
+}
+
+function Attribution({ etape, attribution, projetNom, agentNom, projets, onRefresh }: {
+  etape: Etape;
+  attribution: AttributionAvenir;
+  projetNom: string;
+  agentNom: string;
+  projets: Array<{ id: string; nom: string }>;
+  onRefresh: () => void;
+}) {
+  const { source } = useSource();
+  const [ouvert, setOuvert] = useState(false);
+  const [proposition, setProposition] = useState<{ spec: SpecMission; reponse: PropositionPlan } | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [attente, setAttente] = useState(false);
+  const [accepteDegrade, setAccepteDegrade] = useState(false);
+  const [commandeId, setCommandeId] = useState<string | null>(null);
+  const tentative = useRef<{ empreinte: string; requestId: string } | null>(null);
+  async function proposer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formulaire = new FormData(event.currentTarget);
+    const projectId = String(formulaire.get("projet") || "");
+    const runtime = String(formulaire.get("runtime") || "codex");
+    const criteres = lignes(String(formulaire.get("criteres") || ""));
+    if (!projectId || !criteres.length) { setErreur("Choisis un projet et renseigne au moins un critère."); return; }
+    const spec = construireSpecAttribution(etape, projectId, runtime === "claude" ? "claude" : "codex", criteres);
+    setErreur(null); setAttente(true);
+    try { setProposition({ spec, reponse: await source.proposerPlan(spec) }); setAccepteDegrade(false); }
+    catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    finally { setAttente(false); }
+  }
+
+  async function lancer() {
+    if (!proposition?.reponse.empreinte) return;
+    setErreur(null); setAttente(true);
+    try {
+      const empreinte = proposition.reponse.empreinte;
+      if (tentative.current?.empreinte !== empreinte) tentative.current = { empreinte, requestId: crypto.randomUUID() };
+      await source.lancerPlan({ spec: proposition.spec, empreinte: proposition.reponse.empreinte,
+        requestId: tentative.current.requestId, accepterDegrade: accepteDegrade });
+      setCommandeId("envoyée");
+      setOuvert(false);
+      onRefresh();
+      setProposition(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErreur(expliquerConflitAttribution(message));
+      onRefresh();
+    } finally { setAttente(false); }
+  }
+
+  const plan = proposition?.reponse;
+  const indisponible = ["queued", "running", "paused", "waiting_quota", "waiting_machine", "waiting_approval", "waiting_auth", "review"].includes(attribution.statut);
+  return <div className="av-attribution">
+    <div className="av-attribution-meta">
+      <span>{agentNom}</span><span>{projetNom}</span>
+      {attribution.runId ? <a href={`/runs/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
+      <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
+    </div>
+    {attribution.raison && <p className="av-attribution-erreur">{attribution.raison}</p>}
+    {commandeId && <p role="status">Mission envoyée au cockpit. L'attribution se mettra à jour avec le prochain événement.</p>}
+    {etape.statut === "a-faire" && !indisponible && <button type="button" className="av-action" onClick={() => { setOuvert((v) => !v); setProposition(null); setErreur(null); setCommandeId(null); }}>
+      {ouvert ? "Fermer" : attribution.statut === "failed" || attribution.statut === "cancelled" ? "Relancer l'objectif" : "Attribuer"}
+    </button>}
+    {erreur && <p className="av-attribution-erreur" role="alert">{erreur}</p>}
+    {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
+      <label>Projet<select name="projet" required defaultValue=""><option value="" disabled>Choisir un projet…</option>{projets.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}</select></label>
+      <label>Agent<select name="runtime" defaultValue="codex"><option value="codex">Codex (GPT)</option><option value="claude">Claude</option></select></label>
+      <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
+      <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
+    </form>}
+    {plan && <section className="av-plan" aria-live="polite"><b>{plan.statut === "bloque" ? "Plan bloqué" : "Plan proposé"}{plan.projet ? ` · ${plan.projet.nom}` : ""}</b>
+      {plan.blocages.map((b, i) => <p key={i}>{b.message}</p>)}
+      {plan.plan?.etapes.map((e) => <p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}
+      {plan.statut === "degrade" && <label><input type="checkbox" checked={accepteDegrade} onChange={(e) => setAccepteDegrade(e.target.checked)} /> Accepter ce plan dégradé</label>}
+      {plan.statut !== "bloque" && <button type="button" disabled={attente || (plan.statut === "degrade" && !accepteDegrade)} onClick={lancer}>{attente ? "Lancement…" : "Lancer la mission"}</button>}
+      <button type="button" disabled={attente} onClick={() => { setProposition(null); tentative.current = null; }}>Modifier la mission</button>
+    </section>}
+  </div>;
+}
+
 function FeuilleDeRoute() {
+  const [revision, setRevision] = useState(0);
+  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [revision]);
+  const { donnees: topo } = useCharge((s) => s.topologie(), []);
+  const parObjectif = new Map((attributions ?? []).map((a) => [a.objectif.id, a]));
+  const projets = topo?.projets.filter((p) => p.aFiche && p.pipelines.length).map((p) => ({ id: p.id, nom: p.nom })) ?? [];
   return (
     <ol className="av-lots">
       {LOTS.map((lot) => {
@@ -44,6 +152,10 @@ function FeuilleDeRoute() {
                     <Pastille statut={e.statut} />
                   </div>
                   <p>{e.detail}</p>
+                  {parObjectif.get(e.id) && <Attribution etape={e} attribution={parObjectif.get(e.id)!} projets={projets} onRefresh={() => setRevision((n) => n + 1)}
+                    projetNom={topo?.projets.find((p) => p.id === parObjectif.get(e.id)?.projetId)?.nom ?? parObjectif.get(e.id)!.projetId}
+                    agentNom={parObjectif.get(e.id)!.agent?.nom ?? "Agent inconnu"} />}
+                  {estAttribuable(e) && !parObjectif.has(e.id) && <Attribution etape={e} projets={projets} onRefresh={() => setRevision((n) => n + 1)} attribution={{ objectif: { id: e.id, revision: revisionObjectif(e.id) ?? 1 }, commandeId: "", runId: null, projetId: "", agent: null, statut: "non_attribue", creeLe: "", raison: null, livraison: null }} projetNom="" agentNom="" />}
                   <div className="av-fichiers">
                     {e.fichiers.map((f) => <code key={f}>{f}</code>)}
                   </div>

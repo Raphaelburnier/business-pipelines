@@ -3,7 +3,7 @@
 // Elle respecte exactement l'interface de la source API. Remplacer l'une par l'autre ne
 // touche aucune vue (annexe A).
 import type { Evenement } from "../types";
-import type { Commande, FiltreRuns, Source } from "../donnees/source";
+import type { AttributionAvenir, Commande, FiltreRuns, Source } from "../donnees/source";
 import { chatMaquette } from "./chat";
 import { discussionsMaquette } from "./discussions";
 import { approbationsMaquette } from "./decisions";
@@ -24,6 +24,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const equipe = equipeMaquette(maintenant);
   const prs = pullRequestsMaquette(maintenant);
   const commandes = new Map<string, Commande>();
+  const attributions: AttributionAvenir[] = [];
   const nomsPipelines = new Map<string, string>();
   const rattachements: Rattachement[] = [];
 
@@ -57,6 +58,7 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     },
     usage: async () => etat().usage,
     modeles: async () => catalogueMaquette(maintenant()),
+    attributionsAvenir: async () => [...attributions],
     fils: chat.fils,
     fil: chat.fil,
     poser: chat.poser,
@@ -107,7 +109,19 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
           independance: [], limites: { maxTurnsPerAgent: null, maxTotalTurns: null, usdPerRun: 4, usdPerMonth: null, corrections: [] },
           resultat: { type: "livrables", depot: null, description: "Maquette : aucun run réel." }, degrade: false, avertissements: [] } };
     },
-    async lancerPlan(demande) { return this.lancerRun(demande.spec.projectId, 0); },
+    async lancerPlan(demande) {
+      const commande = await this.lancerRun(demande.spec.projectId, 0);
+      const ref = demande.spec.contexte?._roadmapObjective;
+      if (ref && typeof ref === "object" && "id" in ref && "revision" in ref) {
+        const projet = etat().topologie.projets.find((p) => p.id === demande.spec.projectId);
+        const runtime = demande.spec.runtimesExclus?.includes("claude") ? "codex" : "claude";
+        attributions.unshift({ objectif: { id: String(ref.id), revision: Number(ref.revision) }, commandeId: commande.id,
+          runId: commandes.get(commande.id)?.run ?? null, projetId: demande.spec.projectId,
+          agent: { id: null, nom: runtime === "codex" ? "Codex (maquette)" : "Claude (maquette)", llm: { via: runtime, model: runtime === "codex" ? "gpt-5.6-terra" : "sonnet" } },
+          statut: "queued", creeLe: new Date(maintenant()).toISOString(), raison: null, livraison: null });
+      }
+      return commande;
+    },
     async reprendreRun() { throw new Error("La reprise des runtimes nécessite les données réelles du cockpit."); },
     commande: async (id) => {
       const commande = commandes.get(id);
