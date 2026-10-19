@@ -92,6 +92,7 @@ export const LOTS: Lot[] = [
       { id: "2.5", titre: "Borner Codex", detail: "Durée de 15 min et plafond configurable de 100 actions par défaut ; usage partiel conservé, coût équivalent API estimé uniquement si les tarifs sont configurés.", fichiers: ["AO src/codex-runner.js:189-198, 244-245"], statut: "fait" },
       { id: "2.6", titre: "Délais sur la file unique", detail: "orch.js, scripts, git, fetch du publieur et du conseiller, deploy.sh.", fichiers: ["BP bin/commande-runner.js:68-77", "AO src/graphe.js:162-177"], statut: "a-faire" },
       { id: "2.7", titre: "Reprendre waiting_machine", detail: "Reprise programmée au retour du worker ; approval.decide hors file longue.", fichiers: ["AO src/run-waits.js", "BP bin/commande-runner.js:281-286"], statut: "a-faire" },
+      { id: "2.8", titre: "Reprise automatique après un quota", detail: "Un run interrompu par un quota reprend seul, y compris sans échéance annoncée : nouvelle tentative bornée après la fenêtre d'abonnement au lieu d'attendre un clic (cas du run finance 2bf1abcc bloqué plus de 40 h).", fichiers: ["AO src/run-waits.js:84-103", "BP src/api-plans-missions.js"], statut: "a-faire" },
     ],
   },
   {

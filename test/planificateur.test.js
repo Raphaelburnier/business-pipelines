@@ -582,6 +582,11 @@ test("runtimes bloqués lus dans les attentes des runs vivants", () => {
     codex: "quota codex atteint jusqu'à 2026-10-12T18:00:00.000Z (run abcdef12)",
     claude: "connexion claude absente ou expirée (run fedcba65)",
   });
+  const sansEcheance = { runs: () => [{ id: "0123456789ab", status: "waiting_quota" }],
+    attentes: { vue: () => ({ statut: "waiting_quota", runtime: "claude", resetAt: null }), lire: () => ({ first_wait_at: "2026-10-18T05:50:00.000Z" }) } };
+  assert.deepEqual(plansMissions.runtimesBloques(sansEcheance, 300, Date.parse("2026-10-18T09:00:00.000Z")),
+    { claude: "quota claude atteint, échéance inconnue (run 01234567)" });
+  assert.deepEqual(plansMissions.runtimesBloques(sansEcheance, 300, Date.parse("2026-10-18T10:50:00.000Z")), {}, "au-delà d'une fenêtre de 5 h, le runtime n'est plus bloqué");
 });
 
 test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, lancement dédupliqué", async () => {
