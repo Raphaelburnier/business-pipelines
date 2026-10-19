@@ -138,11 +138,15 @@ services:
       # exception, git refuse de le cloner (« dubious ownership »). Posé en variables
       # d'environnement, qui comptent comme configuration protégée pour git, pour survivre à
       # la recréation du conteneur. Le premier run du 2026-09-25 a échoué là.
-      - GIT_CONFIG_COUNT=2
+      - GIT_CONFIG_COUNT=4
       - GIT_CONFIG_KEY_0=safe.directory
       - GIT_CONFIG_VALUE_0=/git/steam-tierlist.git
       - GIT_CONFIG_KEY_1=safe.directory
       - GIT_CONFIG_VALUE_1=/git/marketing.git
+      - GIT_CONFIG_KEY_2=safe.directory
+      - GIT_CONFIG_VALUE_2=/git/business-pipelines.git
+      - GIT_CONFIG_KEY_3=safe.directory
+      - GIT_CONFIG_VALUE_3=/git/agent-orchestrator.git
     env_file:
       - ./specs/deploiement.env
     # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve
