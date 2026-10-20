@@ -65,6 +65,8 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const [erreur, setErreur] = useState<string | null>(null);
   const [attente, setAttente] = useState(false);
   const [accepteDegrade, setAccepteDegrade] = useState(false);
+  const [priorite, setPriorite] = useState<"haute" | "normale" | "basse">(attribution.priorite ?? "normale");
+  const [reclassement, setReclassement] = useState(false);
   const [commandeId, setCommandeId] = useState<string | null>(null);
   const tentative = useRef<{ empreinte: string; requestId: string } | null>(null);
   async function proposer(event: FormEvent<HTMLFormElement>) {
@@ -87,7 +89,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       const empreinte = proposition.reponse.empreinte;
       if (tentative.current?.empreinte !== empreinte) tentative.current = { empreinte, requestId: crypto.randomUUID() };
       await source.lancerPlan({ spec: proposition.spec, empreinte: proposition.reponse.empreinte,
-        requestId: tentative.current.requestId, accepterDegrade: accepteDegrade });
+        requestId: tentative.current.requestId, accepterDegrade: accepteDegrade, scheduling: { priority: priorite } });
       setCommandeId("envoyée");
       setOuvert(false);
       onRefresh();
@@ -99,6 +101,16 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     } finally { setAttente(false); }
   }
 
+  async function reclasser(nouvelle: "haute" | "normale" | "basse") {
+    setErreur(null); setReclassement(true);
+    try {
+      await source.reclasserObjectif(etape.id, nouvelle);
+      setPriorite(nouvelle);
+      onRefresh();
+    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); onRefresh(); }
+    finally { setReclassement(false); }
+  }
+
   const plan = proposition?.reponse;
   const indisponible = ["queued", "running", "paused", "waiting_quota", "waiting_machine", "waiting_freshness", "waiting_approval", "waiting_auth", "review"].includes(attribution.statut);
   return <div className="av-attribution">
@@ -106,8 +118,18 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       <span>{agentNom}</span><span>{projetNom}</span>
       {attribution.runId ? <a href={`/runs/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
       <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
+      {attribution.positionFile != null && <span>Objectifs #{attribution.positionFile}</span>}
+      <span>Priorité {attribution.priorite ?? "normale"}</span>
     </div>
+    {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise automatique en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
+    {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && !attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise manuelle en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
+    {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "taken" && <p className="av-file-attente">{attribution.attente.commandeAutomatique ? "Reprise automatique en cours" : "Reprise manuelle en cours"}{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
+    {attribution.statut === "waiting_quota" && !attribution.attente?.commandeStatut && <p className="av-file-attente">Quota atteint{attribution.attente?.runtime ? ` · ${attribution.attente.runtime}` : ""}{attribution.attente?.prochaineReprise ? ` · reprise automatique prévue ${new Date(attribution.attente.prochaineReprise).toLocaleString("fr-CH")}` : " · aucune reprise automatique planifiée"}</p>}
+    {attribution.attente?.raisonManuelle && <p className="av-attribution-erreur">Reprise manuelle requise : {attribution.attente.raisonManuelle}</p>}
     {attribution.raison && <p className="av-attribution-erreur">{attribution.raison}</p>}
+    {attribution.reclassable && <label className="av-priorite">Priorité de file<select aria-label={`Priorité ${etape.id}`} value={priorite} disabled={reclassement} onChange={(event) => void reclasser(event.target.value as "haute" | "normale" | "basse")}>
+      <option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option>
+    </select></label>}
     {commandeId && <p role="status">Mission envoyée au cockpit. L'attribution se mettra à jour avec le prochain événement.</p>}
     {!projectId && <p className="av-attribution-erreur">Touche plusieurs dépôts ou un dépôt hors du cockpit : à traiter à la main.</p>}
     {projectId && etape.statut === "a-faire" && !indisponible && <button type="button" className="av-action" onClick={() => { setOuvert((v) => !v); setProposition(null); setErreur(null); setCommandeId(null); }}>
@@ -117,6 +139,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
       <p className="av-form-depot">Dépôt : <code>{projectId}</code></p>
       <p className="av-form-depot">Agents : choisis par le planificateur, visibles dans le plan.</p>
+      <label>Priorité<select value={priorite} onChange={(event) => setPriorite(event.target.value as "haute" | "normale" | "basse")}><option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option></select></label>
       <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
       <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
     </form>}

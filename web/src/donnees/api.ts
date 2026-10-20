@@ -124,6 +124,9 @@ export function sourceApi(): Source {
     async lancerPlan(demande) {
       return (await ecrire<{ commande: { id: string; statut: string } }>("/api/missions/lancer", demande)).commande;
     },
+    async reclasserObjectif(objectifId, priorite) {
+      await ecrire(`/api/avenir/objectifs/${encodeURIComponent(objectifId)}/priorite`, { priorite });
+    },
     commande: async (id) => (await lire<{ commande: Commande }>(`/api/commands/${encodeURIComponent(id)}`)).commande,
     async reprendreRun(id, waitId, reconnexionConfirmee = false) {
       return (await ecrire<{ commande: { id: string; statut: string } }>(`/api/runs/${encodeURIComponent(id)}/reprise`, { waitId, reconnexionConfirmee })).commande;

@@ -26,6 +26,7 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
     {fraicheur && <>
       <p className="mt-2">Le run est suspendu avant l'étape suivante. La branche par défaut n'a pas pu être intégrée ou vérifiée.</p>
       {!!attente.fraicheur?.fichiers && Array.isArray(attente.fraicheur.fichiers) && attente.fraicheur.fichiers.length > 0 && <ul className="mt-2 list-disc pl-5">{attente.fraicheur.fichiers.map((f) => <li key={String(f)}><code>{String(f)}</code></li>)}</ul>}
+      <p className="mt-2">Vérifie la fraîcheur du contexte, puis demande explicitement la reprise si elle reste pertinente. Aucune reprise automatique n'est planifiée.</p>
     </>}
     {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && <>
       <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : "Échéance inconnue : reprise manuelle disponible."}</p>

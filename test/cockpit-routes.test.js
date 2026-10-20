@@ -189,6 +189,9 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const branches = await requete(PORT, "/api/natures");
     assert.strictEqual(branches.code, 200);
     assert.ok(JSON.parse(branches.corps).natures.some((n) => n.id === "developpement" && n.libelle === "Développement"));
+    assert.strictEqual((await poster(PORT, "/api/avenir/objectifs/1.1/priorite", { priorite: "critique" })).code, 400, "une priorité hors enum est refusée avant l'accès au store");
+    assert.strictEqual((await poster(PORT, "/api/avenir/objectifs/1.1/priorite", { priorite: "haute" }, { origin: "https://autre.example" })).code, 403, "le reclassement reste réservé à une origine cockpit autorisée");
+    assert.strictEqual((await poster(PORT, "/api/avenir/objectifs/1.1/priorite", { priorite: "haute" })).code, 404, "un objectif sans attribution ne peut pas être reclassé");
     assert.strictEqual((await requete(PORT, "/api/runs?status=fini")).code, 400, "un statut inconnu est une faute de requête");
     assert.strictEqual((await requete(PORT, "/api/usage")).code, 200);
 

@@ -503,34 +503,54 @@ test("objectif À venir : référence signée, lancement idempotent, réservatio
   const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
   fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
   fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
-  const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference, projectId = "agent-orchestrator") => {
+  const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference, scheduling = { priority: "normale" }, projectId = "agent-orchestrator") => {
     const preparation = planificateur.planifier({ spec: spec({ projectId }), params: f.params, etat: {} });
     const demande = structuredClone(preparation.lancement);
     demande.requestId = requestId;
     demande.demande.spec._roadmapObjective = objectif;
-    return missions.demander({ store: f.store, qui, params: f.params, demande, plan: preparation.proposition.plan });
+    return missions.demander({ store: f.store, qui, params: f.params, demande, plan: preparation.proposition.plan, scheduling });
   };
   try {
     const demandeId = crypto.randomUUID();
     const premiere = lancerObjectif(demandeId);
     assert.deepEqual(premiere.payload.mission.resolution.spec._mission.objectifFeuille, reference);
-    assert.equal(lancerObjectif(demandeId).id, premiere.id, "la même demande rend la même commande");
+    assert.equal(premiere.payload.scheduling.priority, "normale");
+    assert.equal(lancerObjectif(demandeId, reference, { priority: "haute" }).id, premiere.id, "la priorité ne change ni l'idempotence ni le plan créé");
     assert.throws(() => lancerObjectif(), (err) => err.code === "OBJECTIF_OCCUPE");
     assert.throws(() => lancerObjectif(crypto.randomUUID(), { id: "0.1", revision: 1 }), /non attribuable/i);
-    assert.throws(() => lancerObjectif(crypto.randomUUID(), reference, "app"), /se traite dans agent-orchestrator/);
+    assert.throws(() => lancerObjectif(crypto.randomUUID(), reference, { priority: "normale" }, "app"), /se traite dans agent-orchestrator/);
 
     let affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
     assert.equal(affectation.statut, "queued");
+    assert.equal(affectation.priorite, "normale");
+    assert.equal(affectation.positionFile, 1);
+    assert.equal(affectation.reclassable, true);
     f.store.prendreCommande({ kinds: ["run.start"] });
     const { run } = f.store.ouvrirRunCommande(premiere.id, { projectId: "agent-orchestrator", pipelineRef: "improve-app@7" });
     f.store.statutRun(run.id, "waiting_quota");
     affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
     assert.equal(affectation.runId, run.id);
     assert.equal(affectation.statut, "waiting_quota");
+    assert.equal(affectation.reclassable, true);
+    assert.equal(affectation.attente?.runtime ?? null, null);
+    assert.equal(affectation.positionFile, null, "une attente quota future n'est pas déjà dans la file");
+    const attenteQuota = f.store.attentes.enregistrer(run.id, { name: "QuotaAtteint", resetAt: new Date(Date.now() + 60_000).toISOString(), resetSource: "provider.resets_at" });
+    f.store.attentes.demander(run.id, { waitId: attenteQuota.wait_id, automatique: true, par: "runner:quota", maintenant: Date.parse(attenteQuota.next_retry_at) });
+    affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
+    assert.equal(affectation.attente?.commandeAutomatique, true);
+    assert.equal(affectation.attente?.commandeStatut, "pending");
+    assert.equal(affectation.positionFile, 1, "seule une reprise automatique pending prend le rang prioritaire");
+
+    f.store.statutRun(run.id, "waiting_freshness");
+    f.store.attentes.enregistrer(run.id, { name: "FraicheurBloquee", message: "branche divergente" });
+    affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
+    assert.equal(affectation.statut, "waiting_freshness", "une attente de fraîcheur reste vivante, elle ne devient pas échouée");
+    assert.equal(affectation.reclassable, false);
 
     f.store.statutRun(run.id, "failed");
     affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
     assert.equal(affectation.statut, "failed");
+    assert.equal(affectation.reclassable, false);
     assert.notEqual(lancerObjectif().id, premiere.id, "un objectif terminal peut recevoir une nouvelle attribution");
   } finally { f.fermer(); }
 });
@@ -620,19 +640,32 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     assert.equal(finance.corps.statut, "degrade", "la capacité est évaluée côté serveur ; le plan reste dégradé sans équipe Finance complète");
     assert.equal(finance.corps.blocages.some((b) => b.code === "capacite-absente"), false, "un champ HTTP ne remplace pas la capacité réelle du serveur");
     assert.equal((await poster("/api/missions/lancer", { spec: specFinance(), empreinte: "0".repeat(64), requestId: crypto.randomUUID() })).code, 409);
-    const proposition = await poster("/api/missions/plan", { spec: spec() });
+    const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
+    fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
+    fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
+    const specObjectif = spec({ projectId: "agent-orchestrator", contexte: { _roadmapObjective: { id: "1.1", revision: 1 } } });
+    const proposition = await poster("/api/missions/plan", { spec: specObjectif });
     assert.equal(proposition.code, 200, JSON.stringify(proposition.corps));
     assert.equal(proposition.corps.statut, "lancable");
     assert.equal(proposition.corps.plan.etapes.find((e) => e.noeud === "implement").machine, "pc");
-    const corps = { spec: spec(), empreinte: proposition.corps.empreinte, requestId: crypto.randomUUID() };
+    const corps = { spec: specObjectif, empreinte: proposition.corps.empreinte, requestId: crypto.randomUUID(), scheduling: { priority: "haute" } };
     assert.equal((await poster("/api/missions/lancer", { ...corps, empreinte: "0".repeat(64) })).code, 409);
     const premier = await poster("/api/missions/lancer", corps);
-    const second = await poster("/api/missions/lancer", corps);
+    const second = await poster("/api/missions/lancer", { ...corps, scheduling: { priority: "basse" } });
     assert.equal(premier.code, 202, JSON.stringify(premier.corps));
     assert.equal(second.corps.commande.id, premier.corps.commande.id);
     const commande = f.store.commande(premier.corps.commande.id);
     assert.equal(commande.par, "test");
     assert.equal(commande.payload.mission.plan.pipeline.ref, "improve-app@7");
+    assert.equal(commande.payload.scheduling.priority, "haute", "une répétition avec une priorité changée garde la commande initiale");
+    const reclasser = await poster("/api/avenir/objectifs/1.1/priorite", { priorite: "basse" });
+    assert.equal(reclasser.code, 200, JSON.stringify(reclasser.corps));
+    assert.equal(reclasser.corps.priorite, "basse");
+    assert.equal(f.store.commande(commande.id).payload.scheduling.priority, "basse");
+    f.store.prendreCommande({ kinds: ["run.start"] });
+    f.store.ouvrirRunCommande(commande.id, { projectId: "agent-orchestrator", pipelineRef: "improve-app@7" });
+    const indisponible = await poster("/api/avenir/objectifs/1.1/priorite", { priorite: "haute" });
+    assert.equal(indisponible.code, 409, "un objectif déjà pris par le runner est immuable");
     assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands WHERE kind = 'run.start'").get().n, 1);
   } finally { enfant.kill(); f.fermer(); }
 });
