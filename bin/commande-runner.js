@@ -126,10 +126,10 @@ async function repondre(store, commande) {
 
 // Deux files dans le même processus : un run tient sa boucle pendant des minutes, une
 // question ne doit pas l'attendre. Chaque boucle ne réserve que ses propres commandes.
-async function boucle(store, kinds, executer) {
+async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
   while (!arret) {
     if (kinds.includes("run.resume")) store.attentes.programmer();
-    const commande = store.prendreCommande({ kinds });
+    const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true } : { kinds });
     if (!commande) {
       await attendre(INTERVALLE);
       continue;
@@ -281,7 +281,7 @@ async function demarrer() {
     await Promise.all([
       ouvrirMaitre(store),
       // Les décisions passent dans la file des runs pour conserver la concurrence de quota.
-      boucle(store, ["run.start", "run.resume", "approval.decide", "run.reverify"], (commande) => executerRun(store, commande)),
+      boucle(store, ["run.start", "run.resume", "approval.decide", "run.reverify"], (commande) => executerRun(store, commande), { prioriserRuns: true }),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {

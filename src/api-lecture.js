@@ -129,7 +129,7 @@ function objectifsAvenirs(store, { limite = 100 } = {}) {
   const lignes = store.db.prepare(`
     WITH attributions AS (
       SELECT c.id AS commande_id, c.status AS commande_statut, c.run_id AS run_id,
-        c.created_at AS creee_le, c.payload_json AS payload_json,
+        c.created_at AS creee_le, c.rowid AS commande_rowid, c.payload_json AS payload_json,
         r.status AS run_statut, r.project_id AS project_id,
         d.status AS livraison_statut, d.finished_at AS livraison_fin,
         json_extract(c.payload_json, '$.mission.resolution.projet.publier') AS publication,
@@ -145,13 +145,17 @@ function objectifsAvenirs(store, { limite = 100 } = {}) {
         AND json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id') IS NOT NULL
     )
     SELECT * FROM attributions WHERE rang = 1 ORDER BY creee_le DESC LIMIT ?`).all(limiteSure);
-  return lignes.map((ligne) => {
+  const attributions = lignes.map((ligne) => {
     const payload = JSON.parse(String(ligne.payload_json));
     const mission = payload.mission;
     const objectif = mission.resolution.spec._mission.objectifFeuille;
     const agent = mission.participants.find((participant) => participant.type === "agent") || mission.participants[0] || null;
     const resultat = ligne.run_id ? store.commandeLancementRun(String(ligne.run_id)) : null;
     const raison = resultat?.resultat && !resultat.resultat.ok ? resultat.resultat.raison || null : null;
+    const attente = ligne.run_id ? store.attentes?.vue(String(ligne.run_id)) : null;
+    const commandeReprise = attente?.commande ? store.commande(attente.commande) : null;
+    const repriseRowid = commandeReprise ? store.db.prepare("SELECT rowid FROM commands WHERE id = ?").get(commandeReprise.id)?.rowid : null;
+    const priorite = payload.scheduling?.priority || "normale";
     return {
       objectif,
       commandeId: ligne.commande_id,
@@ -159,11 +163,39 @@ function objectifsAvenirs(store, { limite = 100 } = {}) {
       projetId: ligne.project_id || payload.projectId,
       agent: agent ? { id: agent.membre, nom: agent.nom, llm: agent.llm } : null,
       statut: statutObjectif(ligne, mission),
+      priorite,
+      attente: attente ? {
+        runtime: attente.runtime || null,
+        prochaineReprise: attente.prochaineReprise || null,
+        raisonManuelle: attente.raisonManuelle || null,
+        commande: attente.commande || null,
+        commandeStatut: commandeReprise?.status || null,
+        commandeAutomatique: commandeReprise?.payload?.automatique === true,
+        tentatives: attente.tentatives,
+        maximum: attente.maximum,
+      } : null,
+      positionFile: null,
+      reclassable: (ligne.run_statut === "waiting_quota" && commandeReprise?.status !== "taken") || (ligne.commande_statut === "pending" && (ligne.run_statut === "queued" || !ligne.run_id)),
+      ordreFifo: commandeReprise ? repriseRowid : ligne.commande_rowid,
+      creeFileLe: commandeReprise?.created_at || ligne.creee_le,
       creeLe: ligne.creee_le,
       raison,
       livraison: ligne.run_id ? { statut: ligne.livraison_statut, termineeLe: ligne.livraison_fin } : null,
     };
   });
+  // Ordre relatif des seuls objectifs visibles : les reprises automatiques déjà en file
+  // précèdent les nouveaux objectifs, lesquels suivent priorité/FIFO. Ce rang ne prétend
+  // pas compter les autres commandes de contrôle du runner.
+  const aReprendre = attributions.filter((a) => a.statut === "waiting_quota" && a.reclassable && a.attente?.commandeAutomatique && a.attente?.commandeStatut === "pending");
+  const enFile = attributions.filter((a) => a.statut === "queued" && a.reclassable);
+  const ordrePriorite = { haute: 0, normale: 1, basse: 2 };
+  const fifo = (a, b) => String(a.creeFileLe).localeCompare(String(b.creeFileLe)) || Number(a.ordreFifo) - Number(b.ordreFifo);
+  aReprendre.sort(fifo);
+  enFile.sort((a, b) => ordrePriorite[a.priorite] - ordrePriorite[b.priorite] || fifo(a, b));
+  aReprendre.forEach((a, i) => { a.positionFile = i + 1; a.reclassable = true; });
+  enFile.forEach((a, i) => { a.positionFile = aReprendre.length + i + 1; a.reclassable = true; });
+  attributions.forEach((a) => { delete a.ordreFifo; delete a.creeFileLe; });
+  return attributions;
 }
 
 // Le dernier arbre jugé du run : celui de sa livraison attestée, sinon celui de son dernier

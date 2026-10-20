@@ -620,6 +620,36 @@ async function traiter(req, res) {
     params: () => ({ projetsDir: PROJETS, roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible }),
     machines: api.machines, viaParMachine: VIA_PAR_MACHINE, origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
 
+  const prioriteObjectif = req.method === "POST" && chemin.match(/^\/api\/avenir\/objectifs\/([^/]+)\/priorite$/);
+  if (prioriteObjectif) {
+    if (!acces.origineAutorisee(req.headers, PORTEE)) return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    const demande = await corpsJson(req, res);
+    if (demande === null) return undefined;
+    let objectifId;
+    try { objectifId = decodeURIComponent(prioriteObjectif[1]); }
+    catch { return json(res, 400, { erreur: "identifiant d'objectif invalide" }); }
+    if (!/^[0-9]+(?:\.[0-9]+)*$/.test(objectifId)) return json(res, 400, { erreur: "identifiant d'objectif invalide" });
+    if (!demande || typeof demande !== "object" || Array.isArray(demande) || Object.keys(demande).some((cle) => cle !== "priorite") || !["haute", "normale", "basse"].includes(demande.priorite)) {
+      return json(res, 400, { erreur: "priorité invalide : choisir haute, normale ou basse" });
+    }
+    const attribution = api.objectifsAvenirs(magasinOuvert).find((a) => a.objectif.id === objectifId);
+    if (!attribution) return json(res, 404, { erreur: "objectif non attribué" });
+    if (!attribution.reclassable) return json(res, 409, { erreur: "seul un lancement en file ou un run en attente de quota peut être reclassé" });
+    try {
+      const resultat = magasinOuvert.reclasserPrioriteRun({
+        ...(attribution.statut === "waiting_quota" && attribution.runId ? { runId: attribution.runId } : { commandId: attribution.commandeId }),
+        priorite: demande.priorite,
+      });
+      return json(res, 200, { priorite: resultat?.payload?.scheduling?.priority || demande.priorite });
+    } catch (err) {
+      const conflit = /actif|terminal|file|quota|état|réservation|reclassable|après la fin/i.test(err.message);
+      const statut = /introuvable/i.test(err.message) ? 404 : conflit ? 409 : 400;
+      return json(res, statut, { erreur: err.message });
+    }
+  }
+
   const repriseRun =req.method === "POST" && chemin.match(/^\/api\/runs\/([^/]+)\/reprise$/);
   if (repriseRun) {
     const magasinOuvert = store();

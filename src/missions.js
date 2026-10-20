@@ -112,7 +112,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     llmOverrides: Object.fromEntries(participants.map((p) => [p.noeud, p.llm])), demande: d };
 }
 
-function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan }) {
+function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan, scheduling = { priority: "normale" } }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
@@ -135,7 +135,7 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
       }
       const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
-        pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash }, par: qui.par, canal: qui.canal });
+        pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash, scheduling }, par: qui.par, canal: qui.canal });
     }
     store.db.exec("COMMIT");
     return commande;

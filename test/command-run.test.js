@@ -9,6 +9,14 @@ const { EventStore } = require("agent-orchestrator");
 
 const RACINE = path.resolve(__dirname, "..");
 const attendre = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test("le runner n'active la priorité que pour sa file de runs", () => {
+  const source = fs.readFileSync(path.join(RACINE, "bin/commande-runner.js"), "utf8");
+  assert.match(source, /boucle\(store, \["run\.start", "run\.resume", "approval\.decide", "run\.reverify"\],[\s\S]*?\{ prioriserRuns: true \}\)/);
+  assert.match(source, /store\.prendreCommande\(prioriserRuns \? \{ kinds, prioriserRuns: true \} : \{ kinds \}\)/);
+  assert.match(source, /boucle\(store, \["chat\.respond"\],[\s\S]*?\(commande\) => repondre\(store, commande\)\)/);
+});
+
 async function jusqua(condition, detail, plafond = 15000) {
   const fin = Date.now() + plafond;
   while (Date.now() < fin) {

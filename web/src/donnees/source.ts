@@ -38,6 +38,10 @@ export interface AttributionAvenir {
   projetId: string;
   agent: { id: string | null; nom: string; llm: import("../types").Llm } | null;
   statut: string;
+  priorite?: "haute" | "normale" | "basse";
+  positionFile?: number | null;
+  reclassable?: boolean;
+  attente?: { runtime: string | null; prochaineReprise: string | null; raisonManuelle: string | null; commandeStatut?: string | null; commandeAutomatique?: boolean; tentatives?: number; maximum?: number } | null;
   creeLe: string;
   raison: string | null;
   livraison: { statut: string | null; termineeLe: string | null } | null;
@@ -63,6 +67,7 @@ export interface Source {
   proposerPlan(spec: SpecMission): Promise<PropositionPlan>;
   /** Met en file le plan présenté ; refusé s'il a changé depuis sa présentation. */
   lancerPlan(demande: LancementPlan): Promise<{ id: string; statut: string }>;
+  reclasserObjectif(objectifId: string, priorite: "haute" | "normale" | "basse"): Promise<void>;
   optionsDiscussion(projectId: string): Promise<OptionsDiscussion>;
   filsEquipe(projectId?: string): Promise<ResumeFilEquipe[]>;
   filEquipe(id: string): Promise<FilEquipe>;

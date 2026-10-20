@@ -133,8 +133,131 @@ et livraison, sans doublon après redémarrage.
 | Le reset de quota est inconnu | Ne pas inventer d’échéance ni relancer en boucle ; laisser l’action manuelle existante. |
 | Le contrat de mission est strict entre dépôts | Faire évoluer et valider le contrat moteur avant d’activer le front. |
 
-## Hors périmètre conservé
+## Hors périmètre de l’extension
 
 Pas de récurrence calendrier, de sélection automatique d’agent, de collaboration multi-agent
-sur un même objectif, de nouvel ordonnanceur, ni de fusion automatique sensible. Ces points
-restent indépendants du MVP d’attribution durable.
+sur un même objectif, ni de fusion automatique sensible. La planification des tâches et
+l’ordonnancement avec priorités font désormais partie de l’extension décrite ci-dessous.
+
+## Extension planifiée : tâches prioritaires et reprise après quota
+
+Cette extension ajoute la planification explicite des objectifs, leur priorité, leur ordre
+FIFO stable, et la priorité des reprises quota arrivées à échéance. Elle ne modifie pas la
+feuille de route Git pour lancer un objectif. Le contrat fonctionnel et les limites
+existantes sont dans `docs/SPEC-objectifs-durables.md`, section « Extension : planification
+et priorité des tâches ».
+
+### Contrat technique vérifié
+
+- Les `run.start` sont persistés comme commandes `pending`; le sélecteur actuel est FIFO
+  (`created_at, rowid`) parmi les commandes admissibles.
+- Le moteur crée les reprises `run.resume` de manière durable quand un quota a une échéance
+  fournisseur fiable. La reprise garde le même `runId` et reste bornée par le nombre de
+  tentatives, le plafond par compte et la durée maximale d’attente.
+- La priorité est reconnue dans `payload_json.scheduling.priority` de `run.start`, sans colonne
+  ni migration ;
+  l’absence du champ dans l’historique vaut `normale`. `run.resume` hérite de la priorité via
+  le `run.start` relié au même `runId`.
+- L’API cockpit ne doit pas écrire directement dans l’event store. La reclassification passe
+  par une API EventStore transactionnelle. Le sélecteur cible doit respecter les reprises
+  automatiques dues, les contrôles FIFO, puis les départs prioritaires.
+
+### Décision retenue et points à spécifier avant l’implémentation
+
+1. Décision : option A, priorité mutable reconnue dans `payload_json.scheduling.priority` de
+   `run.start`, exclue
+   de la mission figée et de `requestHash`; aucun champ SQL, migration, commande
+   `run.reprioritize` ni table parallèle. L’historique sans priorité vaut `normale`.
+2. L’API EventStore reclassifie ce champ dans une transaction et refuse une réservation active
+   ou une tâche terminale.
+   Une création idempotente existante ne réinitialise pas sa priorité.
+3. L’ordre cible est : reprises automatiques quota fiables et dues (même `runId`, FIFO stable),
+   contrôles `approval.decide`, `run.reverify` et reprises
+   manuelles en FIFO relatif, puis `run.start` par priorité haute/normale/basse et FIFO stable.
+   Seules les commandes admissibles non terminales sont sélectionnées ; aucune préemption.
+4. `chat.respond`, maître distant, publieur et livreur restent hors de l’ordonnanceur des runs.
+   La priorité est sémantique et indépendante de HMAC. La dépendance liée dans ce worktree est
+   ancienne et ne persiste pas les signatures, mais le moteur cible `engine-task-priorities`
+   (`origin/master`) accepte `signer`/`sig` et sa CI inclut un test de persistance ; vérifier
+   le SHA et le run CI de la version effectivement livrée.
+5. Une ligne Git `en-cours` sans attribution n’est pas rattachée implicitement ; toute
+   création ou association exige une action explicite et un `runId` vérifié.
+6. Les contrôles de dépendance, runtime/machine, authentification et fraîcheur restent ceux du
+   flux existant avant création/lancement. Les attentes machine, auth, fraîcheur inconnue ou
+   périmée, dépendance ouverte et quota sans reset fiable restent bloquées.
+
+### Ordre de réalisation proposé
+
+```text
+Contrat moteur et décision d’ordonnancement
+                 ↓
+Priorité persistée + sélection reprise quota avant nouveau run
+                 ↓
+Lecture de file et états de planification pour le cockpit
+                 ↓
+Actions cockpit : créer, prioriser, rattacher ou annuler une tâche admissible
+                 ↓
+Recette FIFO/priorités, reprise quota, redémarrage et garde-fous
+```
+
+#### Q1 — Contrat moteur et admissibilité
+
+- Implémenter le contrat retenu : priorité reconnue dans
+  `payload_json.scheduling.priority`, mise à jour via API EventStore transactionnelle avant
+  réservation, hors mission et `requestHash`.
+- Sélectionner d’abord les reprises quota fiables et dues, puis les contrôles FIFO relatifs,
+  puis les `run.start` admissibles par priorité et FIFO stable.
+- Garder l’ordre FIFO fondé sur `created_at, rowid` stable après reclassification.
+- Vérifier les chemins qui consomment la file, les limites de reprise quota, les statuts
+  machine/authentification/approbation et les contrôles de fraîcheur.
+- Vérifier que `run.resume` retrouve la priorité par la liaison durable `runId` → `run.start`.
+- Vérifier la version moteur réellement utilisée : la cible `engine-task-priorities` accepte
+  `signer` et persiste `sig`, tandis que l’ancien lien de dépendance du worktree cockpit ne
+  les prend pas en charge. La priorité reste indépendante de HMAC ; ne pas ajouter de kind.
+- Confirmer qu’une tâche Git `en-cours` sans attribution reste non associée jusqu’à une action
+  explicite et une vérification du `runId`.
+
+**Vérification :** contrat et schémas moteur relus ; priorité modifiable sans changer
+`requestHash`; reprise liée au run source; consommateurs identifiés; workflow CI cible couvrant
+la persistance HMAC, avec SHA et résultat du run CI de livraison vérifiés.
+
+#### Q2 — Ordonnanceur persistant
+
+- Persister la priorité dans `payload_json.scheduling.priority` de `run.start` via l’API
+  EventStore ; garder l’event store moteur comme source canonique, sans colonne ni table
+  supplémentaire.
+- Faire passer les reprises quota automatiques fiables et dues avant les contrôles FIFO, puis
+  les nouveaux `run.start` ordonnés par priorité et FIFO stable.
+- Laisser les tâches non admissibles en attente sans bloquer les tâches suivantes qui le sont.
+- Conserver le run courant pour chaque reprise ; ne pas préempter les runs actifs.
+- Revalider machine, runtime, authentification, fraîcheur et dépendances au moment de réserver
+  une nouvelle tâche.
+
+**Vérification :** tests d’ordre priorité/FIFO et de non-préemption ; test de reprise même
+runId ; tests d’attente quota inconnu, auth, machine indisponible, freshness périmée et
+dépendance bloquée.
+
+#### Q3 — File dans le cockpit
+
+- Afficher les tâches et leur état d’exécution distinct du statut Git et du statut de
+  livraison.
+- Permettre de choisir/modifier la priorité et d’afficher l’ordre effectif de passage.
+- Ne pas associer automatiquement `en-cours` à un run ni créer d’attachement implicite ; toute
+  création ou association requiert une action explicite et la vérification du run.
+- Ne proposer que les actions autorisées par l’état réel ; ne pas exposer une annulation de
+  run actif tant que le moteur n’a pas de commande vérifiée pour cela.
+
+**Vérification :** tests d’états et actions disponibles, lecture persistante après
+rafraîchissement/redémarrage, refus d’une tâche inadmissible.
+
+#### Q4 — Recette intégrée
+
+- Prouver que plusieurs tâches utilisent priorité puis FIFO stable.
+- Prouver qu’une reprise quota échue passe avant un nouveau départ et conserve le même run.
+- Prouver qu’un reset inconnu, une auth manquante, une machine absente, une fraîcheur
+  invalide ou une dépendance ouverte ne déclenche pas de run dangereux.
+- Prouver qu’une priorité supérieure ne préempte pas une tâche `running`.
+- Mettre à jour la documentation et la fiche projet avec les preuves obtenues.
+
+**Vérification :** commandes CI réelles de chaque dépôt modifié puis recette cockpit
+persistante, incluant redémarrage et séparation des états run/livraison.

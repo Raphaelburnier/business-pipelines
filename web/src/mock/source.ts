@@ -131,9 +131,15 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
         attributions.unshift({ objectif: { id: String(ref.id), revision: Number(ref.revision) }, commandeId: commande.id,
           runId: commandes.get(commande.id)?.run ?? null, projetId: demande.spec.projectId,
           agent: { id: null, nom: runtime === "codex" ? "Codex (maquette)" : "Claude (maquette)", llm: { via: runtime, model: runtime === "codex" ? "gpt-5.6-terra" : "sonnet" } },
-          statut: "queued", creeLe: new Date(maintenant()).toISOString(), raison: null, livraison: null });
+          statut: "queued", priorite: demande.scheduling?.priority ?? "normale", positionFile: null, reclassable: true,
+          attente: null, creeLe: new Date(maintenant()).toISOString(), raison: null, livraison: null });
       }
       return commande;
+    },
+    async reclasserObjectif(objectifId, priorite) {
+      const attribution = attributions.find((a) => a.objectif.id === objectifId);
+      if (!attribution?.reclassable) throw new Error("Cette tâche n'est plus reclassable.");
+      attribution.priorite = priorite;
     },
     async reprendreRun() { throw new Error("La reprise des runtimes nécessite les données réelles du cockpit."); },
     commande: async (id) => {
