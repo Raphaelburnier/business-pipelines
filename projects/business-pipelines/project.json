@@ -20,6 +20,7 @@
       "extends": "improve-app@7",
       "overrides": {
         "nodes": {
+          "plan": { "maxTurns": 35 },
           "review-security": { "enabled": true }
         }
       },
