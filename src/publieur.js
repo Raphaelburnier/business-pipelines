@@ -19,6 +19,19 @@ const suivi = require("./suivi-livraisons");
 const DEPOT_GITHUB = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /**
+ * Choisit le jeton d'écriture utilisé pour publier les branches et ouvrir les PR.
+ * Le jeton fusion a les droits nécessaires sur tous les dépôts et est prioritaire ; le
+ * jeton publication dédié reste utilisable si le jeton fusion n'est pas configuré.
+ * @param {{ fusion?: string, publieur?: string }} options
+ * @returns {{ jeton: string, source: string|null }}
+ */
+function choisirJetonPublication({ fusion, publieur }) {
+  if (typeof fusion === "string" && fusion.trim()) return { jeton: fusion, source: "GITHUB_TOKEN_FUSION" };
+  if (typeof publieur === "string" && publieur.trim()) return { jeton: publieur, source: "GITHUB_TOKEN_PUBLIEUR" };
+  return { jeton: "", source: null };
+}
+
+/**
  * Les projets qui demandent la publication, lus dans leurs fiches brutes : les champs
  * `publier` et `github` ne dépendent pas de la version du schéma du moteur.
  * @param {string} projetsDir
@@ -333,6 +346,7 @@ function ecrireEtat(fichier, etat) {
 }
 
 module.exports = {
+  choisirJetonPublication,
   projetsAPublier,
   gitAvec,
   apiAvec,
