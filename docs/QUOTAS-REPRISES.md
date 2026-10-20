@@ -32,6 +32,8 @@ aucune reconstruction de mission et aucune nouvelle publication après résultat
 
 - le bail exclusif avant récupération des commandes interrompues ;
 - la réconciliation des anciennes attentes, dont les dates restent inconnues ;
+- une file dédiée aux commandes `approval.decide`, afin d'écrire la décision pendant un run long ;
+- un verrou partagé qui garde les lancements et reprises de CLI séquentiels ;
 - `run.resume` dans le filtre de récupération et la file des runs ;
 - la programmation des quotas connus à chaque passage de cette file ;
 - le branchement vers `reprendreRun` et la clôture du lien de commande.

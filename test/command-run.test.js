@@ -12,7 +12,8 @@ const attendre = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 test("le runner n'active la priorité que pour sa file de runs", () => {
   const source = fs.readFileSync(path.join(RACINE, "bin/commande-runner.js"), "utf8");
-  assert.match(source, /boucle\(store, \["run\.start", "run\.resume", "approval\.decide", "run\.reverify"\],[\s\S]*?\{ prioriserRuns: true \}\)/);
+  assert.match(source, /boucle\(store, \["run\.start", "run\.resume", "run\.reverify"\],[\s\S]*?\{ prioriserRuns: true \}\)/);
+  assert.match(source, /boucle\(store, \["approval\.decide"\]/);
   assert.match(source, /store\.prendreCommande\(prioriserRuns \? \{ kinds, prioriserRuns: true \} : \{ kinds \}\)/);
   assert.match(source, /boucle\(store, \["chat\.respond"\],[\s\S]*?\(commande\) => repondre\(store, commande\)\)/);
 });
@@ -77,6 +78,53 @@ function fixture({ avecApprobation = false } = {}) {
   }
   return { dir, store, env, runner, arreter, fermer };
 }
+
+test("une décision d'approbation est enregistrée pendant un run long puis reprise en série", async () => {
+  const f = fixture({ avecApprobation: true });
+  let espaceLong = null;
+  try {
+    const premiere = f.store.creerCommande({ kind: "run.start", payload: { projectId: "demo" }, par: "recette" });
+    const runner = f.runner();
+    await jusqua(() => f.store.commande(premiere.id).status === "done", () => runner.sortie);
+    const premierRun = f.store.commande(premiere.id).run_id;
+    const approbation = f.store.approbationsOuvertes().find(a => a.run_id === premierRun);
+    assert.ok(approbation);
+    const espacePremier = path.join(f.env.OUTPUT_ROOT, "demo", premierRun);
+    fs.writeFileSync(path.join(espacePremier, "reprendre.txt"), "ok");
+
+    const definition = path.join(f.env.ORCH_REGISTRE, "pipelines/longue/v1");
+    const dossierProjet = path.join(f.env.COCKPIT_PROJETS_DIR, "long");
+    fs.mkdirSync(definition, { recursive: true });
+    fs.mkdirSync(dossierProjet, { recursive: true });
+    fs.writeFileSync(path.join(definition, "pipeline.json"), JSON.stringify({
+      name: "longue", version: 1, description: "Run long pour tester l'isolation des décisions.",
+      nodes: [{ id: "bloquer", type: "script", runsOn: "nas", run: process.execPath, args: ["-e", 'const fs=require("node:fs");fs.writeFileSync("started.flag","oui");const fin=Date.now()+30000;while(!fs.existsSync("release.flag")&&Date.now()<fin)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,25);if(!fs.existsSync("release.flag"))process.exit(42);fs.writeFileSync("finished.flag","oui");'] }],
+      edges: [],
+    }));
+    fs.writeFileSync(path.join(dossierProjet, "spec.json"), JSON.stringify({ project_name: "long" }));
+    fs.writeFileSync(path.join(dossierProjet, "project.json"), JSON.stringify({ id: "long", name: "Run long", business: "recette", homeMachine: "nas", repo: path.join(f.dir, "long-inexistant.git"), pipelines: [{ extends: "longue@1", spec: "spec.json" }] }));
+
+    const longue = f.store.creerCommande({ kind: "run.start", payload: { projectId: "long" }, par: "recette" });
+    await jusqua(() => f.store.commande(longue.id).run_id, () => runner.sortie);
+    espaceLong = path.join(f.env.OUTPUT_ROOT, "long", f.store.commande(longue.id).run_id);
+    await jusqua(() => fs.existsSync(path.join(espaceLong, "started.flag")), () => runner.sortie);
+
+    const decision = f.store.creerCommande({ kind: "approval.decide", payload: { approbationId: approbation.id, decision: "approved" }, par: "recette" });
+    await jusqua(() => f.store.approbation(approbation.id).status === "approved", () => runner.sortie);
+    assert.equal(f.store.run(premierRun).status, "waiting_approval", "le run attend le verrou de lancement après écriture de la décision");
+    assert.equal(f.store.commande(longue.id).status, "taken", "le run long conserve la CLI jusqu'à sa fin");
+    assert.equal(fs.existsSync(path.join(espaceLong, "finished.flag")), false);
+
+    fs.writeFileSync(path.join(espaceLong, "release.flag"), "oui");
+    await jusqua(() => f.store.commande(longue.id).status === "done" && f.store.commande(decision.id).status === "done", () => runner.sortie);
+    assert.equal(f.store.run(premierRun).status, "succeeded");
+    assert.equal(fs.readFileSync(path.join(espacePremier, "fini.txt"), "utf8"), "ok");
+    assert.equal(fs.existsSync(path.join(espaceLong, "finished.flag")), true);
+  } finally {
+    if (espaceLong && fs.existsSync(espaceLong)) fs.writeFileSync(path.join(espaceLong, "release.flag"), "oui");
+    await f.fermer();
+  }
+});
 
 for (const signal of ["SIGTERM", "SIGKILL"]) test(`${signal} puis redémarrage du vrai runner : même run, sans refaire le script validé`, async () => {
   const f = fixture();
