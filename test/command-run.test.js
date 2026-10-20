@@ -13,7 +13,7 @@ const attendre = ms => new Promise(resolve => setTimeout(resolve, ms));
 test("le runner n'active la priorité que pour sa file de runs", () => {
   const source = fs.readFileSync(path.join(RACINE, "bin/commande-runner.js"), "utf8");
   assert.match(source, /boucle\(store, \["run\.start", "run\.resume", "run\.reverify"\],[\s\S]*?\{ prioriserRuns: true \}\)/);
-  assert.match(source, /boucle\(store, \["approval\.decide"\]/);
+  assert.match(source, /boucleApprobations\(store\)/);
   assert.match(source, /store\.prendreCommande\(prioriserRuns \? \{ kinds, prioriserRuns: true \} : \{ kinds \}\)/);
   assert.match(source, /boucle\(store, \["chat\.respond"\],[\s\S]*?\(commande\) => repondre\(store, commande\)\)/);
 });
@@ -79,7 +79,7 @@ function fixture({ avecApprobation = false } = {}) {
   return { dir, store, env, runner, arreter, fermer };
 }
 
-test("une décision d'approbation est enregistrée pendant un run long puis reprise en série", async () => {
+test("toutes les décisions d'approbation sont enregistrées pendant un run long puis reprises en série", async () => {
   const f = fixture({ avecApprobation: true });
   let espaceLong = null;
   try {
@@ -91,6 +91,14 @@ test("une décision d'approbation est enregistrée pendant un run long puis repr
     assert.ok(approbation);
     const espacePremier = path.join(f.env.OUTPUT_ROOT, "demo", premierRun);
     fs.writeFileSync(path.join(espacePremier, "reprendre.txt"), "ok");
+
+    const secondeCommande = f.store.creerCommande({ kind: "run.start", payload: { projectId: "demo" }, par: "recette" });
+    await jusqua(() => f.store.commande(secondeCommande.id).status === "done", () => runner.sortie);
+    const secondRun = f.store.commande(secondeCommande.id).run_id;
+    const secondeApprobation = f.store.approbationsOuvertes().find(a => a.run_id === secondRun);
+    assert.ok(secondeApprobation);
+    const espaceSecond = path.join(f.env.OUTPUT_ROOT, "demo", secondRun);
+    fs.writeFileSync(path.join(espaceSecond, "reprendre.txt"), "ok");
 
     const definition = path.join(f.env.ORCH_REGISTRE, "pipelines/longue/v1");
     const dossierProjet = path.join(f.env.COCKPIT_PROJETS_DIR, "long");
@@ -110,15 +118,22 @@ test("une décision d'approbation est enregistrée pendant un run long puis repr
     await jusqua(() => fs.existsSync(path.join(espaceLong, "started.flag")), () => runner.sortie);
 
     const decision = f.store.creerCommande({ kind: "approval.decide", payload: { approbationId: approbation.id, decision: "approved" }, par: "recette" });
+    const secondeDecision = f.store.creerCommande({ kind: "approval.decide", payload: { approbationId: secondeApprobation.id, decision: "approved" }, par: "recette" });
     await jusqua(() => f.store.approbation(approbation.id).status === "approved", () => runner.sortie);
+    await jusqua(() => f.store.approbation(secondeApprobation.id).status === "approved", () => runner.sortie);
     assert.equal(f.store.run(premierRun).status, "waiting_approval", "le run attend le verrou de lancement après écriture de la décision");
+    assert.equal(f.store.run(secondRun).status, "waiting_approval", "la deuxième décision est aussi écrite sans attendre le verrou");
     assert.equal(f.store.commande(longue.id).status, "taken", "le run long conserve la CLI jusqu'à sa fin");
     assert.equal(fs.existsSync(path.join(espaceLong, "finished.flag")), false);
 
     fs.writeFileSync(path.join(espaceLong, "release.flag"), "oui");
-    await jusqua(() => f.store.commande(longue.id).status === "done" && f.store.commande(decision.id).status === "done", () => runner.sortie);
+    await jusqua(() => f.store.commande(longue.id).status === "done"
+      && f.store.commande(decision.id).status === "done"
+      && f.store.commande(secondeDecision.id).status === "done", () => runner.sortie);
     assert.equal(f.store.run(premierRun).status, "succeeded");
+    assert.equal(f.store.run(secondRun).status, "succeeded");
     assert.equal(fs.readFileSync(path.join(espacePremier, "fini.txt"), "utf8"), "ok");
+    assert.equal(fs.readFileSync(path.join(espaceSecond, "fini.txt"), "utf8"), "ok");
     assert.equal(fs.existsSync(path.join(espaceLong, "finished.flag")), true);
   } finally {
     if (espaceLong && fs.existsSync(espaceLong)) fs.writeFileSync(path.join(espaceLong, "release.flag"), "oui");

@@ -147,21 +147,45 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
       continue;
     }
     console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
-    try {
-      const resultat = await executer(commande);
-      // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
-      // sera remise en file, et retrouvera son run au redémarrage.
-      if (!arret || commande.kind === "chat.respond") {
-        store.terminerCommande(commande.id, resultat);
-        if (commande.kind === "run.resume") store.attentes.terminer(commande);
-      }
-    } catch (err) {
-      if (!arret || commande.kind === "chat.respond") {
-        store.terminerCommande(commande.id, { ok: false, raison: err.message });
-        if (commande.kind === "run.resume") store.attentes.terminer(commande);
-      }
-      console.error(`Commande ${commande.id} refusée : ${err.message}`);
+    await traiterCommande(store, commande, executer);
+  }
+}
+
+// Les décisions sont enregistrées immédiatement, puis leurs reprises attendent le verrou
+// partagé. Ne pas attendre une reprise ici : sinon une CLI longue empêcherait d'enregistrer
+// toutes les autres décisions déjà présentes dans la file.
+async function boucleApprobations(store) {
+  const enCours = new Set();
+  while (!arret) {
+    const commande = store.prendreCommande({ kinds: ["approval.decide"] });
+    if (!commande) {
+      await attendre(INTERVALLE);
+      continue;
     }
+    console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
+    let operation;
+    operation = traiterCommande(store, commande, (c) => deciderEtReprendre(store, c, lancerExclusif))
+      .finally(() => enCours.delete(operation));
+    enCours.add(operation);
+  }
+  await Promise.allSettled(enCours);
+}
+
+async function traiterCommande(store, commande, executer) {
+  try {
+    const resultat = await executer(commande);
+    // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
+    // sera remise en file, et retrouvera son run au redémarrage.
+    if (!arret || commande.kind === "chat.respond") {
+      store.terminerCommande(commande.id, resultat);
+      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+    }
+  } catch (err) {
+    if (!arret || commande.kind === "chat.respond") {
+      store.terminerCommande(commande.id, { ok: false, raison: err.message });
+      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+    }
+    console.error(`Commande ${commande.id} refusée : ${err.message}`);
   }
 }
 
@@ -238,7 +262,6 @@ async function reverifier(store, commande) {
 
 async function executerRun(store, commande) {
   if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerExclusif, lancementDe });
-  if (commande.kind === "approval.decide") return deciderEtReprendre(store, commande, lancerExclusif);
   if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancerExclusif(commande.payload, { commandId: commande.id });
   return issue(resultat, { runId: store.commande(commande.id)?.run_id || null });
@@ -295,7 +318,7 @@ async function demarrer() {
       boucle(store, ["run.start", "run.resume", "run.reverify"], (commande) => executerRun(store, commande), { prioriserRuns: true }),
       // La décision est enregistrée hors de la file longue. Son lancement attend le verrou
       // partagé avec les runs : le worker n'exécute toujours qu'une seule CLI à la fois.
-      boucle(store, ["approval.decide"], (commande) => deciderEtReprendre(store, commande, lancerExclusif)),
+      boucleApprobations(store),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {
