@@ -195,7 +195,7 @@ function Coquille() {
   }, [selection, fermer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "pipelines" || route.type === "finance" || route.type === "ai-studio" || route.type === "systeme" || route.type === "a-venir" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "pipelines" || route.type === "ai-studio" || route.type === "systeme" || route.type === "a-venir" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -276,7 +276,7 @@ function Coquille() {
           </div>
         </header>
 
-        <main className="ao-contenu">
+        <main className={`ao-contenu${route.type === "finance" ? " ao-contenu-finance" : ""}`}>
           {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => choix ? ouvrir(choix) : fermer()} />}
           {(route.type === "agents" || route.type === "detail") && (
             <div className="mb-4">

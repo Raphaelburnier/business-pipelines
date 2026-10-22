@@ -199,7 +199,7 @@ export const LOTS: Lot[] = [
     titre: "Finance",
     but: "Une page Finance sans élément parasite.",
     etapes: [
-      { id: "8.1", titre: "Remettre « En cours » dans sa colonne", detail: "Le panneau des runs vivants tombe sous le menu replié, en bas à gauche, faute de colonne prévue sur Finance. Lui réserver la colonne de droite comme sur l'Accueil.", fichiers: ["BP web/src/App.tsx:317", "BP web/src/style.css:244"], statut: "a-faire" },
+      { id: "8.1", titre: "Remettre « En cours » dans sa colonne", detail: "Finance réserve la colonne de droite aux runs vivants, comme l'Accueil, avec défilement indépendant du contenu financier.", fichiers: ["BP web/src/App.tsx", "BP web/src/style.css"], statut: "fait" },
     ],
   },
   {
