@@ -36,12 +36,13 @@ const prefixeDepot = (projectId: string) => PREFIXES[projectId] ?? `${projectId}
 // avec Codex. Exclure l'un des deux bloquait le plan ; le planificateur choisit étape par étape.
 export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[]): SpecMission {
   const ailleurs = etape.fichiers.filter((f) => !f.startsWith(prefixeDepot(projectId)));
+  const sensibilite = sensibiliteEtape(etape);
   return {
     projectId, objectif: `${etape.titre} — ${etape.detail}`, criteres,
-    document: `${etape.detail}\n\nFichiers repérés par l'audit : ${etape.fichiers.join(", ")}.`,
+    document: `${etape.detail}\n\nFichiers annoncés : ${etape.fichiers.join(", ")}.${sensibilite.sensible ? `\n\nSensibilité :\n${sensibilite.raisons.join("\n")}` : ""}`,
     directives: "Respecter les instructions du dépôt et produire une PR vérifiable.",
     exclusions: ailleurs.length ? `Ce run ne modifie que ${projectId}. Hors périmètre, à traiter dans une autre mission : ${ailleurs.join(", ")}.` : "",
-    exigences: sensibiliteEtape(etape).sensible ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
+    exigences: sensibilite.sensible ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
     contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
   };
 }
