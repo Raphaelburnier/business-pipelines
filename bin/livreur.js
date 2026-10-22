@@ -95,18 +95,19 @@ async function livrer(store, commande) {
     const preuve = signature.verifier(signature.cleEnv(), commande);
     if (!preuve.ok) throw new Error(preuve.raison);
     if (preuve.transition) console.error(`livraison ${commande.id} acceptée sans vérification de signature (transition)`);
-    livreur.verifierDemande({
+    const { modeleDe } = livreur.verifierDemande({
       git,
       miroirs,
       payload,
       par: commande.par,
       canal: commande.canal,
       autorises: livreur.lireAutorises(AUTORISES),
+      release: livreur.lireRelease(path.join(BUSINESS, ".release")),
     });
 
     etape = "preparer";
     emettre("livraison.etape", { etape });
-    const prete = livreur.preparerRelease({ git, miroirs, payload, releasesDir: RELEASES, par: commande.par });
+    const prete = livreur.preparerRelease({ git, miroirs, payload, modeleDe, releasesDir: RELEASES, par: commande.par });
 
     const fin = await basculer(store, commande, prete.deploy);
     etape = fin.etape;
