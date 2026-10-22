@@ -6,6 +6,7 @@ import { useCharge, useSource } from "../donnees/contexte";
 import { lignes, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import type { AttributionAvenir } from "../donnees/source";
 import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, PRIORITES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Severite, type Statut } from "./feuille";
+import { sensibiliteEtape } from "./sensibilite";
 
 type Onglet = "feuille" | "defauts" | "suggestions";
 
@@ -35,12 +36,13 @@ const prefixeDepot = (projectId: string) => PREFIXES[projectId] ?? `${projectId}
 // avec Codex. Exclure l'un des deux bloquait le plan ; le planificateur choisit étape par étape.
 export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[]): SpecMission {
   const ailleurs = etape.fichiers.filter((f) => !f.startsWith(prefixeDepot(projectId)));
+  const sensibilite = sensibiliteEtape(etape);
   return {
     projectId, objectif: `${etape.titre} — ${etape.detail}`, criteres,
-    document: `${etape.detail}\n\nFichiers repérés par l'audit : ${etape.fichiers.join(", ")}.`,
+    document: `${etape.detail}\n\nFichiers annoncés : ${etape.fichiers.join(", ")}.${sensibilite.sensible ? `\n\nSensibilité :\n${sensibilite.raisons.join("\n")}` : ""}`,
     directives: "Respecter les instructions du dépôt et produire une PR vérifiable.",
     exclusions: ailleurs.length ? `Ce run ne modifie que ${projectId}. Hors périmètre, à traiter dans une autre mission : ${ailleurs.join(", ")}.` : "",
-    exigences: [], runtimesExclus: ["omniroute"],
+    exigences: sensibilite.sensible ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
     contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
   };
 }
@@ -188,12 +190,14 @@ function FeuilleDeRoute() {
               </span>
             </header>
             <ul>
-              {lot.etapes.map((e) => (
+              {lot.etapes.map((e) => {
+                const sensibilite = sensibiliteEtape(e);
+                return (
                 <li key={e.id}>
                   <div className="av-ligne">
                     <b>{e.id}</b>
                     <span className="av-titre">{e.titre}</span>
-                    {e.sensible && <span className="av-sensible" title="Touche un fichier sensible : fusion explicite">sensible</span>}
+                    {sensibilite.sensible && <span className="av-sensible" title={`Revue de sécurité demandée. ${sensibilite.raisons.join(" ")} La fusion explicite dépend des fichiers réellement modifiés.`}>sensible</span>}
                     <Pastille statut={e.statut} />
                   </div>
                   <p>{e.detail}</p>
@@ -205,7 +209,8 @@ function FeuilleDeRoute() {
                     {e.fichiers.map((f) => <code key={f}>{f}</code>)}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </li>
         );
@@ -272,6 +277,7 @@ export function AVenir() {
             Les tâches classées par priorité : fiabilité des runs, sécurité, garde-fous d'exploitation, puis pilotage et
             extensions métier. Le superviseur attend que ses protections soient en service.
           </p>
+          <p>Le badge « sensible » demande une revue de sécurité : il vient des fichiers annoncés ou d'un risque motivé. La fusion est contrôlée sur les fichiers réellement modifiés.</p>
         </div>
         <dl className="av-chiffres">
           <div><dt>étapes faites</dt><dd>{etapes.filter((e) => e.statut === "fait").length}/{etapes.length}</dd></div>

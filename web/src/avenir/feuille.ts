@@ -12,7 +12,8 @@ export interface Etape {
   detail: string;
   fichiers: string[];
   statut: Statut;
-  sensible?: boolean;
+  // Un risque motivé peut renforcer la revue, en plus du classement des chemins.
+  raisonSensibilite?: string;
 }
 
 export interface Lot {
@@ -91,14 +92,14 @@ export const LOTS: Lot[] = [
     titre: "Sécurité : fermer les failles critiques",
     but: "Retirer à un agent détourné tout chemin vers une fusion ou une livraison au nom de Raphaël, avant d'ajouter de l'autonomie.",
     etapes: [
-      { id: "0.1", titre: "Sortir le runner du réseau hôte (F1)", detail: "Identité par en-tête Tailscale refusée sans preuve du proxy ; canal local refusé en écriture dans le conteneur.", fichiers: ["BP docker-compose.yaml:136", "BP src/acces.js:109-137"], statut: "en-cours", sensible: true },
-      { id: "0.2", titre: "Signer les commandes d'autorité (F2)", detail: "HMAC et nonce sur fusion, livraison et actions de chat ; vérification par le publieur et le livreur.", fichiers: ["BP bin/publieur.js:197", "BP bin/livreur.js:94-99", "AO src/event-store.js"], statut: "en-cours", sensible: true },
-      { id: "0.3", titre: "Élargir la liste des fichiers sensibles (F4)", detail: "Code d'authentification, runner, chat, worker, .claude/, .mcp.json, package.json et lockfiles.", fichiers: ["agent-gated-merge.yml:228", "BP src/pull-requests.js:30-43"], statut: "en-cours", sensible: true },
+      { id: "0.1", titre: "Sortir le runner du réseau hôte (F1)", detail: "Identité par en-tête Tailscale refusée sans preuve du proxy ; canal local refusé en écriture dans le conteneur.", fichiers: ["BP docker-compose.yaml:136", "BP src/acces.js:109-137"], statut: "en-cours" },
+      { id: "0.2", titre: "Signer les commandes d'autorité (F2)", detail: "HMAC et nonce sur fusion, livraison et actions de chat ; vérification par le publieur et le livreur.", fichiers: ["BP bin/publieur.js:197", "BP bin/livreur.js:94-99", "AO src/event-store.js"], statut: "en-cours" },
+      { id: "0.3", titre: "Élargir la liste des fichiers sensibles (F4)", detail: "Code d'authentification, runner, chat, worker, .claude/, .mcp.json, package.json et lockfiles.", fichiers: ["agent-gated-merge.yml:228", "BP src/pull-requests.js:30-43"], statut: "en-cours" },
       { id: "0.4", titre: "Confirmer les écritures du chat « Demander » (F5)", detail: "Plus d'outil d'écriture après la lecture d'un contenu non fiable dans le même tour.", fichiers: ["AO src/chat.js:66-85", "AO src/cockpit-read.js:228-250"], statut: "en-cours" },
       { id: "0.5", titre: "Authentifier le maître côté worker (F6, F15)", detail: "Vérifier le pair NAS, liste blanche locale, runId validé.", fichiers: ["AO src/worker.js:127-131", "AO src/worker-exec.js:59-133"], statut: "en-cours" },
       { id: "0.6", titre: "Isoler les agents de production (F7, F12, F14)", detail: "Environnement par liste blanche, hook de périmètre étendu à Bash, utilisateur non root.", fichiers: ["AO src/agent-runner.js:216-249", "REG agents/passage-extractor"], statut: "en-cours" },
-      { id: "0.7", titre: "Réduire le jeton de fusion et la chaîne de livraison (F3, F8)", detail: "Jeton limité aux dépôts fusionnables ; deploy.sh figé côté livreur.", fichiers: ["BP specs/publieur.env.example", "BP src/livreur.js:167-176"], statut: "a-faire", sensible: true },
-      { id: "0.8", titre: "Durcir les workflows Claude (F11, F13)", detail: "Actions épinglées par SHA, déclencheur issues retiré, outils restreints.", fichiers: ["BP .github/workflows/claude.yml", "BP .github/workflows/claude-code-review.yml"], statut: "en-cours", sensible: true },
+      { id: "0.7", titre: "Réduire le jeton de fusion et la chaîne de livraison (F3, F8)", detail: "Jeton limité aux dépôts fusionnables ; deploy.sh figé côté livreur.", fichiers: ["BP specs/publieur.env.example", "BP src/livreur.js:167-176"], statut: "a-faire" },
+      { id: "0.8", titre: "Durcir les workflows Claude (F11, F13)", detail: "Actions épinglées par SHA, déclencheur issues retiré, outils restreints.", fichiers: ["BP .github/workflows/claude.yml", "BP .github/workflows/claude-code-review.yml"], statut: "en-cours" },
     ],
   },
   {
@@ -107,10 +108,10 @@ export const LOTS: Lot[] = [
     but: "Qu'une PR du moteur ne puisse plus casser la compilation du cockpit (cas TS2322 de #58 sans #118).",
     prerequis: "Lot 0",
     etapes: [
-      { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "Job qui clone BP origin/main, branche le moteur de la PR, lance tsc et les tests.", fichiers: ["AO .github/workflows/ci.yml"], statut: "a-faire", sensible: true },
-      { id: "1.2", titre: "Aligner les gates de fusion", detail: "Preuve par triplet dans Steam, tcg, Saas ; agent/* admis ; CHANGES_REQUESTED bloquant.", fichiers: ["agent-gated-merge.yml:203-214"], statut: "a-faire", sensible: true },
-      { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Un échec hérité de main ne consomme pas de tentative de correction.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "a-faire", sensible: true },
-      { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "Dépôt GitHub, CI et gate de fusion.", fichiers: ["AS"], statut: "a-faire" },
+      { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "Job qui clone BP origin/main, branche le moteur de la PR, lance tsc et les tests.", fichiers: ["AO .github/workflows/ci.yml"], statut: "a-faire" },
+      { id: "1.2", titre: "Aligner les gates de fusion", detail: "Preuve par triplet dans Steam, tcg, Saas ; agent/* admis ; CHANGES_REQUESTED bloquant.", fichiers: ["agent-gated-merge.yml:203-214"], statut: "a-faire" },
+      { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Un échec hérité de main ne consomme pas de tentative de correction.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "a-faire" },
+      { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "Dépôt GitHub, CI et gate de fusion.", fichiers: ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"], statut: "a-faire" },
     ],
   },
   {
@@ -123,7 +124,7 @@ export const LOTS: Lot[] = [
       { id: "2.2", titre: "Classer les arrêts machine", detail: "MachineIndisponible et EtapePerdue dans ARRETS.", fichiers: ["AO src/graphe.js:353"], statut: "fait" },
       { id: "2.3", titre: "Cycle épuisé reprenable", detail: "Une approbation au lieu d'une Error générique.", fichiers: ["AO src/graphe.js:523-530"], statut: "fait" },
       { id: "2.4", titre: "Relais : vraie erreur et tests", detail: "Propager l'erreur du remplaçant.", fichiers: ["AO src/relais.js:155-167"], statut: "fait" },
-      { id: "2.5", titre: "Borner Codex", detail: "Durée de 15 min et plafond configurable de 100 actions par défaut ; usage partiel conservé, coût équivalent API estimé uniquement si les tarifs sont configurés.", fichiers: ["AO src/codex-runner.js:189-198, 244-245"], statut: "fait" },
+      { id: "2.5", titre: "Borner Codex", detail: "Bornes livrées : 15 min et 100 actions par défaut. Reste à conserver l’usage partiel lors d’un arrêt par délai ; il est déjà conservé au plafond d’actions. Coût équivalent API estimé seulement si les tarifs sont configurés.", fichiers: ["AO src/codex-runner.js:189-198, 244-245"], statut: "en-cours" },
       { id: "2.6", titre: "Délais sur la file unique", detail: "orch.js, scripts, git, fetch du publieur et du conseiller, deploy.sh.", fichiers: ["BP bin/commande-runner.js:68-77", "AO src/graphe.js:162-177"], statut: "a-faire" },
       { id: "2.7", titre: "Reprendre waiting_machine", detail: "Reprise programmée au retour du worker ; approval.decide hors file longue.", fichiers: ["AO src/run-waits.js", "BP bin/commande-runner.js:281-286"], statut: "a-faire" },
       { id: "2.8", titre: "Reprise automatique après un quota", detail: "Un run interrompu par un quota reprend seul, y compris sans échéance annoncée : nouvelle tentative bornée après la fenêtre d'abonnement au lieu d'attendre un clic (cas du run finance 2bf1abcc bloqué plus de 40 h).", fichiers: ["AO src/run-waits.js:84-103", "BP src/api-plans-missions.js"], statut: "a-faire" },
@@ -151,11 +152,11 @@ export const LOTS: Lot[] = [
     but: "Pouvoir arrêter, surveiller et restaurer la plateforme avant de la laisser décider seule.",
     prerequis: "À livrer avant le lot 5",
     etapes: [
-      { id: "4.1", titre: "Arrêt d'urgence", detail: "run.cancel et pause globale de la file.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "a-faire", sensible: true },
+      { id: "4.1", titre: "Arrêt d'urgence", detail: "run.cancel et pause globale de la file.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "a-faire" },
       { id: "4.2", titre: "Alertes hors du cockpit", detail: "Consommateur des événements alerte, run.failed et budgets.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "a-faire" },
       { id: "4.3", titre: "Santé de la plateforme", detail: "/api/sante, healthcheck Docker, rotation des logs.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "a-faire" },
       { id: "4.4", titre: "Budgets", detail: "Plafond quotidien, budget mensuel aussi sur POST /api/runs.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "a-faire" },
-      { id: "4.5", titre: "Sauvegardes", detail: "events.sqlite, specs/ et workers.json hors NAS.", fichiers: ["BP deploy/nas/deploy.sh.modele", "AO scripts/nas/nettoyer-runs.sh:11"], statut: "a-faire", sensible: true },
+      { id: "4.5", titre: "Sauvegardes", detail: "events.sqlite, specs/ et workers.json hors NAS.", fichiers: ["BP deploy/nas/deploy.sh.modele", "AO scripts/nas/nettoyer-runs.sh:11"], statut: "a-faire" },
     ],
   },
   {
@@ -176,10 +177,10 @@ export const LOTS: Lot[] = [
     but: "Une revue qui rend un verdict sur le SHA exact et déclenche une correction bornée.",
     prerequis: "Lot 0.8",
     etapes: [
-      { id: "6.1", titre: "Revue avec verdict", detail: "Diagnostiquer la revue muette, allowed_bots: claude.", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "a-faire", sensible: true },
-      { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire", sensible: true },
-      { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Mêmes bornes et même isolement que ci-autofix.", fichiers: ["ci-autofix.yml"], statut: "a-faire", sensible: true },
-      { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours", sensible: true },
+      { id: "6.1", titre: "Revue avec verdict", detail: "Diagnostiquer la revue muette, allowed_bots: claude.", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "a-faire" },
+      { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire" },
+      { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Mêmes bornes et même isolement que ci-autofix.", fichiers: ["ci-autofix.yml"], statut: "a-faire" },
+      { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
       { id: "6.5", titre: "Hook Stop local nettoyé", detail: "Log assaini, échec de revue dû au quota ignoré.", fichiers: ["~/.claude/hooks/ci-pr/stop_ci.py"], statut: "a-faire" },
     ],
   },
@@ -188,9 +189,9 @@ export const LOTS: Lot[] = [
     titre: "Basculement machine et versions",
     but: "Ne plus dépendre d'un seul PC et éviter la dérive entre NAS et worker.",
     etapes: [
-      { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire", sensible: true },
+      { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire" },
       { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "Unité systemd versionnée sur la copie figée.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "a-faire" },
-      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Refuser de couper un run ; npm ci dans le Dockerfile.", fichiers: ["BP deploy/nas/deploy.sh.modele:106-110", "BP Dockerfile"], statut: "a-faire", sensible: true },
+      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Refuser de couper un run ; npm ci dans le Dockerfile.", fichiers: ["BP deploy/nas/deploy.sh.modele:106-110", "BP Dockerfile"], statut: "a-faire" },
     ],
   },
   // Lots 8 à 13 : page Notion « Cockpit amelioration » de Raphaël, validée le 2026-10-22.
@@ -209,9 +210,9 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "9.1", titre: "N'afficher que les pipelines enregistrés", detail: "Le catalogue du registre, utilisable directement ; les runs des projets partent sur la page Run (10.1).", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/donnees/pipelines.ts"], statut: "a-faire" },
       { id: "9.2", titre: "Servir /pipelines au rechargement", detail: "Un lien direct ou un F5 sur /pipelines renvoie « route inconnue » : la route manque dans la liste du serveur.", fichiers: ["BP bin/cockpit.js:442"], statut: "a-faire" },
-      { id: "9.3", titre: "Créer un pipeline", detail: "Nouveau pipeline depuis la page, publié en v1 dans le registre.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/"], statut: "a-faire", sensible: true },
-      { id: "9.4", titre: "Modifier un pipeline par glisser-déposer", detail: "Éditeur de graphe : ajouter, retirer, réordonner les étapes. Enregistrer publie la version suivante ; une version publiée ne change jamais et les projets restent épinglés.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/<nom>/v<n>/pipeline.json"], statut: "a-faire", sensible: true },
-      { id: "9.5", titre: "Agents de secours par étape", detail: "Une liste ordonnée d'agents de secours dans la définition ; le moteur passe au suivant tout seul quand le principal n'a plus de quota.", fichiers: ["REG schemas/", "AO src/graphe.js", "BP web/src/vues/Pipelines.tsx"], statut: "a-faire", sensible: true },
+      { id: "9.3", titre: "Créer un pipeline", detail: "Nouveau pipeline depuis la page, publié en v1 dans le registre.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/"], statut: "a-faire", raisonSensibilite: "Publier un pipeline modifie les actions que le moteur peut exécuter." },
+      { id: "9.4", titre: "Modifier un pipeline par glisser-déposer", detail: "Éditeur de graphe : ajouter, retirer, réordonner les étapes. Enregistrer publie la version suivante ; une version publiée ne change jamais et les projets restent épinglés.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/<nom>/v<n>/pipeline.json"], statut: "a-faire", raisonSensibilite: "Modifier le graphe change les étapes exécutables et leurs contrôles." },
+      { id: "9.5", titre: "Agents de secours par étape", detail: "Une liste ordonnée d'agents de secours dans la définition ; le moteur passe au suivant tout seul quand le principal n'a plus de quota.", fichiers: ["REG schemas/", "AO src/graphe.js", "BP web/src/vues/Pipelines.tsx"], statut: "a-faire", raisonSensibilite: "Changer les secours modifie les agents autorisés à exécuter une étape." },
     ],
   },
   {
@@ -220,11 +221,11 @@ export const LOTS: Lot[] = [
     but: "Suivre et piloter les pipelines qui tournent dans les projets.",
     etapes: [
       { id: "10.1", titre: "Page Run", detail: "Les runs des projets (aujourd'hui sur la page Pipelines) : liste à gauche, graphe et inspecteur.", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "a-faire" },
-      { id: "10.2", titre: "Changer l'agent d'une étape", detail: "Remplacer un agent sans quota ou occupé sur un run en cours.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js"], statut: "a-faire", sensible: true },
-      { id: "10.3", titre: "Agents de secours sur un run", detail: "Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.", fichiers: ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"], statut: "a-faire", sensible: true },
-      { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire", sensible: true },
+      { id: "10.2", titre: "Changer l'agent d'une étape", detail: "Remplacer un agent sans quota ou occupé sur un run en cours.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js"], statut: "a-faire" },
+      { id: "10.3", titre: "Agents de secours sur un run", detail: "Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.", fichiers: ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"], statut: "a-faire" },
+      { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire" },
       { id: "10.5", titre: "Discuter avec l'équipe ou un agent", detail: "Fil de l'équipe du run, ou d'un agent précis.", fichiers: ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"], statut: "a-faire" },
-      { id: "10.6", titre: "Le conseiller discute avec l'équipe", detail: "Même accès pour le conseiller du PC.", fichiers: ["BP src/conseiller.js", "BP src/api-conseiller.js"], statut: "a-faire", sensible: true },
+      { id: "10.6", titre: "Le conseiller discute avec l'équipe", detail: "Même accès pour le conseiller du PC.", fichiers: ["BP src/conseiller.js", "BP src/api-conseiller.js"], statut: "a-faire" },
     ],
   },
   {
@@ -235,8 +236,8 @@ export const LOTS: Lot[] = [
       { id: "11.1", titre: "Renommer « À venir » en « Coming soon »", detail: "Menu, titre de la page et en-tête.", fichiers: ["BP web/src/App.tsx:235", "BP web/src/avenir/AVenir.tsx"], statut: "a-faire" },
       { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Aujourd'hui : « choisis par le planificateur ».", fichiers: ["BP web/src/avenir/AVenir.tsx:141", "BP src/objectifs-avenirs.js"], statut: "a-faire" },
       { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Remplace le sélecteur Priorité : un run prioritaire passe en premier quand le quota est serré et à la reprise.", fichiers: ["BP web/src/avenir/AVenir.tsx:142", "AO src/maitre.js"], statut: "a-faire" },
-      { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire", sensible: true },
-      { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "a-faire", sensible: true },
+      { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire" },
+      { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "a-faire", raisonSensibilite: "Planifier une tâche autorise un lancement différé." },
     ],
   },
   {
@@ -244,7 +245,7 @@ export const LOTS: Lot[] = [
     titre: "Calendrier",
     but: "Voir et préparer les runs prévus.",
     etapes: [
-      { id: "12.1", titre: "Page Calendrier", detail: "Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.", fichiers: ["BP web/src/calendrier/Calendrier.tsx", "BP src/atelier.js", "AO src/event-store.js"], statut: "fait", sensible: true },
+      { id: "12.1", titre: "Page Calendrier", detail: "Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.", fichiers: ["BP web/src/calendrier/Calendrier.tsx", "BP src/atelier.js", "BP bin/commande-runner.js", "BP bin/cockpit.js", "AO src/event-store.js"], statut: "fait" },
     ],
   },
   {

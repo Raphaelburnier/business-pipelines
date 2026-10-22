@@ -45,6 +45,26 @@ describe("attribution depuis À venir", () => {
     expect(spec.contexte).toEqual({ _roadmapObjective: { id: "0.7", revision: 1 } });
     expect(spec.runtimesExclus).toEqual(["omniroute"]);
     expect(spec.criteres).toEqual(["Revue faite"]);
+    expect(spec.exigences).toEqual(["revue-securite"]);
+    expect(spec.document).toContain("Fichier protégé annoncé : BP specs/publieur.env.example.");
+  });
+
+  it("transmet la revue de sécurité pour un chemin protégé ou un risque motivé", () => {
+    for (const id of ["2.6", "4.3", "11.5"]) {
+      const etape = toutesLesEtapes.find((e) => e.id === id)!;
+      expect(construireSpecAttribution(etape, "business-pipelines", ["Vérifié"]).exigences, id).toEqual(["revue-securite"]);
+    }
+    const presentation = toutesLesEtapes.find((e) => e.id === "13.1")!;
+    expect(construireSpecAttribution(presentation, "business-pipelines", ["Vérifié"]).exigences).toEqual([]);
+    const planification = toutesLesEtapes.find((e) => e.id === "11.5")!;
+    expect(construireSpecAttribution(planification, "business-pipelines", ["Vérifié"]).document).toContain("Planifier une tâche autorise un lancement différé.");
+  });
+
+  it("affiche la provenance du badge et le contrôle séparé de la fusion", () => {
+    const html = renderToStaticMarkup(createElement(AVenir));
+    expect(html).toContain("Fichier protégé annoncé : BP bin/cockpit.js:590-592.");
+    expect(html).toContain("Risque signalé dans le cadrage : Planifier une tâche autorise un lancement différé.");
+    expect(html).toContain("La fusion explicite dépend des fichiers réellement modifiés.");
   });
 
   it("explique un conflit de réservation concurrente", () => {
