@@ -615,6 +615,10 @@ async function traiter(req, res) {
     } catch (err) { return json(res, 400, { erreur: err.message }); }
   }
 
+  if (await require("../src/api-atelier").traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 256_000), store, qui,
+    params: () => ({ projetsDir: PROJETS, roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS) }),
+    origineAutorisee: (r) => acces.origineAutorisee(r.headers, PORTEE) })) return undefined;
+
   // Le planificateur de missions (src/planificateur.js) : une spec, un plan, un lancement.
   if (await plansMissions.traiter({ req, res, chemin, json, corps: () => corpsJson(req, res, 128_000), store, qui,
     params: () => ({ projetsDir: PROJETS, roster: equipe.rosterAvecSecours(EQUIPE_ROSTER, EQUIPE_PROFILS), affectations: equipe.lireAffectations(EQUIPE_AFFECTATIONS), financeDisponible }),
