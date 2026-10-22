@@ -108,7 +108,15 @@ trap rollback EXIT HUP INT TERM
 
 echo "Construction des images..."
 cd "$STAGE"
-$DOCKER compose build cockpit runner tailscale-whois publieur
+# Les quatre services ont le même `build: .`. Les construire ensemble lançait, avec le builder
+# classique de DSM, la suite de tests jusqu'à quatre fois en parallèle : un cockpit de test
+# qui démarrait en plus de 8 s faisait échouer la livraison (d017ae24, 2026-10-22). Une seule
+# construction, puis la même image sous le nom de chaque service, que la bascule et la
+# restauration utilisent.
+$DOCKER compose build cockpit
+for service in runner tailscale-whois publieur; do
+  $DOCKER tag business-pipelines-cockpit "business-pipelines-$service"
+done
 
 echo "Bascule..."
 SWITCHED=1
