@@ -257,7 +257,9 @@ function exclus(store, verifierBackend, maintenant = Date.now()) {
       if (r) {
         for (const n of r.pipeline.nodes.filter((n) => !n.disabled && n.type !== 'approval')) {
           const llm = ['agent', 'review'].includes(n.type) ? n.llm || r.agents[n.agent]?.defaultLlm : null;
-          if (llm && bloques.has(llm.via === 'anthropic' ? 'claude' : llm.via)) throw new Error(bloques.get(llm.via === 'anthropic' ? 'claude' : llm.via));
+          // Une reprise est demandée ou échue après confirmation : l'attente qu'elle lève
+          // ne doit pas la bloquer elle-même.
+          if (c.kind !== 'run.resume' && llm && bloques.has(llm.via === 'anthropic' ? 'claude' : llm.via)) throw new Error(bloques.get(llm.via === 'anthropic' ? 'claude' : llm.via));
           verifierBackend(llm, n, { pipeline: r.pipeline, agent: r.agents[n.agent] });
         }
         if (!original.run_id && r.budget.usdPerMonth) {
