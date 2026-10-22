@@ -288,8 +288,16 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
   bornesRef.current = bornes;
   const recadrer = useCallback(() => {
     if (!zone || !positionsParCle[cleStockage]) return;
-    void setViewport(getViewportForBounds(bornesRef.current, zone.largeur, zone.hauteur, 0.3, ZOOM_MAX, 0.16));
-  }, [zone, setViewport, cleStockage, Boolean(positionsParCle[cleStockage])]);
+    const bornes = bornesRef.current;
+    if (compact) {
+      // Sur téléphone, garder les libellés lisibles : cadrer la largeur et parcourir
+      // le reste au doigt, au lieu de réduire tout l'arbre à la hauteur de l'écran.
+      const zoom = Math.max(0.3, Math.min((zone.largeur - 32) / Math.max(1, bornes.width), ZOOM_MAX));
+      void setViewport({ x: (zone.largeur - bornes.width * zoom) / 2 - bornes.x * zoom, y: 24 - bornes.y * zoom, zoom });
+    } else {
+      void setViewport(getViewportForBounds(bornes, zone.largeur, zone.hauteur, 0.3, ZOOM_MAX, 0.16));
+    }
+  }, [zone, setViewport, cleStockage, compact, Boolean(positionsParCle[cleStockage])]);
   // Ne pas perdre le déplacement ni le zoom de l'utilisateur à chaque événement SSE.
   const structure = disposition.noeuds.map((n) => n.id).join("|");
   useEffect(recadrer, [recadrer, structure, cleStockage]);
