@@ -1,19 +1,21 @@
 // L'accueil relie l'infrastructure, les projets et quelques jalons du dernier run.
 import "@xyflow/react/dist/style.css";
 import "./accueil.css";
-import { Background, BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useCharge } from "../donnees/contexte";
+import { Background, BaseEdge, Handle, MarkerType, Position, ReactFlow, ReactFlowProvider, useReactFlow, getNodesBounds, getViewportForBounds, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCharge, useSource } from "../donnees/contexte";
 import { CLASSES_TON, mot, ton, vivant } from "../format";
 import type { ProjetTopologie as Projet, Topologie as DonneesTopologie } from "../types";
 import { Erreur } from "../ui";
 import { Kpis } from "../vues/Kpis";
 import { Icone } from "../icones";
-import { disposer, idMachine, idOrchestrateur, idProjet, roleDeMachine, type ExecutionProjet, type NoeudDispose } from "./disposition";
+import { disposer, idMachine, idOrchestrateur, idProjet, roleDeMachine, type ExecutionProjet, type NoeudDispose, OUVERTS_INITIAUX } from "./disposition";
+
+import { clePositions, lirePositions, ecrirePositions, type Positions } from "./positions";
 
 export type Selection = { type: "projet"; id: string } | { type: "machine"; id: string } | { type: "run"; id: string; etapeId?: string } | { type: "orchestrateur"; id: "maitre" };
 
-type DonneesNoeud = NoeudDispose & { selectionne: boolean; attenue: boolean };
+type DonneesNoeud = NoeudDispose & { selectionne: boolean; attenue: boolean; ouvert: boolean; depliable: boolean; activer: () => void };
 type AreteFluide = Edge & { pathOptions: { borderRadius: number; offset: number } };
 
 function nomEtape(nom: string): string {
@@ -30,6 +32,7 @@ function nomEtape(nom: string): string {
 
 function NoeudProjet({ data }: NodeProps<Node<DonneesNoeud>>) {
   const projet: Projet = data.projet!;
+  const nom = projet.id === "agent-orchestrator" ? "Moteur (agent-orchestrator)" : projet.nom;
   const classe = CLASSES_TON[ton(projet.etat)];
   const attente = projet.approbationsEnAttente > 0;
   const machine = /nas|synology/i.test(projet.homeMachine) ? "NAS" : /pc|destrobimobile|windows/i.test(projet.homeMachine) ? "PC" : projet.homeMachine;
@@ -38,19 +41,19 @@ function NoeudProjet({ data }: NodeProps<Node<DonneesNoeud>>) {
     <button
       type="button"
       className={`ao-noeud projet ${classe.texte} ${attente ? "attente" : ""} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`}
-      aria-label={`Ouvrir la fiche de ${projet.nom}`}
-      aria-pressed={data.selectionne}
+      aria-label={`${data.depliable ? data.ouvert ? "Replier" : "Déplier" : "Inspecter"} ${nom}`}
+      aria-pressed={data.selectionne} aria-expanded={data.depliable ? data.ouvert : undefined} onClick={data.activer}
     >
       <span className="ao-noeud-kicker"><Icone nom="mission" taille={12} />{projet.categorie}<span>{mot(projet.etat)}</span></span>
       <span className="flex min-w-0 items-center gap-2">
         <i className={`h-2.5 w-2.5 shrink-0 rounded-full ${classe.plein} ${vivant(projet.etat) ? "pulse-douce" : ""}`} aria-hidden="true" />
-        <span className="nom">{projet.nom}</span>
+        <span className="nom">{nom}</span>
         {attente && <span className="badge alerte" title={`${projet.approbationsEnAttente} décision(s) en attente`}>{projet.approbationsEnAttente}</span>}
       </span>
       <span className="sous">
         <span>{machine}</span>
         <span className="truncate">{projet.pipelines[0] ?? "sans pipeline"}</span>
-        <span className="ml-auto shrink-0 text-accent">inspecter ↗</span>
+        <span className="ml-auto shrink-0 text-accent">{data.depliable ? data.ouvert ? "replier −" : "déplier +" : "inspecter ↗"}</span>
       </span>
     </button>
   );
@@ -73,7 +76,7 @@ function NoeudMachine({ data }: NodeProps<Node<DonneesNoeud>>) {
   );
 
   return (
-    <button type="button" className={`ao-noeud infrastructure clickable ${role} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir la machine ${nom}`} aria-pressed={data.selectionne}>
+    <button type="button" className={`ao-noeud infrastructure clickable ${role} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir la machine ${nom}`} aria-pressed={data.selectionne} aria-expanded={data.depliable ? data.ouvert : undefined} onClick={data.activer}>
       {contenu}
     </button>
   );
@@ -83,9 +86,9 @@ function NoeudOrchestrateur({ data }: NodeProps<Node<DonneesNoeud>>) {
   const etat = data.maitre!.etat;
   const classe = CLASSES_TON[ton(etat)];
   return (
-    <button type="button" className={`ao-noeud orchestrateur infrastructure ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label="Inspecter l’orchestrateur" aria-pressed={data.selectionne}>
+    <button type="button" className={`ao-noeud orchestrateur infrastructure ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label="Maître (répartiteur)" aria-pressed={data.selectionne} aria-expanded={data.depliable ? data.ouvert : undefined} onClick={data.activer}>
       <span className="ao-noeud-kicker"><Icone nom="graphe" taille={12} />Pilotage</span>
-      <span className="flex min-w-0 items-center gap-2"><i className={`h-2 w-2 rounded-full ${classe.plein} ${vivant(etat) ? "pulse-douce" : ""}`} /><span className="nom">Orchestrateur</span></span>
+      <span className="flex min-w-0 items-center gap-2"><i className={`h-2 w-2 rounded-full ${classe.plein} ${vivant(etat) ? "pulse-douce" : ""}`} /><span className="nom">Maître (répartiteur)</span></span>
       <span className="sous"><span>{data.sousTitre}</span><span className="ml-auto">{mot(etat)}</span></span>
     </button>
   );
@@ -95,7 +98,7 @@ function NoeudEtape({ data }: NodeProps<Node<DonneesNoeud>>) {
   const etape = data.etape!;
   const classe = CLASSES_TON[ton(etape.statut)];
   return (
-    <button type="button" className={`ao-noeud etape ${classe.texte} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir le run ${etape.runId}, étape ${etape.nom}`} aria-pressed={data.selectionne}>
+    <button type="button" className={`ao-noeud etape ${classe.texte} ${data.selectionne ? "selectionne" : ""} ${data.attenue ? "estompe" : ""}`} aria-label={`Ouvrir le run ${etape.runId}, étape ${etape.nom}`} aria-pressed={data.selectionne} aria-expanded={data.depliable ? data.ouvert : undefined} onClick={data.activer}>
       <span className="flex min-w-0 items-center gap-2">
         <i className={`h-2 w-2 shrink-0 rounded-full ${classe.plein} ${vivant(etape.statut) ? "pulse-douce" : ""}`} aria-hidden="true" />
         <span className="nom">{nomEtape(etape.nom)}</span>
@@ -115,7 +118,7 @@ function NoeudGraphe(props: NodeProps<Node<DonneesNoeud>>) {
       {type === "machine" && <NoeudMachine {...props} />}
       {type === "orchestrateur" && <NoeudOrchestrateur {...props} />}
       {type === "etape" && <NoeudEtape {...props} />}
-      {type !== "etape" && <Handle id="sortie" type="source" position={type === "orchestrateur" || type === "machine" ? Position.Bottom : Position.Left} className="ao-port" />}
+      {type !== "etape" && <Handle id="sortie" type="source" position={Position.Bottom} className="ao-port" />}
     </>
   );
 }
@@ -134,11 +137,12 @@ function FluxMachine({ id, sourceX, sourceY, targetX, targetY, markerEnd, style,
 
 const TYPES_ARETES = { machine: FluxMachine };
 const ZOOM_MAX = 1.2;
-const ZONE_HAUTE = 24;
-const ZONE_BASSE = 36;
 
 function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopologie; selection: Selection | null; onSelection: (s: Selection | null) => void }) {
   const { setViewport } = useReactFlow();
+  const { source } = useSource();
+  const [ouverts, setOuverts] = useState(() => new Set(OUVERTS_INITIAUX));
+  const [positionsParCle, setPositionsParCle] = useState<Record<string, Positions>>({});
   const [conteneur, setConteneur] = useState<HTMLDivElement | null>(null);
   const [zone, setZone] = useState<{ largeur: number; hauteur: number } | null>(null);
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 720px)").matches);
@@ -148,9 +152,14 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     media.addEventListener("change", suivre);
     return () => media.removeEventListener("change", suivre);
   }, []);
+  const cleStockage = clePositions(compact, source.nom === "maquette");
+  useEffect(() => {
+    setPositionsParCle((precedentes) => ({ ...precedentes, [cleStockage]: lirePositions(cleStockage) }));
+  }, [cleStockage]);
+  const positions = positionsParCle[cleStockage] ?? {};
   const cleRuns = topologie.projets.map((projet) => `${projet.id}:${projet.dernierRun?.id ?? ""}`).join("|");
   const executions = useCharge(async (source) => {
-    const projets = topologie.projets.filter((projet) => projet.aFiche && projet.dernierRun);
+    const projets = topologie.projets.filter((projet) => projet.aFiche && projet.dernierRun && ouverts.has(idOrchestrateur) && ouverts.has(idMachine(/nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc")) && ouverts.has(idProjet(projet.id)));
     const chargees = await Promise.all(projets.map(async (projet) => {
       try {
         const run = await source.run(projet.dernierRun!.id);
@@ -160,8 +169,8 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
       }
     }));
     return chargees.filter((execution): execution is ExecutionProjet => execution !== null);
-  }, [cleRuns]);
-  const disposition = useMemo(() => disposer(topologie, executions.donnees ?? [], compact), [topologie, executions.donnees, compact]);
+  }, [cleRuns, [...ouverts].sort().join("|")]);
+  const disposition = useMemo(() => disposer(topologie, executions.donnees ?? [], compact, ouverts), [topologie, executions.donnees, compact, ouverts]);
   const executionParRun = new Map((executions.donnees ?? []).map((execution) => [execution.run.id, execution.projetId]));
   const projetFocal = selection?.type === "projet"
     ? selection.id
@@ -180,7 +189,7 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
   const noeuds: Node<DonneesNoeud>[] = disposition.noeuds.map((n) => ({
     id: n.id,
     type: "cockpit",
-    position: { x: n.x, y: n.y },
+    position: positions[n.id] ?? { x: n.x, y: n.y },
     width: n.largeur,
     height: n.hauteur,
     sourcePosition: Position.Bottom,
@@ -189,13 +198,26 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     // ou un rafraîchissement SSE. Ils correspondent aux Handle du composant ci-dessus.
     handles: [
       ...(n.type === "orchestrateur" ? [] : [{ id: "entree", type: "target" as const, position: n.type === "machine" ? Position.Top : Position.Left, x: n.type === "machine" ? n.largeur / 2 : 0, y: n.type === "machine" ? 0 : n.hauteur / 2, width: 6, height: 6 }]),
-      ...(n.type === "etape" ? [] : [{ id: "sortie", type: "source" as const, position: n.type === "orchestrateur" || n.type === "machine" ? Position.Bottom : Position.Left, x: n.type === "orchestrateur" || n.type === "machine" ? n.largeur / 2 : 0, y: n.type === "orchestrateur" || n.type === "machine" ? n.hauteur : n.hauteur / 2, width: 6, height: 6 }]),
+      ...(n.type === "etape" ? [] : [{ id: "sortie", type: "source" as const, position: Position.Bottom, x: n.largeur / 2, y: n.hauteur, width: 6, height: 6 }]),
     ],
     style: { width: n.largeur, height: n.hauteur },
-    draggable: false,
+    draggable: true,
     connectable: false,
     data: {
       ...n,
+      ouvert: ouverts.has(n.id),
+      depliable: n.type !== "etape" && (n.type !== "projet" || Boolean(n.projet?.dernierRun)),
+      activer: () => {
+        if (n.type !== "etape" && (n.type !== "projet" || n.projet?.dernierRun)) setOuverts((precedents) => {
+          const suivants = new Set(precedents);
+          if (suivants.has(n.id)) suivants.delete(n.id); else suivants.add(n.id);
+          return suivants;
+        });
+        if (n.type === "projet" && n.projet) onSelection({ type: "projet", id: n.projet.id });
+        if (n.type === "machine") onSelection({ type: "machine", id: n.machine?.machine ?? n.roleMachine! });
+        if (n.type === "orchestrateur") onSelection({ type: "orchestrateur", id: "maitre" });
+        if (n.type === "etape" && n.etape) onSelection({ type: "run", id: n.etape.runId, etapeId: n.etape.id });
+      },
       selectionne: (selection?.type === "projet" && n.projet?.id === selection.id)
         || (selection?.type === "machine" && (n.machine?.machine ?? n.roleMachine) === selection.id)
         || (selection?.type === "orchestrateur" && n.type === "orchestrateur")
@@ -209,6 +231,7 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
   }));
   const aretes: AreteFluide[] = [];
   const relier = (source: string, target: string, famille: "pc" | "nas" | "commande" | "etape", libelle: string, active: boolean, attenuee: boolean, attente = false) => {
+    if (!noeuds.some((n) => n.id === source) || !noeuds.some((n) => n.id === target)) return;
     const couleur = attente ? "var(--color-givre)" : famille === "pc" ? "var(--color-pc)" : famille === "nas" ? "var(--color-nas)" : famille === "commande" ? "var(--color-accent)" : "var(--color-ok)";
     aretes.push({
       id: `${source}->${target}`,
@@ -260,24 +283,29 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
     return () => observateur.disconnect();
   }, [conteneur]);
 
+  const bornes = getNodesBounds(noeuds);
+  const bornesRef = useRef(bornes);
+  bornesRef.current = bornes;
   const recadrer = useCallback(() => {
-    if (!zone || !disposition.largeur || !disposition.hauteur) return;
-    const marge = 16;
-    const zoom = Math.min(
-      (zone.largeur - marge * 2) / disposition.largeur,
-      // Sur téléphone, cadrer la largeur plutôt que rapetisser toutes les cellules pour
-      // faire tenir la hauteur. Le canevas se parcourt au doigt, les textes restent lisibles.
-      compact ? ZOOM_MAX : (zone.hauteur - ZONE_HAUTE - ZONE_BASSE) / disposition.hauteur,
-      ZOOM_MAX,
-    );
-    const echelle = Math.max(zoom, 0.3);
-    void setViewport({
-      x: Math.max(marge, (zone.largeur - disposition.largeur * echelle) / 2),
-      y: ZONE_HAUTE,
-      zoom: echelle,
+    if (!zone || !positionsParCle[cleStockage]) return;
+    void setViewport(getViewportForBounds(bornesRef.current, zone.largeur, zone.hauteur, 0.3, ZOOM_MAX, 0.16));
+  }, [zone, setViewport, cleStockage, Boolean(positionsParCle[cleStockage])]);
+  // Ne pas perdre le déplacement ni le zoom de l'utilisateur à chaque événement SSE.
+  const structure = disposition.noeuds.map((n) => n.id).join("|");
+  useEffect(recadrer, [recadrer, structure, cleStockage]);
+  const deplacer = (id: string, position: { x: number; y: number }, sauver: boolean) => {
+    setPositionsParCle((precedentes) => {
+      const suivantes = { ...(precedentes[cleStockage] ?? {}), [id]: position };
+      if (sauver) ecrirePositions(cleStockage, suivantes);
+      return { ...precedentes, [cleStockage]: suivantes };
     });
-  }, [zone, disposition.largeur, disposition.hauteur, compact, setViewport]);
-  useEffect(recadrer, [recadrer]);
+  };
+  const reinitialiser = () => {
+    ecrirePositions(cleStockage, {});
+    setPositionsParCle((precedentes) => ({ ...precedentes, [cleStockage]: {} }));
+    // Laisser React appliquer les coordonnées par défaut avant de mesurer le cadrage.
+    requestAnimationFrame(recadrer);
+  };
 
   return (
     <div ref={setConteneur} className="relative h-full w-full">
@@ -286,7 +314,11 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
         edges={aretes}
         nodeTypes={TYPES_NOEUDS}
         edgeTypes={TYPES_ARETES}
-        nodesDraggable={false}
+        nodesDraggable
+        onNodesChange={(changements) => {
+          for (const changement of changements) if (changement.type === "position" && changement.position) deplacer(changement.id, changement.position, changement.dragging === false);
+        }}
+        onNodeDragStop={(_, noeud) => deplacer(noeud.id, noeud.position, true)}
         nodesConnectable={false}
         elementsSelectable={false}
         nodesFocusable={false}
@@ -294,17 +326,11 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
         minZoom={0.3}
         maxZoom={ZOOM_MAX}
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, noeud) => {
-          if (noeud.data.type === "projet" && noeud.data.projet) onSelection({ type: "projet", id: noeud.data.projet.id });
-          if (noeud.data.type === "machine") onSelection({ type: "machine", id: noeud.data.machine?.machine ?? noeud.data.roleMachine! });
-          if (noeud.data.type === "orchestrateur") onSelection({ type: "orchestrateur", id: "maitre" });
-          if (noeud.data.type === "etape" && noeud.data.etape) onSelection({ type: "run", id: noeud.data.etape.runId, etapeId: noeud.data.etape.id });
-        }}
         onPaneClick={() => onSelection(null)}
       >
         <Background gap={24} size={1} color="var(--color-trait-fort)" />
       </ReactFlow>
-      <div className="ao-graphe-outils"><button type="button" onClick={recadrer} aria-label="Recentrer les flux"><Icone nom="graphe" taille={16} /><span>Recentrer</span></button></div>
+      <div className="ao-graphe-outils"><button type="button" onClick={reinitialiser} aria-label="Réinitialiser la disposition"><span>Disposition initiale</span><b aria-hidden="true">↺</b></button><button type="button" onClick={recadrer} aria-label="Recentrer les flux"><Icone nom="graphe" taille={16} /><span>Recentrer</span></button></div>
     </div>
   );
 }
@@ -336,7 +362,7 @@ export function Topologie({ selection, onSelection }: { selection: Selection | n
           <span><i className="run" />étape en cours</span>
         </div>
       </div>
-      <footer className="ao-accueil-note"><Icone nom="ouvrir" taille={13} /><span><span className="ao-accueil-mobile-note">Glisse pour explorer. </span>Clique sur une cellule pour l’inspecter.</span></footer>
+      <footer className="ao-accueil-note"><Icone nom="ouvrir" taille={13} /><span><span className="ao-accueil-mobile-note">Glisse pour explorer. </span>Déplace les cellules pour les espacer. Clique pour déplier ou replier ; une étape ouvre son détail.</span></footer>
     </section>
   );
 }

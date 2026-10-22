@@ -2,7 +2,9 @@
 import { describe, expect, test } from "vitest";
 import { etatA } from "../mock/scenario";
 import type { RunDetailleAvecOutils, Topologie } from "../types";
-import { disposer, idProjet } from "./disposition";
+import { disposer, idProjet, idMachine, idOrchestrateur, OUVERTS_INITIAUX } from "./disposition";
+
+const ouvertsMarketing = new Set([...OUVERTS_INITIAUX, idProjet("marketing")]);
 
 const topo = (): Topologie => etatA(Date.parse("2026-09-18T10:00:00.000Z"), 5000).topologie;
 
@@ -19,12 +21,28 @@ describe("disposition du graphe du cockpit", () => {
   test("ajoute des étapes compactes issues du dernier run, sans cellules d'outils", () => {
     const run = etatA(Date.parse("2026-09-18T10:00:00.000Z"), 5000).runs.find((entree) => entree.projet === "marketing")!;
     const execution: RunDetailleAvecOutils = { ...run, etapes: run.etapes.map((etape) => ({ ...etape, outils: [] })) };
-    const { noeuds } = disposer(topo(), [{ projetId: "marketing", run: execution }]);
+    const { noeuds } = disposer(topo(), [{ projetId: "marketing", run: execution }], false, ouvertsMarketing);
     const etapes = noeuds.filter((noeud) => noeud.type === "etape");
     expect(etapes.length).toBeGreaterThan(0);
     expect(etapes.length).toBeLessThanOrEqual(4);
     expect(etapes.every((etape) => etape.largeur < 200)).toBe(true);
     expect(etapes.map((etape) => etape.etape?.nom)).not.toContain("Read");
+  });
+
+  test("cache les étapes au départ même quand une exécution est déjà chargée", () => {
+    const run = etatA(Date.parse("2026-09-18T10:00:00.000Z"), 30000).runs[0]!;
+    const execution = { ...run, etapes: run.etapes.map((e) => ({ ...e, outils: [] })) };
+    expect(disposer(topo(), [{ projetId: "marketing", run: execution }]).noeuds.some((n) => n.type === "etape")).toBe(false);
+  });
+
+  test("replie les descendants du maître puis de la machine sans perdre l'état des projets", () => {
+    expect(disposer(topo(), [], false, new Set()).noeuds.map((n) => n.id)).toEqual([idOrchestrateur]);
+    const ouverts = new Set(ouvertsMarketing);
+    ouverts.delete(idMachine("pc"));
+    const pc = topo().projets.filter((p) => !/nas|synology|dsm/i.test(p.homeMachine));
+    const ids = disposer(topo(), [], false, ouverts).noeuds.map((n) => n.id);
+    expect(ids).toContain(idMachine("pc"));
+    for (const p of pc) expect(ids).not.toContain(idProjet(p.id));
   });
 
   test("ignore un projet sans fiche même si ses runs existent", () => {
@@ -42,7 +60,7 @@ describe("disposition du graphe du cockpit", () => {
     const etat = etatA(Date.parse("2026-09-18T10:00:00.000Z"), 30000);
     const run = etat.runs.find((r) => r.projet === "marketing")!;
     const execution: RunDetailleAvecOutils = { ...run, etapes: run.etapes.map((e) => ({ ...e, outils: [] })) };
-    const { noeuds } = disposer(etat.topologie, [{ projetId: "marketing", run: execution }]);
+    const { noeuds } = disposer(etat.topologie, [{ projetId: "marketing", run: execution }], false, ouvertsMarketing);
     const projet = noeuds.find((n) => n.id === idProjet("marketing"))!;
     const etapes = noeuds.filter((n) => n.etape?.runId === run.id);
     expect(etapes).toHaveLength(4);
@@ -58,7 +76,7 @@ describe("disposition du graphe du cockpit", () => {
     const run = etat.runs.find((r) => r.projet === "marketing")!;
     const execution: RunDetailleAvecOutils = { ...run, etapes: run.etapes.map((e) => ({ ...e, outils: [] })) };
     const topologie = { ...etat.topologie, projets: [...etat.topologie.projets, { ...etat.topologie.projets[0]!, id: "deuxieme", nom: "Deuxième projet" }] };
-    const { noeuds, largeur, hauteur } = disposer(topologie, [{ projetId: "marketing", run: execution }]);
+    const { noeuds, largeur, hauteur } = disposer(topologie, [{ projetId: "marketing", run: execution }], false, ouvertsMarketing);
     for (const [i, a] of noeuds.entries()) {
       expect(a.x).toBeGreaterThanOrEqual(0);
       expect(a.y).toBeGreaterThanOrEqual(0);
@@ -75,7 +93,7 @@ describe("disposition du graphe du cockpit", () => {
     const etat = etatA(Date.parse("2026-09-18T10:00:00.000Z"), 30000);
     const run = etat.runs.find((r) => r.projet === "marketing")!;
     const execution: RunDetailleAvecOutils = { ...run, etapes: run.etapes.map((e) => ({ ...e, outils: [] })) };
-    const compact = disposer(etat.topologie, [{ projetId: "marketing", run: execution }], true);
+    const compact = disposer(etat.topologie, [{ projetId: "marketing", run: execution }], true, ouvertsMarketing);
     const projets = compact.noeuds.filter((n) => n.type === "projet");
     expect(new Set(projets.map((n) => n.x)).size).toBe(1);
     expect(compact.largeur).toBeLessThan(disposer(etat.topologie).largeur);
