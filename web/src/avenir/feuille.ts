@@ -51,6 +51,40 @@ export function projetObjectif(id: string): string | null {
 
 export const DATE_AUDIT = "2026-10-17";
 
+// Classement éditorial validé le 22 octobre : il ne change pas la priorité des runs.
+export const PRIORITES = [
+  {
+    titre: "Fiabiliser les runs",
+    detail: "Avant de relancer 0.7 : préparer les dépendances, borner la planification et conserver la cause d'arrêt ainsi que l'usage partiel. Puis traiter les délais de la file et la reprise au retour du worker (2.6, 2.7).",
+    lots: ["2"],
+  },
+  {
+    titre: "Sécuriser les fusions et les livraisons",
+    detail: "Reprendre 0.7 une fois la préparation fiable, puis terminer les protections d'autorité. Ces protections restent un prérequis à toute autonomie supplémentaire.",
+    lots: ["0"],
+  },
+  {
+    titre: "Installer les garde-fous d'exploitation",
+    detail: "Ordre conseillé : arrêt d'urgence (4.1), budgets (4.4), sauvegardes (4.5), santé (4.3), puis alertes externes (4.2). Raccorder l'arrêt au pilotage des runs (10.4).",
+    lots: ["4"],
+  },
+  {
+    titre: "Consolider les contrats et le pilotage",
+    detail: "Stabiliser la CI entre moteur et cockpit, les versions des workers et les revues, puis améliorer le suivi des runs, le catalogue, l'attribution et le calendrier.",
+    lots: ["1", "7", "6", "10", "9", "11", "12"],
+  },
+  {
+    titre: "Étendre les métiers et simplifier l'interface",
+    detail: "Compléter les branches métier pluggables après la fiabilisation, puis traiter les ajustements Finance et la lisibilité du graphe d'accueil.",
+    lots: ["3", "8", "13"],
+  },
+  {
+    titre: "Activer l'autonomie supplémentaire",
+    detail: "Livrer le superviseur et les missions automatiques après mise en service et vérification des lots sécurité, fiabilité et exploitation.",
+    lots: ["5"],
+  },
+];
+
 export const LOTS: Lot[] = [
   {
     id: "0",
@@ -226,6 +260,20 @@ export const LOTS: Lot[] = [
     ],
   },
 ];
+
+const ordreLots = PRIORITES.flatMap((priorite) => priorite.lots);
+// Un futur lot absent du classement reste visible à la fin de la feuille.
+const rangLot = (id: string) => ordreLots.includes(id) ? ordreLots.indexOf(id) : ordreLots.length;
+const ordreExploitation = ["4.1", "4.4", "4.5", "4.3", "4.2"];
+export const LOTS_PRIORISES = [...LOTS]
+  .sort((a, b) => rangLot(a.id) - rangLot(b.id))
+  .map((lot) => ({
+    ...lot,
+    etapes: [...lot.etapes].sort((a, b) =>
+      Number(a.statut === "fait") - Number(b.statut === "fait") ||
+      (lot.id === "4" ? ordreExploitation.indexOf(a.id) - ordreExploitation.indexOf(b.id) : 0)
+    ),
+  }));
 
 export const DEFAUTS: Defaut[] = [
   { id: "F1", severite: "critique", titre: "Identité Tailscale du cockpit forgeable par un agent du runner", fichiers: "BP docker-compose.yaml:136 ; src/acces.js:109-116", correctif: "Lot 0.1", statut: "en-cours" },
