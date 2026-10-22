@@ -14,46 +14,9 @@ const { SHA, pages, lireCI, lireConversations } = require("./github-merge-gates"
 
 // Les fichiers dont une modification exige une fusion explicite (AGENTS.md, « Norme GitHub ») :
 // la page le signale, et c'est le clic de Raphaël qui vaut fusion explicite.
-const SENSIBLES = [
-  /^\.github\//,
-  /(^|\/)CODEOWNERS$/,
-  /(^|\/)(AGENTS|CLAUDE)\.md$/,
-  /(^|\/)copilot-instructions\.md$/,
-  /(^|\/)\.env(\.|$)/,
-  /(^|\/)[^/]*\.env(\.|$)/,
-  /(^|\/)specs\/[^/]*\.env/,
-  /secret|credential|token/,
-  /\.(pem|key|crt|p12|pfx|cer)$/,
-  /\.sql$/,
-  /(^|\/)migrations?\//,
-  /(^|\/)Dockerfile[^/]*$/,
-  /\.Dockerfile$/,
-  /(^|\/)(compose([.-][^/]*)?\.ya?ml|\.dockerignore)$/,
-  /(^|\/)docker-compose[^/]*\.ya?ml$/,
-  /(^|\/)vercel\.json$/,
-  /\.tf(vars)?$/,
-  /(^|\/)(terraform|infra|infrastructure)\//,
-  /(^|\/)(deploy|deployment)\//,
-  /(^|\/)[^/]*deploy[^/]*\.(sh|js|mjs|cjs|py)$/,
-  /(^|\/)bin\/livrer\.sh$/,
-  /^src\/(github-merge-gates|pull-requests|api-pull-requests)\.js$/,
-  /^bin\/publieur\.js$/,
-  /^packages\/schemas\/commandes\.js$/,
-  /^specs\/livraison\.json$/,
-  // Règles d'agents et dépendances : ci-autofix les refuse déjà dans ses propres correctifs.
-  /(^|\/)\.claude\//,
-  /(^|\/)\.mcp\.json$/,
-  /(^|\/)CLAUDE\.local\.md$/,
-  /(^|\/)(\.gitattributes|\.npmrc)$/,
-  /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/,
-  // Le code qui décide qui signe, qui livre et ce qu'un agent peut faire.
-  /^src\/(acces|api-livraison|livreur|chat-outils|conseiller|signature-commandes)\.js$/,
-  /^bin\/(cockpit|livreur|commande-runner)\.js$/,
-  /^bin\/tailnet-relais\.sh$/,
-  /^src\/(agent-runner|codex-runner|cockpit-read|chat|workers|tailnet)\.js$/,
-  /^src\/(worker|maitre)[^/]*\.js$/,
-  /^agents\//,
-];
+// Partagé avec la feuille À venir. Le dossier deploy/ protège aussi cette politique
+// contre une modification par auto-fusion ; les motifs restent identiques.
+const SENSIBLES = require("../deploy/fichiers-sensibles.json").motifs.map((source) => new RegExp(source));
 
 const estSensible = (fichier) => SENSIBLES.some((re) => new RegExp(re.source, "i").test(String(fichier)));
 
