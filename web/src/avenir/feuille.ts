@@ -159,6 +159,72 @@ export const LOTS: Lot[] = [
       { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Refuser de couper un run ; npm ci dans le Dockerfile.", fichiers: ["BP deploy/nas/deploy.sh.modele:106-110", "BP Dockerfile"], statut: "a-faire", sensible: true },
     ],
   },
+  // Lots 8 à 13 : page Notion « Cockpit amelioration » de Raphaël, validée le 2026-10-22.
+  {
+    id: "8",
+    titre: "Finance",
+    but: "Une page Finance sans élément parasite.",
+    etapes: [
+      { id: "8.1", titre: "Remettre « En cours » dans sa colonne", detail: "Le panneau des runs vivants tombe sous le menu replié, en bas à gauche, faute de colonne prévue sur Finance. Lui réserver la colonne de droite comme sur l'Accueil.", fichiers: ["BP web/src/App.tsx:317", "BP web/src/style.css:244"], statut: "a-faire" },
+    ],
+  },
+  {
+    id: "9",
+    titre: "Pipelines : le catalogue",
+    but: "Une page qui ne montre que les pipelines enregistrés, prêts à l'emploi, et permet d'en créer ou d'en modifier.",
+    etapes: [
+      { id: "9.1", titre: "N'afficher que les pipelines enregistrés", detail: "Le catalogue du registre, utilisable directement ; les runs des projets partent sur la page Run (10.1).", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/donnees/pipelines.ts"], statut: "a-faire" },
+      { id: "9.2", titre: "Servir /pipelines au rechargement", detail: "Un lien direct ou un F5 sur /pipelines renvoie « route inconnue » : la route manque dans la liste du serveur.", fichiers: ["BP bin/cockpit.js:442"], statut: "a-faire" },
+      { id: "9.3", titre: "Créer un pipeline", detail: "Nouveau pipeline depuis la page, publié en v1 dans le registre.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/"], statut: "a-faire", sensible: true },
+      { id: "9.4", titre: "Modifier un pipeline par glisser-déposer", detail: "Éditeur de graphe : ajouter, retirer, réordonner les étapes. Enregistrer publie la version suivante ; une version publiée ne change jamais et les projets restent épinglés.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/<nom>/v<n>/pipeline.json"], statut: "a-faire", sensible: true },
+      { id: "9.5", titre: "Agents de secours par étape", detail: "Une liste ordonnée d'agents de secours dans la définition ; le moteur passe au suivant tout seul quand le principal n'a plus de quota.", fichiers: ["REG schemas/", "AO src/graphe.js", "BP web/src/vues/Pipelines.tsx"], statut: "a-faire", sensible: true },
+    ],
+  },
+  {
+    id: "10",
+    titre: "Run : les pipelines en cours",
+    but: "Suivre et piloter les pipelines qui tournent dans les projets.",
+    etapes: [
+      { id: "10.1", titre: "Page Run", detail: "Les runs des projets (aujourd'hui sur la page Pipelines) : liste à gauche, graphe et inspecteur.", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "a-faire" },
+      { id: "10.2", titre: "Changer l'agent d'une étape", detail: "Remplacer un agent sans quota ou occupé sur un run en cours.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js"], statut: "a-faire", sensible: true },
+      { id: "10.3", titre: "Agents de secours sur un run", detail: "Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.", fichiers: ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"], statut: "a-faire", sensible: true },
+      { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire", sensible: true },
+      { id: "10.5", titre: "Discuter avec l'équipe ou un agent", detail: "Fil de l'équipe du run, ou d'un agent précis.", fichiers: ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"], statut: "a-faire" },
+      { id: "10.6", titre: "Le conseiller discute avec l'équipe", detail: "Même accès pour le conseiller du PC.", fichiers: ["BP src/conseiller.js", "BP src/api-conseiller.js"], statut: "a-faire", sensible: true },
+    ],
+  },
+  {
+    id: "11",
+    titre: "Coming soon",
+    but: "Attribuer un objectif en choisissant qui, quand et avec quelle urgence.",
+    etapes: [
+      { id: "11.1", titre: "Renommer « À venir » en « Coming soon »", detail: "Menu, titre de la page et en-tête.", fichiers: ["BP web/src/App.tsx:235", "BP web/src/avenir/AVenir.tsx"], statut: "a-faire" },
+      { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Aujourd'hui : « choisis par le planificateur ».", fichiers: ["BP web/src/avenir/AVenir.tsx:141", "BP src/objectifs-avenirs.js"], statut: "a-faire" },
+      { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Remplace le sélecteur Priorité : un run prioritaire passe en premier quand le quota est serré et à la reprise.", fichiers: ["BP web/src/avenir/AVenir.tsx:142", "AO src/maitre.js"], statut: "a-faire" },
+      { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire", sensible: true },
+      { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "a-faire", sensible: true },
+    ],
+  },
+  {
+    id: "12",
+    titre: "Calendrier",
+    but: "Voir et préparer les runs prévus.",
+    etapes: [
+      { id: "12.1", titre: "Page Calendrier", detail: "Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.", fichiers: ["BP web/src/App.tsx", "AO src/maitre.js"], statut: "a-faire", sensible: true },
+    ],
+  },
+  {
+    id: "13",
+    titre: "Accueil : un graphe lisible",
+    but: "Partir d'une vue simple et déplier le détail à la demande.",
+    etapes: [
+      { id: "13.1", titre: "Flux depuis le milieu des cellules", detail: "Les liens vers les enfants partent du bord gauche des projets ; les faire partir du milieu.", fichiers: ["BP web/src/topologie/Topologie.tsx:118"], statut: "a-faire" },
+      { id: "13.2", titre: "Cellules déplaçables, disposition retenue", detail: "Bouger et espacer les cellules ; la disposition reste d'une visite à l'autre.", fichiers: ["BP web/src/topologie/Topologie.tsx:195,289", "BP web/src/donnees/brouillons.ts"], statut: "a-faire" },
+      { id: "13.3", titre: "Graphe simple au départ", detail: "Seulement les cellules principales : maître, machines, projets.", fichiers: ["BP web/src/topologie/disposition.ts:111"], statut: "a-faire" },
+      { id: "13.4", titre: "Déplier une cellule", detail: "Un clic fait apparaître ses enfants, puis leur détail, et ainsi de suite.", fichiers: ["BP web/src/topologie/disposition.ts", "BP web/src/topologie/Topologie.tsx"], statut: "a-faire" },
+      { id: "13.5", titre: "Renommer « Orchestrateur » en « Maître (répartiteur) »", detail: "La cellule du haut est le répartiteur ; « Moteur (agent-orchestrator) » est le dépôt du moteur vu comme un projet.", fichiers: ["BP web/src/topologie/Topologie.tsx:88"], statut: "a-faire" },
+    ],
+  },
 ];
 
 export const DEFAUTS: Defaut[] = [
