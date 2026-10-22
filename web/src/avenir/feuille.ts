@@ -252,11 +252,11 @@ export const LOTS: Lot[] = [
     titre: "Accueil : un graphe lisible",
     but: "Partir d'une vue simple et déplier le détail à la demande.",
     etapes: [
-      { id: "13.1", titre: "Flux depuis le milieu des cellules", detail: "Les liens vers les enfants partent du bord gauche des projets ; les faire partir du milieu.", fichiers: ["BP web/src/topologie/Topologie.tsx:118"], statut: "a-faire" },
-      { id: "13.2", titre: "Cellules déplaçables, disposition retenue", detail: "Bouger et espacer les cellules ; la disposition reste d'une visite à l'autre.", fichiers: ["BP web/src/topologie/Topologie.tsx:195,289", "BP web/src/donnees/brouillons.ts"], statut: "a-faire" },
-      { id: "13.3", titre: "Graphe simple au départ", detail: "Seulement les cellules principales : maître, machines, projets.", fichiers: ["BP web/src/topologie/disposition.ts:111"], statut: "a-faire" },
-      { id: "13.4", titre: "Déplier une cellule", detail: "Un clic fait apparaître ses enfants, puis leur détail, et ainsi de suite.", fichiers: ["BP web/src/topologie/disposition.ts", "BP web/src/topologie/Topologie.tsx"], statut: "a-faire" },
-      { id: "13.5", titre: "Renommer « Orchestrateur » en « Maître (répartiteur) »", detail: "La cellule du haut est le répartiteur ; « Moteur (agent-orchestrator) » est le dépôt du moteur vu comme un projet.", fichiers: ["BP web/src/topologie/Topologie.tsx:88"], statut: "a-faire" },
+      { id: "13.1", titre: "Flux depuis le milieu des cellules", detail: "Les liens des projets partent du milieu de leur bord inférieur, avec des ancrages cohérents pendant les rafraîchissements et les déplacements.", fichiers: ["BP web/src/topologie/Topologie.tsx:118"], statut: "fait" },
+      { id: "13.2", titre: "Cellules déplaçables, disposition retenue", detail: "Les cellules se déplacent à la souris ou au doigt. Les positions restent dans le navigateur entre les visites, séparément sur téléphone et bureau ; « Disposition initiale » les efface.", fichiers: ["BP web/src/topologie/Topologie.tsx:195,289", "BP web/src/donnees/brouillons.ts"], statut: "fait" },
+      { id: "13.3", titre: "Graphe simple au départ", detail: "La première visite montre uniquement le maître, les machines et les projets. Les étapes sont chargées à la demande quand le projet est déplié.", fichiers: ["BP web/src/topologie/disposition.ts:111"], statut: "fait" },
+      { id: "13.4", titre: "Déplier une cellule", detail: "Un clic déplie ou replie les machines et projets ; les étapes clés du dernier run ouvrent leur détail dans l’inspecteur. Le clavier fonctionne aussi.", fichiers: ["BP web/src/topologie/disposition.ts", "BP web/src/topologie/Topologie.tsx"], statut: "fait" },
+      { id: "13.5", titre: "Renommer « Orchestrateur » en « Maître (répartiteur) »", detail: "La cellule de pilotage s’appelle « Maître (répartiteur) » ; le projet du moteur reste « Moteur (agent-orchestrator) ».", fichiers: ["BP web/src/topologie/Topologie.tsx:88"], statut: "fait" },
     ],
   },
 ];

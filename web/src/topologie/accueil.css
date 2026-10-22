@@ -35,7 +35,7 @@
 .ao-accueil .ao-flux.estompe { opacity: .2 !important; }
 .ao-accueil .ao-flux.focal .react-flow__edge-path { stroke-width: 2.75px; }
 .ao-accueil .ao-flux.pc .react-flow__edge-path, .ao-accueil .ao-flux.nas .react-flow__edge-path, .ao-accueil .ao-flux.etape .react-flow__edge-path { stroke-dasharray: inherit; }
-.ao-graphe-outils { position: absolute; top: 14px; right: 20px; z-index: 4; }
+.ao-graphe-outils { display: flex; gap: 6px; position: absolute; top: 14px; right: 20px; z-index: 4; }
 .ao-graphe-outils button { display: flex; min-height: 36px; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--color-trait); background: var(--color-surface); color: var(--color-douce); font: 400 10px/1 var(--font-mono); cursor: pointer; }
 .ao-graphe-outils button:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
@@ -74,3 +74,5 @@
 @media (prefers-reduced-motion: reduce) {
   .ao-accueil .ao-flux.actif .react-flow__edge-path { animation: none; }
 }
+
+.ao-accueil .ao-noeud:focus-visible, .ao-graphe-outils button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
