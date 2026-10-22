@@ -5,7 +5,8 @@
 // sur le NAS. En échange, il n'écoute rien : aucun port, aucune entrée réseau. Il lit la file
 // de commandes de l'event store, ne construit que des commits présents dans les miroirs du
 // NAS et fusionnés sur leur branche par défaut, puis exécute le même deploy.sh que
-// bin/livrer.sh. Il n'y a qu'une logique de bascule, et elle voyage avec la version livrée.
+// bin/livrer.sh. Il n'y a qu'une logique de bascule, mais le livreur n'exécute que celle déjà
+// en production : une version qui la change se livre à la main (F3).
 //
 // Ce module ne touche ni Docker ni l'event store : il est testé sur de vrais dépôts git dans
 // un dossier temporaire. bin/livreur.js fait la boucle et les effets.
@@ -20,6 +21,10 @@ const DEPOTS = /** @type {const} */ (["cockpit", "moteur", "registre"]);
 const SHA = /^[0-9a-f]{40}$/;
 // Où chaque dépôt se pose dans l'archive, comme bin/livrer.sh.
 const EMPLACEMENTS = { cockpit: ".", moteur: ".moteur", registre: "agent-registry" };
+// Ce que l'hôte exécute en root pendant la bascule : deploy.sh, et le compose que docker lance
+// avec ses montages. Une PR fusionnée ne doit pas pouvoir les réécrire puis se faire exécuter
+// par le livreur : les changer demande une livraison à la main (bin/livrer.sh).
+const FIGES = ["deploy/nas", "docker-compose.yaml"];
 
 class Refus extends Error {}
 
@@ -111,7 +116,7 @@ function proposition({ git, miroirs, release, maintenant = new Date() }) {
  * Tout ce qui doit être vrai avant de préparer quoi que ce soit. Le cockpit a déjà contrôlé
  * l'identité : le livreur recontrôle, parce que c'est lui qui tient le pouvoir.
  */
-function verifierDemande({ git, miroirs, payload, par, canal, autorises }) {
+function verifierDemande({ git, miroirs, payload, par, canal, autorises, release }) {
   if (canal !== "tailnet") {
     throw new Refus(`identité non prouvée (canal « ${canal || "inconnu"} ») : une livraison exige le tailnet`);
   }
@@ -126,6 +131,13 @@ function verifierDemande({ git, miroirs, payload, par, canal, autorises }) {
       throw new Refus(`${d} : ${sha.slice(0, 7)} n'est pas sur la branche par défaut`);
     }
   }
+  const enProduction = release && release.cockpit ? resoudre(git, miroirs.cockpit, release.cockpit) : null;
+  if (!enProduction) throw new Refus("cockpit en production inconnu du miroir : livrer à la main avec bin/livrer.sh");
+  const changes = texte(git(["--git-dir", miroirs.cockpit, "diff", "--name-only", enProduction, payload.cockpit, "--", ...FIGES]));
+  if (changes) {
+    throw new Refus(`${changes.split("\n").join(", ")} change : livrer à la main avec bin/livrer.sh, le livreur n'exécute que la bascule en production`);
+  }
+  return { modeleDe: enProduction };
 }
 
 const horodatage = (date) => {
@@ -135,11 +147,12 @@ const horodatage = (date) => {
 
 /**
  * Construit la release comme bin/livrer.sh : export exact des trois SHA, `.release`, archive
- * et empreinte, deploy.sh tiré du modèle DE LA VERSION LIVRÉE. Rien n'est lu d'un dossier de
- * travail.
+ * et empreinte, deploy.sh tiré du modèle du cockpit `modeleDe`, celui en production que
+ * verifierDemande renvoie. Rien n'est lu d'un dossier de travail.
  * @returns {{ release: string, dossier: string, archive: string, empreinte: string, deploy: string }}
  */
-function preparerRelease({ git, miroirs, payload, releasesDir, par = null, maintenant = new Date() }) {
+function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = null, maintenant = new Date() }) {
+  if (!SHA.test(String(modeleDe || ""))) throw new Error("modèle de deploy.sh sans version : appeler verifierDemande d'abord");
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), "livraison-"));
   try {
     const stage = path.join(travail, "business-pipelines");
@@ -164,7 +177,7 @@ function preparerRelease({ git, miroirs, payload, releasesDir, par = null, maint
     execFileSync("tar", ["-czf", archive, "--owner=1000", "--group=1000", "--numeric-owner", "-C", stage, "."]);
     const empreinte = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
 
-    const modele = texte(git(["--git-dir", miroirs.cockpit, "show", `${payload.cockpit}:deploy/nas/deploy.sh.modele`]));
+    const modele = texte(git(["--git-dir", miroirs.cockpit, "show", `${modeleDe}:deploy/nas/deploy.sh.modele`]));
     const version = DEPOTS.map((d) => `${d} ${payload[d].slice(0, 7)}`).join(" · ");
     const script = `${modele
       .replaceAll("@RELEASE@", release)
@@ -226,6 +239,7 @@ function ecrireJson(fichier, valeur) {
 module.exports = {
   KIND,
   DEPOTS,
+  FIGES,
   Refus,
   gitLocal,
   lireRelease,

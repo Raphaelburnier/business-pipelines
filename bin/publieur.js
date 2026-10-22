@@ -136,6 +136,10 @@ async function suivreLivraisons() {
   };
   const fusionnerAuto = apiFusion && FUSION_AUTO
     ? async ({ livraison, detail, depot }) => {
+        if (!pullRequests.depotSurveille(PR_DEPOTS, depot)) {
+          console.log(`fusion automatique ${depot}#${livraison.pr} non faite : dépôt non surveillé`);
+          return;
+        }
         try {
           const fusion = await pullRequests.fusionner({ api: apiFusion, demande: { depot, numero: livraison.pr, sha: detail.sha, baseSha: detail.baseSha }, verifierPreuves: verifierPreuves({ strict: true }) });
           console.log(`fusion automatique ${depot}#${livraison.pr} : ${fusion.fusionnee ? "faite" : fusion.message || "refusée par GitHub"}`);
@@ -209,6 +213,8 @@ async function servirFusions(store) {
       resultat = { ok: false, raison: preuve.raison };
     } else if (!lireAutorises(AUTORISES).has(String(commande.par))) {
       resultat = { ok: false, raison: `${commande.par} n'est pas autorisé à fusionner (specs/livraison.json)` };
+    } else if (commande.kind !== rattachements.KIND && !pullRequests.depotSurveille(PR_DEPOTS, depot)) {
+      resultat = { ok: false, raison: `${depot} n'est pas un dépôt surveillé : le publieur n'y agit pas` };
     } else if (commande.kind === rattachements.KIND) {
       try {
         if (commande.payload.depot !== DEPOT_COCKPIT) throw new Error(`rattachement refusé hors du dépôt du cockpit (${DEPOT_COCKPIT})`);

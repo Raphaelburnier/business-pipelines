@@ -79,6 +79,10 @@ branches par défaut (§3). `bin/livrer.sh` reste le chemin de secours et reste 
    lignes du journal, version restaurée.
 8. **Une seule logique de bascule.** Le livreur exécute le même `deploy.sh` que
    `bin/livrer.sh`. Pas de seconde implémentation qui divergerait.
+   Ce `deploy.sh` est figé (F3) : le livreur le tire du cockpit en production (`.release`), pas
+   de la version livrée. Il refuse une version qui change `deploy/nas/` ou `docker-compose.yaml`
+   depuis la production ; celle-ci se livre à la main avec `bin/livrer.sh`. Une PR fusionnée ne
+   peut donc pas réécrire ce que l'hôte exécute en root et se faire exécuter par le livreur.
 9. **Les tests passent avant la bascule.** Le build de l'image lance les tests ; un échec
    arrête tout avant de toucher à l'installation en place.
 
