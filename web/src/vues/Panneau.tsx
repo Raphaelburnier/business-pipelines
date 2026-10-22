@@ -28,7 +28,7 @@ export function Panneau({ selection, onSelection, onFermer, modePage = false }: 
       <div className="ao-inspection-tete">
         <span className="text-xs font-bold uppercase tracking-wider text-douce">
           <span className="ao-inspection-kicker">Inspection</span>
-          {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : selection.type === "orchestrateur" ? "Orchestrateur" : "Machine"}
+          {selection.type === "projet" ? "Projet" : selection.type === "run" ? "Run" : selection.type === "orchestrateur" ? "Maître (répartiteur)" : "Machine"}
         </span>
         <button ref={fermeture} type="button" onClick={onFermer} className={modePage ? "ml-auto px-3 py-2 text-xs text-douce hover:text-accent" : "ao-bouton-icone"} aria-label="Fermer le panneau" title="Fermer (Échap)">
           {modePage ? "← Retour au graphe" : <Icone nom="fermer" />}
@@ -388,11 +388,11 @@ function Timeline({ run, maintenant, choisie, onChoisir }: { run: RunDetaille | 
 function PanneauOrchestrateur({ onSelection }: { onSelection: (selection: Selection) => void }) {
   const { donnees, erreur } = useCharge((s) => s.topologie(), []);
   if (erreur) return <Erreur>{erreur}</Erreur>;
-  if (!donnees) return <p className="text-sm text-douce">Lecture de l’orchestrateur…</p>;
+  if (!donnees) return <p className="text-sm text-douce">Lecture du maître…</p>;
   return (
     <>
       <div className="flex items-center gap-2"><h2 className="text-lg font-bold">{donnees.maitre.nom}</h2><Etat etat={donnees.maitre.etat} /></div>
-      <p className="text-sm text-douce">L’orchestrateur pilote les runs et les confie aux machines disponibles.</p>
+      <p className="text-sm text-douce">Le maître répartit les runs et les confie aux machines disponibles.</p>
       <Titre compteur={donnees.machines.length}>Machines observées</Titre>
       {donnees.machines.map((machine) => <button key={machine.machine} type="button" className="flex items-center gap-2 border border-trait bg-carte p-3 text-left hover:border-accent" onClick={() => onSelection({ type: "machine", id: machine.machine })}><span>{machine.nom ?? machine.machine}</span><span className="ml-auto"><Etat etat={machine.etat} /></span></button>)}
       <Titre compteur={donnees.projets.filter((p) => p.aFiche).length}>Projets enregistrés</Titre>

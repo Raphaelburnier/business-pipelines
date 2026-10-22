@@ -41,10 +41,5 @@
   { "id": "11.2", "revision": 1, "projet": "business-pipelines" },
   { "id": "11.3", "revision": 1, "projet": null },
   { "id": "11.4", "revision": 1, "projet": null },
-  { "id": "11.5", "revision": 1, "projet": "business-pipelines" },
-  { "id": "13.1", "revision": 1, "projet": "business-pipelines" },
-  { "id": "13.2", "revision": 1, "projet": "business-pipelines" },
-  { "id": "13.3", "revision": 1, "projet": "business-pipelines" },
-  { "id": "13.4", "revision": 1, "projet": "business-pipelines" },
-  { "id": "13.5", "revision": 1, "projet": "business-pipelines" }
+  { "id": "11.5", "revision": 1, "projet": "business-pipelines" }
 ]
