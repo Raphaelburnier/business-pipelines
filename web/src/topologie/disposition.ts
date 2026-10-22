@@ -53,6 +53,7 @@ const ECART_ETAPE_Y = 12;
 export const idMachine = (role: string) => `machine:${role}`;
 export const idOrchestrateur = "orchestrateur:nas";
 export const idProjet = (id: string) => `projet:${id}`;
+export const OUVERTS_INITIAUX: ReadonlySet<string> = new Set([idOrchestrateur, idMachine("pc"), idMachine("nas")]);
 export const idEtape = (runId: string, etapeId: string) => `etape:${runId}:${etapeId}`;
 
 /** Reconnaît les noms de machine utilisés par le worker et le Synology. */
@@ -109,7 +110,7 @@ function etapesImportantes(run: RunDetailleAvecOutils): EtapeImportante[] {
 }
 
 /** Arbre vertical : orchestrateur → machines → projets → étapes du dernier run. */
-export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [], compact = false): Disposition {
+export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [], compact = false, ouverts: ReadonlySet<string> = OUVERTS_INITIAUX): Disposition {
   const projets = topologie.projets.filter((projet) => projet.aFiche).slice().sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   const executionParProjet = new Map(executions.map((execution) => [execution.projetId, execution.run]));
   const machinesParRole = new Map<"pc" | "nas", Machine>();
@@ -141,16 +142,17 @@ export function disposer(topologie: Topologie, executions: ExecutionProjet[] = [
     id: idOrchestrateur, type: "orchestrateur", x: centreOrchestrateur - 96, y: 24, largeur: 192, hauteur: 78,
     maitre: topologie.maitre, sousTitre: topologie.maitre.nom,
   });
-  noeudMachine("pc", centrePc - (compact ? 78 : 96), yMachine);
-  noeudMachine("nas", centreNas - (compact ? 78 : 96), yMachine);
+  if (ouverts.has(idOrchestrateur)) noeudMachine("pc", centrePc - (compact ? 78 : 96), yMachine);
+  if (ouverts.has(idOrchestrateur)) noeudMachine("nas", centreNas - (compact ? 78 : 96), yMachine);
 
   const prochainY = new Map<"pc" | "nas", number>([["pc", yProjet], ["nas", yProjet]]);
   let hauteurProjets = 0;
   for (const projet of projets) {
     const role = /nas|synology|dsm/i.test(projet.homeMachine) ? "nas" : "pc";
+    if (!ouverts.has(idOrchestrateur) || !ouverts.has(idMachine(role))) continue;
     const colonne = role === "pc" ? 0 : 1;
     const execution = executionParProjet.get(projet.id);
-    const jalons = execution ? etapesImportantes(execution) : [];
+    const jalons = execution && ouverts.has(idProjet(projet.id)) ? etapesImportantes(execution) : [];
     const x = compact ? MARGE : colonne === 0 ? xPc : xNas;
     const y = compact ? Math.max(yProjet, hauteurProjets + 64) : prochainY.get(role)!;
     noeuds.push({ id: idProjet(projet.id), type: "projet", x, y, largeur: LARGEUR_PROJET, hauteur: HAUTEUR_PROJET, projet });

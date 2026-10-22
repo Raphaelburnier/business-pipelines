@@ -168,6 +168,14 @@ test("les dépôts surveillés : la liste explicite, sinon système et projets",
   assert.deepStrictEqual(pullRequests.depotsSurveilles({ miroirs: [{ github: DEPOT }], projetsDir: dir }), [DEPOT, "Raphaelburnier/steam_tierList"]);
 });
 
+test("le publieur n'agit que sur un dépôt surveillé, quelle que soit la casse (F8)", () => {
+  const depots = ["Raphaelburnier/business-pipelines", "Raphaelburnier/steam_tierList"];
+  assert.strictEqual(pullRequests.depotSurveille(depots, "raphaelburnier/STEAM_TIERLIST"), "Raphaelburnier/steam_tierList");
+  for (const autre of ["Raphaelburnier/autre", "", null, "Raphaelburnier/business-pipelines/../x"]) {
+    assert.strictEqual(pullRequests.depotSurveille(depots, autre), null);
+  }
+});
+
 const demande = { depot: DEPOT, numero: 60, sha: SHA, baseSha: BASE };
 
 for (const [nom, opts, message] of [

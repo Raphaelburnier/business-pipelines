@@ -291,6 +291,17 @@ function depotsSurveilles({ texte = null, miroirs = [], projetsDir = null } = {}
   return [...new Set(depots)];
 }
 
+/**
+ * Le dépôt surveillé que vise une commande, ou null. Le jeton de fusion n'agit que sur eux (F8) :
+ * une commande vers un autre dépôt, même signée, ne part pas.
+ * @param {string[]} depots
+ * @param {string} depot
+ */
+function depotSurveille(depots, depot) {
+  const cible = String(depot || "").toLowerCase();
+  return depots.find((d) => d.toLowerCase() === cible) || null;
+}
+
 function ecrireInstantane(fichier, instantane) {
   fs.mkdirSync(path.dirname(fichier), { recursive: true });
   const tmp = `${fichier}.tmp`;
@@ -349,6 +360,7 @@ module.exports = {
   commenter,
   RefusFusion,
   depotsSurveilles,
+  depotSurveille,
   ecrireInstantane,
   lireInstantane,
 };

