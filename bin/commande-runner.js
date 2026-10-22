@@ -146,13 +146,19 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
     let exclure = [];
     if (kinds.includes("run.resume")) {
       store.attentes.programmer();
-      const atelier = require("../src/atelier");
-      atelier.programmer(store);
-      // Les recettes CLI locales n'utilisent aucun worker distant.
-      const verifier = process.env.ORCH_ROLE === "pc" ? () => {} : require("../src/runtime-mission").verifier({
-        viaParMachine: JSON.parse(process.env.COCKPIT_VIA_MACHINES || '{"pc":["claude","codex","omniroute","ollama"],"nas":["claude"]}'), machines: api.machines(store),
-      });
-      exclure = atelier.exclus(store, verifier);
+      // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
+      // sans exclusions, comme avant le calendrier.
+      try {
+        const atelier = require("../src/atelier");
+        atelier.programmer(store);
+        // Les recettes CLI locales n'utilisent aucun worker distant.
+        const verifier = process.env.ORCH_ROLE === "pc" ? () => {} : require("../src/runtime-mission").verifier({
+          viaParMachine: JSON.parse(process.env.COCKPIT_VIA_MACHINES || '{"pc":["claude","codex","omniroute","ollama"],"nas":["claude"]}'), machines: api.machines(store),
+        });
+        exclure = atelier.exclus(store, verifier);
+      } catch (err) {
+        console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
+      }
       if (lancementsReserves) { await attendre(INTERVALLE); continue; }
     }
     const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true, exclure } : { kinds });
