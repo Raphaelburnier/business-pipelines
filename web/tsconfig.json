@@ -23,8 +23,7 @@
       "@schemas/cockpit": ["../node_modules/agent-orchestrator/packages/schemas/cockpit.js"],
       "@schemas/modeles": ["../node_modules/agent-orchestrator/packages/schemas/modeles.js"],
       "@schemas/chat": ["../node_modules/agent-orchestrator/packages/schemas/chat.js"],
-      "@schemas/livraison": ["../node_modules/agent-orchestrator/packages/schemas/livraison.js"],
-      "@schemas/travaux": ["../node_modules/agent-orchestrator/packages/schemas/travaux.js"]
+      "@schemas/livraison": ["../node_modules/agent-orchestrator/packages/schemas/livraison.js"]
     }
   },
   "include": ["src"]
