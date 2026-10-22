@@ -5,7 +5,7 @@ import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
 import { lignes, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import type { AttributionAvenir } from "../donnees/source";
-import { DATE_AUDIT, DEFAUTS, LOTS, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Severite, type Statut } from "./feuille";
+import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, PRIORITES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Severite, type Statut } from "./feuille";
 
 type Onglet = "feuille" | "defauts" | "suggestions";
 
@@ -159,11 +159,26 @@ function FeuilleDeRoute() {
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const parObjectif = new Map((attributions ?? []).map((a) => [a.objectif.id, a]));
   return (
+    <>
+    <section className="av-lot" aria-labelledby="av-priorites">
+      <header>
+        <span className="kicker">Classement du 22 octobre 2026</span>
+        <h3 id="av-priorites">Ordre de travail</h3>
+        <p>Les prérequis de chaque lot restent applicables.</p>
+      </header>
+      <ol className="av-suggestions">
+        {PRIORITES.map((priorite, index) => <li key={priorite.titre}>
+          <b>{index + 1}. {priorite.titre}</b>
+          <p>{priorite.detail}</p>
+          <p>{priorite.lots.map((id, i) => <span key={id}>{i > 0 && " · "}<a href={`#av-lot-${id}`}>Lot {id}</a></span>)}</p>
+        </li>)}
+      </ol>
+    </section>
     <ol className="av-lots">
-      {LOTS.map((lot) => {
+      {LOTS_PRIORISES.map((lot) => {
         const faits = lot.etapes.filter((e) => e.statut === "fait").length;
         return (
-          <li key={lot.id} className="av-lot">
+          <li key={lot.id} id={`av-lot-${lot.id}`} className="av-lot">
             <header>
               <span className="kicker">Lot {lot.id}{lot.prerequis ? ` · après ${lot.prerequis}` : ""}</span>
               <h3>{lot.titre}</h3>
@@ -196,6 +211,7 @@ function FeuilleDeRoute() {
         );
       })}
     </ol>
+    </>
   );
 }
 
@@ -253,8 +269,8 @@ export function AVenir() {
           <span className="kicker">Audit du {DATE_AUDIT}</span>
           <h2>Fix et fonctionnalités à venir</h2>
           <p>
-            Ce qui reste pour une boucle agentique entièrement automatique, dans l'ordre des dépendances. Le lot sécurité
-            passe avant le superviseur : plus les agents s'enchaînent sans clic, plus une injection de prompt peut aller loin.
+            Les tâches classées par priorité : fiabilité des runs, sécurité, garde-fous d'exploitation, puis pilotage et
+            extensions métier. Le superviseur attend que ses protections soient en service.
           </p>
         </div>
         <dl className="av-chiffres">
