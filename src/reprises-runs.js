@@ -2,9 +2,9 @@
 // réutilise le lancement figé, y compris après redémarrage et après une autre mission.
 const { raisonEchec } = require("./echec-run");
 
-async function reprendreRun({ store, commande, lancer, lancementDe }) {
+async function reprendreRun({ store, commande, lancer, lancementDe, machineDisponible }) {
   const runId = commande.payload.runId;
-  if (!store.attentes.validerCommande(commande)) {
+  if (!store.attentes.validerCommande(commande, Date.now(), { machineDisponible })) {
     return { ok: true, detail: { runId, dejaTraitee: true } };
   }
   const run = store.run(runId);

@@ -24,7 +24,7 @@ function fixture(mode = "quota") {
   for(const d of [path.join(projets,"demo"),path.join(reg,"pipelines/demo/v1"),path.join(reg,"agents/codeur/v1"),bin])fs.mkdirSync(d,{recursive:true});
   fs.writeFileSync(path.join(reg,"agents/codeur/v1/agent.md"),`---\nname: codeur\nversion: 1\ndescription: Codeur fictif\ndefaultLlm: { via: codex, model: gpt }\nallowedTools: [Read, Write]\nskills: []\n---\nProduit le livrable de recette.\n`);
   fs.writeFileSync(path.join(reg,"pipelines/demo/v1/pipeline.json"),JSON.stringify({name:"demo",version:1,nodes:[
-    {id:"preparer",type:"script",runsOn:"pc",run:process.execPath,args:["-e",'const fs=require("fs");fs.writeFileSync("compteur.txt",String(Number(fs.existsSync("compteur.txt")?fs.readFileSync("compteur.txt","utf8"):0)+1));']},
+    {id:"preparer",type:"script",runsOn:mode === "machine" ? "nas" : "pc",run:process.execPath,args:["-e",'const fs=require("fs");fs.writeFileSync("compteur.txt",String(Number(fs.existsSync("compteur.txt")?fs.readFileSync("compteur.txt","utf8"):0)+1));']},
     {id:"code",type:"agent",agent:"codeur@1",runsOn:"pc",slice:"*",outputs:["livrable.txt"]},
   ],edges:[{from:"preparer",to:"code"}]}));
   const fiche=path.join(projets,"demo/project.json");
@@ -56,6 +56,32 @@ let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entre
   const commande=store.creerCommande({kind:"run.start",payload:{projectId:"demo",mission:contrat},par:"recette"});
   const pret=path.join(dir,"pret"), appels=path.join(dir,"appels.jsonl");
   const env={...process.env,PATH:`${bin}:${process.env.PATH}`,ORCH_EVENT_STORE:file,COCKPIT_PROJETS_DIR:projets,ORCH_REGISTRE:reg,OUTPUT_ROOT:path.join(dir,"workspaces"),NO_VCS:"1",ORCH_ROLE:"pc",ORCH_MACHINE:"pc",COMMAND_POLL_MS:"10",ORCH_MAITRE_PORT:"0",ORCH_MAITRE_HOTE:"127.0.0.1",ORCH_WORKERS:path.join(dir,"workers.json"),RECETTE_MODE:mode,RECETTE_PRET:pret,RECETTE_APPELS:appels};
+  if (mode === "machine") {
+    // Le vrai maître, sa file durable et la vraie CLI ; seul le transport du worker est
+    // déterministe. Aucun changement de source de production ni appel fournisseur.
+    const precharge = path.join(dir, "maitre-recette.cjs");
+    fs.writeFileSync(precharge, `
+const fs=require('node:fs');
+const moteur=require(${JSON.stringify(require.resolve("agent-orchestrator"))});
+const {MachineIndisponible}=require(${JSON.stringify(require.resolve("agent-orchestrator/src/maitre"))});
+class MaitreRecette extends moteur.Maitre {
+ constructor(options){
+  super(options);
+  if(process.argv[1].endsWith('/orch.js'))throw new Error('La CLI a ouvert un second maître');
+  this.store.majMachine({id:'pc',state:'online',heartbeat:true,meta:{capacites:{missions:1,backends:['codex'],noeuds:['agent','script']}}});
+ }
+ machineDisponible(machine){return machine==='pc'&&fs.existsSync(process.env.RECETTE_PRET);}
+ async executer(machine,etape){
+  fs.appendFileSync(process.env.RECETTE_APPELS,JSON.stringify({machine,etape})+'\\n');
+  if(!fs.existsSync(process.env.RECETTE_PRET))throw new MachineIndisponible('worker de recette absent');
+  return {statut:'succeeded',outcome:null};
+ }
+}
+moteur.Maitre=MaitreRecette;
+`);
+    env.ORCH_ROLE = "nas"; env.ORCH_MACHINE = "nas";
+    env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ""} --require=${precharge}`.trim();
+  }
   const enfants=[];
   function runner(){
     const c=spawn(process.execPath,[path.join(RACINE,"bin/commande-runner.js")],{cwd:RACINE,env,detached:true,stdio:["ignore","pipe","pipe"]});
@@ -137,4 +163,35 @@ test("un rejeu après réussite acquitte la reprise sans rappeler la CLI ni publ
     const r=await reprendreRun({store:f.store,commande,lancer:()=>{throw new Error("double lancement");},lancementDe:()=>{throw new Error("double publication");}});
     assert.equal(r.detail.dejaTraitee,true);
   } finally {await f.fermer();}
+});
+
+test("retour machine après redémarrage : même run et contrat, sans refaire le script ni ouvrir un second maître", async () => {
+  const f = fixture("machine");
+  try {
+    const premier = f.runner();
+    const runId = await jusqua(() => f.store.commande(f.commande.id).status === "done" && f.store.commande(f.commande.id).run_id, () => premier.sortie);
+    assert.equal(f.store.run(runId).status, "waiting_machine");
+    assert.equal(f.store.attentes.vue(runId).machine, "pc");
+    await pause(1200);
+    assert.equal(f.lectures().length, 1, "l'état online historique ne suffit pas à déclencher une reprise");
+    assert.equal(f.store.attentes.lire(runId).attempts, 0);
+    await f.arreter(premier);
+    fs.writeFileSync(f.pret, "oui");
+    fs.writeFileSync(path.join(f.projets, "demo/project.json"), "fiche invalide après départ");
+    const second = f.runner();
+    await jusqua(() => f.store.run(runId).status === "succeeded", () => second.sortie);
+    await jusqua(() => f.store.commandes().some(c => c.kind === "run.resume" && c.status === "done"), () => second.sortie);
+    assert.equal(f.store.runs().length, 1);
+    assert.equal(f.store.commandes().filter(c => c.kind === "run.start").length, 1);
+    assert.equal(f.lectures().length, 2);
+    assert.deepEqual(f.lectures()[0].etape.spec, f.lectures()[1].etape.spec);
+    assert.ok(JSON.stringify(f.lectures()[1].etape.spec).includes("OBJECTIF_FIGE"));
+    const espace = path.join(f.dir, "workspaces", "demo", runId);
+    assert.equal(fs.readFileSync(path.join(espace, "compteur.txt"), "utf8"), "1");
+    assert.equal(f.store.etapes(runId).filter(e => e.node_id === "preparer").length, 1);
+    assert.doesNotMatch(second.sortie, /EADDRINUSE|second maître/);
+    await f.arreter(second);
+    const troisieme = f.runner(); await pause(250); await f.arreter(troisieme);
+    assert.equal(f.lectures().length, 2);
+  } finally { await f.fermer(); }
 });
