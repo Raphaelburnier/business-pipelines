@@ -9,6 +9,8 @@ const CONFIGURATIONS = {
   archive: { variable: "ORCH_ARCHIVE_TIMEOUT_MS", defautMs: 5 * 60_000, maximumMs: 15 * 60_000 },
   http: { variable: "ORCH_HTTP_TIMEOUT_MS", defautMs: 30_000, maximumMs: 120_000 },
   script: { variable: "ORCH_SCRIPT_TIMEOUT_MS", defautMs: 15 * 60_000, maximumMs: 6 * 60 * 60_000 },
+  "http:conseiller": { variable: "CONSEILLER_HTTP_TIMEOUT_MS", defautMs: 30_000, maximumMs: 120_000 },
+  ollama: { variable: "CONSEILLER_OLLAMA_TIMEOUT_MS", defautMs: 120_000, maximumMs: 10 * 60_000 },
 };
 
 function configuration(operation) {
@@ -27,6 +29,20 @@ function limiteExecution(operation, delaiMs, cause) {
   return Object.assign(new Error(`${operation} interrompu après ${delaiMs} ms`), {
     name: "LimiteExecution", operation, delaiMs, cause,
   });
+}
+
+// Borne un appel HTTP, y compris la lecture de son corps faite par travail.
+async function sousDelaiHttp({ operation, delaiMs = configuration(operation) }, travail) {
+  const controleur = new AbortController();
+  const minuterie = setTimeout(() => controleur.abort(), delaiMs);
+  try {
+    return await travail(controleur.signal);
+  } catch (cause) {
+    if (controleur.signal.aborted) throw limiteExecution(operation, delaiMs, cause);
+    throw cause;
+  } finally {
+    clearTimeout(minuterie);
+  }
 }
 
 function execFileSyncBorne(binaire, args, options = {}) {
@@ -56,4 +72,4 @@ function execFileSyncBorne(binaire, args, options = {}) {
   }
 }
 
-module.exports = { configuration, limiteExecution, execFileSyncBorne };
+module.exports = { configuration, limiteExecution, sousDelaiHttp, execFileSyncBorne };

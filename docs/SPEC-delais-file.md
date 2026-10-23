@@ -1,6 +1,6 @@
 # Lot 2.6 — Délais des opérations qui occupent les files
 
-Statut : plan validé ; implémentation et tests en cours.
+Statut : les délais HTTP du conseiller couvrent désormais le cockpit et Ollama, repli compris. Restent ouverts deploy.sh après bascule et l'unification avec publieur.apiAvec.
 Date : 23 octobre 2026.
 Bases examinées : cockpit `b74e0f7`, moteur `92c60a9`.
 
@@ -92,6 +92,20 @@ Les commandes utilitaires Docker et Git d'une phase ont aussi leur propre borne 
 une phase globale ne dispense pas de borner la commande sur laquelle elle attend.
 Les futures variables et leurs unités seront documentées avec les valeurs ci-dessus.
 Les réglages existants de runtime ne sont pas renommés.
+
+### Variables et unités
+
+Toutes les variables suivantes sont en millisecondes :
+
+| Variable | Borne maximale |
+|---|---:|
+| ORCH_GIT_TIMEOUT_MS | 1800000 |
+| ORCH_ARCHIVE_TIMEOUT_MS | 900000 |
+| ORCH_HTTP_TIMEOUT_MS | 120000 |
+| ORCH_SCRIPT_TIMEOUT_MS | 21600000 |
+| COCKPIT_RUN_DIAGNOSTIC_MS | 86400000 |
+| CONSEILLER_HTTP_TIMEOUT_MS | 120000 |
+| CONSEILLER_OLLAMA_TIMEOUT_MS | 600000 |
 
 ## Contrat d'arrêt et résultat observable
 
@@ -213,7 +227,7 @@ ignorant SIGTERM. Aucun appel modèle ni panne volontaire sur la production n'es
 - [ ] Même constat pour le descendant qui ignore SIGTERM alors que son parent sort.
 - [ ] Git bloqué n'immobilise plus indéfiniment moteur, publieur, conseiller ou livreur.
 - [ ] HTTP bloqué avant/après en-têtes est annulé ; le projet/travail suivant est servi.
-- [ ] Les délais déjà présents du conseiller restent effectifs.
+- [x] Les délais déjà présents du conseiller restent effectifs.
 - [ ] Une interruption opérateur reste distinguée d'un délai ; identité/session/métriques
       déjà reçues ne disparaissent pas.
 - [ ] Livraison avant bascule : échec borné, installation précédente conservée.
