@@ -47,6 +47,12 @@ const TRACES = {
     </>
   ),
   avenir: <path d="M4 6h9M4 12h9M4 18h9M16 5l2 2 3-4M16 17l2 2 3-4" />,
+  calendrier: (
+    <>
+      <rect x="3" y="5" width="18" height="16" />
+      <path d="M3 10h18M8 3v4M16 3v4M8 15h3" />
+    </>
+  ),
   branche: (
     <>
       <circle cx="6" cy="5" r="2" />

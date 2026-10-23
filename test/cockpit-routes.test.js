@@ -279,7 +279,7 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const avecQuery = await requete(PORT, "/?v=2");
     const attendu = fs.existsSync(path.join(RACINE, "web", "dist", "index.html")) ? 200 : 503;
     assert.strictEqual(avecQuery.code, attendu, "/?v=2 doit être traité comme /");
-    for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi", "/ai-studio", "/ai-studio/profiles/luna", "/ai-studio/generations/gen_20260928_000000_aabbcc", "/systeme", "/systeme/", "/a-venir", "/a-venir/"]) {
+    for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi", "/ai-studio", "/ai-studio/profiles/luna", "/ai-studio/generations/gen_20260928_000000_aabbcc", "/systeme", "/systeme/", "/a-venir", "/a-venir/", "/calendrier", "/calendrier/"]) {
       assert.strictEqual((await requete(PORT, route)).code, attendu, `${route} doit servir le front`);
     }
 

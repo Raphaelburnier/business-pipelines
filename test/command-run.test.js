@@ -14,7 +14,9 @@ test("le runner n'active la priorité que pour sa file de runs", () => {
   const source = fs.readFileSync(path.join(RACINE, "bin/commande-runner.js"), "utf8");
   assert.match(source, /boucle\(store, \["run\.start", "run\.resume", "run\.reverify"\],[\s\S]*?\{ prioriserRuns: true \}\)/);
   assert.match(source, /boucleApprobations\(store\)/);
-  assert.match(source, /store\.prendreCommande\(prioriserRuns \? \{ kinds, prioriserRuns: true \} : \{ kinds \}\)/);
+  assert.match(source, /store\.prendreCommande\(prioriserRuns \? \{ kinds, prioriserRuns: true, exclure \} : \{ kinds \}\)/);
+  // Le calendrier crée ses départs dus avant chaque prise dans la file des runs.
+  assert.match(source, /if \(kinds\.includes\("run\.resume"\)\) \{[\s\S]*?atelier\.programmer\(store\)[\s\S]*?atelier\.exclus\(store, verifier\)/);
   assert.match(source, /boucle\(store, \["chat\.respond"\],[\s\S]*?\(commande\) => repondre\(store, commande\)\)/);
 });
 

@@ -1,0 +1,84 @@
+/* Calendrier : même grammaire que À venir, une colonne par jour sur grand écran. */
+.cal-page { display: flex; width: min(100%, 1400px); flex-direction: column; gap: 16px; margin-inline: auto; padding-bottom: 32px; }
+.cal-page .kicker { margin: 0; font: 400 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-douce); }
+.cal-page h3 { margin: 0; font: 700 15px/1.2 var(--font-sans); color: var(--color-encre); }
+.cal-page h4 { margin: 12px 0 4px; font: 400 10px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-douce); }
+.cal-page ul { margin: 0; padding: 0; list-style: none; }
+
+.cal-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 20px 24px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); }
+.cal-hero h2 { margin: 4px 0 8px; font: 700 clamp(22px, 3vw, 34px)/1.1 var(--font-sans); color: var(--color-encre); }
+.cal-hero p { max-width: 70ch; margin: 0; color: var(--color-douce); }
+.cal-chiffres { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.cal-chiffres div { min-width: 96px; padding: 8px 12px; border: 1px solid var(--color-trait); background: var(--color-carte); }
+.cal-chiffres dt { font: 400 10px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
+.cal-chiffres dd { margin: 2px 0 0; font: 400 24px/1 var(--font-mono); color: var(--color-accent); }
+.cal-chiffres div.alerte dd { color: var(--color-danger); }
+:root[data-theme="jour"] .cal-chiffres dd { color: var(--color-encre); }
+
+.cal-barre { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cal-barre > button:not(.cal-action) { min-width: 40px; height: 36px; padding: 0 12px; border: 1px solid var(--color-trait); background: var(--color-carte); color: var(--color-encre); font: 400 13px/1 var(--font-mono); cursor: pointer; }
+.cal-barre > button:disabled { color: var(--color-douce); cursor: default; }
+.cal-periode { margin-inline: 8px auto; font: 400 14px/1 var(--font-mono); color: var(--color-encre); }
+
+.cal-action { height: 36px; padding: 0 14px; border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-sur-accent); font: 600 13px/1 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.cal-action:disabled { opacity: .5; cursor: default; }
+.cal-lien { padding: 0; border: 0; background: none; color: var(--color-accent); font: inherit; text-decoration: underline; cursor: pointer; }
+:root[data-theme="jour"] .cal-lien { color: var(--color-encre); }
+
+.cal-semaine { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cal-jour { display: flex; min-height: 180px; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--color-trait); background: var(--color-surface); }
+.cal-jour.aujourdhui { border-color: var(--color-accent); box-shadow: inset 0 2px 0 var(--color-accent); }
+.cal-jour.passe { opacity: .75; }
+.cal-jour h3 { font: 400 12px/1.2 var(--font-mono); text-transform: uppercase; color: var(--color-douce); }
+.cal-jour h3 span { color: var(--color-encre); }
+.cal-jour ul { display: flex; flex-direction: column; gap: 6px; }
+.cal-vide { margin: 0; color: var(--color-douce); font-size: 12px; }
+
+.cal-carte { display: flex; width: 100%; flex-direction: column; gap: 3px; padding: 8px; border: 1px solid var(--color-trait); border-left: 3px solid var(--color-trait-fort); background: var(--color-carte); color: var(--color-encre); text-align: left; cursor: pointer; }
+.cal-carte:hover, .cal-carte[aria-pressed="true"] { border-color: var(--color-accent); }
+.cal-carte strong { font: 600 13px/1.25 var(--font-sans); overflow-wrap: anywhere; }
+.cal-carte small { color: var(--color-douce); font-size: 11px; }
+.cal-carte.prevu { border-style: dashed; border-left-style: solid; }
+.cal-carte.actif { border-left-color: var(--color-pc); }
+.cal-carte.attente { border-left-color: var(--color-alerte); }
+.cal-carte.ok { border-left-color: var(--color-ok); }
+.cal-carte.echec { border-left-color: var(--color-danger); }
+.cal-heure { font: 400 12px/1 var(--font-mono); color: var(--color-accent); }
+:root[data-theme="jour"] .cal-heure { color: var(--color-encre); }
+
+.cal-etat { align-self: flex-start; padding: 2px 6px; border: 1px solid currentColor; font: 400 10px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--color-douce); }
+.cal-etat.actif { color: var(--color-pc); }
+.cal-etat.attente { color: var(--color-alerte); }
+.cal-etat.ok { color: var(--color-ok); }
+.cal-etat.echec { color: var(--color-danger); }
+.cal-raison { color: var(--color-alerte); font-size: 12px; }
+
+.cal-form, .cal-detail, .cal-retards { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--color-trait-fort); background: var(--color-surface); }
+.cal-form > header { display: flex; justify-content: space-between; align-items: baseline; }
+.cal-form label, .cal-detail label { display: flex; flex-direction: column; gap: 4px; color: var(--color-douce); font-size: 13px; }
+.cal-form input, .cal-form select, .cal-form textarea, .cal-detail input, .cal-detail select { padding: 6px 8px; border: 1px solid var(--color-trait); background: var(--color-carte); color: var(--color-encre); font: 400 14px/1.3 var(--font-sans); }
+.cal-form label.cal-case { flex-direction: row; align-items: center; gap: 8px; color: var(--color-encre); }
+.cal-form .cal-action { align-self: flex-start; }
+.cal-champs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.cal-champs > label { flex: 1 1 160px; }
+.cal-aide { margin: 0; color: var(--color-douce); font-size: 13px; }
+.cal-erreur { margin: 0; color: var(--color-danger); }
+
+.cal-detail header p { margin: 4px 0 0; color: var(--color-douce); }
+.cal-detail h3 { font-size: 18px; }
+.cal-detail > ul:not(.cal-historique) { padding-left: 18px; list-style: disc; color: var(--color-encre); }
+.cal-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.cal-historique li { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--color-trait); font: 400 13px/1.3 var(--font-mono); color: var(--color-encre); }
+.cal-historique a { color: var(--color-accent); }
+.cal-retards { border-color: var(--color-alerte); }
+.cal-retards li { color: var(--color-encre); }
+
+@media (max-width: 1100px) {
+  .cal-semaine { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+@media (max-width: 640px) {
+  .cal-hero { grid-template-columns: 1fr; padding: 16px; }
+  .cal-semaine { grid-template-columns: 1fr; }
+  .cal-jour { min-height: 0; }
+  .cal-jour.passe { display: none; }
+}

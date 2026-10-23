@@ -23,6 +23,7 @@ const Systeme = lazy(() => import("./systeme/Systeme").then((module) => ({ defau
 const Marketing = lazy(() => import("./vues/Marketing").then((module) => ({ default: module.Marketing })));
 const AIStudio = lazy(() => import("./ai-studio/AIStudio").then((module) => ({ default: module.AIStudio })));
 const AVenir = lazy(() => import("./avenir/AVenir").then((module) => ({ default: module.AVenir })));
+const Calendrier = lazy(() => import("./calendrier/Calendrier").then((module) => ({ default: module.Calendrier })));
 const Finance = lazy(() => import("./finance/Finance").then((module) => ({ default: module.Finance })));
 
 type Route =
@@ -37,6 +38,7 @@ type Route =
   | { type: "systeme" }
   | { type: "finance" }
   | { type: "a-venir" }
+  | { type: "calendrier" }
   | { type: "approbations" }
   | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
@@ -55,6 +57,7 @@ function lireRoute(): Route {
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme" };
   if (morceaux[0] === "a-venir" && morceaux.length === 1) return { type: "a-venir" };
+  if (morceaux[0] === "calendrier" && morceaux.length === 1) return { type: "calendrier" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
     if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
@@ -135,6 +138,7 @@ function titreDe(route: Route): string {
   if (route.type === "systeme") return "Systeme";
   if (route.type === "finance") return "Finance";
   if (route.type === "a-venir") return "A venir";
+  if (route.type === "calendrier") return "Calendrier";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine", orchestrateur: "Orchestrateur" }[route.selection.type];
   return "Introuvable";
 }
@@ -221,6 +225,7 @@ function Coquille() {
           <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
           <Lien href="/missions/branches" actif={route.type === "branches"} aller={naviguer} icone="branche">Branches</Lien>
           <Lien href="/pipelines" actif={route.type === "pipelines"} aller={naviguer} icone="pipeline">Pipelines</Lien>
+          <Lien href="/calendrier" actif={route.type === "calendrier"} aller={naviguer} icone="calendrier">Calendrier</Lien>
           <Lien href="/finance" actif={route.type === "finance"} aller={naviguer} icone="finance">Finance</Lien>
           <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
           <Lien href={lienDemander()} actif={route.type === "demander"} aller={naviguer} icone="demander">
@@ -292,6 +297,7 @@ function Coquille() {
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
           {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
           {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement de la carte…</p></section>}><Systeme /></Suspense>}
+          {route.type === "calendrier" && <Suspense fallback={<section className="page-vide"><p>Chargement du calendrier…</p></section>}><Calendrier /></Suspense>}
           {route.type === "a-venir" && <Suspense fallback={<section className="page-vide"><p>Chargement de la feuille de route…</p></section>}><AVenir /></Suspense>}
           {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
           {route.type === "detail" && (
