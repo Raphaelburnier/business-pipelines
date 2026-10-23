@@ -11,6 +11,7 @@ const { spawn } = require("child_process");
 const { EventStore } = require("agent-orchestrator");
 const livreur = require("../src/livreur");
 const signature = require("../src/signature-commandes");
+const delais = require("../src/delais-livraison");
 
 const BUSINESS = process.env.LIVREUR_BUSINESS || "/volume1/docker/business-pipelines";
 const STORE = process.env.ORCH_EVENT_STORE || path.join(BUSINESS, "etat", "events.sqlite");
@@ -19,6 +20,9 @@ const RELEASES = process.env.LIVREUR_RELEASES || "/volume1/docker/releases";
 const SAUVEGARDES = process.env.LIVREUR_SAUVEGARDES || "/volume1/docker/business-pipelines-backups";
 const PROPOSITION = path.join(BUSINESS, "etat", "livraison.json");
 const AUTORISES = path.join(BUSINESS, "specs", "livraison.json");
+const MODELES = path.join(BUSINESS, "specs", "livraison-modeles.json");
+const DELAIS = path.join(BUSINESS, "specs", "livraison-delais.json");
+const INCIDENT = path.join(BUSINESS, "etat", "incident-livraison");
 const INTERVALLE_FILE = Number(process.env.LIVREUR_FILE_MS || 2000);
 const INTERVALLE_PROPOSITION = Number(process.env.LIVREUR_PROPOSITION_MS || 60000);
 // Décision du 2026-09-29 : cinq releases et cinq sauvegardes gardées.
@@ -37,6 +41,7 @@ const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function publierProposition() {
   try {
+    if (fs.existsSync(INCIDENT)) throw new Error(`livraison suspendue : ${fs.readFileSync(INCIDENT, "utf8").trim()}`);
     const release = livreur.lireRelease(path.join(BUSINESS, ".release"));
     livreur.ecrireJson(PROPOSITION, livreur.proposition({ git, miroirs, release }));
   } catch (err) {
@@ -46,7 +51,7 @@ function publierProposition() {
 }
 
 /** Lance deploy.sh, relaie sa sortie par paquets et suit les étapes. */
-function basculer(store, commande, deploy) {
+function basculer(store, commande, deploy, env) {
   return new Promise((resolve) => {
     let etape = "preparer";
     let tampon = [];
@@ -70,7 +75,7 @@ function basculer(store, commande, deploy) {
         }
       }
     };
-    const enfant = spawn("sh", [deploy], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const enfant = spawn("sh", [deploy], { env, stdio: ["ignore", "pipe", "pipe"] });
     enfant.stdout.on("data", lire);
     enfant.stderr.on("data", lire);
     enfant.on("error", (err) => lire(`deploy.sh n'a pas démarré : ${err.message}`));
@@ -85,10 +90,10 @@ function basculer(store, commande, deploy) {
 async function livrer(store, commande) {
   const emettre = (type, payload) => store.emettre({ type, payload: { commande: commande.id, ...payload } });
   const payload = commande.payload;
-  const incident = path.join(BUSINESS, "etat", "incident-livraison");
+  const incident = INCIDENT;
   if (fs.existsSync(incident)) {
     const raison = `livraison suspendue : ${fs.readFileSync(incident, "utf8").trim()}`;
-    emettre("livraison.fin", { issue: "suspendue", etape: "restaurer", raison });
+    emettre("livraison.fin", { issue: "echec", etape: "restaurer", raison });
     return { ok: false, raison };
   }
   const version = livreur.DEPOTS.map((d) => `${d} ${String(payload[d]).slice(0, 7)}`).join(" · ");
@@ -101,6 +106,7 @@ async function livrer(store, commande) {
     const preuve = signature.verifier(signature.cleEnv(), commande);
     if (!preuve.ok) throw new Error(preuve.raison);
     if (preuve.transition) console.error(`livraison ${commande.id} acceptée sans vérification de signature (transition)`);
+    const environnement = delais.environnement(DELAIS);
     const { modeleDe } = livreur.verifierDemande({
       git,
       miroirs,
@@ -109,20 +115,19 @@ async function livrer(store, commande) {
       canal: commande.canal,
       autorises: livreur.lireAutorises(AUTORISES),
       release: livreur.lireRelease(path.join(BUSINESS, ".release")),
+      modelesFichier: MODELES,
     });
 
     etape = "preparer";
     emettre("livraison.etape", { etape });
     const prete = livreur.preparerRelease({ git, miroirs, payload, modeleDe, releasesDir: RELEASES, par: commande.par });
 
-    const fin = await basculer(store, commande, prete.deploy);
+    const fin = await basculer(store, commande, prete.deploy, environnement);
     etape = fin.etape;
-    if (fin.code !== 0) {
-      const issue = etape === "restaurer" ? "restauree" : "echec";
-      const raison =
-        issue === "restauree"
-          ? "échec après la bascule : version précédente restaurée"
-          : `deploy.sh terminé en code ${fin.code} à l'étape ${etape}, avant la bascule : rien n'a été remplacé`;
+    if (fin.code !== 0 || fs.existsSync(INCIDENT)) {
+      const incident = fs.existsSync(INCIDENT) ? fs.readFileSync(INCIDENT, "utf8") : null;
+      const { issue, raison } = livreur.echecBascule(fin, incident);
+      if (etape === "restaurer" && issue === "echec" && !fs.existsSync(INCIDENT)) fs.writeFileSync(INCIDENT, `${raison}\n`, { mode: 0o600 });
       emettre("livraison.fin", { issue, etape, raison, release: prete.release, journal: fin.dernieres });
       return { ok: false, raison };
     }

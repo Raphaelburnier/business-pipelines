@@ -293,50 +293,32 @@ test("l'archive absente conserve la validation et reprend après redémarrage", 
   reprise.fermer();
 });
 
-test("une livraison conserve le travail et monte le partage d'archive prévu", () => {
-  const racine = path.join(__dirname, "..");
-  const livraison = fs.readFileSync(path.join(racine, "deploy", "nas", "deploy.sh.modele"), "utf8");
-  const compose = fs.readFileSync(path.join(racine, "docker-compose.yaml"), "utf8");
-  // Le comportement, pas l'écriture : la fonction qui dit ce qu'une livraison garde est
-  // extraite du modèle et exécutée. `ai-studio-data` est de l'état, le code ne l'est pas.
-  const estEtat = livraison.match(/^est_etat\(\) \{\n[\s\S]*?\n\}$/m);
-  assert.ok(estEtat, "deploy.sh.modele doit définir est_etat()");
-  const garde = (nom) => spawnSync("sh", ["-c", `${estEtat[0]}\nest_etat "$1"`, "sh", nom]).status === 0;
-  assert.strictEqual(garde("ai-studio-data"), true, "une livraison doit garder ai-studio-data");
-  assert.strictEqual(garde("src"), false, "le code, lui, est remplacé");
-  // Et la sauvegarde d'avant bascule ne l'emporte pas : c'est de l'état, pas du code.
-  assert.match(livraison, /--exclude=business-pipelines\/ai-studio-data/);
-  assert.match(livraison, /mkdir -p[^\n]*"\$BUSINESS\/ai-studio-data"/);
-  assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
-  assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
-  assert.match(compose, /AI_STUDIO_MODELS_PATH:-\/volume1\/IA_Studio_Model/);
+test("une livraison conserve le travail et monte le partage d'archive prévu", async () => {
+  const { recette } = require("./fixtures/deploiement");
+  const f = recette("succes");
+  try {
+    const travail = path.join(f.business, "ai-studio-data");
+    fs.mkdirSync(travail);
+    fs.writeFileSync(path.join(travail, "travail.txt"), "generation en cours");
+    const fin = await f.lancer();
+    assert.strictEqual(fin.code, 0, fin.sortie);
+    assert.strictEqual(fs.readFileSync(path.join(travail, "travail.txt"), "utf8"), "generation en cours");
+    const compose = fs.readFileSync(path.join(__dirname, "..", "docker-compose.yaml"), "utf8");
+    assert.match(compose, /AI_STUDIO_ARCHIVE_PATH:-\/volume1\/IAstudio/);
+    assert.match(compose, /AI_STUDIO_WORK_PATH:-\.\/ai-studio-data/);
+    assert.match(compose, /AI_STUDIO_MODELS_PATH:-\/volume1\/IA_Studio_Model/);
+  } finally { f.nettoyer(); }
 });
 
-test("le livreur prépare la bascule sans exiger le montage NAS réservé au cockpit", () => {
-  const racine = temporaire();
-  const business = path.join(racine, "business");
-  const specs = path.join(business, "specs");
-  fs.mkdirSync(specs, { recursive: true });
-  for (const fichier of ["deploiement.env", "workers.json", "publieur.env"]) fs.writeFileSync(path.join(specs, fichier), "");
-  const archive = path.join(racine, "archive.tar.gz");
-  fs.writeFileSync(archive, "");
-
-  const livraison = fs.readFileSync(path.join(__dirname, "..", "deploy", "nas", "deploy.sh.modele"), "utf8");
-  const debut = livraison.indexOf('for requis in "$BUSINESS"');
-  const fin = livraison.indexOf('echo "@SHA256@', debut);
-  assert.ok(debut >= 0 && fin > debut, "le précontrôle de deploy.sh doit rester testable");
-  const resultat = spawnSync("sh", ["-c", `set -eu\n${livraison.slice(debut, fin)}`], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      BUSINESS: business,
-      ARCHIVE: archive,
-      ENV: path.join(specs, "deploiement.env"),
-      DOCKER: process.execPath,
-      AI_STUDIO_MODELS_PATH: path.join(racine, "partage-visible-seulement-par-docker"),
-    },
-  });
-  assert.strictEqual(resultat.status, 0, resultat.stderr);
+test("le livreur prépare la bascule sans exiger le montage NAS réservé au cockpit", async () => {
+  const { recette } = require("./fixtures/deploiement");
+  const f = recette("succes");
+  try {
+    const absent = path.join(f.racine, "partage-visible-seulement-par-docker");
+    const fin = await f.lancer({ env: { AI_STUDIO_MODELS_PATH: absent } });
+    assert.strictEqual(fin.code, 0, fin.sortie);
+    assert.strictEqual(fs.existsSync(absent), false);
+  } finally { f.nettoyer(); }
 });
 
 (async () => {
