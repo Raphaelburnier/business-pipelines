@@ -15,7 +15,7 @@
   "github": "Raphaelburnier/steam_tierList",
   "pipelines": [
     {
-      "extends": "improve-app@7",
+      "extends": "improve-app@8",
       "spec": "improvement.json",
       "overrides": {
         "nodes": {}
