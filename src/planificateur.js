@@ -326,8 +326,18 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
  * changé depuis la présentation (registre, équipe, machines, quotas), le lancement est refusé.
  * Une requête répétée avec le même requestId rend la commande déjà créée.
  */
-function lancer({ store, qui, params, corps, etat, verifierBackend }) {
+const MARGE_PASSE_MS = 5 * 60_000;
+const HORIZON_MS = 366 * 86_400_000;
+
+function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant = Date.now() }) {
   const d = schemas.lancementPlan.parse(corps);
+  if (d.scheduling.notBefore) {
+    const t = Date.parse(d.scheduling.notBefore);
+    // Quelques minutes de marge : le formulaire a pu rester ouvert avant l'envoi.
+    if (t < maintenant - MARGE_PASSE_MS) throw new RefusPlan("La date prévue est déjà passée : choisis un départ futur ou lance tout de suite.");
+    if (t > maintenant + HORIZON_MS) throw new RefusPlan("La date prévue dépasse un an.");
+    d.scheduling = { ...d.scheduling, source: "calendar" };
+  }
   const ancienne = store.db.prepare("SELECT id FROM commands WHERE kind = 'run.start' AND json_extract(payload_json, '$.requestId') = ? LIMIT 1").get(d.requestId);
   if (ancienne) {
     const c = store.commande(ancienne.id);

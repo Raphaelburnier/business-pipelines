@@ -1,7 +1,8 @@
 // « Fix et fonctionnalités à venir » : la feuille de route de l'audit et les défauts à corriger.
 // Les données vivent dans feuille.ts ; une PR qui avance un point met son statut à jour.
 import "./avenir.css";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { dateCivile, FUSEAU, instantZurich } from "../calendrier/semaine";
 import { useCharge, useSource } from "../donnees/contexte";
 import { lignes, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import type { AttributionAvenir } from "../donnees/source";
@@ -70,6 +71,11 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const [priorite, setPriorite] = useState<"haute" | "normale" | "basse">(attribution.priorite ?? "normale");
   const [reclassement, setReclassement] = useState(false);
   const [commandeId, setCommandeId] = useState<string | null>(null);
+  // « Planifier » place le départ dans le calendrier au lieu de le lancer tout de suite (11.5).
+  const [quand, setQuand] = useState<{ planifie: boolean; date: string; heure: string }>(() => {
+    const demain = dateCivile(Date.now() + 86_400_000);
+    return { planifie: false, date: demain.date, heure: "07:00" };
+  });
   const tentative = useRef<{ empreinte: string; requestId: string } | null>(null);
   async function proposer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,12 +92,16 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
 
   async function lancer() {
     if (!proposition?.reponse.empreinte) return;
+    let notBefore: string | undefined;
+    try { notBefore = quand.planifie ? instantZurich(quand.date, quand.heure) : undefined; }
+    catch (err) { setErreur(err instanceof Error ? err.message : String(err)); return; }
     setErreur(null); setAttente(true);
     try {
       const empreinte = proposition.reponse.empreinte;
       if (tentative.current?.empreinte !== empreinte) tentative.current = { empreinte, requestId: crypto.randomUUID() };
       await source.lancerPlan({ spec: proposition.spec, empreinte: proposition.reponse.empreinte,
-        requestId: tentative.current.requestId, accepterDegrade: accepteDegrade, scheduling: { priority: priorite } });
+        requestId: tentative.current.requestId, accepterDegrade: accepteDegrade,
+        scheduling: notBefore ? { priority: priorite, source: "calendar", notBefore } : { priority: priorite } });
       setCommandeId("envoyée");
       setOuvert(false);
       onRefresh();
@@ -120,6 +130,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       <span>{agentNom}</span><span>{projetNom}</span>
       {attribution.runId ? <a href={`/runs/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
       <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
+      {attribution.prevuLe && !attribution.runId && <a href="/calendrier">Prévu le {new Date(attribution.prevuLe).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</a>}
       {attribution.positionFile != null && <span>Objectifs #{attribution.positionFile}</span>}
       <span>Priorité {attribution.priorite ?? "normale"}</span>
     </div>
@@ -132,7 +143,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {attribution.reclassable && <label className="av-priorite">Priorité de file<select aria-label={`Priorité ${etape.id}`} value={priorite} disabled={reclassement} onChange={(event) => void reclasser(event.target.value as "haute" | "normale" | "basse")}>
       <option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option>
     </select></label>}
-    {commandeId && <p role="status">Mission envoyée au cockpit. L'attribution se mettra à jour avec le prochain événement.</p>}
+    {commandeId && <p role="status">{quand.planifie ? <>Mission planifiée : elle apparaît dans le <a href="/calendrier">calendrier</a> et partira à l'heure dite.</> : "Mission envoyée au cockpit. L'attribution se mettra à jour avec le prochain événement."}</p>}
     {!projectId && <p className="av-attribution-erreur">Touche plusieurs dépôts ou un dépôt hors du cockpit : à traiter à la main.</p>}
     {projectId && etape.statut === "a-faire" && !indisponible && <button type="button" className="av-action" onClick={() => { setOuvert((v) => !v); setProposition(null); setErreur(null); setCommandeId(null); }}>
       {ouvert ? "Fermer" : attribution.statut === "failed" || attribution.statut === "cancelled" ? "Relancer l'objectif" : "Attribuer"}
@@ -149,7 +160,16 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       {plan.blocages.map((b, i) => <p key={i}>{b.message}</p>)}
       {plan.plan?.etapes.map((e) => <p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}
       {plan.statut === "degrade" && <label><input type="checkbox" checked={accepteDegrade} onChange={(e) => setAccepteDegrade(e.target.checked)} /> Accepter ce plan dégradé</label>}
-      {plan.statut !== "bloque" && <button type="button" disabled={attente || (plan.statut === "degrade" && !accepteDegrade)} onClick={lancer}>{attente ? "Lancement…" : "Lancer la mission"}</button>}
+      {plan.statut !== "bloque" && <fieldset className="av-quand">
+        <legend>Départ</legend>
+        <label><input type="radio" name={`quand-${etape.id}`} checked={!quand.planifie} onChange={() => setQuand({ ...quand, planifie: false })} /> Tout de suite</label>
+        <label><input type="radio" name={`quand-${etape.id}`} checked={quand.planifie} onChange={() => setQuand({ ...quand, planifie: true })} /> Planifier</label>
+        {quand.planifie && <>
+          <label>Date<input type="date" value={quand.date} min={dateCivile(Date.now()).date} onChange={(e) => setQuand({ ...quand, date: e.target.value })} /></label>
+          <label>Heure ({FUSEAU})<input type="time" value={quand.heure} onChange={(e) => setQuand({ ...quand, heure: e.target.value })} /></label>
+        </>}
+      </fieldset>}
+      {plan.statut !== "bloque" && <button type="button" disabled={attente || (plan.statut === "degrade" && !accepteDegrade) || (quand.planifie && (!quand.date || !quand.heure))} onClick={lancer}>{attente ? "Envoi…" : quand.planifie ? "Planifier la mission" : "Lancer la mission"}</button>}
       <button type="button" disabled={attente} onClick={() => { setProposition(null); tentative.current = null; }}>Modifier la mission</button>
     </section>}
   </div>;
@@ -193,7 +213,7 @@ function FeuilleDeRoute() {
               {lot.etapes.map((e) => {
                 const sensibilite = sensibiliteEtape(e);
                 return (
-                <li key={e.id}>
+                <li key={e.id} id={`av-etape-${e.id}`}>
                   <div className="av-ligne">
                     <b>{e.id}</b>
                     <span className="av-titre">{e.titre}</span>
@@ -264,6 +284,10 @@ function Defauts() {
 
 export function AVenir() {
   const [onglet, setOnglet] = useState<Onglet>("feuille");
+  // Le calendrier renvoie vers une étape : la page arrive en chargement différé, on y défile ensuite.
+  useEffect(() => {
+    if (window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "center" });
+  }, []);
   const etapes = LOTS.flatMap((l) => l.etapes);
   const ouverts = DEFAUTS.filter((d) => d.statut !== "fait");
   const critiques = ouverts.filter((d) => d.severite === "critique").length;

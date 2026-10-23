@@ -2,10 +2,11 @@
 // commande à l'heure dite et le moteur la démarre dès qu'un worker et son quota le permettent.
 import "./calendrier.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useHorloge, useSource } from "../donnees/contexte";
+import { LOTS } from "../avenir/feuille";
+import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { lignes } from "../donnees/missions";
 import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Objectif, type Priorite, type Repetition, type SourceCalendrier } from "./api";
-import { dateCivile, decaler, departEnRetard, departModifiable, enRetard, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type Entree } from "./semaine";
+import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, enRetard, etatDepartFeuille, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type DepartFeuille, type Entree } from "./semaine";
 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const MOT_PRIORITE: Record<Priorite, string> = { haute: "haute", normale: "normale", basse: "basse" };
@@ -163,6 +164,22 @@ function Carte({ entree, choisie, onChoisir }: { entree: Entree; choisie: boolea
   </li>;
 }
 
+const ETAPES = new Map(LOTS.flatMap((lot) => lot.etapes.map((e) => [e.id, { lot: lot.id, titre: e.titre }] as const)));
+
+/** Un objectif de la feuille de route planifié depuis À venir : son suivi reste là-bas. */
+function CarteFeuille({ depart }: { depart: DepartFeuille }) {
+  const etat = etatDepartFeuille(depart);
+  const etape = ETAPES.get(depart.objectifId);
+  return <li>
+    <a className={`cal-carte feuille ${etat.ton}`} href={`/a-venir#av-etape-${depart.objectifId}`}>
+      <span className="cal-heure">{depart.heure}</span>
+      <strong>{depart.objectifId} · {etape?.titre ?? "Objectif de la feuille de route"}</strong>
+      <small>{depart.projetId} · À venir, lot {etape?.lot ?? "?"}</small>
+      <span className={`cal-etat ${etat.ton}`}>{etat.mot}</span>
+    </a>
+  </li>;
+}
+
 export function Calendrier() {
   const { source: principale } = useSource();
   const source = useMemo(() => (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [principale.nom]);
@@ -174,9 +191,11 @@ export function Calendrier() {
   const [formulaire, setFormulaire] = useState(false);
 
   const parJour = useMemo(() => semaine(objectifs ?? [], debut), [objectifs, debut]);
+  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs]);
+  const feuilleParJour = useMemo(() => departsFeuille(attributions ?? [], debut), [attributions, debut]);
   const retards = (objectifs ?? []).filter((o) => enRetard(o, maintenant));
   const actifs = (objectifs ?? []).filter((o) => o.active && o.nextAt);
-  const aujourdhuiEntrees = semaine(objectifs ?? [], lundi(aujourdhui)).get(aujourdhui) ?? [];
+  const aujourdhuiEntrees = [...(semaine(objectifs ?? [], lundi(aujourdhui)).get(aujourdhui) ?? []), ...(departsFeuille(attributions ?? [], lundi(aujourdhui)).get(aujourdhui) ?? [])];
   const selection = objectifs?.find((o) => o.id === choisi) ?? null;
   const fin = decaler(debut, 6);
 
@@ -186,6 +205,7 @@ export function Calendrier() {
         <p className="kicker">Lot 12 · heure de Zurich</p>
         <h2>Runs planifiés</h2>
         <p>Chaque départ prévu devient une commande à son heure ; le moteur la lance dès qu'un worker et son quota sont disponibles, après les reprises interrompues.</p>
+        <p>Les objectifs de la feuille de route se planifient depuis <a href="/a-venir">À venir</a> ; ils apparaissent ici à leur date.</p>
       </div>
       <dl className="cal-chiffres">
         <div><dt>Aujourd'hui</dt><dd>{aujourdhuiEntrees.length}</dd></div>
@@ -213,15 +233,18 @@ export function Calendrier() {
     {objectifs === null && !erreur && <p className="cal-aide">Chargement du calendrier…</p>}
     {objectifs && <ol className="cal-semaine">
       {joursDeLaSemaine(debut).map((jour, i) => {
-        const entrees = parJour.get(jour) ?? [];
+        const cartes = [
+          ...(parJour.get(jour) ?? []).map((e) => ({ cle: e.cle, heure: e.heure, carte: <Carte key={e.cle} entree={e} choisie={choisi === e.objectif.id} onChoisir={() => setChoisi(choisi === e.objectif.id ? null : e.objectif.id)} /> })),
+          ...(feuilleParJour.get(jour) ?? []).map((d) => ({ cle: d.cle, heure: d.heure, carte: <CarteFeuille key={d.cle} depart={d} /> })),
+        ].sort((a, b) => a.heure.localeCompare(b.heure));
         return <li key={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
           <h3><span>{JOURS[i]}</span> {jourLisible(jour)}</h3>
-          {entrees.length ? <ul>{entrees.map((e) => <Carte key={e.cle} entree={e} choisie={choisi === e.objectif.id} onChoisir={() => setChoisi(choisi === e.objectif.id ? null : e.objectif.id)} />)}</ul>
+          {cartes.length ? <ul>{cartes.map((c) => c.carte)}</ul>
             : <p className="cal-vide">Rien de prévu</p>}
         </li>;
       })}
     </ol>}
-    {objectifs && !objectifs.length && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et son heure.</p>}
+    {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et son heure.</p>}
     {selection && <Detail objectif={selection} source={source} onChange={() => void recharger()} />}
   </div>;
 }

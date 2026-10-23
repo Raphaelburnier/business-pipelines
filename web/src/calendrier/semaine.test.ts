@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Objectif } from "./api";
-import { dateCivile, departEnRetard, departModifiable, enRetard, entreesDe, etatEntree, joursDeLaSemaine, lundi, semaine, suivante } from "./semaine";
+import { dateCivile, departEnRetard, departsFeuille, etatDepartFeuille, instantZurich, departModifiable, enRetard, entreesDe, etatEntree, joursDeLaSemaine, lundi, semaine, suivante } from "./semaine";
 
 function objectif(partiel: Partial<Objectif>): Objectif {
   return {
@@ -64,5 +64,27 @@ describe("semaine du calendrier", () => {
     for (const statut of ['succeeded', 'cancelled']) expect(enRetard({ ...o, occurrences: [{ ...o.occurrences[0]!, statut }] }, maintenant)).toBe(false);
     const recurrent = { ...o, repetition: 'daily' as const, nextAt: '2026-10-23T05:30:00.000Z' };
     expect(departModifiable(recurrent)).toBe(recurrent.nextAt);
+  });
+  it("convertit une heure de Zurich en instant, y compris autour des changements d'heure", () => {
+    expect(instantZurich("2026-10-24", "07:30")).toBe("2026-10-24T05:30:00.000Z");
+    expect(instantZurich("2026-10-26", "07:30")).toBe("2026-10-26T06:30:00.000Z");
+    // 25 octobre 2026 : 02:30 existe deux fois, la première est retenue.
+    expect(instantZurich("2026-10-25", "02:30")).toBe("2026-10-25T00:30:00.000Z");
+    // 29 mars 2026 : 02:30 n'existe pas.
+    expect(() => instantZurich("2026-03-29", "02:30")).toThrow(/n'existe pas/);
+  });
+
+  it("place les objectifs planifiés depuis À venir à leur jour", () => {
+    const base = { objectif: { id: "11.3", revision: 1 }, runId: null, projetId: "business-pipelines", agent: null, creeLe: "", raison: null, livraison: null };
+    const parJour = departsFeuille([
+      { ...base, commandeId: "c1", statut: "queued", prevuLe: "2026-10-24T05:30:00.000Z" },
+      { ...base, commandeId: "c2", statut: "queued", prevuLe: null },
+      { ...base, commandeId: "c3", statut: "queued", prevuLe: "2026-11-02T05:30:00.000Z" },
+    ], "2026-10-19");
+    expect([...parJour.keys()]).toEqual(["2026-10-24"]);
+    const [d] = parJour.get("2026-10-24")!;
+    expect(d).toMatchObject({ objectifId: "11.3", heure: "07:30" });
+    expect(etatDepartFeuille(d!).mot).toBe("planifié");
+    expect(etatDepartFeuille({ ...d!, statut: "running", runId: "r" }).mot).toBe("en cours");
   });
 });
