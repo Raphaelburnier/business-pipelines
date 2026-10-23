@@ -52,11 +52,12 @@ test("les kinds sans autorité ne sont pas concernés, et sans clé c'est la tra
 
 test("une commande signée ne sert qu'une fois, et pas après un redémarrage du service", () => {
   const store = new EventStore(base());
-  const avant = store.creerCommande({ kind: "livraison.start", payload: livraison, par: "raphael@example.com", canal: "tailnet", signer: signature.signataire(CLE, "livraison.start") });
-  const registre = signature.creerRegistre({ demarrage: Date.parse(avant.created_at) + 1 });
-  assert.match(signature.verifier(CLE, avant, { registre }).raison, /avant le redémarrage/);
   const c = store.creerCommande({ kind: "livraison.start", payload: livraison, par: "raphael@example.com", canal: "tailnet", signer: signature.signataire(CLE, "livraison.start") });
+  const registre = signature.creerRegistre({ demarrage: Date.parse(c.created_at) });
   const maintenant = Date.parse(c.created_at) + 1000;
+  const avant = { ...c, id: crypto.randomUUID(), created_at: new Date(Date.parse(c.created_at) - 1000).toISOString() };
+  avant.sig = signature.signer(CLE)(avant);
+  assert.match(signature.verifier(CLE, avant, { registre, maintenant }).raison, /avant le redémarrage/);
   assert.deepEqual(signature.verifier(CLE, c, { registre, maintenant }), { ok: true });
   // Le runner remet la ligne en file : elle reste signée et fraîche, mais déjà vue.
   store.db.prepare("UPDATE commands SET status = 'pending' WHERE id = ?").run(c.id);
