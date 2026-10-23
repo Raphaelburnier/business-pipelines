@@ -14,7 +14,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSyncBorne } = require("./operations-bornees");
 
 const KIND = "livraison.start";
 const DEPOTS = /** @type {const} */ (["cockpit", "moteur", "registre"]);
@@ -32,7 +32,7 @@ class Refus extends Error {}
 function gitLocal() {
   /** @param {string[]} args */
   return (args, { entree } = {}) =>
-    execFileSync("git", ["-c", "safe.directory=*", ...args], {
+    execFileSyncBorne("git", ["-c", "safe.directory=*", ...args], {
       input: entree,
       maxBuffer: 512 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe"],
@@ -160,7 +160,7 @@ function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = n
       const cible = path.join(stage, EMPLACEMENTS[d]);
       fs.mkdirSync(cible, { recursive: true });
       const tar = git(["--git-dir", miroirs[d], "archive", payload[d]]);
-      execFileSync("tar", ["-x", "-C", cible], { input: tar, maxBuffer: 512 * 1024 * 1024 });
+      execFileSyncBorne("tar", ["-x", "-C", cible], { input: tar, maxBuffer: 512 * 1024 * 1024, operation: "archive" });
     }
     const construite = maintenant.toISOString();
     fs.writeFileSync(
@@ -174,7 +174,7 @@ function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = n
     fs.mkdirSync(dossier, { recursive: true, mode: 0o700 });
     const archive = path.join(dossier, nomArchive);
     // GNU tar : les propriétaires numériques gardent l'archive identique à celle de bin/livrer.sh.
-    execFileSync("tar", ["-czf", archive, "--owner=1000", "--group=1000", "--numeric-owner", "-C", stage, "."]);
+    execFileSyncBorne("tar", ["-czf", archive, "--owner=1000", "--group=1000", "--numeric-owner", "-C", stage, "."], { operation: "archive" });
     const empreinte = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
 
     const modele = texte(git(["--git-dir", miroirs.cockpit, "show", `${modeleDe}:deploy/nas/deploy.sh.modele`]));

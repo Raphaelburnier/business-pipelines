@@ -85,6 +85,12 @@ function basculer(store, commande, deploy) {
 async function livrer(store, commande) {
   const emettre = (type, payload) => store.emettre({ type, payload: { commande: commande.id, ...payload } });
   const payload = commande.payload;
+  const incident = path.join(BUSINESS, "etat", "incident-livraison");
+  if (fs.existsSync(incident)) {
+    const raison = `livraison suspendue : ${fs.readFileSync(incident, "utf8").trim()}`;
+    emettre("livraison.fin", { issue: "suspendue", etape: "restaurer", raison });
+    return { ok: false, raison };
+  }
   const version = livreur.DEPOTS.map((d) => `${d} ${String(payload[d]).slice(0, 7)}`).join(" · ");
   console.log(`Livraison ${commande.id} demandée par ${commande.par} : ${version}`);
   emettre("livraison.debut", { par: commande.par, version, cible: payload });

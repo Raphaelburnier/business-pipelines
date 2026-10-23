@@ -1,6 +1,6 @@
 # Lot 2.6 — Délais des opérations qui occupent les files
 
-Statut : proposition à valider avant implémentation.
+Statut : plan validé ; implémentation et tests en cours.
 Date : 23 octobre 2026.
 Bases examinées : cockpit `b74e0f7`, moteur `92c60a9`.
 
@@ -8,10 +8,9 @@ Bases examinées : cockpit `b74e0f7`, moteur `92c60a9`.
 
 Le lot doit libérer les files lorsqu'une opération est réellement bloquée, sans
 interrompre un run long qui progresse normalement. Le seuil de 6 h devient un contrôle
-diagnostique, pas un ordre d'arrêt. L'orchestrateur surveille la progression et décide
-des arrêts sur des signaux vérifiables ; un agent de supervision peut aider au
-diagnostic, sans pouvoir arrêter seul un run. Le choix d'un plafond absolu distinct
-reste à valider.
+diagnostique, pas un ordre d'arrêt. L'orchestrateur enregistre l'état du run et conserve
+la décision d'arrêt fondée sur les délais d'opérations, les limites de tours et les
+limites de cycles. Aucun délai total ne tue un run valide.
 
 ## Objectif et périmètre
 
@@ -71,30 +70,23 @@ Aucun réglage `0` ne désactive silencieusement une protection.
 | Git, clone/fetch/push compris | 2 min | 30 min | Arrêter l'arbre du processus, erreur contextualisée |
 | Extraction/compression d'archive | 5 min | 15 min | Arrêt effectif, aucun succès ni bascule si préparation incomplète |
 | Script externe d'un nœud | 15 min | 6 h | Annulation, terminaison du groupe, étape en échec explicite |
-| Run dans la file du cockpit | contrôle diagnostique à 6 h | plafond absolu séparé, valeur à valider | Ne pas arrêter sur le seul temps écoulé ; orchestrateur tranche sur l'état et la progression |
+| Run dans la file du cockpit | contrôle diagnostique à 6 h (configurable, plafond 24 h) | pas de plafond total | Enregistrer la dernière progression et les étapes actives ; le run continue |
 | Construction d'une livraison | 45 min | 2 h | Interrompre la construction propre au lot, conserver l'installation active |
 | Bascule et contrôle de santé | 10 min | 30 min | Entrer dans la restauration bornée |
 | Restauration | 5 min | 15 min | Si non rétablie, incident persistant et suspension des nouvelles livraisons |
 
-Le contrôle diagnostique à 6 h collecte l'étape courante, les transitions récentes,
-les heartbeats, les dernières sorties et l'état des processus. Il vérifie si le run a
-avancé ou répète les mêmes actions sans progrès. Un heartbeat seul ne prouve pas le
-progrès ; les appels longs doivent exposer un état et des signaux d'activité adaptés.
-Les attentes quota/approbation qui font sortir la CLI gardent leur fonctionnement
+Le contrôle diagnostique à 6 h collecte les dernières transitions, les dernières
+progressions observées et les étapes encore actives dans un événement durable
+`run.long_running`. Il ne provoque pas d'appel de modèle et ne modifie pas le statut du
+run. Les attentes quota/approbation qui font sortir la CLI gardent leur fonctionnement
 actuel et ne sont pas classées comme blocage.
 
 La surveillance déterministe appartient à l'orchestrateur, qui possède l'état du run
-et des étapes. Un agent de supervision peut fournir un diagnostic en lecture seule
-lorsque les signaux sont ambigus, mais ne commande jamais seul l'arrêt ni la reprise.
-L'orchestrateur arrête uniquement après confirmation d'une stagnation ou d'une boucle
-selon des critères testables (absence de transition/progrès sur une fenêtre propre à
-l'étape, ou cycle d'actions répétées au-delà d'un seuil configuré). Les seuils et les
-signaux précis doivent être fixés avant l'implémentation et testés sur un run long qui
-progresse, un processus bloqué et un cycle répétitif.
-
-Un plafond absolu de durée totale, s'il est conservé, est une barrière opérateur
-distincte du détecteur de blocage. Sa valeur et son comportement restent à valider ;
-il ne peut pas être présenté comme une preuve qu'un run tourne en rond.
+et des étapes. Aucun agent de supervision n'est requis : il ajouterait un appel modèle
+sans fournir de preuve plus forte que l'état déjà tenu par le moteur. Les opérations
+individuelles ont leurs propres délais ; les tours d'agent et les cycles du graphe
+gardent leurs limites configurées. Ces bornes arrêtent un appel ou un cycle qui dépasse
+sa limite, tout en laissant continuer les autres étapes et les runs longs qui avancent.
 
 Les commandes utilitaires Docker et Git d'une phase ont aussi leur propre borne ;
 une phase globale ne dispense pas de borner la commande sur laquelle elle attend.
@@ -233,9 +225,9 @@ ignorant SIGTERM. Aucun appel modèle ni panne volontaire sur la production n'es
 
 ## Limites et validation demandée
 
-À valider : les défauts du tableau et le choix d'une suspension explicite quand l'arrêt
-ou la restauration ne sont pas confirmés. Une suspension visible protège les données ;
-elle est différente d'une opération laissée en attente sans échéance ni explication.
+Le plan et les valeurs par défaut du tableau sont validés par Raphaël le 23 octobre 2026.
+La suspension explicite décrite ici s'applique lorsqu'un arrêt ou une restauration ne sont
+pas confirmés ; elle protège les données et rend la raison visible.
 
 Pas de changement d'autorité, de politiques de fusion, de secrets, de schéma de base
 ou de dépendances sans justification distincte. Aucun timeout configuré depuis un texte

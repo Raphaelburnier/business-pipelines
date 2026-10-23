@@ -13,7 +13,7 @@
 // (GIT_CONFIG_*), l'API par un en-tête.
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSyncBorne, configuration: delaiConfigure, limiteExecution } = require("./operations-bornees");
 const suivi = require("./suivi-livraisons");
 
 const DEPOT_GITHUB = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -73,7 +73,7 @@ function gitAvec({ jeton, hote = "https://github.com/" }) {
     env.GIT_CONFIG_VALUE_0 = `AUTHORIZATION: basic ${base64}`;
   }
   /** @param {string[]} args */
-  return (args) => execFileSync("git", ["-c", "safe.directory=*", ...args], { env, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return (args) => execFileSyncBorne("git", ["-c", "safe.directory=*", ...args], { env, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 /**
@@ -209,21 +209,36 @@ function sectionRevues({ git, depot, runId }) {
  * Un appel à l'API GitHub.
  * @param {{ fetchImpl: typeof fetch, jeton: string, api?: string }} options
  */
-function apiAvec({ fetchImpl, jeton, api = "https://api.github.com" }) {
+function apiAvec({ fetchImpl, jeton, api = "https://api.github.com", delaiMs = delaiConfigure("http") }) {
   return async (methode, chemin, corps) => {
-    const reponse = await fetchImpl(`${api}${chemin}`, {
-      method: methode,
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${jeton}`,
-        "x-github-api-version": "2022-11-28",
-        ...(corps ? { "content-type": "application/json" } : {}),
-      },
-      body: corps ? JSON.stringify(corps) : undefined,
-    });
-    const lu = await reponse.json().catch(() => null);
-    if (!reponse.ok) throw new Error(`GitHub ${methode} ${chemin} : ${reponse.status} ${lu && lu.message ? lu.message : ""}`.trim());
-    return lu;
+    const controleur = new AbortController();
+    const minuterie = setTimeout(() => controleur.abort(), delaiMs);
+    try {
+      const reponse = await fetchImpl(`${api}${chemin}`, {
+        method: methode,
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: `Bearer ${jeton}`,
+          "x-github-api-version": "2022-11-28",
+          ...(corps ? { "content-type": "application/json" } : {}),
+        },
+        body: corps ? JSON.stringify(corps) : undefined,
+        signal: controleur.signal,
+      });
+      let lu;
+      try { lu = await reponse.json(); }
+      catch (cause) {
+        if (controleur.signal.aborted) throw limiteExecution("http:github", delaiMs, cause);
+        lu = null;
+      }
+      if (!reponse.ok) throw new Error(`GitHub ${methode} ${chemin} : ${reponse.status} ${lu && lu.message ? lu.message : ""}`.trim());
+      return lu;
+    } catch (cause) {
+      if (controleur.signal.aborted) throw limiteExecution("http:github", delaiMs, cause);
+      throw cause;
+    } finally {
+      clearTimeout(minuterie);
+    }
   };
 }
 

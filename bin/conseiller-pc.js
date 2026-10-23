@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { spawn } = require("child_process");
+const { execFileSyncBorne } = require("../src/operations-bornees");
 const { dansPerimetre } = require("../src/vault-index");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -73,21 +73,15 @@ async function appel(requete, corps = {}, delaiMs = 30_000) {
 // ---------- git dans le vault ----------
 
 function git(args, { entree = null, binaire = false } = {}) {
-  return new Promise((resoudre, rejeter) => {
-    const p = spawn("git", ["-C", VAULT, ...args], { stdio: ["pipe", "pipe", "pipe"] });
-    const sortie = [];
-    let erreur = "";
-    p.stdout.on("data", (b) => sortie.push(b));
-    p.stderr.on("data", (b) => (erreur += b));
-    p.on("error", rejeter);
-    p.on("close", (code) => {
-      const tout = Buffer.concat(sortie);
-      if (code !== 0) return rejeter(Object.assign(new Error(`git ${args[0]} : ${erreur.trim() || `code ${code}`}`), { sortie: tout.toString() }));
-      resoudre(binaire ? tout : tout.toString());
+  try {
+    const tout = execFileSyncBorne("git", ["-C", VAULT, ...args], {
+      operation: "git", input: entree, maxBuffer: 64 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
     });
-    if (entree !== null) p.stdin.end(entree);
-    else p.stdin.end();
-  });
+    return Promise.resolve(binaire ? tout : tout.toString());
+  } catch (cause) {
+    return Promise.reject(Object.assign(new Error(`git ${args[0]} : ${cause.message}`), { cause, sortie: String(cause.stdout || "") }));
+  }
 }
 
 // Chemin, blob et contenu de chaque note du périmètre telle qu'elle est sur le disque, commitée
