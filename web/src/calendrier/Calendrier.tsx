@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { LOTS } from "../avenir/feuille";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { lignes } from "../donnees/missions";
+import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
 import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Objectif, type Priorite, type Repetition, type SourceCalendrier } from "./api";
 import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, enRetard, etatDepartFeuille, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type DepartFeuille, type Entree } from "./semaine";
 
@@ -75,7 +76,7 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
           {modeles.map((m) => <option key={`${m.id}@${m.version}`} value={m.id}>{m.graph.title || m.graph.name}{m.origine === "personnel" ? " (personnel)" : ""}</option>)}
         </select></label>
       </div>
-      <label className="cal-prioritaire"><input type="checkbox" role="switch" name="prioritaire" /> Run prioritaire</label>
+      <InterrupteurPrioritaire name="prioritaire" />
       {!modeles.length && <p className="cal-aide">Aucun pipeline rattaché à ce projet.</p>}
       <label>Objectif<textarea name="objectif" rows={2} required placeholder="Ce que le run doit produire" /></label>
       <label>Critères de réussite<textarea name="criteres" rows={2} required placeholder="Un critère par ligne" /></label>
@@ -118,7 +119,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
     </header>
     <div className="cal-actions">
       <button type="button" className="cal-action" disabled={envoi} onClick={() => void changer({ active: !objectif.active })}>{objectif.active ? "Mettre en pause" : "Activer"}</button>
-      <label className="cal-prioritaire"><input type="checkbox" role="switch" checked={objectif.priority === "haute"} disabled={envoi} onChange={(e) => void changer({ priority: e.target.checked ? "haute" : "normale" })} /> Run prioritaire</label>
+      <InterrupteurPrioritaire checked={objectif.priority === "haute"} disabled={envoi} onChange={(prioritaire) => void changer({ priority: prioritaire ? "haute" : "normale" })} />
     </div>
     {prochain && <form className="cal-champs" onSubmit={deplacer} key={objectif.revision}>
       <label>Prochain départ<input type="date" name="date" defaultValue={prochain.date} required /></label>

@@ -235,7 +235,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "11.1", titre: "Renommer « À venir » en « Coming soon »", detail: "Menu, titre de la page et en-tête.", fichiers: ["BP web/src/App.tsx:235", "BP web/src/avenir/AVenir.tsx"], statut: "a-faire" },
       { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Aujourd'hui : « choisis par le planificateur ».", fichiers: ["BP web/src/avenir/AVenir.tsx:141", "BP src/objectifs-avenirs.js"], statut: "a-faire" },
-      { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Remplace le sélecteur Priorité : un run prioritaire passe en premier quand le quota est serré et à la reprise.", fichiers: ["BP web/src/avenir/AVenir.tsx:142", "AO src/maitre.js"], statut: "a-faire" },
+      { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Un interrupteur Run prioritaire remplace les trois niveaux dans À venir et le Calendrier ; la file existante applique haute ou normale, après les reprises admissibles.", fichiers: ["BP web/src/InterrupteurPrioritaire.tsx", "BP web/src/avenir/AVenir.tsx", "BP web/src/calendrier/Calendrier.tsx"], statut: "fait" },
       { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire" },
       { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "fait", raisonSensibilite: "Planifier une tâche autorise un lancement différé." },
     ],

@@ -1,0 +1,7 @@
+.cal-page label.run-prioritaire, .av-page label.run-prioritaire { display: flex; flex-direction: row; align-items: center; gap: 10px; color: var(--color-encre); font-size: 13px; cursor: pointer; }
+label.run-prioritaire input { appearance: none; flex: 0 0 auto; width: 40px; height: 24px; box-sizing: border-box; margin: 0; padding: 2px; border: 1px solid var(--color-trait); border-radius: 999px; background: var(--color-carte); cursor: pointer; }
+.run-prioritaire input::before { content: ""; display: block; width: 18px; height: 18px; border-radius: 50%; background: var(--color-douce); }
+label.run-prioritaire input:checked { border-color: var(--color-accent); background: var(--color-accent); }
+.run-prioritaire input:checked::before { transform: translateX(14px); background: var(--color-sur-accent); }
+.run-prioritaire input:focus-visible { outline: 2px solid var(--color-encre); outline-offset: 3px; }
+.run-prioritaire input:disabled { opacity: .5; cursor: default; }
