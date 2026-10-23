@@ -39,6 +39,13 @@ function projet(params, id) {
   return p;
 }
 const dossier = (params) => params.registreDir || registre.dossierRegistre();
+function grapheDefinition(pipeline) {
+  return schema.graph.parse({ ...pipeline, nodes: pipeline.nodes.map((n) => {
+    if (n.type !== 'review') return n;
+    const { disabled, params, ...definition } = n;
+    return definition;
+  }) });
+}
 function catalogue(store, params) {
   initialiser(store);
   const agents = [], projets = [], modeles = [], erreurs = [];
@@ -62,7 +69,7 @@ function catalogue(store, params) {
       p.pipelines.forEach((a, index) => {
         const r = registre.resoudreProjet(path.join(params.projetsDir, id, 'project.json'), { index, registre: racine });
         modeles.push({ id: `registre:${id}:${a.extends}`, version: r.pipeline.version, projectId: id,
-          graph: schema.graph.parse(r.pipeline), assignments: {}, baseRef: a.extends, origine: 'registre' });
+          graph: grapheDefinition(r.pipeline), assignments: {}, baseRef: a.extends, origine: 'registre' });
       });
     } catch (err) { erreurs.push(`${id} : ${err.message}`); }
   }
@@ -80,7 +87,7 @@ function resoudre(params, brut) {
     const index = p.pipelines.findIndex((a) => a.extends === d.baseRef);
     if (index < 0) throw new Error('Le modèle de départ doit être attaché à ce projet.');
     base = registre.resoudreProjet(path.join(params.projetsDir, p.id, 'project.json'), { index, registre: racine });
-    const original = schema.graph.parse(base.pipeline);
+    const original = grapheDefinition(base.pipeline);
     // Les contrôles de publication et les branches qui y conduisent restent présents.
     for (const n of original.nodes) {
       const remplace = d.graph.nodes.find((v) => v.id === n.id);
@@ -95,6 +102,13 @@ function resoudre(params, brut) {
     if (d.graph.workspace !== 'documents' || d.graph.nodes.some((n) => n.type !== 'agent')) throw new Error('Un pipeline libre utilise des agents dans un espace documentaire. Pour développer une application, adapte son workflow de projet.');
     p.publier = false;
     d.graph.tags = ['ponctuel'];
+  }
+  for (const n of d.graph.nodes) {
+    if (n.scopeDir !== undefined && n.scopeDir !== '.' &&
+      (!/^[a-zA-Z0-9_./-]+$/.test(n.scopeDir) || n.scopeDir.startsWith('/') ||
+        n.scopeDir.split('/').some((s) => s === '..' || s === '.git' || s === '' || s === '.'))) {
+      throw new Error('Le périmètre doit rester relatif au workspace.');
+    }
   }
   // Artefacts transférés entre machines : uniquement des chemins relatifs sous le workspace.
   for (const n of d.graph.nodes) for (const f of [...(n.inputs || []), ...(n.outputs || [])]) {
@@ -223,9 +237,12 @@ function modifier(store, id, brut) {
     const c = dernier && store.commande(dernier.commandId);
     let at = g.next_at, date = d.date || g.local_date, heure = d.heure || g.local_hour;
     if (d.date || d.heure) {
-      if (c?.run_id || c?.status === 'taken') throw new Error('Ce travail a déjà commencé ; sa date ne peut plus être déplacée.');
+      // next_at désigne le prochain créneau non matérialisé. L'occurrence précédente
+      // d'une récurrence a sa propre commande, qui doit conserver sa date et son run.
+      const deplacerCommande = !g.next_at && g.recurrence === 'none' && c;
+      if (deplacerCommande && (c.run_id || c.status !== 'pending')) throw new Error('Ce travail a déjà commencé ; sa date ne peut plus être déplacée.');
       at = dates.instantLocal(date, heure);
-      if (c?.status === 'pending') {
+      if (deplacerCommande) {
         const payload = { ...c.payload, scheduling: { ...c.payload.scheduling, notBefore: at } };
         store.db.prepare('UPDATE commands SET payload_json=? WHERE id=?').run(JSON.stringify(payload), c.id);
         store.db.prepare('UPDATE atelier_occurrences SET scheduled_at=?,local_date=? WHERE command_id=?').run(at, date, c.id);

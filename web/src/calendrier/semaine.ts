@@ -82,8 +82,22 @@ export function semaine(objectifs: Objectif[], debut: string): Map<string, Entre
 }
 
 /** Un départ actif dont l'heure est passée sans que le programmateur l'ait créé : il attend quelque chose. */
+export function departEnRetard(objectif: Objectif, maintenant: number): string | null {
+  const dates = objectif.occurrences
+    .filter((o) => !['succeeded', 'completed', 'cancelled'].includes(o.statut))
+    .map((o) => o.scheduledAt);
+  if (objectif.active && objectif.nextAt) dates.push(objectif.nextAt);
+  return dates.filter((d) => Date.parse(d) <= maintenant).sort()[0] ?? null;
+}
+
 export function enRetard(objectif: Objectif, maintenant: number): boolean {
-  return objectif.active && objectif.nextAt !== null && Date.parse(objectif.nextAt) <= maintenant;
+  return departEnRetard(objectif, maintenant) !== null;
+}
+
+export function departModifiable(objectif: Objectif): string | null {
+  if (objectif.nextAt) return objectif.nextAt;
+  const derniere = objectif.occurrences[0];
+  return objectif.repetition === 'none' && derniere?.statut === 'queued' && !derniere.runId ? derniere.scheduledAt : null;
 }
 
 export type Ton = "attente" | "actif" | "ok" | "echec" | "neutre";

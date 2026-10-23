@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Objectif } from "./api";
-import { dateCivile, enRetard, entreesDe, etatEntree, joursDeLaSemaine, lundi, semaine, suivante } from "./semaine";
+import { dateCivile, departEnRetard, departModifiable, enRetard, entreesDe, etatEntree, joursDeLaSemaine, lundi, semaine, suivante } from "./semaine";
 
 function objectif(partiel: Partial<Objectif>): Objectif {
   return {
@@ -49,5 +49,20 @@ describe("semaine du calendrier", () => {
     expect(enRetard(tot, maintenant)).toBe(true);
     expect(enRetard(tard, maintenant)).toBe(false);
     expect(enRetard({ ...tot, active: false }, maintenant)).toBe(false);
+  });
+  it("garde les anciennes occurrences inachevées visibles et permet le report d'un ponctuel en file", () => {
+    const o = objectif({ occurrences: [{ id: 'a', date: '2026-10-12', scheduledAt: '2026-10-12T05:30:00.000Z', commandId: 'c', runId: null, statut: 'queued', raison: 'worker absent', attente: null, livraison: null }] });
+    const maintenant = Date.parse('2026-10-22T10:00Z');
+    expect(entreesDe(o, '2026-10-19')).toEqual([]);
+    expect(departEnRetard(o, maintenant)).toBe('2026-10-12T05:30:00.000Z');
+    expect(departModifiable(o)).toBe('2026-10-12T05:30:00.000Z');
+    for (const statut of ['running', 'waiting_quota', 'failed']) {
+      const enCours = { ...o, occurrences: [{ ...o.occurrences[0]!, statut, runId: 'r' }] };
+      expect(enRetard(enCours, maintenant)).toBe(true);
+      expect(departModifiable(enCours)).toBeNull();
+    }
+    for (const statut of ['succeeded', 'cancelled']) expect(enRetard({ ...o, occurrences: [{ ...o.occurrences[0]!, statut }] }, maintenant)).toBe(false);
+    const recurrent = { ...o, repetition: 'daily' as const, nextAt: '2026-10-23T05:30:00.000Z' };
+    expect(departModifiable(recurrent)).toBe(recurrent.nextAt);
   });
 });

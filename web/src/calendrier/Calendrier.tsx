@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useHorloge, useSource } from "../donnees/contexte";
 import { lignes } from "../donnees/missions";
 import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Objectif, type Priorite, type Repetition, type SourceCalendrier } from "./api";
-import { dateCivile, decaler, enRetard, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type Entree } from "./semaine";
+import { dateCivile, decaler, departEnRetard, departModifiable, enRetard, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type Entree } from "./semaine";
 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const MOT_PRIORITE: Record<Priorite, string> = { haute: "haute", normale: "normale", basse: "basse" };
@@ -48,7 +48,7 @@ function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source: Sourc
     const objectif = String(f.get("objectif") || "").trim();
     if (!modele) { setErreur("Choisis le pipeline à lancer."); return; }
     if (!objectif || !criteres.length) { setErreur("Décris l'objectif et au moins un critère de réussite."); return; }
-    const calendrier = { date: String(f.get("date")), heure: String(f.get("heure")), repetition: String(f.get("repetition")) as Repetition, active: f.get("active") === "on" };
+    const calendrier = { date: String(f.get("date")), heure: String(f.get("heure") || "00:00"), repetition: String(f.get("repetition")) as Repetition, active: f.get("active") === "on" };
     const brouillon = { projectId: modele.projectId, graph: modele.graph, assignments: modele.assignments, baseRef: modele.baseRef };
     const priority = String(f.get("priorite")) as Priorite;
     const empreinte = JSON.stringify({ brouillon, objectif, criteres, priority, calendrier });
@@ -83,7 +83,7 @@ function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source: Sourc
       <label>Critères de réussite<textarea name="criteres" rows={2} required placeholder="Un critère par ligne" /></label>
       <div className="cal-champs">
         <label>Date<input type="date" name="date" defaultValue={aujourdhui} min={aujourdhui} required /></label>
-        <label>Heure ({FUSEAU})<input type="time" name="heure" defaultValue={prochaineHeure} required /></label>
+        <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" name="heure" defaultValue={prochaineHeure} /></label>
         <label>Répétition<select name="repetition" defaultValue="none">
           {(Object.keys(MOT_REPETITION) as Repetition[]).map((r) => <option key={r} value={r}>{MOT_REPETITION[r]}</option>)}
         </select></label>
@@ -99,7 +99,8 @@ function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source: Sourc
 function Detail({ objectif, source, onChange }: { objectif: Objectif; source: SourceCalendrier; onChange: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
-  const prochain = objectif.nextAt ? dateCivile(objectif.nextAt) : null;
+  const instant = departModifiable(objectif);
+  const prochain = instant ? dateCivile(instant) : null;
   async function changer(changement: Omit<Parameters<SourceCalendrier["modifier"]>[1], "revision">) {
     setErreur(null); setEnvoi(true);
     try { await source.modifier(objectif.id, { revision: objectif.revision, ...changement }); onChange(); }
@@ -205,8 +206,8 @@ export function Calendrier() {
     {erreur && <p className="cal-erreur" role="alert">Calendrier indisponible : {erreur}</p>}
     {!!retards.length && <section className="cal-retards" aria-label="Départs en retard">
       <h3>En retard</h3>
-      <p className="cal-aide">L'heure est passée mais le départ n'a pas été créé, en général parce que le départ précédent n'est pas terminé ou a échoué.</p>
-      <ul>{retards.map((o) => <li key={o.id}><button type="button" className="cal-lien" onClick={() => setChoisi(o.id)}>{o.titre}</button> prévu {o.nextAt && new Date(o.nextAt).toLocaleString("fr-CH", { timeZone: FUSEAU })}</li>)}</ul>
+      <p className="cal-aide">L'heure prévue est passée et le travail attend encore son résultat. Ouvre son détail pour voir son état et ses blocages.</p>
+      <ul>{retards.map((o) => <li key={o.id}><button type="button" className="cal-lien" onClick={() => setChoisi(o.id)}>{o.titre}</button> prévu {new Date(departEnRetard(o, maintenant)!).toLocaleString("fr-CH", { timeZone: FUSEAU })}</li>)}</ul>
     </section>}
 
     {objectifs === null && !erreur && <p className="cal-aide">Chargement du calendrier…</p>}

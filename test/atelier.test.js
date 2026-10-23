@@ -85,6 +85,34 @@ test('un worker indisponible est exclu sans prendre la commande', t => {
   assert.equal(atelier.lire(f.store, f.demande.requestId).occurrences[0].raison, 'worker indisponible');
   assert.deepEqual(atelier.exclus(f.store, () => {}), []);
 });
+for (const repetition of ['daily', 'weekdays', 'weekly']) for (const etat of ['pending', 'running', 'succeeded']) {
+  test(`report du prochain départ ${repetition} après une occurrence ${etat}`, t => {
+    const f = fixture(t), now = Date.parse('2026-10-21T08:00Z');
+    atelier.creer(f.store, f.params, { ...f.demande, calendrier: { date: '2026-10-21', heure: '10:00', repetition } }, f.qui, now);
+    const [c] = atelier.programmer(f.store, now);
+    if (etat !== 'pending') {
+      f.store.prendreCommande({ kinds: ['run.start'] });
+      const { run } = f.store.ouvrirRunCommande(c.id, { pipelineRef: 'demo@1', projectId: 'demo' });
+      if (etat === 'succeeded') f.store.statutRun(run.id, 'succeeded');
+    }
+    const avant = atelier.lire(f.store, f.demande.requestId);
+    const commandeAvant = f.store.commande(c.id);
+    const apres = atelier.modifier(f.store, avant.id, { revision: avant.revision, date: '2026-10-30', heure: '11:00' });
+    assert.equal(apres.nextAt, '2026-10-30T10:00:00.000Z');
+    assert.deepEqual(apres.occurrences, avant.occurrences, 'le report futur ne réécrit pas une occurrence existante');
+    assert.deepEqual(f.store.commande(c.id), commandeAvant);
+    assert.equal(atelier.programmer(f.store, Date.parse('2026-10-22T09:00Z')).length, 0);
+  });
+}
+test('un départ unique commencé ne peut pas être déplacé ni recréé', t => {
+  const f = fixture(t), now = Date.parse('2026-10-21T08:00Z');
+  atelier.creer(f.store, f.params, f.demande, f.qui, now);
+  atelier.programmer(f.store, now);
+  f.store.prendreCommande({ kinds: ['run.start'] });
+  const g = atelier.lire(f.store, f.demande.requestId);
+  assert.throws(() => atelier.modifier(f.store, g.id, { revision: g.revision, date: '2026-10-22' }), /déjà commencé/);
+  assert.equal(atelier.programmer(f.store, now + 86400000).length, 0);
+});
 test('un pipeline libre ne permet ni script arbitraire ni sortie hors workspace', t => {
   const f = fixture(t);
   const unsafe = structuredClone(f.brouillon);
@@ -92,6 +120,34 @@ test('un pipeline libre ne permet ni script arbitraire ni sortie hors workspace'
   assert.throws(() => atelier.resoudre(f.params, unsafe), /Chemin/);
   unsafe.graph.nodes = [{ id: 'shell', type: 'script', run: 'bash' }];
   assert.throws(() => atelier.resoudre(f.params, unsafe), /pipeline libre/);
+  for (const scopeDir of ['/tmp', '../autre', 'web/../../autre', '.git', 'web//src']) {
+    assert.throws(() => atelier.resoudre(f.params, { ...f.brouillon, graph: { ...f.brouillon.graph, nodes: [{ ...f.brouillon.graph.nodes[0], scopeDir }] } }), /périmètre/);
+  }
+  assert.equal(atelier.resoudre(f.params, { ...f.brouillon, graph: { ...f.brouillon.graph, nodes: [{ ...f.brouillon.graph.nodes[0], scopeDir: 'documents' }] } }).resolution.pipeline.nodes[0].scopeDir, 'documents');
+});
+test('le catalogue et la mission conservent les revues obligatoires et optionnelles du projet', t => {
+  const f = fixture(t), fichier = path.join(f.params.registreDir, 'pipelines/demo/v1/pipeline.json');
+  const graph = JSON.parse(fs.readFileSync(fichier));
+  fs.mkdirSync(path.join(f.params.registreDir, 'agents/relecteur/v1'), { recursive: true });
+  fs.writeFileSync(path.join(f.params.registreDir, 'agents/relecteur/v1/agent.md'), '---\nname: relecteur\nversion: 1\ndescription: Relire\ndefaultLlm: {via: claude, model: sonnet}\nallowedTools: [Read]\n---\nRelis.');
+  graph.nodes.push({ id: 'relire', type: 'review', agent: 'relecteur@1' }, { id: 'securite', type: 'review', agent: 'relecteur@1', optional: true });
+  graph.edges.push({ from: 'rediger', to: 'relire' }, { from: 'relire', to: 'securite' });
+  fs.writeFileSync(fichier, JSON.stringify(graph));
+  const catalogue = atelier.catalogue(f.store, f.params);
+  assert.deepEqual(catalogue.erreurs, []);
+  const modele = catalogue.modeles[0];
+  assert.equal(modele.graph.nodes.filter(n => n.type === 'review').length, 2);
+  const brouillon = { projectId: modele.projectId, graph: modele.graph, assignments: modele.assignments, baseRef: modele.baseRef };
+  const g = atelier.creer(f.store, f.params, { ...f.demande, brouillon }, f.qui);
+  const [c] = atelier.programmer(f.store);
+  const mission = valider(c.payload.mission);
+  assert.equal(mission.resolution.pipeline.nodes.find(n => n.id === 'relire').disabled, false);
+  assert.equal(mission.resolution.pipeline.nodes.find(n => n.id === 'securite').disabled, true);
+  assert.deepEqual(mission.participants.map(p => p.noeud), ['rediger', 'relire']);
+  assert.equal(g.brouillon.baseRef, 'demo@1');
+  const retire = structuredClone(brouillon);
+  retire.graph.nodes = retire.graph.nodes.filter(n => n.id !== 'relire');
+  assert.throws(() => atelier.resoudre(f.params, retire), /requise relire/);
 });
 test('les liens et contrôles du modèle de départ restent obligatoires', t => {
   const f = fixture(t);
