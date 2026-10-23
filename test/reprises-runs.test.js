@@ -9,7 +9,7 @@ const { spawn } = require("node:child_process");
 const { EventStore } = require("agent-orchestrator");
 const registre = require("agent-orchestrator/src/registre");
 const mission = require("agent-orchestrator/src/mission");
-const { reprendreRun } = require("../src/reprises-runs");
+const { reprendreRun, terminerReprise } = require("../src/reprises-runs");
 const api = require("../src/api-lecture");
 const RACINE = path.resolve(__dirname, "..");
 const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -163,6 +163,25 @@ test("un rejeu après réussite acquitte la reprise sans rappeler la CLI ni publ
     const r=await reprendreRun({store:f.store,commande,lancer:()=>{throw new Error("double lancement");},lancementDe:()=>{throw new Error("double publication");}});
     assert.equal(r.detail.dejaTraitee,true);
   } finally {await f.fermer();}
+});
+
+test("acquittement de reprise atomique : une panne intermédiaire conserve commande et attente rejouables", async () => {
+  const f = fixture("inconnu");
+  try {
+    const runId = f.store.creerRun({ pipelineRef: "demo@1", projectId: "demo" });
+    const a = f.store.attentes.enregistrerMachine(runId, { name: "MachineIndisponible", machine: "pc" });
+    const c = f.store.attentes.demander(runId, { waitId: a.wait_id, par: "test" });
+    f.store.prendreCommande({ kinds: ["run.resume"] });
+    const terminer = f.store.attentes.terminer;
+    f.store.attentes.terminer = function (commande) { terminer.call(this, commande); throw new Error("panne pendant la libération"); };
+    assert.throws(() => terminerReprise({ store: f.store, commande: c, resultat: { ok: true } }), /panne pendant/);
+    assert.equal(f.store.commande(c.id).status, "taken");
+    assert.equal(f.store.attentes.lire(runId).active_command_id, c.id);
+    f.store.attentes.terminer = terminer;
+    terminerReprise({ store: f.store, commande: c, resultat: { ok: true } });
+    assert.equal(f.store.commande(c.id).status, "done");
+    assert.equal(f.store.attentes.lire(runId).active_command_id, null);
+  } finally { await f.fermer(); }
 });
 
 test("retour machine après redémarrage : même run et contrat, sans refaire le script ni ouvrir un second maître", async () => {

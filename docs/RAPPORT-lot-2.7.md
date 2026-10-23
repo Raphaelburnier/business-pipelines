@@ -17,6 +17,8 @@ automatisés passent. La dernière étape est de contrôler cette version après
   Une ancienne ligne « online » en base ne suffit pas.
 - La reprise a priorité sur les nouveaux départs et reste exclusive avec les autres CLI.
   Une commande dont le worker disparaît attend de nouveau, sans relancer une CLI.
+- L'acquittement de la commande et la libération de l'attente sont atomiques : une
+  panne intermédiaire conserve les deux dans leur état rejouable.
 - Les attentes historiques conservent leur date limite. Les erreurs définitives et les
   étapes perdues ne sont pas rejouées automatiquement. Les limites de compte quota
   restent distinctes du compteur de reprise machine.
@@ -28,9 +30,10 @@ automatisés passent. La dernière étape est de contrôler cette version après
 ## Vérifications
 
 - Moteur : `npm test`, **346 tests et typecheck réussis**.
-- Intégration ciblée : **18 tests réussis**, dont la reprise machine après redémarrage,
+- Intégration ciblée : **19 tests réussis**, dont la reprise machine après redémarrage,
   la conservation du contrat malgré une fiche projet devenue invalide, un seul run,
-  un script préparatoire exécuté une seule fois et aucun second maître dans la CLI.
+  un script préparatoire exécuté une seule fois, aucun second maître dans la CLI
+  et un rollback vérifié après panne pendant l'acquittement.
 - Disponibilité du worker testée avec un vrai WebSocket sur la boucle locale.
 - Cockpit : `npm test` complet réussi ; catalogue et Atelier : **54 tests réussis**.
 - Web : **74 tests**, typecheck et construction réussis.

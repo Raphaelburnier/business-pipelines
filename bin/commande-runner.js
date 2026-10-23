@@ -8,7 +8,7 @@ const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWork
 const api = require("../src/api-lecture");
 const chatOutils = require("../src/chat-outils");
 const registre = require("agent-orchestrator/src/registre");
-const { reprendreRun } = require("../src/reprises-runs");
+const { reprendreRun, terminerReprise } = require("../src/reprises-runs");
 const { raisonEchec } = require("../src/echec-run");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -256,18 +256,18 @@ async function boucleApprobations(store) {
 }
 
 async function traiterCommande(store, commande, executer) {
+  const acquitter = (resultat) => commande.kind === "run.resume"
+    ? terminerReprise({ store, commande, resultat }) : store.terminerCommande(commande.id, resultat);
   try {
     const resultat = await executer(commande);
     // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
     // sera remise en file, et retrouvera son run au redémarrage.
     if (!arret || commande.kind === "chat.respond") {
-      store.terminerCommande(commande.id, resultat);
-      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      acquitter(resultat);
     }
   } catch (err) {
     if (!arret || commande.kind === "chat.respond") {
-      store.terminerCommande(commande.id, { ok: false, raison: err.message });
-      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      acquitter({ ok: false, raison: err.message });
     }
     console.error(`Commande ${commande.id} refusée : ${err.message}`);
   }

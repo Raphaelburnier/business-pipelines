@@ -30,6 +30,7 @@ reste un incident distinct : elle n'est pas rejouée aveuglément par ce lot.
   la machine est en ligne et n'exécute aucune étape. Un état historique en base ne suffit pas.
 - Créer au plus une commande `run.resume` par attente, y compris après redémarrage,
   double clic ou deux pollers. Revérifier sa validité avant lancement.
+  Acquitter la commande et libérer l'attente dans une même transaction.
 - Conserver les bornes existantes : trois reprises automatiques, attente de 24 h,
   puis reprise manuelle visible. Le temps hors ligne ne consomme aucune tentative.
   Les limites de compte quota ne s'appliquent pas à une attente machine.
