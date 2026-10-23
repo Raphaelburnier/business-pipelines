@@ -37,12 +37,15 @@ const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Les décisions d'approbation ont leur file courte, mais la reprise reste exclusive avec
 // tous les autres lancements de CLI du worker.
 let finFileLancements = Promise.resolve();
+let lancementsReserves = 0;
 function lancerExclusif(...args) {
+  lancementsReserves += 1;
   const lancement = finFileLancements.then(() => {
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
     return lancer(...args);
   });
   finFileLancements = lancement.then(() => undefined, () => undefined);
+  lancement.finally(() => { lancementsReserves -= 1; }).catch(() => undefined);
   return lancement;
 }
 
@@ -140,8 +143,25 @@ async function repondre(store, commande) {
 // question ne doit pas l'attendre. Chaque boucle ne réserve que ses propres commandes.
 async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
   while (!arret) {
-    if (kinds.includes("run.resume")) store.attentes.programmer();
-    const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true } : { kinds });
+    let exclure = [];
+    if (kinds.includes("run.resume")) {
+      store.attentes.programmer();
+      // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
+      // sans exclusions, comme avant le calendrier.
+      try {
+        const atelier = require("../src/atelier");
+        atelier.programmer(store);
+        // Les recettes CLI locales n'utilisent aucun worker distant.
+        const verifier = process.env.ORCH_ROLE === "pc" ? () => {} : require("../src/runtime-mission").verifier({
+          viaParMachine: JSON.parse(process.env.COCKPIT_VIA_MACHINES || '{"pc":["claude","codex","omniroute","ollama"],"nas":["claude"]}'), machines: api.machines(store),
+        });
+        exclure = atelier.exclus(store, verifier);
+      } catch (err) {
+        console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
+      }
+      if (lancementsReserves) { await attendre(INTERVALLE); continue; }
+    }
+    const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true, exclure } : { kinds });
     if (!commande) {
       await attendre(INTERVALLE);
       continue;

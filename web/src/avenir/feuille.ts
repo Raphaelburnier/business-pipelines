@@ -245,7 +245,7 @@ export const LOTS: Lot[] = [
     titre: "Calendrier",
     but: "Voir et préparer les runs prévus.",
     etapes: [
-      { id: "12.1", titre: "Page Calendrier", detail: "Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.", fichiers: ["BP web/src/App.tsx", "AO src/maitre.js"], statut: "a-faire" },
+      { id: "12.1", titre: "Page Calendrier", detail: "Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.", fichiers: ["BP web/src/calendrier/Calendrier.tsx", "BP src/atelier.js", "BP bin/commande-runner.js", "BP bin/cockpit.js", "AO src/event-store.js"], statut: "fait" },
     ],
   },
   {
