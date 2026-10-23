@@ -1,12 +1,14 @@
 const assert = require("assert");
 const crypto = require("crypto");
 const fs = require("fs");
+const http = require("node:http");
 const os = require("os");
 const path = require("path");
 
 const conseiller = require("../src/conseiller");
 const vault = require("../src/vault-index");
-const { noteValide } = require("../bin/conseiller-pc");
+const { noteValide, appelAvec, ollamaAvec } = require("../bin/conseiller-pc");
+const { configuration } = require("../src/operations-bornees");
 
 const tests = [];
 function test(name, fn) {
@@ -35,6 +37,24 @@ function etat({ tranche = false, empreinte = "a".repeat(64) } = {}) {
 
 function nettoyer(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+async function serveurLent(gestionnaire) {
+  let requetes = 0;
+  const serveur = http.createServer((requete, reponse) => {
+    requetes += 1;
+    gestionnaire(requete, reponse, requetes);
+  });
+  await new Promise((resolve) => serveur.listen(0, "127.0.0.1", resolve));
+  const { port } = serveur.address();
+  return {
+    url: `http://127.0.0.1:${port}`,
+    get requetes() { return requetes; },
+    fermer: async () => {
+      serveur.closeAllConnections();
+      await new Promise((resolve) => serveur.close(resolve));
+    },
+  };
 }
 
 const SHA = (texte) => crypto.createHash("sha256").update(texte).digest("hex");
@@ -175,6 +195,78 @@ test("la note d'une approbation de run passe la validation de l'agent du PC", ()
     );
     assert.ok(noteValide(note), `note refusée pour l'empreinte ${empreinte}`);
     assert.match(note.entree, /\*\*Run\*\* : marketing, nœud approbation/);
+  }
+});
+
+test("l'appel du conseiller au cockpit est borné en-têtes et corps", async () => {
+  for (const mode of ["entetes", "corps"]) {
+    const serveur = await serveurLent((_requete, reponse) => {
+      if (mode === "corps") {
+        reponse.writeHead(200, { "Content-Type": "application/json" });
+        reponse.write('{"incomplet":');
+      }
+    });
+    try {
+      await assert.rejects(
+        appelAvec({ fetchImpl: fetch, cockpit: serveur.url, jeton: "test", delaiMs: 60 })("battement"),
+        (err) => err.name === "LimiteExecution" && err.operation === "http:conseiller" && err.delaiMs === 60
+      );
+    } finally {
+      await serveur.fermer();
+    }
+  }
+});
+
+test("le repli Ollama partage l'échéance du premier appel", async () => {
+  const serveur = await serveurLent((_requete, reponse, requetes) => {
+    if (requetes === 1) {
+      reponse.writeHead(400, { "Content-Type": "text/plain" });
+      reponse.end("think non pris en charge");
+    }
+  });
+  try {
+    const debut = Date.now();
+    await assert.rejects(
+      ollamaAvec({ fetchImpl: fetch, url: serveur.url, delaiMs: 120 })({ messages: [], format: {} }),
+      (err) => err.name === "LimiteExecution" && err.operation === "ollama" && err.delaiMs === 120
+    );
+    assert.strictEqual(serveur.requetes, 2);
+    assert.ok(Date.now() - debut < 220, "le repli ne doit pas recevoir un second budget complet");
+  } finally {
+    await serveur.fermer();
+  }
+});
+
+test("un délai de conseiller hors bornes est refusé avant lancement", () => {
+  const precedentHttp = process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+  const precedentOllama = process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
+  try {
+    process.env.CONSEILLER_HTTP_TIMEOUT_MS = "0";
+    assert.throws(() => configuration("http:conseiller"), /CONSEILLER_HTTP_TIMEOUT_MS.*120000/);
+    delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+    process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = "999999";
+    assert.throws(() => configuration("ollama"), /CONSEILLER_OLLAMA_TIMEOUT_MS.*600000/);
+  } finally {
+    if (precedentHttp === undefined) delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+    else process.env.CONSEILLER_HTTP_TIMEOUT_MS = precedentHttp;
+    if (precedentOllama === undefined) delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
+    else process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = precedentOllama;
+  }
+});
+
+test("sans variable, les défauts du conseiller sont inchangés", () => {
+  const precedentHttp = process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+  const precedentOllama = process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
+  try {
+    delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+    delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
+    assert.strictEqual(configuration("http:conseiller"), 30_000);
+    assert.strictEqual(configuration("ollama"), 120_000);
+  } finally {
+    if (precedentHttp === undefined) delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
+    else process.env.CONSEILLER_HTTP_TIMEOUT_MS = precedentHttp;
+    if (precedentOllama === undefined) delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
+    else process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = precedentOllama;
   }
 });
 

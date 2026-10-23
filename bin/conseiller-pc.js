@@ -16,10 +16,12 @@
 //   CONSEILLER_MODELE       qwen3:8b par défaut
 //   CONSEILLER_OLLAMA_URL   http://127.0.0.1:11434 par défaut
 //   CONSEILLER_VAULT        dossier du vault Git (obligatoire)
+//   CONSEILLER_HTTP_TIMEOUT_MS    30000 ms par défaut
+//   CONSEILLER_OLLAMA_TIMEOUT_MS  120000 ms par défaut
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execFileSyncBorne } = require("../src/operations-bornees");
+const { execFileSyncBorne, configuration: delaiConfigure, limiteExecution, sousDelaiHttp } = require("../src/operations-bornees");
 const { dansPerimetre } = require("../src/vault-index");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -53,22 +55,28 @@ const journal = (...m) => console.log(new Date().toISOString(), ...m);
 
 // ---------- le cockpit ----------
 
-async function appel(requete, corps = {}, delaiMs = 30_000) {
-  const reponse = await fetch(`${COCKPIT}/api/conseiller/${requete}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${JETON}`, "Content-Type": "application/json" },
-    body: JSON.stringify(corps),
-    signal: AbortSignal.timeout(delaiMs),
+function appelAvec({ fetchImpl = fetch, cockpit = COCKPIT, jeton = JETON, delaiMs = null } = {}) {
+  return (requete, corps = {}) => sousDelaiHttp({
+    operation: "http:conseiller", delaiMs: delaiMs ?? delaiConfigure("http:conseiller"),
+  }, async (signal) => {
+    const reponse = await fetchImpl(`${cockpit}/api/conseiller/${requete}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+      body: JSON.stringify(corps),
+      signal,
+    });
+    if (reponse.status === 204) return null;
+    const texte = await reponse.text();
+    let donnees = null;
+    try {
+      donnees = JSON.parse(texte);
+    } catch {}
+    if (!reponse.ok) throw new Error(`${requete} : HTTP ${reponse.status} ${(donnees && donnees.erreur) || texte.slice(0, 200)}`);
+    return donnees;
   });
-  if (reponse.status === 204) return null;
-  const texte = await reponse.text();
-  let donnees = null;
-  try {
-    donnees = JSON.parse(texte);
-  } catch {}
-  if (!reponse.ok) throw new Error(`${requete} : HTTP ${reponse.status} ${(donnees && donnees.erreur) || texte.slice(0, 200)}`);
-  return donnees;
 }
+
+const appel = (requete, corps = {}) => appelAvec()(requete, corps);
 
 // ---------- git dans le vault ----------
 
@@ -148,7 +156,7 @@ async function synchroniser() {
   let taille = 0;
   let debut = true;
   const envoyer = async (fin) => {
-    await appel("vault/lot", { head, debut, fin, fichiers: lot, supprimes: fin ? [...supprimes] : [] }, 120_000);
+    await appel("vault/lot", { head, debut, fin, fichiers: lot, supprimes: fin ? [...supprimes] : [] });
     debut = false;
     lot = [];
     taille = 0;
@@ -165,31 +173,42 @@ async function synchroniser() {
 
 // ---------- les travaux ----------
 
-async function ollama(travail) {
-  const corps = {
-    model: MODELE,
-    messages: travail.messages,
-    format: travail.format,
-    stream: false,
-    // qwen3 pense à voix haute par défaut : ici on veut le JSON, pas le raisonnement.
-    think: false,
-    options: { temperature: 0.2, num_ctx: 8192 },
-  };
-  let reponse = await fetch(`${OLLAMA}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal: AbortSignal.timeout(120_000) });
-  if (reponse.status === 400 && /think/i.test(await reponse.clone().text())) {
-    // Un modèle sans mode « réflexion » refuse l'option au lieu de l'ignorer.
-    delete corps.think;
-    reponse = await fetch(`${OLLAMA}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal: AbortSignal.timeout(120_000) });
-  }
-  if (!reponse.ok) throw new Error(`Ollama : HTTP ${reponse.status} ${(await reponse.text()).slice(0, 200)}`);
-  const donnees = await reponse.json();
-  const texte = donnees && donnees.message ? donnees.message.content : "";
-  try {
-    return JSON.parse(texte);
-  } catch {
-    throw new Error(`Ollama a rendu autre chose que du JSON : ${String(texte).slice(0, 120)}`);
-  }
+function ollamaAvec({ fetchImpl = fetch, url = OLLAMA, modele = MODELE, delaiMs = null } = {}) {
+  return (travail) => sousDelaiHttp({
+    operation: "ollama", delaiMs: delaiMs ?? delaiConfigure("ollama"),
+  }, async (signal) => {
+    const corps = {
+      model: modele,
+      messages: travail.messages,
+      format: travail.format,
+      stream: false,
+      // qwen3 pense à voix haute par défaut : ici on veut le JSON, pas le raisonnement.
+      think: false,
+      options: { temperature: 0.2, num_ctx: 8192 },
+    };
+    let reponse = await fetchImpl(`${url}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal });
+    if (reponse.status === 400) {
+      const texte = await reponse.text();
+      if (/think/i.test(texte)) {
+        // Un modèle sans mode « réflexion » refuse l'option au lieu de l'ignorer.
+        delete corps.think;
+        reponse = await fetchImpl(`${url}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal });
+      } else {
+        throw new Error(`Ollama : HTTP 400 ${texte.slice(0, 200)}`);
+      }
+    }
+    if (!reponse.ok) throw new Error(`Ollama : HTTP ${reponse.status} ${(await reponse.text()).slice(0, 200)}`);
+    const donnees = await reponse.json();
+    const texte = donnees && donnees.message ? donnees.message.content : "";
+    try {
+      return JSON.parse(texte);
+    } catch {
+      throw new Error(`Ollama a rendu autre chose que du JSON : ${String(texte).slice(0, 120)}`);
+    }
+  });
 }
+
+const ollama = (travail) => ollamaAvec()(travail);
 
 // L'entrée est remplacée si le fichier la porte déjà (une note ajoutée après coup), ajoutée
 // en fin de fichier sinon. Seul ce fichier est commité, même si d'autres attendent.
@@ -334,6 +353,12 @@ function verifierConfiguration() {
   if (!COCKPIT || !/^https:\/\//.test(COCKPIT)) return "CONSEILLER_COCKPIT_URL HTTPS manquant ou invalide dans .env";
   if (!VAULT || !fs.existsSync(VAULT)) return "CONSEILLER_VAULT manquant ou introuvable dans .env";
   if (!fs.existsSync(path.join(VAULT, ".git"))) return "CONSEILLER_VAULT doit désigner un dépôt Git";
+  try {
+    delaiConfigure("http:conseiller");
+    delaiConfigure("ollama");
+  } catch (err) {
+    return err.message;
+  }
   return null;
 }
 
@@ -356,4 +381,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { lireEnv, noteValide, verifierConfiguration };
+module.exports = { lireEnv, noteValide, verifierConfiguration, appelAvec, ollamaAvec };
