@@ -54,7 +54,7 @@ for (const scenario of ["avant-bloque", "restauration-bloquee", "signal", "signa
     const f = recette(scenario);
     try {
       const debut = performance.now();
-      const fin = await f.lancer({ env: scenario === "avant-bloque" ? { LIVRAISON_BUILD_TIMEOUT_SEC: "2" } :
+      const fin = await f.lancer({ env: scenario === "avant-bloque" ? { LIVRAISON_BUILD_TIMEOUT_SEC: "4" } :
         scenario === "restauration-bloquee" ? { LIVRAISON_ROLLBACK_TIMEOUT_SEC: "2" } : {}, interrompre: scenario.startsWith("signal") });
       assert.equal(fin.signal, null, fin.sortie);
       assert.notEqual(fin.code, 0, fin.sortie);

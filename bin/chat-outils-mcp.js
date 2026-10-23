@@ -5,7 +5,8 @@
 // protocole, rien d'autre ne doit y écrire. Le seul argument est le fichier où ranger les
 // propositions et les actions faites ; le runner le relit à la fin du tour et les range sous
 // la réponse. COCKPIT_CHAT_PAR et COCKPIT_CHAT_CANAL, posés par le runner, sont l'identité de
-// la question : sans eux, Codex ne relance ni n'écrit rien.
+// la question : sans eux, Codex ne relance ni n'écrit rien. COCKPIT_CHAT_ORIGINE est l'id de
+// la question signée, que le publieur exige sur chaque action.
 const { EventStore, cockpitRead } = require("agent-orchestrator");
 const chatOutils = require("../src/chat-outils");
 
@@ -17,7 +18,7 @@ if (!fichier) {
 
 const store = new EventStore(chatOutils.chemins().store);
 const par = process.env.COCKPIT_CHAT_PAR;
-const agir = par ? chatOutils.agir(store, { qui: { par, canal: process.env.COCKPIT_CHAT_CANAL || null }, agent: "codex" }) : null;
+const agir = par ? chatOutils.agir(store, { qui: { par, canal: process.env.COCKPIT_CHAT_CANAL || null }, agent: "codex", origine: process.env.COCKPIT_CHAT_ORIGINE || null }) : null;
 const definitions = cockpitRead.definitionsOutils({
   ...chatOutils.sources(store),
   propositions: cockpitRead.propositionsFichier(fichier),
