@@ -9,6 +9,7 @@ const api = require("../src/api-lecture");
 const chatOutils = require("../src/chat-outils");
 const registre = require("agent-orchestrator/src/registre");
 const { reprendreRun } = require("../src/reprises-runs");
+const { raisonEchec } = require("../src/echec-run");
 
 const RACINE = path.resolve(__dirname, "..");
 const PROJETS = process.env.COCKPIT_PROJETS_DIR || path.join(RACINE, "projects");
@@ -83,11 +84,12 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
   return new Promise((resolve) => {
     // Avec le maître permanent en place, le run lui passe ses étapes au lieu d'ouvrir le port.
     const env = maitre ? { ...process.env, ORCH_MAITRE_DISTANT: "1" } : process.env;
+    const debut = new Date().toISOString();
     enfant = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
-    enfant.on("error", (err) => resolve({ code: 1, erreur: err.message }));
+    enfant.on("error", (err) => resolve({ code: 1, erreur: err.message, debut }));
     enfant.on("close", (code, signal) => {
       enfant = null;
-      resolve({ code: code ?? 1, signal: signal || null });
+      resolve({ code: code ?? 1, signal: signal || null, debut });
     });
   });
 }
@@ -209,9 +211,9 @@ async function traiterCommande(store, commande, executer) {
   }
 }
 
-function issue(resultat, detail = {}) {
+function issue(store, resultat, detail = {}) {
   if (CODES_ATTENDUS.has(resultat.code)) return { ok: true, detail: { ...resultat, ...detail } };
-  return { ok: false, raison: resultat.erreur || `processus terminé en code ${resultat.code}` };
+  return { ok: false, raison: raisonEchec(store, detail.runId || null, resultat) };
 }
 
 // Le pipeline et les modèles de la commande qui a créé ce run précis. Un lancement
@@ -255,7 +257,7 @@ async function deciderEtReprendre(store, commande, lancerRun = lancerExclusif) {
   if (decision === "oriented" && repris.code === 0 && !orientationRoutee(lancement, a.node_id)) {
     return store.terminerOrientation(commande.id, { payload: lancement, detail: { ...repris, decision } });
   }
-  return issue(repris, { runId: a.run_id, decision });
+  return issue(store, repris, { runId: a.run_id, decision });
 }
 
 // Le pipeline a-t-il une arête qui part du nœud d'approbation sur une orientation ? Dans le
@@ -277,14 +279,14 @@ async function reverifier(store, commande) {
   const run = store.run(runId);
   if (!run) throw new Error(`run inconnu : ${runId}`);
   const resultat = await lancerExclusif(lancementDe(store, run), { runId, reverifier: headSha });
-  return issue(resultat, { runId, headSha });
+  return issue(store, resultat, { runId, headSha });
 }
 
 async function executerRun(store, commande) {
   if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerExclusif, lancementDe });
   if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancerExclusif(commande.payload, { commandId: commande.id });
-  return issue(resultat, { runId: store.commande(commande.id)?.run_id || null });
+  return issue(store, resultat, { runId: store.commande(commande.id)?.run_id || null });
 }
 
 // Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
