@@ -7,7 +7,11 @@
   "repoWorkers": "admindunas@192.168.1.18:/volume1/docker/git/business-pipelines.git",
   "verification": {
     "prepareNetwork": true,
-    "prepare": [{ "command": "npm", "args": ["ci"], "cwd": "web", "timeoutMs": 600000 }],
+    "moteurEnLecture": "/agent-orchestrator",
+    "prepare": [
+      { "command": "npm", "args": ["ci", "--no-bin-links"], "timeoutMs": 600000 },
+      { "command": "npm", "args": ["ci"], "cwd": "web", "timeoutMs": 600000 }
+    ],
     "checks": [
       { "kind": "typecheck", "command": "npm", "args": ["run", "typecheck"], "cwd": "web", "timeoutMs": 300000 },
       { "kind": "test", "command": "npm", "args": ["test"], "cwd": "web", "timeoutMs": 300000 }
