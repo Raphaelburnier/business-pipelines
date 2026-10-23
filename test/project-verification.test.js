@@ -7,7 +7,7 @@ const { resoudreProjet } = require("agent-orchestrator/src/registre");
 
 const fiche = path.join(__dirname, "../projects/steam-tierlist/project.json");
 const projet = schemas.projet.parse(JSON.parse(fs.readFileSync(fiche, "utf8")));
-assert.equal(projet.pipelines[0].extends, "improve-app@7");
+assert.equal(projet.pipelines[0].extends, "improve-app@8");
 assert.equal(projet.verification.prepareNetwork, true);
 assert.deepEqual(projet.verification.prepare[0].args, ["run", "prepare:run"]);
 assert.deepEqual(projet.verification.checks[0].args, ["test"]);

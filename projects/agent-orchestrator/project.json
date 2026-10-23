@@ -25,7 +25,7 @@
   "github": "Raphaelburnier/agent-orchestrator",
   "pipelines": [
     {
-      "extends": "improve-app@7",
+      "extends": "improve-app@8",
       "overrides": {
         "nodes": {
           "plan": { "maxTurns": 35 },
