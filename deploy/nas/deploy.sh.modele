@@ -35,7 +35,9 @@ valider_budget() (
   case "$budget" in ''|0*|*[!0-9]*) echo "Budget invalide : $budget" >&2; return 2 ;; esac
   [ "$budget" -ge 1 ] && [ "$budget" -le "$maximum" ] || { echo "Budget hors limites : $budget (max $maximum s)" >&2; return 2; }
 )
-phase() { ETAPE_LIVRAISON=$1; PHASE_FIN=$(($(date +%s) + $2)); }
+# /proc/uptime est monotone : une correction de l'heure du NAS ne prolonge pas un délai.
+maintenant() { IFS=' ' read -r secondes reste < /proc/uptime; printf '%s\n' "${secondes%%.*}"; }
+phase() { ETAPE_LIVRAISON=$1; PHASE_FIN=$(($(maintenant) + $2)); }
 poser_incident() {
   mkdir -p "$BUSINESS/etat"
   printf '%s\n' "$1" > "$INCIDENT.$$.tmp"
@@ -45,9 +47,9 @@ poser_incident() {
 surveiller_commande() {
   budget=$1; maximum=$2; shift 2
   valider_budget "$budget" "$maximum" || exit 2
-  fin=$(($(date +%s) + budget))
+  fin=$(($(maintenant) + budget))
   [ "$fin" -le "$PHASE_FIN" ] || fin=$PHASE_FIN
-  [ "$(date +%s)" -lt "$fin" ] || { echo "Échéance de phase atteinte : $ETAPE_LIVRAISON" >&2; exit 124; }
+  [ "$(maintenant)" -lt "$fin" ] || { echo "Échéance de phase atteinte : $ETAPE_LIVRAISON" >&2; exit 124; }
   pret=$(mktemp "$RELEASE/.commande.XXXXXX")
   groupe=
   lanceur=
@@ -65,36 +67,50 @@ surveiller_commande() {
     exit 1
   )
   arreter_groupe() {
+    # Le signal peut arriver après l'accusé et avant sa lecture par la boucle principale.
+    if [ -z "$groupe" ] && [ -s "$pret" ]; then IFS= read -r groupe < "$pret" || true; fi
     if [ -n "$groupe" ]; then
       kill -TERM -"$groupe" 2>/dev/null || true
-      grace_fin=$(($(date +%s) + STOP_GRACE_SEC))
-      while groupe_actif && [ "$(date +%s)" -lt "$grace_fin" ]; do sleep 0.05; done
+      grace_fin=$(($(maintenant) + STOP_GRACE_SEC))
+      while groupe_actif && [ "$(maintenant)" -lt "$grace_fin" ]; do sleep 0.05; done
       kill -KILL -"$groupe" 2>/dev/null || true
-      confirmation_fin=$(($(date +%s) + 2))
-      while groupe_actif && [ "$(date +%s)" -lt "$confirmation_fin" ]; do sleep 0.05; done
+      confirmation_fin=$(($(maintenant) + 2))
+      while groupe_actif && [ "$(maintenant)" -lt "$confirmation_fin" ]; do sleep 0.05; done
       if groupe_actif; then
         poser_incident "Arrêt d'un processus non confirmé après @RELEASE@. Livraison suspendue."
         return 125
       fi
     elif [ -n "$lanceur" ]; then
+      kill -KILL -"$lanceur" 2>/dev/null || true
       kill -KILL "$lanceur" 2>/dev/null || true
     fi
     [ -z "$lanceur" ] || wait "$lanceur" 2>/dev/null || true
   }
-  trap 'rm -f "$pret"' EXIT
+  trap 'rm -f "$pret" "$pret.go"' EXIT
   trap 'arreter_groupe; exit 143' HUP INT TERM
-  # L'accusé est écrit APRÈS setsid. Sans lui, le premier kill -0 peut arriver avant
-  # la création du groupe et transformer la commande bornée en simple wait sans limite.
-  setsid sh -c 'printf "%s\n" "$$" > "$1"; shift; exec "$@"' sh "$pret" "$@" &
+  # La commande attend aussi l'autorisation retour : aucun travail ne démarre tant que
+  # le moniteur n'a pas enregistré le groupe. Une interruption du handshake reste sans effet métier.
+  setsid sh -c '
+    pret=$1; shift
+    [ -e "$pret" ] || exit 125
+    printf "%s\n" "$$" > "$pret"
+    attente=0
+    while [ ! -e "$pret.go" ]; do
+      [ -e "$pret" ] && [ "$attente" -lt 1000 ] || exit 125
+      attente=$((attente + 1))
+      sleep 0.01
+    done
+    exec "$@"' sh "$pret" "$@" &
   lanceur=$!
   while [ ! -s "$pret" ]; do
     if ! kill -0 "$lanceur" 2>/dev/null; then wait "$lanceur"; exit $?; fi
-    if [ "$(date +%s)" -ge "$fin" ]; then arreter_groupe; exit 124; fi
+    if [ "$(maintenant)" -ge "$fin" ]; then arreter_groupe; exit 124; fi
     sleep 0.01
   done
   IFS= read -r groupe < "$pret"
+  : > "$pret.go"
   while groupe_actif; do
-    if [ "$(date +%s)" -ge "$fin" ]; then
+    if [ "$(maintenant)" -ge "$fin" ]; then
       arreter_groupe || exit $?
       echo "Commande interrompue à l'étape $ETAPE_LIVRAISON : $1" >&2
       exit 124
@@ -125,7 +141,7 @@ en_marche() {
 }
 sante() {
   tentative=0
-  while [ "$tentative" -lt 45 ] && [ "$(date +%s)" -lt "$PHASE_FIN" ]; do
+  while [ "$tentative" -lt 45 ] && [ "$(maintenant)" -lt "$PHASE_FIN" ]; do
     if borne "$COMMAND_TIMEOUT_SEC" 1800 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:4600/ >/dev/null && \
       en_marche business_runner && en_marche business_tailscale_whois && en_marche business_publieur; then return 0; fi
     tentative=$((tentative + 1))
@@ -193,12 +209,13 @@ valider_budget "$STOP_GRACE_SEC" 30
 phase preparer "$BUILD_TIMEOUT_SEC"
 # Ne pas vérifier ici les volumes du cockpit : le livreur exécute aussi ce script
 # dans son propre conteneur, où le partage des modèles n'est pas monté.
-echo "@SHA256@  $ARCHIVE" | sha256sum -c -
+printf '%s\n' "@SHA256@  $ARCHIVE" > "$RELEASE/.sha256"
+borne "$ARCHIVE_TIMEOUT_SEC" 900 sha256sum -c "$RELEASE/.sha256"
 # Le runner s'authentifie par l'abonnement (jeton) ou, à défaut, par une clé API.
 grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=' "$ENV" || { echo "Ni jeton ni clé dans $ENV" >&2; exit 1; }
 
 umask 077
-borne "$BUILD_TIMEOUT_SEC" 7200 rm -rf "$STAGE"
+borne "$COMMAND_TIMEOUT_SEC" 1800 rm -rf "$STAGE"
 mkdir -p "$BACKUPS" "$STAGE"
 borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$ARCHIVE" -C "$STAGE"
 mkdir -p "$STAGE/specs"
@@ -248,7 +265,7 @@ cd "$STAGE"
 # restauration utilisent.
 borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" compose build cockpit
 for service in runner tailscale-whois publieur; do
-  borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" tag business-pipelines-cockpit "business-pipelines-$service"
+  borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag business-pipelines-cockpit "business-pipelines-$service"
 done
 
 echo "Bascule..."

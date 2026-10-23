@@ -127,6 +127,7 @@ async function livrer(store, commande) {
     if (fin.code !== 0 || fs.existsSync(INCIDENT)) {
       const incident = fs.existsSync(INCIDENT) ? fs.readFileSync(INCIDENT, "utf8") : null;
       const { issue, raison } = livreur.echecBascule(fin, incident);
+      if (etape === "restaurer" && issue === "echec" && !fs.existsSync(INCIDENT)) fs.writeFileSync(INCIDENT, `${raison}\n`, { mode: 0o600 });
       emettre("livraison.fin", { issue, etape, raison, release: prete.release, journal: fin.dernieres });
       return { ok: false, raison };
     }

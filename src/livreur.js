@@ -147,10 +147,13 @@ function verifierDemande({ git, miroirs, payload, par, canal, autorises, release
   return { modeleDe: enProduction };
 }
 
-/** Une tentative de restauration ne vaut réussite qu'en l'absence d'incident persistant. */
+/** Seul l'accusé de restauration contrôlée vaut preuve ; son simple démarrage ne suffit pas. */
 function echecBascule(fin, incident = null) {
   if (incident) return { issue: "echec", raison: `restauration non confirmée ; livraison suspendue : ${incident.trim()}` };
-  if (fin.etape === "restaurer") return { issue: "restauree", raison: "échec après la bascule : version précédente restaurée et contrôlée" };
+  if (fin.etape === "restaurer") {
+    if (fin.code !== 70 && fin.dernieres?.includes("Restauration confirmée.")) return { issue: "restauree", raison: "échec après la bascule : version précédente restaurée et contrôlée" };
+    return { issue: "echec", raison: "restauration non confirmée ; livraison suspendue jusqu'au contrôle des services" };
+  }
   return { issue: "echec", raison: `deploy.sh terminé en code ${fin.code} à l'étape ${fin.etape}, avant la bascule : rien n'a été remplacé` };
 }
 
