@@ -1,5 +1,6 @@
 // Le calendrier raisonne en dates civiles de Zurich, comme le programmateur du cockpit
 // (src/atelier-dates.js) : une semaine va du lundi au dimanche, une heure est celle du mur.
+import type { AttributionAvenir } from "../donnees/source";
 import type { Objectif, Occurrence, Repetition } from "./api";
 
 export const FUSEAU = "Europe/Zurich";
@@ -10,6 +11,20 @@ const civil = new Intl.DateTimeFormat("sv-SE", { timeZone: FUSEAU, year: "numeri
 export function dateCivile(instant: number | string): { date: string; heure: string } {
   const [date = "", heure = ""] = civil.format(new Date(instant)).split(" ");
   return { date, heure };
+}
+
+/**
+ * L'instant UTC d'une heure de mur à Zurich. Une heure qui n'existe pas (passage à l'heure
+ * d'été) est refusée ; une heure répétée (retour à l'heure d'hiver) prend sa première apparition.
+ */
+export function instantZurich(date: string, heure: string): string {
+  const brut = Date.parse(`${date}T${heure}:00Z`);
+  if (!Number.isFinite(brut)) throw new Error("Date ou heure invalide.");
+  const candidats = [-2, -1, 0].map((h) => brut + h * 3_600_000)
+    .filter((t) => { const c = dateCivile(t); return c.date === date && c.heure === heure; })
+    .sort((a, b) => a - b);
+  if (!candidats.length) throw new Error("Cette heure n'existe pas à Zurich ce jour-là (passage à l'heure d'été).");
+  return new Date(candidats[0]!).toISOString();
 }
 
 // Midi UTC évite qu'un changement d'heure fasse sauter ou répéter un jour.
@@ -72,6 +87,34 @@ export function entreesDe(objectif: Objectif, debut: string): Entree[] {
     genre = "prevu";
   }
   return entrees;
+}
+
+/** Un objectif de la feuille de route planifié depuis À venir. */
+export interface DepartFeuille {
+  cle: string;
+  objectifId: string;
+  projetId: string;
+  date: string;
+  heure: string;
+  statut: string;
+  runId: string | null;
+}
+
+export function departsFeuille(attributions: AttributionAvenir[], debut: string): Map<string, DepartFeuille[]> {
+  const fin = decaler(debut, 6);
+  const parJour = new Map<string, DepartFeuille[]>();
+  for (const a of attributions) {
+    if (!a.prevuLe) continue;
+    const { date, heure } = dateCivile(a.prevuLe);
+    if (date < debut || date > fin) continue;
+    parJour.set(date, [...(parJour.get(date) ?? []), { cle: a.commandeId, objectifId: a.objectif.id, projetId: a.projetId, date, heure, statut: a.statut, runId: a.runId }]);
+  }
+  return parJour;
+}
+
+export function etatDepartFeuille(d: DepartFeuille): { mot: string; ton: Ton } {
+  if (d.statut === "queued" && !d.runId) return { mot: "planifié", ton: "attente" };
+  return ETATS[d.statut] ?? { mot: d.statut, ton: "neutre" };
 }
 
 export function semaine(objectifs: Objectif[], debut: string): Map<string, Entree[]> {

@@ -116,6 +116,12 @@ test("Finance : capacité serveur complète, proposition et mise en file du rapp
     assert.equal(planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} }).id, c.id);
     assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands").get().n, 1);
     assert.equal(f.store.runs().length, 0, "la recette valide la file, pas une analyse native");
+    const maintenant = Date.parse("2026-10-23T08:00:00Z");
+    const planifie = planificateur.lancer({ store: f.store, qui, params: f.params, etat: {}, maintenant,
+      corps: { ...corps, requestId: crypto.randomUUID(), scheduling: { priority: "haute", notBefore: "2026-10-24T05:30:00.000Z" } } });
+    assert.deepEqual(planifie.payload.scheduling, { priority: "haute", notBefore: "2026-10-24T05:30:00.000Z", source: "calendar" });
+    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, etat: {}, maintenant,
+      corps: { ...corps, requestId: crypto.randomUUID(), scheduling: { notBefore: "2026-10-23T07:00:00.000Z" } } }), /déjà passée/);
     f.params.financeDisponible = () => false;
     assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps: { ...corps, requestId: crypto.randomUUID() }, etat: {} }), /Plan non lançable/);
   } finally { f.fermer(); }

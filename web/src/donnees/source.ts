@@ -39,6 +39,8 @@ export interface AttributionAvenir {
   agent: { id: string | null; nom: string; llm: import("../types").Llm } | null;
   statut: string;
   priorite?: "haute" | "normale" | "basse";
+  /** Départ planifié depuis À venir : le moteur n'admet pas la commande avant cette date. */
+  prevuLe?: string | null;
   positionFile?: number | null;
   reclassable?: boolean;
   attente?: { runtime: string | null; prochaineReprise: string | null; raisonManuelle: string | null; commandeStatut?: string | null; commandeAutomatique?: boolean; tentatives?: number; maximum?: number } | null;

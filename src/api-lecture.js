@@ -164,6 +164,7 @@ function objectifsAvenirs(store, { limite = 100 } = {}) {
       agent: agent ? { id: agent.membre, nom: agent.nom, llm: agent.llm } : null,
       statut: statutObjectif(ligne, mission),
       priorite,
+      prevuLe: payload.scheduling?.notBefore || null,
       attente: attente ? {
         runtime: attente.runtime || null,
         prochaineReprise: attente.prochaineReprise || null,
