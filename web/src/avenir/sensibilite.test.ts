@@ -11,7 +11,7 @@ describe("sensibilité de la feuille", () => {
     for (const etape of LOTS.flatMap((lot) => lot.etapes)) {
       expect(sensibiliteEtape(etape).fichiersProteges).toEqual(etape.fichiers.filter((fichier) => estSensible(cheminReference(fichier))));
     }
-    for (const id of ["0.4", "0.5", "0.6", "2.1", "2.5", "2.6", "2.7", "3.7", "4.2", "4.3", "4.4", "5.3", "6.5", "7.2", "9.2", "10.1", "11.3"]) {
+    for (const id of ["0.4", "0.5", "0.6", "2.1", "2.5", "2.6", "2.7", "3.7", "4.2", "4.3", "4.4", "5.3", "6.5", "7.2", "9.2", "10.1"]) {
       const etape = LOTS.flatMap((lot) => lot.etapes).find((e) => e.id === id)!;
       expect(sensibiliteEtape(etape).sensible, id).toBe(true);
     }
@@ -31,6 +31,7 @@ describe("sensibilité de la feuille", () => {
 
   it("une simple présentation reste sans badge et la politique reste protégée", () => {
     expect(sensibiliteEtape({ fichiers: ["BP web/src/App.tsx", "BP web/src/style.css"] }).sensible).toBe(false);
+    expect(sensibiliteEtape(LOTS.flatMap((lot) => lot.etapes).find((e) => e.id === "11.3")!).sensible).toBe(false);
     expect(estSensible("deploy/fichiers-sensibles.json")).toBe(true);
   });
 });

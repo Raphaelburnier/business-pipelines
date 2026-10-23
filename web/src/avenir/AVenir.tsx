@@ -13,6 +13,7 @@ import { MOT_REPETITION } from "../calendrier/semaine";
 import { DATE_AUDIT, DEFAUTS, LOTS_PRIORISES, PRIORITES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Statut } from "./feuille";
 import { compter, construireTaches, filtrer, FILTRE_DEFAUT, parSeverite, projetsDisponibles, type Filtre, type Tache } from "./taches";
 import { sensibiliteEtape } from "./sensibilite";
+import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
 
 
 
@@ -66,7 +67,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const [erreur, setErreur] = useState<string | null>(null);
   const [attente, setAttente] = useState(false);
   const [accepteDegrade, setAccepteDegrade] = useState(false);
-  const [priorite, setPriorite] = useState<"haute" | "normale" | "basse">(attribution.priorite ?? "normale");
+  const [priorite, setPriorite] = useState<"haute" | "normale">(attribution.priorite === "haute" ? "haute" : "normale");
   const [reclassement, setReclassement] = useState(false);
   const [commandeId, setCommandeId] = useState<string | null>(null);
   // « Planifier » place le départ dans le calendrier au lieu de le lancer tout de suite (11.5).
@@ -111,7 +112,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     } finally { setAttente(false); }
   }
 
-  async function reclasser(nouvelle: "haute" | "normale" | "basse") {
+  async function reclasser(nouvelle: "haute" | "normale") {
     setErreur(null); setReclassement(true);
     try {
       await source.reclasserObjectif(etape.id, nouvelle);
@@ -130,7 +131,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
       {attribution.prevuLe && !attribution.runId && <a href="/calendrier">Prévu le {new Date(attribution.prevuLe).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</a>}
       {attribution.positionFile != null && <span>Objectifs #{attribution.positionFile}</span>}
-      <span>Priorité {attribution.priorite ?? "normale"}</span>
+      <span>{attribution.priorite === "haute" ? "Prioritaire" : "Non prioritaire"}</span>
     </div>
     {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise automatique en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
     {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && !attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise manuelle en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
@@ -138,9 +139,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {attribution.statut === "waiting_quota" && !attribution.attente?.commandeStatut && <p className="av-file-attente">Quota atteint{attribution.attente?.runtime ? ` · ${attribution.attente.runtime}` : ""}{attribution.attente?.prochaineReprise ? ` · reprise automatique prévue ${new Date(attribution.attente.prochaineReprise).toLocaleString("fr-CH")}` : " · aucune reprise automatique planifiée"}</p>}
     {attribution.attente?.raisonManuelle && <p className="av-attribution-erreur">Reprise manuelle requise : {attribution.attente.raisonManuelle}</p>}
     {attribution.raison && <p className="av-attribution-erreur">{attribution.raison}</p>}
-    {attribution.reclassable && <label className="av-priorite">Priorité de file<select aria-label={`Priorité ${etape.id}`} value={priorite} disabled={reclassement} onChange={(event) => void reclasser(event.target.value as "haute" | "normale" | "basse")}>
-      <option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option>
-    </select></label>}
+    {attribution.reclassable && <InterrupteurPrioritaire libelleAccessible={`Run prioritaire ${etape.id}`} checked={priorite === "haute"} disabled={reclassement} onChange={(prioritaire) => void reclasser(prioritaire ? "haute" : "normale")} />}
     {commandeId && <p role="status">{quand.planifie ? <>Mission planifiée : elle apparaît dans le <a href="/calendrier">calendrier</a> et partira à l'heure dite.</> : "Mission envoyée au cockpit. L'attribution se mettra à jour avec le prochain événement."}</p>}
     {!projectId && <p className="av-attribution-erreur">Touche plusieurs dépôts ou un dépôt hors du cockpit : à traiter à la main.</p>}
     {projectId && etape.statut === "a-faire" && !indisponible && <button type="button" className="av-action" onClick={() => { setOuvert((v) => !v); setProposition(null); setErreur(null); setCommandeId(null); }}>
@@ -150,7 +149,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
       <p className="av-form-depot">Dépôt : <code>{projectId}</code></p>
       <p className="av-form-depot">Agents : choisis par le planificateur, visibles dans le plan.</p>
-      <label>Priorité<select value={priorite} onChange={(event) => setPriorite(event.target.value as "haute" | "normale" | "basse")}><option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option></select></label>
+      <InterrupteurPrioritaire checked={priorite === "haute"} onChange={(prioritaire) => setPriorite(prioritaire ? "haute" : "normale")} />
       <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
       <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
     </form>}
@@ -203,7 +202,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
     <div className="av-attribution-meta">
       {prochain && o.active ? <a href="/calendrier">Prochain départ le {prochain}</a> : <a href="/calendrier">{o.active ? "Aucun départ prévu" : "À planifier : en pause dans le calendrier"}</a>}
       {o.repetition !== "none" && <span>{MOT_REPETITION[o.repetition]}</span>}
-      <span>Priorité {o.priority}</span>
+      <span>{o.priority === "haute" ? "Prioritaire" : "Non prioritaire"}</span>
       {dernier?.runId && <a href={`/runs/${encodeURIComponent(dernier.runId)}`}>Dernier run {dernier.runId.slice(0, 8)} · {STATUT_ATTRIBUTION[dernier.statut] ?? dernier.statut}</a>}
     </div>
   </li>;
