@@ -15,7 +15,7 @@ import { useCharge } from "../donnees/contexte";
 const toutesLesEtapes = LOTS.flatMap((lot) => lot.etapes);
 const topo = { projets: [{ id: "demo", nom: "Projet démo", aFiche: true, pipelines: ["dev@1"] }] } as unknown as Topologie;
 const attribution: AttributionAvenir = {
-  objectif: { id: "0.7", revision: 1 }, commandeId: "cmd-12345678", runId: "run-12345678", projetId: "demo",
+  objectif: { id: "4.5", revision: 1 }, commandeId: "cmd-12345678", runId: "run-12345678", projetId: "demo",
   agent: { id: "sacha", nom: "Sacha", llm: { via: "codex", model: "gpt-5.6" } }, statut: "running",
   creeLe: "2026-10-19T00:00:00.000Z", raison: null, livraison: null,
 };
@@ -39,14 +39,14 @@ describe("attribution depuis À venir", () => {
   });
 
   it("prépare la référence, le projet et les critères sans exclure Claude ni Codex", () => {
-    const etape = toutesLesEtapes.find((e) => e.id === "0.7")!;
+    const etape = toutesLesEtapes.find((e) => e.id === "4.5")!;
     const spec = construireSpecAttribution(etape, "business-pipelines", ["Revue faite"]);
     expect(spec.projectId).toBe("business-pipelines");
-    expect(spec.contexte).toEqual({ _roadmapObjective: { id: "0.7", revision: 1 } });
+    expect(spec.contexte).toEqual({ _roadmapObjective: { id: "4.5", revision: 1 } });
     expect(spec.runtimesExclus).toEqual(["omniroute"]);
     expect(spec.criteres).toEqual(["Revue faite"]);
     expect(spec.exigences).toEqual(["revue-securite"]);
-    expect(spec.document).toContain("Fichier protégé annoncé : BP specs/publieur.env.example.");
+    expect(spec.document).toContain("Fichier protégé annoncé : BP deploy/nas/deploy.sh.modele.");
   });
 
   it("transmet la revue de sécurité pour un chemin protégé ou un risque motivé", () => {
