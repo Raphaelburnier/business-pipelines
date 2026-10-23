@@ -16,8 +16,8 @@ assert.match(projet.repoWorkers, /:\/volume1\/docker\/git\/steam-tierlist\.git$/
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "profil-projet-"));
 try {
-  const d = path.join(root, "pipelines/improve-app/v7"); fs.mkdirSync(d, { recursive: true });
-  fs.writeFileSync(path.join(d, "pipeline.json"), JSON.stringify({ name: "improve-app", version: 7, nodes: [
+  const d = path.join(root, "pipelines/improve-app/v8"); fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, "pipeline.json"), JSON.stringify({ name: "improve-app", version: 8, nodes: [
     { id: "verify", type: "script", handler: "verify-project", runsOn: "pc", params: { verification: { checks: [{ command: "false", kind: "test" }] } },
       outcomeFrom: { report: "test-report.json", field: "verdict", items: "failures" } }], edges: [] }));
   const { pipeline } = resoudreProjet(fiche, { registre: root });
