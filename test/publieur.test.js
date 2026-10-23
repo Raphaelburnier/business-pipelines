@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const http = require("node:http");
 const publieur = require("../src/publieur");
 const checkpoints = require("agent-orchestrator/src/checkpoints");
 
@@ -152,14 +153,36 @@ test("le jeton passe par l'environnement de git, jamais par ses arguments", () =
     return "";
   };
   try {
-    // gitAvec a capturé execFileSync à son chargement : on recharge le module.
+    // Le helper a capturé execFileSync à son chargement : on recharge les deux modules.
+    delete require.cache[require.resolve("../src/operations-bornees")];
     delete require.cache[require.resolve("../src/publieur")];
     const frais = require("../src/publieur");
     frais.gitAvec({ jeton: "secret-123" })(["ls-remote", "https://github.com/x/y.git"]);
   } finally {
     cp.execFileSync = original;
     delete require.cache[require.resolve("../src/publieur")];
+    delete require.cache[require.resolve("../src/operations-bornees")];
   }
   assert.ok(!appels[0].args.join(" ").includes("secret-123"));
   assert.match(appels[0].env.GIT_CONFIG_VALUE_0, /^AUTHORIZATION: basic /);
+});
+
+test("l'API GitHub borne l'attente des en-têtes et la lecture du corps", async () => {
+  for (const mode of ["entetes", "corps"]) {
+    const serveur = http.createServer((_requete, reponse) => {
+      if (mode === "corps") {
+        reponse.writeHead(200, { "content-type": "application/json" });
+        reponse.write('{"ok":');
+      }
+      setTimeout(() => reponse.end('{"ok":true}'), 250);
+    });
+    await new Promise((resolve) => serveur.listen(0, "127.0.0.1", resolve));
+    const api = publieur.apiAvec({ fetchImpl: fetch, jeton: "test", api: `http://127.0.0.1:${serveur.address().port}`, delaiMs: 60 });
+    try {
+      await assert.rejects(api("GET", "/test"), { name: "LimiteExecution", operation: "http:github", delaiMs: 60 });
+    } finally {
+      serveur.closeAllConnections();
+      await new Promise((resolve) => serveur.close(resolve));
+    }
+  }
 });

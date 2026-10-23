@@ -20,6 +20,50 @@ test("le runner n'active la priorité que pour sa file de runs", () => {
   assert.match(source, /boucle\(store, \["chat\.respond"\],[\s\S]*?\(commande\) => repondre\(store, commande\)\)/);
 });
 
+test("le seuil diagnostique n'arrête pas un run long encore actif", async () => {
+  const f = fixture();
+  try {
+    const definition = path.join(f.env.ORCH_REGISTRE, "pipelines/longue/v1");
+    const dossierProjet = path.join(f.env.COCKPIT_PROJETS_DIR, "long");
+    fs.mkdirSync(definition, { recursive: true });
+    fs.mkdirSync(dossierProjet, { recursive: true });
+    fs.writeFileSync(path.join(definition, "pipeline.json"), JSON.stringify({
+      name: "longue", version: 1, description: "Run de recette long mais actif.",
+      nodes: [{ id: "attendre", type: "script", runsOn: "nas", run: process.execPath,
+        args: ["-e", 'const fs=require("node:fs");fs.writeFileSync("started.flag","oui");const fin=Date.now()+30000;while(!fs.existsSync("release.flag")&&Date.now()<fin)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);if(!fs.existsSync("release.flag"))process.exit(42);fs.writeFileSync("finished.flag","oui");'] }],
+      edges: [],
+    }));
+    fs.writeFileSync(path.join(dossierProjet, "spec.json"), JSON.stringify({ project_name: "long" }));
+    fs.writeFileSync(path.join(dossierProjet, "project.json"), JSON.stringify({
+      id: "long", name: "Run long", business: "recette", homeMachine: "nas", repo: path.join(f.dir, "long-inexistant.git"),
+      pipelines: [{ extends: "longue@1", spec: "spec.json" }],
+    }));
+
+    const commande = f.store.creerCommande({ kind: "run.start", payload: { projectId: "long" }, par: "recette" });
+    const runner = f.runner({ COCKPIT_RUN_DIAGNOSTIC_MS: "80" });
+    const runId = await jusqua(() => f.store.commande(commande.id).run_id, () => runner.sortie);
+    const espace = path.join(f.env.OUTPUT_ROOT, "long", runId);
+    await jusqua(() => fs.existsSync(path.join(espace, "started.flag")), () => runner.sortie);
+    const diagnostic = await jusqua(
+      () => f.store.evenements({ runId }).find((e) => e.type === "run.long_running"),
+      () => runner.sortie,
+    );
+
+    assert.equal(f.store.commande(commande.id).status, "taken");
+    assert.equal(f.store.run(runId).status, "running");
+    assert.equal(diagnostic.payload.action, "diagnostic uniquement ; aucune interruption automatique");
+    assert.ok(Array.isArray(diagnostic.payload.etapesEnCours));
+    assert.ok(diagnostic.payload.dureeMs >= 80);
+
+    fs.writeFileSync(path.join(espace, "release.flag"), "continuer");
+    await jusqua(() => f.store.commande(commande.id).status === "done", () => runner.sortie);
+    assert.equal(f.store.run(runId).status, "succeeded");
+    assert.equal(fs.readFileSync(path.join(espace, "finished.flag"), "utf8"), "oui");
+  } finally {
+    await f.fermer();
+  }
+});
+
 async function jusqua(condition, detail, plafond = 15000) {
   const fin = Date.now() + plafond;
   while (Date.now() < fin) {

@@ -21,6 +21,7 @@ const MODELE_CHAT = process.env.COCKPIT_CHAT_MODELE || "sonnet";
 const MODELE_CLAUDE = process.env.COCKPIT_CHAT_CLAUDE_MODELE || "opus";
 const EFFORT_CLAUDE = process.env.COCKPIT_CHAT_CLAUDE_EFFORT || "high";
 const MODELE_CODEX = process.env.COCKPIT_CHAT_CODEX_MODELE || "gpt-5.6-terra:high";
+const DELAI_DIAGNOSTIC_RUN_MS = 6 * 60 * 60 * 1000;
 // Codex ne transmet pas tout l'environnement aux serveurs MCP qu'il lance : le script des
 // outils reçoit explicitement de quoi retrouver la base, les projets, l'équipe et le vault.
 const ENV_OUTILS = ["ORCH_EVENT_STORE", "ORCH_REGISTRE", "ORCH_MACHINE", "COCKPIT_PROJETS_DIR", "COCKPIT_EQUIPE_ROSTER", "COCKPIT_VIA_MACHINES", "CONSEILLER_BASE", "LIVRAISON_AUTORISES_FICHIER", "COCKPIT_CHAT_AGIR"];
@@ -60,7 +61,47 @@ function projet(projectId) {
 
 // `reprendre` relance le run arrêté dans son propre dossier de travail (`--resume`), avec
 // les mêmes choix de modèle.
-function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = null }, { reprendre = false, commandId = null, runId = null, reverifier = null } = {}) {
+function delaiDiagnosticRun() {
+  const variable = "COCKPIT_RUN_DIAGNOSTIC_MS";
+  const brut = process.env[variable];
+  if (brut === undefined || brut === "") return DELAI_DIAGNOSTIC_RUN_MS;
+  const valeur = Number(brut);
+  const maximum = 24 * 60 * 60 * 1000;
+  if (!Number.isSafeInteger(valeur) || valeur < 1 || valeur > maximum) {
+    throw new Error(`${variable} doit être un entier entre 1 et ${maximum} ms`);
+  }
+  return valeur;
+}
+
+function diagnosticRun(store, runId, debut) {
+  if (!runId || !store) return;
+  const run = store.run(runId);
+  if (!run || run.status !== "running") return;
+  const evenements = store.evenements({ runId });
+  const dernierEvenement = evenements.at(-1);
+  const progression = new Set([
+    "step.progress", "step.started", "step.finished", "script.start", "script.done",
+    "node.done", "cycle.loop", "checkpoint.commit", "workspace.outputs.received",
+  ]);
+  const derniereProgression = [...evenements].reverse().find((e) => progression.has(e.type));
+  const etapesEnCours = store.etapes(runId)
+    .filter((e) => e.status === "running")
+    .map((e) => ({ id: e.id, noeud: e.node_id, type: e.type, machine: e.machine_id, demarreeLe: e.started_at }));
+  store.emettre({
+    type: "run.long_running",
+    runId,
+    payload: {
+      seuilMs: delaiDiagnosticRun(),
+      dureeMs: Date.now() - Date.parse(debut),
+      dernierEvenement: dernierEvenement ? { type: dernierEvenement.type, le: dernierEvenement.ts } : null,
+      derniereProgression: derniereProgression ? { type: derniereProgression.type, le: derniereProgression.ts } : null,
+      etapesEnCours,
+      action: "diagnostic uniquement ; aucune interruption automatique",
+    },
+  });
+}
+
+function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = null }, { reprendre = false, commandId = null, runId = null, reverifier = null, store = null } = {}) {
   const fichier = mission ? path.join(PROJETS, projectId, "project.json") : projet(projectId);
   // Les scripts du cockpit (`consigne`, `verify-couverture`…) : les nœuds `script` des
   // pipelines du registre les appellent par leur nom, et le moteur ne les a pas.
@@ -85,11 +126,30 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
     // Avec le maître permanent en place, le run lui passe ses étapes au lieu d'ouvrir le port.
     const env = maitre ? { ...process.env, ORCH_MAITRE_DISTANT: "1" } : process.env;
     const debut = new Date().toISOString();
-    enfant = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
-    enfant.on("error", (err) => resolve({ code: 1, erreur: err.message, debut }));
-    enfant.on("close", (code, signal) => {
-      enfant = null;
-      resolve({ code: code ?? 1, signal: signal || null, debut });
+    const seuilMs = delaiDiagnosticRun();
+    const processus = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
+    enfant = processus;
+    let diagnostique = false;
+    const surveillance = setInterval(() => {
+      if (diagnostique || Date.now() - Date.parse(debut) < seuilMs) return;
+      const id = runId || (commandId && store?.commande(commandId)?.run_id);
+      if (!id || store?.run(id)?.status !== "running") return;
+      diagnostique = true;
+      try {
+        diagnosticRun(store, id, debut);
+        console.warn(`Run ${id} actif depuis ${Math.round((Date.now() - Date.parse(debut)) / 60_000)} min : diagnostic enregistré, le run continue.`);
+      } catch (err) {
+        console.error(`Diagnostic du run ${id} impossible : ${err.message}`);
+      }
+    }, Math.min(INTERVALLE, 1000));
+    const terminer = (resultat) => {
+      clearInterval(surveillance);
+      if (enfant === processus) enfant = null;
+      resolve(resultat);
+    };
+    processus.once("error", (err) => terminer({ code: 1, erreur: err.message, debut }));
+    processus.once("close", (code, signal) => {
+      terminer({ code: code ?? 1, signal: signal || null, debut });
     });
   });
 }
@@ -278,14 +338,15 @@ async function reverifier(store, commande) {
   const { runId, headSha } = commande.payload;
   const run = store.run(runId);
   if (!run) throw new Error(`run inconnu : ${runId}`);
-  const resultat = await lancerExclusif(lancementDe(store, run), { runId, reverifier: headSha });
+  const resultat = await lancerExclusif(lancementDe(store, run), { runId, reverifier: headSha, store });
   return issue(store, resultat, { runId, headSha });
 }
 
 async function executerRun(store, commande) {
-  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerExclusif, lancementDe });
+  const lancerAvecDiagnostic = (lancement, options = {}) => lancerExclusif(lancement, { ...options, store });
+  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe });
   if (commande.kind === "run.reverify") return reverifier(store, commande);
-  const resultat = await lancerExclusif(commande.payload, { commandId: commande.id });
+  const resultat = await lancerExclusif(commande.payload, { commandId: commande.id, store });
   return issue(store, resultat, { runId: store.commande(commande.id)?.run_id || null });
 }
 
