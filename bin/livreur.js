@@ -87,6 +87,9 @@ function basculer(store, commande, deploy, env) {
   });
 }
 
+// Une livraison signée ne sert qu'une fois, même remise en file dans sa fenêtre de fraîcheur.
+const REGISTRE_COMMANDES = signature.creerRegistre();
+
 async function livrer(store, commande) {
   const emettre = (type, payload) => store.emettre({ type, payload: { commande: commande.id, ...payload } });
   const payload = commande.payload;
@@ -103,7 +106,7 @@ async function livrer(store, commande) {
   let etape = "verifier";
   try {
     emettre("livraison.etape", { etape });
-    const preuve = signature.verifier(signature.cleEnv(), commande);
+    const preuve = signature.verifier(signature.cleEnv(), commande, { registre: REGISTRE_COMMANDES });
     if (!preuve.ok) throw new Error(preuve.raison);
     if (preuve.transition) console.error(`livraison ${commande.id} acceptée sans vérification de signature (transition)`);
     const environnement = delais.environnement(DELAIS);

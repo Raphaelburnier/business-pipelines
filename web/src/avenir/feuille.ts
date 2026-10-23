@@ -93,7 +93,7 @@ export const LOTS: Lot[] = [
     but: "Retirer à un agent détourné tout chemin vers une fusion ou une livraison au nom de Raphaël, avant d'ajouter de l'autonomie.",
     etapes: [
       { id: "0.1", titre: "Sortir le runner du réseau hôte (F1)", detail: "Identité par en-tête Tailscale refusée sans preuve du proxy ; canal local refusé en écriture dans le conteneur.", fichiers: ["BP docker-compose.yaml:136", "BP src/acces.js:109-137"], statut: "en-cours" },
-      { id: "0.2", titre: "Signer les commandes d'autorité (F2)", detail: "HMAC et nonce sur fusion, livraison et actions de chat ; vérification par le publieur et le livreur.", fichiers: ["BP bin/publieur.js:197", "BP bin/livreur.js:94-99", "AO src/event-store.js"], statut: "en-cours" },
+      { id: "0.2", titre: "Signer les commandes d'autorité (F2)", detail: "HMAC et nonce sur fusion, livraison et actions de chat ; vérification par le publieur et le livreur.", fichiers: ["BP src/signature-commandes.js", "BP bin/publieur.js", "BP bin/livreur.js", "AO packages/schemas/commandes.js"], statut: "fait" },
       { id: "0.3", titre: "Élargir la liste des fichiers sensibles (F4)", detail: "Code d'authentification, runner, chat, worker, .claude/, .mcp.json, package.json et lockfiles.", fichiers: ["agent-gated-merge.yml:228", "BP src/pull-requests.js:30-43"], statut: "en-cours" },
       { id: "0.4", titre: "Confirmer les écritures du chat « Demander » (F5)", detail: "Plus d'outil d'écriture après la lecture d'un contenu non fiable dans le même tour.", fichiers: ["AO src/chat.js:66-85", "AO src/cockpit-read.js:228-250"], statut: "en-cours" },
       { id: "0.5", titre: "Authentifier le maître côté worker (F6, F15)", detail: "Vérifier le pair NAS, liste blanche locale, runId validé.", fichiers: ["AO src/worker.js:127-131", "AO src/worker-exec.js:59-133"], statut: "en-cours" },
@@ -278,7 +278,7 @@ export const LOTS_PRIORISES = [...LOTS]
 
 export const DEFAUTS: Defaut[] = [
   { id: "F1", severite: "critique", titre: "Identité Tailscale du cockpit forgeable par un agent du runner", fichiers: "BP docker-compose.yaml:136 ; src/acces.js:109-116", correctif: "Lot 0.1", statut: "en-cours" },
-  { id: "F2", severite: "critique", titre: "Commandes de fusion, livraison et chat non signées", fichiers: "BP docker-compose.yaml:87 ; bin/publieur.js:197 ; bin/livreur.js:94-99", correctif: "Lot 0.2", statut: "en-cours" },
+  { id: "F2", severite: "critique", titre: "Commandes de fusion, livraison et chat non signées", fichiers: "BP docker-compose.yaml:87 ; bin/publieur.js:197 ; bin/livreur.js:94-99", correctif: "Lot 0.2 fait ; reste la clé specs/cles/commandes.key à confirmer sur le NAS", statut: "en-cours" },
   { id: "F3", severite: "haute", titre: "Fusion non stricte puis deploy.sh de la release exécuté en root", fichiers: "BP bin/publieur.js:223 ; src/livreur.js:167-176", correctif: "Lot 0.7", statut: "fait" },
   { id: "F4", severite: "haute", titre: "Liste sensible du gate trop courte", fichiers: "agent-gated-merge.yml:228 ; BP src/pull-requests.js:30-43", correctif: "Lot 0.3", statut: "en-cours" },
   { id: "F5", severite: "haute", titre: "Outils d'écriture du chat déclenchables par du contenu non fiable", fichiers: "AO src/chat.js:66-85", correctif: "Lot 0.4", statut: "en-cours" },

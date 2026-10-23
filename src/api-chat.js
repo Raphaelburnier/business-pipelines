@@ -4,6 +4,8 @@
 // Le cockpit n'appelle aucun modèle : poser une question dépose un message et une commande
 // `chat.respond`, que le runner du NAS consomme avec sa propre clé.
 
+const signature = require("./signature-commandes");
+
 // Une question plus longue relève d'un document, pas d'un chat.
 const LONGUEUR_MAX = 4000;
 const AGENTS = ["cockpit", "claude", "codex"];
@@ -72,7 +74,7 @@ function filDetaille(store, id) {
  * @param {{ threadId?: string|null, contenu: unknown, par: string, canal?: string|null,
  *   plafondUsd: number, projet?: string|null, agent?: unknown }} demande
  */
-function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd, projet = null, agent = "cockpit" }) {
+function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd, projet = null, agent = "cockpit", cleSignature = signature.cleEnv() }) {
   if (!AGENTS.includes(/** @type {string} */ (agent))) return { code: 400, corps: { erreur: `répondant inconnu : ${String(agent)}` } };
   const texte = typeof contenu === "string" ? contenu.trim() : "";
   if (!texte) return { code: 400, corps: { erreur: "question vide" } };
@@ -95,7 +97,8 @@ function poser(store, { threadId = null, contenu, par, canal = null, plafondUsd,
 
   store.ajouterMessageChat({ threadId: cible, role: "user", content: texte });
   const reponse = store.ajouterMessageChat({ threadId: cible, role: "assistant", status: "queued", agent });
-  store.creerCommande({ kind: "chat.respond", payload: { threadId: cible, responseMessageId: reponse.id, agent }, par, canal });
+  // Signée : les relances et commentaires que le chat dépose citent cette question.
+  store.creerCommande({ kind: "chat.respond", payload: { threadId: cible, responseMessageId: reponse.id, agent }, par, canal, signer: signature.signataire(cleSignature, "chat.respond") });
   return { code: 202, corps: filDetaille(store, cible) };
 }
 

@@ -347,18 +347,22 @@ test("les conseillers du chat relancent une CI et écrivent aux agents par les c
   const env = { ORCH_EVENT_STORE: path.join(dir, "events.sqlite"), LIVRAISON_AUTORISES_FICHIER: b.autorisesFichier };
 
   assert.strictEqual(chatOutils.agir(b.store, { qui: RAPHAEL, agent: "claude", env: { ...env, COCKPIT_CHAT_AGIR: "0" } }), null);
-  const agir = chatOutils.agir(b.store, { qui: RAPHAEL, agent: "claude", env });
+  const origine = "00000000-0000-4000-8000-0000000000aa";
+  const agir = chatOutils.agir(b.store, { qui: RAPHAEL, agent: "claude", origine, env });
   assert.deepStrictEqual(Object.keys(agir).sort(), ["consignerRun", "ecrireEquipe", "ecrirePR", "relancerCI"]);
 
   const ci = agir.relancerCI({ depot: DEPOT, numero: 60, sha: SHA });
   const relance = b.store.commande(ci.commande);
   assert.strictEqual(relance.kind, "github.ci.rerun");
   assert.strictEqual(relance.par, RAPHAEL.par);
-  assert.deepStrictEqual(relance.payload, { depot: DEPOT, numero: 60, sha: SHA, runId: 100, tentative: 1 });
+  // Le chat ne signe pas : il cite la question signée qui l'a demandé.
+  assert.deepStrictEqual(relance.payload, { depot: DEPOT, numero: 60, sha: SHA, runId: 100, tentative: 1, origine });
+  assert.strictEqual(relance.sig, null);
 
   const mot = agir.ecrirePR({ depot: DEPOT, numero: 60, sha: SHA, message: "Le test tier échoue : corrige-le." });
   const commentaire = b.store.commande(mot.commande);
   assert.strictEqual(commentaire.kind, "github.pr.comment");
+  assert.strictEqual(commentaire.payload.origine, origine);
   assert.match(commentaire.payload.corps, /^@claude Le test tier échoue : corrige-le\.\n\n\(Claude, conseiller du cockpit, à la demande de raphael@example\.com\)$/);
   assert.throws(() => agir.ecrirePR({ depot: DEPOT, numero: 60, sha: "1".repeat(40), message: "x" }), /a bougé/);
 

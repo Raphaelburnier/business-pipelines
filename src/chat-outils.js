@@ -102,11 +102,13 @@ function mentionAgent(branche) {
  * Les actions sûres des conseillers, au nom de `qui` : l'identité de la commande `chat.respond`,
  * c'est-à-dire de celui qui a posé la question, telle que le cockpit l'a établie. Chaque
  * action relit l'état et passe par la fonction de la route du bouton, qui refuse ce qu'elle
- * refuserait à l'écran. `null` si les actions sont coupées (COCKPIT_CHAT_AGIR=0).
+ * refuserait à l'écran. `origine` est l'id de cette commande, signée par le cockpit : le
+ * publieur n'accepte une relance ou un commentaire du chat qu'avec elle. `null` si les
+ * actions sont coupées (COCKPIT_CHAT_AGIR=0).
  * @param {any} store
- * @param {{ qui: { par: string, canal: string|null }, agent: string, env?: NodeJS.ProcessEnv }} options
+ * @param {{ qui: { par: string, canal: string|null }, agent: string, origine?: string|null, env?: NodeJS.ProcessEnv }} options
  */
-function agir(store, { qui, agent, env = process.env }) {
+function agir(store, { qui, agent, origine = null, env = process.env }) {
   if (String(env.COCKPIT_CHAT_AGIR ?? "1").trim() === "0") return null;
   const c = chemins(env);
   const contextePR = { store, instantaneFichier: c.pullRequests, autorisesFichier: c.autorises, qui };
@@ -121,7 +123,7 @@ function agir(store, { qui, agent, env = process.env }) {
   return {
     relancerCI: ({ depot, numero, sha }) => {
       const pr = prLue(depot, numero);
-      const commande = apiPullRequests.demanderRelanceCI({ ...contextePR, demande: { depot, numero, sha, runId: pr.ci.runId, tentative: pr.ci.tentative } });
+      const commande = apiPullRequests.demanderRelanceCI({ ...contextePR, cleSignature: null, origine, demande: { depot, numero, sha, runId: pr.ci.runId, tentative: pr.ci.tentative } });
       return { commande: commande.id, detail: `relance CI de ${depot}#${numero} déposée pour le publieur` };
     },
     ecrirePR: ({ depot, numero, sha, message }) => {
@@ -131,7 +133,7 @@ function agir(store, { qui, agent, env = process.env }) {
       if (!pr.interne || pr.etat !== "open") throw new Error("écrire est réservé aux PR internes ouvertes");
       const mention = mentionAgent(pr.branche || "");
       const corps = `${mention ? `${mention} ` : ""}${message}${signature}`;
-      const commande = store.creerCommande({ kind: "github.pr.comment", payload: { depot, numero, sha, corps }, par: qui.par, canal: qui.canal });
+      const commande = store.creerCommande({ kind: "github.pr.comment", payload: { depot, numero, sha, corps, ...(origine ? { origine } : {}) }, par: qui.par, canal: qui.canal });
       return { commande: commande.id, detail: `commentaire ${mention ? `pour ${mention} ` : "sans mention (branche hors norme) "}sur ${depot}#${numero} déposé pour le publieur` };
     },
     ecrireEquipe: ({ filId, message, type, destinataires }) => {
