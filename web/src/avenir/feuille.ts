@@ -237,7 +237,7 @@ export const LOTS: Lot[] = [
       { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Aujourd'hui : « choisis par le planificateur ».", fichiers: ["BP web/src/avenir/AVenir.tsx:141", "BP src/objectifs-avenirs.js"], statut: "a-faire" },
       { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Remplace le sélecteur Priorité : un run prioritaire passe en premier quand le quota est serré et à la reprise.", fichiers: ["BP web/src/avenir/AVenir.tsx:142", "AO src/maitre.js"], statut: "a-faire" },
       { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire" },
-      { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "a-faire", raisonSensibilite: "Planifier une tâche autorise un lancement différé." },
+      { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "fait", raisonSensibilite: "Planifier une tâche autorise un lancement différé." },
     ],
   },
   {

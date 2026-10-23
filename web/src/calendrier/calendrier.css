@@ -82,3 +82,8 @@
   .cal-jour { min-height: 0; }
   .cal-jour.passe { display: none; }
 }
+
+/* Objectif de la feuille de route : lien vers son étape dans À venir. */
+a.cal-carte { text-decoration: none; }
+.cal-carte.feuille { border-left-style: double; border-left-width: 4px; }
+.cal-hero a { color: var(--color-accent); }
