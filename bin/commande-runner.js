@@ -172,7 +172,7 @@ function outilsCockpit(store, { propositions = null, agir = null } = {}) {
 }
 
 // Le conseiller agit au nom de celui qui a posé la question, tel que le cockpit l'a établi.
-const agirPour = (store, commande, agent) => chatOutils.agir(store, { qui: { par: commande.par, canal: commande.canal }, agent });
+const agirPour = (store, commande, agent) => chatOutils.agir(store, { qui: { par: commande.par, canal: commande.canal }, agent, origine: commande.id });
 
 // Le serveur stdio que Codex lance, et les noms de ses outils pour le prompt. L'identité de
 // la question lui passe par l'environnement.
@@ -180,7 +180,7 @@ function codexChat(store, commande) {
   const agir = agirPour(store, commande, "codex");
   const noms = cockpitRead.definitionsOutils({ ...chatOutils.sources(store), propositions: { ajouter: () => undefined, nombre: () => 0 }, agir }).map((o) => o.nom);
   const env = Object.fromEntries(ENV_OUTILS.filter((k) => process.env[k]).map((k) => [k, String(process.env[k])]));
-  if (agir) Object.assign(env, { COCKPIT_CHAT_PAR: String(commande.par), COCKPIT_CHAT_CANAL: String(commande.canal ?? "") });
+  if (agir) Object.assign(env, { COCKPIT_CHAT_PAR: String(commande.par), COCKPIT_CHAT_CANAL: String(commande.canal ?? ""), COCKPIT_CHAT_ORIGINE: commande.id });
   return {
     modele: MODELE_CODEX,
     outils: noms,

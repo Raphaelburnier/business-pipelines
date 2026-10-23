@@ -90,8 +90,11 @@ function etat({ store, instantaneFichier, autorisesFichier, qui, maintenant = Da
   };
 }
 
-/** Dépose une relance CI après relecture de la PR et vérification du relevé affiché. */
-function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, demande }) {
+/**
+ * Dépose une relance CI après relecture de la PR et vérification du relevé affiché. Le bouton
+ * du cockpit la signe ; le chat, sans clé, passe `cleSignature: null` et cite sa question.
+ */
+function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, demande, cleSignature = signature.cleEnv(), origine = null }) {
   if (!peutFusionner(qui, autorisesFichier)) {
     throw new RefusPullRequest(403, "seule une identité tailnet autorisée peut relancer la CI");
   }
@@ -116,7 +119,8 @@ function demanderRelanceCI({ store, instantaneFichier, autorisesFichier, qui, de
   }
   if (pr.ciRelanceEnCours) throw new RefusPullRequest(409, "une relance CI est déjà en cours pour cette PR");
   try {
-    return store.creerCommande({ kind: KIND_CI, payload: { depot, numero, sha, runId, tentative }, par: qui.par, canal: qui.canal });
+    const payload = { depot, numero, sha, runId, tentative, ...(origine ? { origine } : {}) };
+    return store.creerCommande({ kind: KIND_CI, payload, par: qui.par, canal: qui.canal, signer: signature.signataire(cleSignature, KIND_CI) });
   } catch (err) {
     throw new RefusPullRequest(400, err.message);
   }

@@ -47,9 +47,11 @@ if (!JETON_PUBLICATION) {
   console.error("GITHUB_TOKEN_FUSION et GITHUB_TOKEN_PUBLIEUR absents : rien ne sera publié. Voir specs/publieur.env.example.");
   process.exit(1);
 }
-// Clé partagée avec le cockpit seul (COMMANDES_CLE_FICHIER) : une fusion ou un rattachement
-// non signé est refusé. Sans clé, transition : accepté avec un avertissement à chaque fois.
+// Clé partagée avec le cockpit seul (COMMANDES_CLE_FICHIER) : une fusion, un rattachement, une
+// relance CI ou un commentaire non signé est refusé. Sans clé, transition : accepté avec un
+// avertissement à chaque fois. Le registre refuse une commande signée déjà exécutée.
 const CLE_COMMANDES = signature.cleEnv();
+const REGISTRE_COMMANDES = signature.creerRegistre();
 if (!CLE_COMMANDES) console.error("COMMANDES_CLE_FICHIER absent ou vide : les fusions ne sont pas vérifiées. Voir docs/SECURITE-COMMANDES.md.");
 const apiFusion = JETON_FUSION ? publieur.apiAvec({ fetchImpl: fetch, jeton: JETON_FUSION }) : null;
 if (!apiFusion) console.error("GITHUB_TOKEN_FUSION absent : le cockpit ne voit ni ne fusionne les PR. Voir specs/publieur.env.example.");
@@ -205,7 +207,7 @@ async function servirFusions(store) {
     }
     const { depot, numero, sha, baseSha, runId, tentative } = commande.payload;
     let resultat;
-    const preuve = signature.verifier(CLE_COMMANDES, commande);
+    const preuve = signature.verifier(CLE_COMMANDES, commande, { registre: REGISTRE_COMMANDES, lireCommande: (id) => store.commande(id) });
     if (preuve.ok && preuve.transition) console.error(`${commande.kind} ${commande.id} accepté sans vérification de signature (transition)`);
     if (!apiFusion) {
       resultat = { ok: false, raison: "GITHUB_TOKEN_FUSION absent du publieur" };

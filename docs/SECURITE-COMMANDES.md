@@ -1,6 +1,6 @@
 # Identité par socket et commandes signées (F1, F2)
 
-Audit du 17 octobre 2026, lot 0.1 et 0.2.
+Audit du 17 octobre 2026, lot 0.1 et 0.2. Nonce et actions du chat ajoutés le 24 octobre 2026.
 
 ## Le problème
 
@@ -20,10 +20,13 @@ F1 :
 F2 :
 - Le cockpit signe en HMAC-SHA256 `github.merge`, `github.project.attach` et `livraison.start`. La signature couvre l'id, le kind, la charge, `par`, `canal` et l'heure de création.
 - Le publieur et le livreur refusent une commande non signée, mal signée ou vieille de plus de 30 minutes.
+- L'id de la commande sert de nonce. Le publieur et le livreur gardent en mémoire les ids déjà exécutés et refusent de les revoir : une ligne remise en file par le runner dans ses 30 minutes ne se rejoue pas. Le registre vit en mémoire, pas dans `etat/` que le runner peut réécrire ; une commande signée avant le démarrage du service est donc refusée (il suffit de recliquer).
+- Le bouton « Relancer la CI » signe `github.ci.rerun`. Le cockpit signe aussi chaque question du chat (`chat.respond`).
+- Le chat tourne dans le runner, sans la clé. Une relance CI ou un commentaire de PR qu'il dépose cite la question signée qui l'a demandé (`payload.origine`). Le publieur exige que cette question soit signée, fraîche, du même auteur et du même canal, et n'accepte pas plus de 5 actions par question.
 - La clé vit dans `specs/cles/commandes.key`. Seuls le cockpit, le publieur et le livreur la montent.
 - La colonne `sig` vient du moteur (agent-orchestrator, PR « store a cockpit signature with each command »), qui doit donc être livré avec ou avant ce changement.
 
-`github.ci.rerun` et `github.pr.comment` restent non signés : le chat du runner les dépose lui-même. Leur garde est le lot 0.4 (F5).
+Un agent du runner peut encore agir au nom d'une vraie question récente, dans la limite de 5 actions et pendant 30 minutes. Empêcher le modèle du chat d'écrire après avoir lu un contenu non fiable reste le lot 0.4 (F5). Les tours d'équipe et les consignes de run que dépose le chat sont consommés par le runner lui-même : une signature n'y protège rien.
 
 ## Mise en service sur le NAS
 
@@ -62,7 +65,7 @@ Les deux protections restent en mode transition tant que ces étapes ne sont pas
 
 Avec ces protections, un agent du runner ne peut plus signer une fusion ou une livraison. Il peut toujours :
 - lire l'event store ;
-- déposer des `run.start` et des actions de chat (lot 0.4) ;
+- déposer des `run.start`, ou des actions de chat rattachées à une question récente (lot 0.4) ;
 - lire les jetons d'abonnement du runner (lot 0.6).
 
 La vraie séparation reste de sortir le runner du réseau hôte, en isolant le maître des workers dans un service sans agents.
