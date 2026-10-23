@@ -14,6 +14,8 @@ function recette(scenario) {
   for (const dir of [bin, candidate, release, path.join(business, "specs"), path.join(business, "etat")]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(business, "app.txt"), "ancienne version");
   fs.writeFileSync(path.join(business, "etat/preserve.txt"), "etat vivant");
+  fs.mkdirSync(path.join(business, "codex"));
+  fs.writeFileSync(path.join(business, "codex/session-recette.json"), '{"session":"factice"}\n');
   fs.writeFileSync(path.join(business, "specs/deploiement.env"), "ANTHROPIC_API_KEY=recette-factice\n", { mode: 0o600 });
   fs.writeFileSync(path.join(business, "specs/workers.json"), "{}\n");
   fs.writeFileSync(path.join(business, "specs/publieur.env"), "\n", { mode: 0o600 });

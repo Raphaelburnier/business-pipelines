@@ -29,6 +29,8 @@ La variable `rollback_code` non définie peut interrompre l'écriture de l'incid
 un incident durable avant de commencer. Seul un retour confirmé des services l'efface.
 Le livreur distingue restauration confirmée et incident ; il refuse les nouvelles livraisons
 en présence d'un incident et continue à publier son état.
+Le dossier de connexion `codex/` reste en place comme les autres dossiers d'état ; les
+archives de code et leur restauration l'excluent, avec `specs/` et `etat/`.
 
 Les budgets construction, bascule et restauration portent sur chaque phase entière.
 Les commandes ont aussi leurs limites. L'arrêt vise le groupe créé et attend son nettoyage ;

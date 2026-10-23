@@ -233,7 +233,7 @@ vider_code() {
   borne "$COMMAND_TIMEOUT_SEC" 1800 sh -c '
     for entree in "$1"/.[!.]* "$1"/..?* "$1"/*; do
       [ -e "$entree" ] || [ -L "$entree" ] || continue
-      case "${entree##*/}" in approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|run-cockpit|passer-abonnement.sh) continue ;; esac
+      case "${entree##*/}" in approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|codex|run-cockpit|passer-abonnement.sh) continue ;; esac
       rm -rf "$entree" || exit $?
     done' sh "$BUSINESS"
 }
@@ -252,6 +252,7 @@ borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -czf "$BACKUP" -C /volume1/docker \
   --exclude=business-pipelines/logs --exclude=business-pipelines/runs \
   --exclude=business-pipelines/workspace --exclude=business-pipelines/workspaces \
   --exclude=business-pipelines/etat --exclude=business-pipelines/ai-studio-data \
+  --exclude=business-pipelines/codex \
   --exclude=business-pipelines/run-cockpit --exclude=business-pipelines/passer-abonnement.sh \
   business-pipelines
 

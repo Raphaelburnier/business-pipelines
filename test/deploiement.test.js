@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { echecBascule } = require("../src/livreur");
 const { recette } = require("./fixtures/deploiement");
+const { execFileSync } = require("node:child_process");
 
 for (const scenario of ["restauration-echec", "restauration-malade"]) test(`restauration non confirmée : ${scenario}`, async () => {
   const f = recette(scenario);
@@ -32,6 +33,12 @@ for (const [scenario, nouveau, restaure] of [["succes", true, false], ["avant-ec
       assert.equal(fin.code === 0, nouveau, fin.sortie);
       assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), nouveau ? "nouvelle version" : "ancienne version");
       assert.equal(fs.readFileSync(path.join(f.business, "etat/preserve.txt"), "utf8"), "etat vivant");
+      assert.equal(fs.readFileSync(path.join(f.business, "codex/session-recette.json"), "utf8"), '{"session":"factice"}\n');
+      const sauvegardes = path.join(f.racine, "docker/business-pipelines-backups");
+      for (const fichier of fs.readdirSync(sauvegardes)) {
+        const contenu = execFileSync("tar", ["-tzf", path.join(sauvegardes, fichier)], { encoding: "utf8" });
+        assert.doesNotMatch(contenu, /business-pipelines\/(codex|specs|etat)\//);
+      }
       assert.equal(fs.existsSync(path.join(f.business, "etat/incident-livraison")), false, fin.sortie);
       if (restaure) {
         assert.match(fin.sortie, /Restauration confirmée/);
