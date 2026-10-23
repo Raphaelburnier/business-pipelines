@@ -5,6 +5,7 @@ import { AVenir, construireSpecAttribution, expliquerConflitAttribution } from "
 import { LOTS, estAttribuable, projetObjectif } from "./feuille";
 import type { AttributionAvenir } from "../donnees/source";
 import type { Topologie } from "../types";
+import type { Objectif } from "../calendrier/api";
 
 vi.mock("../donnees/contexte", () => ({
   useSource: () => ({ source: { proposerPlan: vi.fn(), lancerPlan: vi.fn() } }),
@@ -20,12 +21,19 @@ const attribution: AttributionAvenir = {
   creeLe: "2026-10-19T00:00:00.000Z", raison: null, livraison: null,
 };
 
+const tacheFinance: Objectif = {
+  id: "00000000-0000-4000-8000-000000000009", revision: 2, projectId: "finance", titre: "Revue hebdomadaire du portefeuille", priority: "haute", source: "calendar",
+  date: "2026-10-26", heure: "07:30", repetition: "weekly", active: true, nextAt: "2026-10-26T06:30:00.000Z", criteres: ["Note de synthèse produite"], occurrences: [],
+  brouillon: { projectId: "finance", graph: { name: "finance-research", title: "Recherche Finance", nodes: [] }, assignments: {}, baseRef: "finance-research@2" },
+};
+
 describe("attribution depuis À venir", () => {
   beforeEach(() => {
     vi.mocked(useCharge).mockReset();
     vi.mocked(useCharge)
       .mockReturnValueOnce({ donnees: [attribution], erreur: null } as never)
-      .mockReturnValueOnce({ donnees: topo, erreur: null } as never);
+      .mockReturnValueOnce({ donnees: topo, erreur: null } as never)
+      .mockReturnValueOnce({ donnees: [tacheFinance], erreur: null } as never);
   });
 
   it("n'affiche l'action que pour les objectifs attribuables et montre l'assignation active", () => {
@@ -63,8 +71,18 @@ describe("attribution depuis À venir", () => {
   it("affiche la provenance du badge et le contrôle séparé de la fusion", () => {
     const html = renderToStaticMarkup(createElement(AVenir));
     expect(html).toContain("Fichier protégé annoncé : BP bin/cockpit.js:590-592.");
-    expect(html).toContain("Risque signalé dans le cadrage : Planifier une tâche autorise un lancement différé.");
+    expect(html).toContain("Risque signalé dans le cadrage : Publier un pipeline modifie les actions que le moteur peut exécuter.");
     expect(html).toContain("La fusion explicite dépend des fichiers réellement modifiés.");
+  });
+
+  it("réunit tâches projet, fix et fonctionnalités système avec leurs filtres", () => {
+    const html = renderToStaticMarkup(createElement(AVenir));
+    expect(html).toContain("Revue hebdomadaire du portefeuille");
+    expect(html).toContain("Prochain départ le 26 oct. 2026, 07:30");
+    expect(html).toContain("chaque semaine");
+    for (const libelle of ["Tâches projet", "Fonctionnalités système", "Fix", "Nouvelle tâche projet"]) expect(html).toContain(libelle);
+    expect(html).toContain('aria-label="Filtrer par projet"');
+    expect(html).toContain(">Système <span>");
   });
 
   it("explique un conflit de réservation concurrente", () => {

@@ -29,7 +29,7 @@ function useCalendrier(source: SourceCalendrier) {
   return { objectifs, erreur, recharger };
 }
 
-function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source: SourceCalendrier; aujourdhui: string; onPlanifie: () => void; onFermer: () => void }) {
+export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source: SourceCalendrier; aujourdhui: string; onPlanifie: () => void; onFermer: () => void }) {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [projet, setProjet] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
