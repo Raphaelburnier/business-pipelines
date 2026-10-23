@@ -1,0 +1,8 @@
+{
+  "construction": 2700,
+  "bascule": 600,
+  "restauration": 300,
+  "commande": 120,
+  "archive": 300,
+  "grace": 5
+}

@@ -21,28 +21,94 @@ DOCKER=${DOCKER:-/usr/local/bin/docker}
 BUILD_TIMEOUT_SEC=${LIVRAISON_BUILD_TIMEOUT_SEC:-2700}
 SWITCH_TIMEOUT_SEC=${LIVRAISON_SWITCH_TIMEOUT_SEC:-600}
 ROLLBACK_TIMEOUT_SEC=${LIVRAISON_ROLLBACK_TIMEOUT_SEC:-300}
+COMMAND_TIMEOUT_SEC=${LIVRAISON_COMMAND_TIMEOUT_SEC:-120}
+ARCHIVE_TIMEOUT_SEC=${LIVRAISON_ARCHIVE_TIMEOUT_SEC:-300}
+STOP_GRACE_SEC=${LIVRAISON_STOP_GRACE_SEC:-5}
+INCIDENT=$BUSINESS/etat/incident-livraison
+MONITEUR=
+SWITCHED=0
 export COMPOSE_PROJECT_NAME=business-pipelines
 
-# Durées strictement positives et plafonnées. Chaque commande a son propre groupe : même si
-# son parent sort au SIGTERM, les descendants restent surveillés jusqu'à la fin ou au SIGKILL.
-borne() {
-  budget=$1; maximum=$2; shift 2
-  case "$budget" in ''|*[!0-9]*) echo "Budget invalide : $budget" >&2; return 2 ;; esac
+# Chaque phase a une échéance commune ; chaque commande conserve aussi sa propre borne.
+valider_budget() (
+  budget=$1; maximum=$2
+  case "$budget" in ''|0*|*[!0-9]*) echo "Budget invalide : $budget" >&2; return 2 ;; esac
   [ "$budget" -ge 1 ] && [ "$budget" -le "$maximum" ] || { echo "Budget hors limites : $budget (max $maximum s)" >&2; return 2; }
-  setsid "$@" &
-  cible=$!
-  ecoule=0
-  while kill -0 -"$cible" 2>/dev/null && [ "$ecoule" -lt "$budget" ]; do sleep 1; ecoule=$((ecoule + 1)); done
-  if kill -0 -"$cible" 2>/dev/null; then
-    kill -TERM -"$cible" 2>/dev/null || true
-    grace=0
-    while kill -0 -"$cible" 2>/dev/null && [ "$grace" -lt 5 ]; do sleep 1; grace=$((grace + 1)); done
-    kill -KILL -"$cible" 2>/dev/null || true
-    wait "$cible" 2>/dev/null || true
-    echo "Commande interrompue après ${budget}s : $*" >&2
-    return 124
-  fi
-  wait "$cible"
+)
+phase() { ETAPE_LIVRAISON=$1; PHASE_FIN=$(($(date +%s) + $2)); }
+poser_incident() {
+  mkdir -p "$BUSINESS/etat"
+  printf '%s\n' "$1" > "$INCIDENT.$$.tmp"
+  mv -f "$INCIDENT.$$.tmp" "$INCIDENT"
+}
+
+surveiller_commande() {
+  budget=$1; maximum=$2; shift 2
+  valider_budget "$budget" "$maximum" || exit 2
+  fin=$(($(date +%s) + budget))
+  [ "$fin" -le "$PHASE_FIN" ] || fin=$PHASE_FIN
+  [ "$(date +%s)" -lt "$fin" ] || { echo "Échéance de phase atteinte : $ETAPE_LIVRAISON" >&2; exit 124; }
+  pret=$(mktemp "$RELEASE/.commande.XXXXXX")
+  groupe=
+  lanceur=
+  # Un zombie n'exécute plus de travail. Linux/WSL et DSM exposent l'état dans /proc.
+  groupe_actif() (
+    [ -n "$groupe" ] && kill -0 -"$groupe" 2>/dev/null || exit 1
+    for stat in /proc/[0-9]*/stat; do
+      IFS= read -r ligne 2>/dev/null < "$stat" || continue
+      reste=${ligne##*) }
+      set -f
+      set -- $reste
+      [ "${3:-}" = "$groupe" ] || continue
+      case "$1" in Z|X) ;; *) exit 0 ;; esac
+    done
+    exit 1
+  )
+  arreter_groupe() {
+    if [ -n "$groupe" ]; then
+      kill -TERM -"$groupe" 2>/dev/null || true
+      grace_fin=$(($(date +%s) + STOP_GRACE_SEC))
+      while groupe_actif && [ "$(date +%s)" -lt "$grace_fin" ]; do sleep 0.05; done
+      kill -KILL -"$groupe" 2>/dev/null || true
+      confirmation_fin=$(($(date +%s) + 2))
+      while groupe_actif && [ "$(date +%s)" -lt "$confirmation_fin" ]; do sleep 0.05; done
+      if groupe_actif; then
+        poser_incident "Arrêt d'un processus non confirmé après @RELEASE@. Livraison suspendue."
+        return 125
+      fi
+    elif [ -n "$lanceur" ]; then
+      kill -KILL "$lanceur" 2>/dev/null || true
+    fi
+    [ -z "$lanceur" ] || wait "$lanceur" 2>/dev/null || true
+  }
+  trap 'rm -f "$pret"' EXIT
+  trap 'arreter_groupe; exit 143' HUP INT TERM
+  # L'accusé est écrit APRÈS setsid. Sans lui, le premier kill -0 peut arriver avant
+  # la création du groupe et transformer la commande bornée en simple wait sans limite.
+  setsid sh -c 'printf "%s\n" "$$" > "$1"; shift; exec "$@"' sh "$pret" "$@" &
+  lanceur=$!
+  while [ ! -s "$pret" ]; do
+    if ! kill -0 "$lanceur" 2>/dev/null; then wait "$lanceur"; exit $?; fi
+    if [ "$(date +%s)" -ge "$fin" ]; then arreter_groupe; exit 124; fi
+    sleep 0.01
+  done
+  IFS= read -r groupe < "$pret"
+  while groupe_actif; do
+    if [ "$(date +%s)" -ge "$fin" ]; then
+      arreter_groupe || exit $?
+      echo "Commande interrompue à l'étape $ETAPE_LIVRAISON : $1" >&2
+      exit 124
+    fi
+    sleep 0.05
+  done
+  wait "$lanceur"
+}
+borne() {
+  surveiller_commande "$@" &
+  MONITEUR=$!
+  if wait "$MONITEUR"; then resultat=0; else resultat=$?; fi
+  MONITEUR=
+  return "$resultat"
 }
 # L'interpolation du compose (docs/SECURITE-COMMANDES.md) vient de specs/, que la bascule
 # garde ; un .env à la racine serait effacé par vider_code. Une seule variable, lue par motif
@@ -52,6 +118,63 @@ if [ -f "$BUSINESS/specs/compose.env" ]; then
   export COCKPIT_IDENTITE_SOCKET_SEULE
 fi
 
+en_marche() {
+  borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect "$1" --format '{{.State.Running}}' > "$RELEASE/.etat-service" || return 1
+  IFS= read -r etat_service < "$RELEASE/.etat-service" || return 1
+  [ "$etat_service" = true ]
+}
+sante() {
+  tentative=0
+  while [ "$tentative" -lt 45 ] && [ "$(date +%s)" -lt "$PHASE_FIN" ]; do
+    if borne "$COMMAND_TIMEOUT_SEC" 1800 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:4600/ >/dev/null && \
+      en_marche business_runner && en_marche business_tailscale_whois && en_marche business_publieur; then return 0; fi
+    tentative=$((tentative + 1))
+    sleep 1
+  done
+  return 1
+}
+rollback() {
+  code=$1
+  trap - EXIT HUP INT TERM
+  set +e
+  [ "$code" -ne 0 ] || code=1
+  if [ -n "$MONITEUR" ]; then kill -TERM "$MONITEUR" 2>/dev/null; wait "$MONITEUR"; MONITEUR=; fi
+  if [ "$SWITCHED" -eq 1 ]; then
+    phase restaurer "$ROLLBACK_TIMEOUT_SEC"
+    restauration_echec=0
+    poser_incident "Restauration en cours après @RELEASE@. Livraison suspendue jusqu'à confirmation."
+    echo "Échec après la bascule ; restauration du cockpit et du runner précédents..." >&2
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || restauration_echec=1
+    # Le code d'avant revient ; l'état en service n'est pas touché.
+    vider_code || restauration_echec=1
+    borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$BACKUP" -C /volume1/docker || restauration_echec=1
+    # Les quatre services arrêtés reviennent sur leurs images d'avant : seuls le cockpit et le
+    # runner étaient relancés, le relais d'identité et le publieur restaient arrêtés.
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_COCKPIT" business-pipelines-cockpit || restauration_echec=1
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_RUNNER" business-pipelines-runner || restauration_echec=1
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_WHOIS" business-pipelines-tailscale-whois || restauration_echec=1
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_PUBLIEUR" business-pipelines-publieur || restauration_echec=1
+    cd "$BUSINESS" || restauration_echec=1
+    if [ "$restauration_echec" -eq 0 ]; then
+      borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" compose up -d --no-build cockpit runner tailscale-whois publieur && sante || restauration_echec=1
+    fi
+    if [ "$restauration_echec" -ne 0 ]; then
+      poser_incident "Restauration non confirmée après @RELEASE@. Livraison suspendue."
+      code=70
+    else
+      rm -f "$INCIDENT"
+      echo "Restauration confirmée."
+    fi
+  else
+    echo "Échec avant la bascule ; rien n'a été remplacé." >&2
+  fi
+  exit "$code"
+}
+trap 'rollback $?' EXIT
+trap 'rollback 129' HUP
+trap 'rollback 130' INT
+trap 'rollback 143' TERM
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "Cette bascule doit être lancée avec sudo." >&2
   exit 1
@@ -60,6 +183,14 @@ for requis in "$BUSINESS" "$ARCHIVE" "$ENV" "$BUSINESS/specs/workers.json" "$BUS
   [ -e "$requis" ] || { echo "Élément requis absent : $requis" >&2; exit 1; }
 done
 command -v setsid >/dev/null || { echo "setsid est requis pour borner les processus de déploiement." >&2; exit 1; }
+valider_budget "$BUILD_TIMEOUT_SEC" 7200
+valider_budget "$SWITCH_TIMEOUT_SEC" 1800
+valider_budget "$ROLLBACK_TIMEOUT_SEC" 900
+valider_budget "$COMMAND_TIMEOUT_SEC" 1800
+valider_budget "$ARCHIVE_TIMEOUT_SEC" 900
+valider_budget "$STOP_GRACE_SEC" 30
+[ ! -e "$INCIDENT" ] || { echo "Livraison suspendue : incident à résoudre dans $INCIDENT" >&2; exit 1; }
+phase preparer "$BUILD_TIMEOUT_SEC"
 # Ne pas vérifier ici les volumes du cockpit : le livreur exécute aussi ce script
 # dans son propre conteneur, où le partage des modèles n'est pas monté.
 echo "@SHA256@  $ARCHIVE" | sha256sum -c -
@@ -69,7 +200,7 @@ grep -Eq '^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=' "$ENV" || { echo "Ni je
 umask 077
 borne "$BUILD_TIMEOUT_SEC" 7200 rm -rf "$STAGE"
 mkdir -p "$BACKUPS" "$STAGE"
-borne "$BUILD_TIMEOUT_SEC" 7200 tar -xzf "$ARCHIVE" -C "$STAGE"
+borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$ARCHIVE" -C "$STAGE"
 mkdir -p "$STAGE/specs"
 ln -sf "$ENV" "$STAGE/specs/deploiement.env"
 ln -sf "$BUSINESS/specs/workers.json" "$STAGE/specs/workers.json"
@@ -80,25 +211,26 @@ ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
 # échouer tar (« file changed as we read it », première livraison depuis le cockpit, le
 # 2026-09-29) ; et restaurer cette copie en cas d'échec aurait remplacé l'état vivant par un
 # instantané plus ancien, peut-être incohérent.
-est_etat() {
-  case "$1" in
-    approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|run-cockpit|passer-abonnement.sh) return 0 ;;
-  esac
-  return 1
-}
 # Retire le code en place, garde l'état.
 vider_code() {
-  find "$BUSINESS" -mindepth 1 -maxdepth 1 -print | while IFS= read -r entree; do
-    est_etat "$(basename "$entree")" || rm -rf "$entree"
-  done
+  borne "$COMMAND_TIMEOUT_SEC" 1800 sh -c '
+    for entree in "$1"/.[!.]* "$1"/..?* "$1"/*; do
+      [ -e "$entree" ] || [ -L "$entree" ] || continue
+      case "${entree##*/}" in approvals|specs|logs|runs|workspace|workspaces|etat|ai-studio-data|run-cockpit|passer-abonnement.sh) continue ;; esac
+      rm -rf "$entree" || exit $?
+    done' sh "$BUSINESS"
 }
 
-ANCIENNE_COCKPIT=$(borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_cockpit --format '{{.Image}}')
-ANCIENNE_RUNNER=$(borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_runner --format '{{.Image}}')
-ANCIENNE_WHOIS=$(borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_tailscale_whois --format '{{.Image}}')
-ANCIENNE_PUBLIEUR=$(borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_publieur --format '{{.Image}}')
-# Le code seulement : mêmes noms que est_etat, à garder d'accord.
-borne "$BUILD_TIMEOUT_SEC" 7200 tar -czf "$BACKUP" -C /volume1/docker \
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_cockpit --format '{{.Image}}' > "$RELEASE/.image"
+IFS= read -r ANCIENNE_COCKPIT < "$RELEASE/.image"
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_runner --format '{{.Image}}' > "$RELEASE/.image"
+IFS= read -r ANCIENNE_RUNNER < "$RELEASE/.image"
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_tailscale_whois --format '{{.Image}}' > "$RELEASE/.image"
+IFS= read -r ANCIENNE_WHOIS < "$RELEASE/.image"
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_publieur --format '{{.Image}}' > "$RELEASE/.image"
+IFS= read -r ANCIENNE_PUBLIEUR < "$RELEASE/.image"
+# Le code seulement : mêmes noms que vider_code, à garder d'accord.
+borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -czf "$BACKUP" -C /volume1/docker \
   --exclude=business-pipelines/approvals --exclude=business-pipelines/specs \
   --exclude=business-pipelines/logs --exclude=business-pipelines/runs \
   --exclude=business-pipelines/workspace --exclude=business-pipelines/workspaces \
@@ -106,36 +238,6 @@ borne "$BUILD_TIMEOUT_SEC" 7200 tar -czf "$BACKUP" -C /volume1/docker \
   --exclude=business-pipelines/run-cockpit --exclude=business-pipelines/passer-abonnement.sh \
   business-pipelines
 
-SWITCHED=0
-rollback() {
-  code=$?
-  trap - EXIT HUP INT TERM
-  set +e
-  if [ "$SWITCHED" -eq 1 ]; then
-    restauration_echec=0
-    echo "Échec après la bascule ; restauration du cockpit et du runner précédents..." >&2
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1 || restauration_echec=1
-    # Le code d'avant revient ; l'état en service n'est pas touché.
-    vider_code
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 tar -xzf "$BACKUP" -C /volume1/docker || restauration_echec=1
-    # Les quatre services arrêtés reviennent sur leurs images d'avant : seuls le cockpit et le
-    # runner étaient relancés, le relais d'identité et le publieur restaient arrêtés.
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" tag "$ANCIENNE_COCKPIT" business-pipelines-cockpit || restauration_echec=1
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" tag "$ANCIENNE_RUNNER" business-pipelines-runner || restauration_echec=1
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" tag "$ANCIENNE_WHOIS" business-pipelines-tailscale-whois || restauration_echec=1
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" tag "$ANCIENNE_PUBLIEUR" business-pipelines-publieur || restauration_echec=1
-    cd "$BUSINESS" || restauration_echec=1
-    borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" compose up -d --no-build cockpit runner tailscale-whois publieur || restauration_echec=1
-    if [ "$restauration_echec" -ne 0 ]; then
-      mkdir -p "$BUSINESS/etat"
-      printf '%s\n' "Restauration non confirmée après @RELEASE@ à l'étape ${ETAPE_LIVRAISON:-inconnue}. Livraison suspendue." > "$BUSINESS/etat/incident-livraison"
-    fi
-  else
-    echo "Échec avant la bascule ; rien n'a été remplacé." >&2
-  fi
-  exit "$code"
-}
-trap rollback EXIT HUP INT TERM
 
 echo "Construction des images..."
 cd "$STAGE"
@@ -144,17 +246,18 @@ cd "$STAGE"
 # qui démarrait en plus de 8 s faisait échouer la livraison (d017ae24, 2026-10-22). Une seule
 # construction, puis la même image sous le nom de chaque service, que la bascule et la
 # restauration utilisent.
-  borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" compose build cockpit
+borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" compose build cockpit
 for service in runner tailscale-whois publieur; do
   borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" tag business-pipelines-cockpit "business-pipelines-$service"
 done
 
 echo "Bascule..."
+phase basculer "$SWITCH_TIMEOUT_SEC"
+poser_incident "Bascule en cours vers @RELEASE@. Contrôle des services attendu."
 SWITCHED=1
-ETAPE_LIVRAISON=basculer
-borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" rm -f business_cockpit business_runner business_tailscale_whois business_publieur >/dev/null 2>&1
 vider_code
-tar -xzf "$ARCHIVE" -C "$BUSINESS"
+borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$ARCHIVE" -C "$BUSINESS"
 # Tout dossier monté par docker-compose.yaml doit exister : Docker sur DSM ne crée pas la
 # source d'un bind mount, et la bascule échoue (./codex, 2026-10-15, version restaurée).
 mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data" "$BUSINESS/codex" "$BUSINESS/run-cockpit" "$BUSINESS/specs/cles"
@@ -162,40 +265,27 @@ mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/work
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
 # livreur, ces noms n'existent pas.
-chown -R 1026:100 "$BUSINESS"
+borne "$COMMAND_TIMEOUT_SEC" 1800 chown -R 1026:100 "$BUSINESS"
 # La connexion Codex du conseiller (auth.json) : lisible du seul propriétaire.
 chmod 700 "$BUSINESS/codex"
 
 cd "$BUSINESS"
-borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" compose up -d --no-build cockpit runner tailscale-whois publieur
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" compose up -d --no-build cockpit runner tailscale-whois publieur
 
-tentative=0
-while [ "$tentative" -lt 45 ]; do
-  if curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:4600/ >/dev/null && \
-     [ "$($DOCKER inspect business_runner --format '{{.State.Running}}')" = "true" ] && \
-     [ "$($DOCKER inspect business_tailscale_whois --format '{{.State.Running}}')" = "true" ] && \
-     [ "$($DOCKER inspect business_publieur --format '{{.State.Running}}')" = "true" ]; then
-    break
-  fi
-  tentative=$((tentative + 1))
-  sleep 1
-done
-if [ "$tentative" -ge 45 ]; then
-  $DOCKER logs --tail 60 business_cockpit >&2 || true
-  $DOCKER logs --tail 60 business_runner >&2 || true
-  $DOCKER logs --tail 60 business_tailscale_whois >&2 || true
-  $DOCKER logs --tail 60 business_publieur >&2 || true
+if ! sante; then
+  for service in cockpit runner tailscale_whois publieur; do borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" logs --tail 60 "business_$service" >&2 || true; done
   exit 1
 fi
 # L'image doit porter les deux correctifs dont les runs dépendent.
-  borne "$SWITCH_TIMEOUT_SEC" 1800 "$DOCKER" exec business_runner sh -c 'command -v bash >/dev/null && git config --system --get-all safe.directory | grep -qx "/app/workspaces/\*"'
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_runner sh -c 'command -v bash >/dev/null && git config --system --get-all safe.directory | grep -qx "/app/workspaces/\*"'
 [ "$(stat -c %a "$ENV")" = "600" ] || { echo "Attention : $ENV n'est pas en 600." >&2; }
 [ "$(stat -c %a "$BUSINESS/specs/publieur.env")" = "600" ] || { echo "Attention : specs/publieur.env n'est pas en 600." >&2; }
 # Le premier passage du publieur : il doit avoir lu le dépôt GitHub sans erreur.
-sleep 8
-$DOCKER logs business_publieur 2>&1 | tail -5
+borne "$COMMAND_TIMEOUT_SEC" 1800 sleep 8
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" logs --tail 5 business_publieur
 
-$DOCKER ps --filter name=business_ --format '{{.Names}} : {{.Status}}'
-curl -fsS -o /dev/null -w 'Cockpit local : HTTP %{http_code}\n' http://127.0.0.1:4600/
+borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" ps --filter name=business_ --format '{{.Names}} : {{.Status}}'
+borne "$COMMAND_TIMEOUT_SEC" 1800 curl -fsS --connect-timeout 2 --max-time 5 -o /dev/null -w 'Cockpit local : HTTP %{http_code}\n' http://127.0.0.1:4600/
+rm -f "$INCIDENT"
 trap - EXIT HUP INT TERM
 echo "Déploiement terminé. Sauvegarde : $BACKUP"

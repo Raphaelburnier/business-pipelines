@@ -1,5 +1,13 @@
 # SPEC : livrer le cockpit depuis le cockpit
 
+## Résumé
+
+Le cockpit demande une livraison signée, le livreur contrôle les versions fusionnées et
+exécute un modèle de déploiement protégé. Depuis le complément du 23 octobre 2026, une
+approbation opérateur peut autoriser un ensemble exact modèle/compose pour les livraisons
+suivantes. Les réglages de durée se relisent séparément. La première activation du livreur
+modifié reste manuelle ; voir [le complément et les commandes](SPEC-modele-livraison-approuve.md).
+
 > Document destiné à Claude Code et à Raphaël. Rédigé le 2026-09-29 après lecture du code
 > (business-pipelines `f5dc441`, agent-orchestrator `d88d94e`).
 > **Règle de travail : une phase à la fois, chacune dans sa PR, validée par Raphaël avant la
@@ -79,10 +87,11 @@ branches par défaut (§3). `bin/livrer.sh` reste le chemin de secours et reste 
    lignes du journal, version restaurée.
 8. **Une seule logique de bascule.** Le livreur exécute le même `deploy.sh` que
    `bin/livrer.sh`. Pas de seconde implémentation qui divergerait.
-   Ce `deploy.sh` est figé (F3) : le livreur le tire du cockpit en production (`.release`), pas
-   de la version livrée. Il refuse une version qui change `deploy/nas/` ou `docker-compose.yaml`
-   depuis la production ; celle-ci se livre à la main avec `bin/livrer.sh`. Une PR fusionnée ne
-   peut donc pas réécrire ce que l'hôte exécute en root et se faire exécuter par le livreur.
+   Ce `deploy.sh` est protégé (F3) : le livreur le tire du cockpit en production (`.release`),
+   ou du commit source d'une approbation opérateur. Un changement de `deploy/nas/` ou de
+   `docker-compose.yaml` exige une approbation de leur empreinte exacte dans
+   `specs/livraison-modeles.json`, ou une livraison manuelle. Une fusion GitHub seule ne crée
+   aucune approbation. Le premier livreur qui applique ce contrôle s'installe manuellement.
 9. **Les tests passent avant la bascule.** Le build de l'image lance les tests ; un échec
    arrête tout avant de toucher à l'installation en place.
 

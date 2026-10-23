@@ -5,8 +5,8 @@
 // sur le NAS. En échange, il n'écoute rien : aucun port, aucune entrée réseau. Il lit la file
 // de commandes de l'event store, ne construit que des commits présents dans les miroirs du
 // NAS et fusionnés sur leur branche par défaut, puis exécute le même deploy.sh que
-// bin/livrer.sh. Il n'y a qu'une logique de bascule, mais le livreur n'exécute que celle déjà
-// en production : une version qui la change se livre à la main (F3).
+// bin/livrer.sh. Il exécute la bascule en production ou une version explicitement approuvée
+// par l'opérateur pour le même ensemble protégé (F3).
 //
 // Ce module ne touche ni Docker ni l'event store : il est testé sur de vrais dépôts git dans
 // un dossier temporaire. bin/livreur.js fait la boucle et les effets.
@@ -15,6 +15,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSyncBorne } = require("./operations-bornees");
+const modeles = require("./modeles-livraison");
 
 const KIND = "livraison.start";
 const DEPOTS = /** @type {const} */ (["cockpit", "moteur", "registre"]);
@@ -23,8 +24,8 @@ const SHA = /^[0-9a-f]{40}$/;
 const EMPLACEMENTS = { cockpit: ".", moteur: ".moteur", registre: "agent-registry" };
 // Ce que l'hôte exécute en root pendant la bascule : deploy.sh, et le compose que docker lance
 // avec ses montages. Une PR fusionnée ne doit pas pouvoir les réécrire puis se faire exécuter
-// par le livreur : les changer demande une livraison à la main (bin/livrer.sh).
-const FIGES = ["deploy/nas", "docker-compose.yaml"];
+// par le livreur : les changer demande une livraison manuelle ou une approbation d'empreinte.
+const FIGES = modeles.FIGES;
 
 class Refus extends Error {}
 
@@ -116,7 +117,7 @@ function proposition({ git, miroirs, release, maintenant = new Date() }) {
  * Tout ce qui doit être vrai avant de préparer quoi que ce soit. Le cockpit a déjà contrôlé
  * l'identité : le livreur recontrôle, parce que c'est lui qui tient le pouvoir.
  */
-function verifierDemande({ git, miroirs, payload, par, canal, autorises, release }) {
+function verifierDemande({ git, miroirs, payload, par, canal, autorises, release, modelesFichier }) {
   if (canal !== "tailnet") {
     throw new Refus(`identité non prouvée (canal « ${canal || "inconnu"} ») : une livraison exige le tailnet`);
   }
@@ -133,11 +134,24 @@ function verifierDemande({ git, miroirs, payload, par, canal, autorises, release
   }
   const enProduction = release && release.cockpit ? resoudre(git, miroirs.cockpit, release.cockpit) : null;
   if (!enProduction) throw new Refus("cockpit en production inconnu du miroir : livrer à la main avec bin/livrer.sh");
+  const registreModeles = modeles.lire(modelesFichier);
+  if (registreModeles.revoques.length && registreModeles.revoques.includes(modeles.empreinte({ git, depot: miroirs.cockpit, sha: payload.cockpit }).empreinte)) {
+    throw new Refus("modèle de livraison révoqué : approuver une version vérifiée avant de livrer");
+  }
   const changes = texte(git(["--git-dir", miroirs.cockpit, "diff", "--name-only", enProduction, payload.cockpit, "--", ...FIGES]));
   if (changes) {
-    throw new Refus(`${changes.split("\n").join(", ")} change : livrer à la main avec bin/livrer.sh, le livreur n'exécute que la bascule en production`);
+    const autorisation = modelesFichier && modeles.autorisation({ git, depot: miroirs.cockpit, sha: payload.cockpit, fichier: modelesFichier });
+    if (autorisation) return { modeleDe: autorisation.approbation.cockpit };
+    throw new Refus(`${changes.split("\n").join(", ")} change : livrer à la main avec bin/livrer.sh ou approuver cette version avec bin/modele-livraison.js`);
   }
   return { modeleDe: enProduction };
+}
+
+/** Une tentative de restauration ne vaut réussite qu'en l'absence d'incident persistant. */
+function echecBascule(fin, incident = null) {
+  if (incident) return { issue: "echec", raison: `restauration non confirmée ; livraison suspendue : ${incident.trim()}` };
+  if (fin.etape === "restaurer") return { issue: "restauree", raison: "échec après la bascule : version précédente restaurée et contrôlée" };
+  return { issue: "echec", raison: `deploy.sh terminé en code ${fin.code} à l'étape ${fin.etape}, avant la bascule : rien n'a été remplacé` };
 }
 
 const horodatage = (date) => {
@@ -147,8 +161,8 @@ const horodatage = (date) => {
 
 /**
  * Construit la release comme bin/livrer.sh : export exact des trois SHA, `.release`, archive
- * et empreinte, deploy.sh tiré du modèle du cockpit `modeleDe`, celui en production que
- * verifierDemande renvoie. Rien n'est lu d'un dossier de travail.
+ * et empreinte, deploy.sh tiré du modèle `modeleDe` contrôlé par verifierDemande
+ * (production ou approbation opérateur). Rien n'est lu d'un dossier de travail.
  * @returns {{ release: string, dossier: string, archive: string, empreinte: string, deploy: string }}
  */
 function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = null, maintenant = new Date() }) {
@@ -250,4 +264,5 @@ module.exports = {
   etapeDeLigne,
   retention,
   ecrireJson,
+  echecBascule,
 };

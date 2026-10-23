@@ -138,9 +138,10 @@ restauration. Il ne constitue pas une implémentation acceptable à lui seul.
   pas remplacés pour tenter de débloquer un déploiement.
 - Aucun arrêt du démon Docker ni de conteneurs sans rapport avec le lot.
 
-Le modèle de déploiement est figé par la protection F3. Sa première mise en service
-modifiée devra donc suivre la livraison manuelle autorisée ; le livreur ne chargera
-pas le nouveau modèle depuis une PR simplement parce qu'elle est fusionnée.
+Le modèle de déploiement garde la protection F3. Le complément validé le 23 octobre
+([modèles approuvés](SPEC-modele-livraison-approuve.md)) autorise une empreinte précise
+modèle/compose après approbation opérateur. La première installation du livreur capable
+de vérifier ces approbations reste manuelle. Une fusion GitHub seule n'autorise aucun modèle.
 
 ## Code et structure
 
