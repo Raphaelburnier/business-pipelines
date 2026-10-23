@@ -181,7 +181,8 @@ test("une erreur de préparation refuse la commande et laisse le run lié en éc
     const refusee = f.store.commande(commande.id);
     assert.ok(refusee.run_id);
     assert.equal(f.store.run(refusee.run_id).status, "failed");
-    assert.match(refusee.resultat.raison, /code 1/);
+    // La raison est l'erreur écrite par le moteur (run.finished), pas le code de sortie.
+    assert.match(refusee.resultat.raison, /git clone .*depot-inexistant\.git/);
     assert.equal(f.store.runs().length, 1);
   } finally { await f.fermer(); }
 });
