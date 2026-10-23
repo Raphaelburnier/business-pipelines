@@ -278,7 +278,7 @@ export const LOTS_PRIORISES = [...LOTS]
 
 export const DEFAUTS: Defaut[] = [
   { id: "F1", severite: "critique", titre: "Identité Tailscale du cockpit forgeable par un agent du runner", fichiers: "BP docker-compose.yaml:136 ; src/acces.js:109-116", correctif: "Lot 0.1", statut: "en-cours" },
-  { id: "F2", severite: "critique", titre: "Commandes de fusion, livraison et chat non signées", fichiers: "BP docker-compose.yaml:87 ; bin/publieur.js:197 ; bin/livreur.js:94-99", correctif: "Lot 0.2 fait ; reste la clé specs/cles/commandes.key à confirmer sur le NAS", statut: "en-cours" },
+  { id: "F2", severite: "critique", titre: "Commandes de fusion, livraison et chat non signées", fichiers: "BP docker-compose.yaml:87 ; bin/publieur.js:197 ; bin/livreur.js:94-99", correctif: "Lot 0.2", statut: "fait" },
   { id: "F3", severite: "haute", titre: "Fusion non stricte puis deploy.sh de la release exécuté en root", fichiers: "BP bin/publieur.js:223 ; src/livreur.js:167-176", correctif: "Lot 0.7", statut: "fait" },
   { id: "F4", severite: "haute", titre: "Liste sensible du gate trop courte", fichiers: "agent-gated-merge.yml:228 ; BP src/pull-requests.js:30-43", correctif: "Lot 0.3", statut: "en-cours" },
   { id: "F5", severite: "haute", titre: "Outils d'écriture du chat déclenchables par du contenu non fiable", fichiers: "AO src/chat.js:66-85", correctif: "Lot 0.4", statut: "en-cours" },
