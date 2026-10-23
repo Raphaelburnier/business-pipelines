@@ -128,7 +128,7 @@ rollback() {
     borne "$ROLLBACK_TIMEOUT_SEC" 900 "$DOCKER" compose up -d --no-build cockpit runner tailscale-whois publieur || restauration_echec=1
     if [ "$restauration_echec" -ne 0 ]; then
       mkdir -p "$BUSINESS/etat"
-      printf '%s\n' "Restauration échouée (code $rollback_code) après @RELEASE@ à l'étape ${ETAPE_LIVRAISON:-inconnue}. Livraison suspendue." > "$BUSINESS/etat/incident-livraison"
+      printf '%s\n' "Restauration non confirmée après @RELEASE@ à l'étape ${ETAPE_LIVRAISON:-inconnue}. Livraison suspendue." > "$BUSINESS/etat/incident-livraison"
     fi
   else
     echo "Échec avant la bascule ; rien n'a été remplacé." >&2
