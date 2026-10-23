@@ -9,7 +9,6 @@ import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Obj
 import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, enRetard, etatDepartFeuille, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type DepartFeuille, type Entree } from "./semaine";
 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
-const MOT_PRIORITE: Record<Priorite, string> = { haute: "haute", normale: "normale", basse: "basse" };
 const titreJour = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", day: "numeric", month: "short" });
 const jourLisible = (date: string) => titreJour.format(new Date(`${date}T12:00:00Z`));
 
@@ -51,7 +50,7 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
     if (!objectif || !criteres.length) { setErreur("Décris l'objectif et au moins un critère de réussite."); return; }
     const calendrier = { date: String(f.get("date")), heure: String(f.get("heure") || "00:00"), repetition: String(f.get("repetition")) as Repetition, active: f.get("active") === "on" };
     const brouillon = { projectId: modele.projectId, graph: modele.graph, assignments: modele.assignments, baseRef: modele.baseRef };
-    const priority = String(f.get("priorite")) as Priorite;
+    const priority: Priorite = f.get("prioritaire") === "on" ? "haute" : "normale";
     const empreinte = JSON.stringify({ brouillon, objectif, criteres, priority, calendrier });
     if (tentative.current?.empreinte !== empreinte) tentative.current = { empreinte, requestId: crypto.randomUUID() };
     setErreur(null); setEnvoi(true);
@@ -75,10 +74,8 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
         <label>Pipeline<select name="modele" key={projet}>
           {modeles.map((m) => <option key={`${m.id}@${m.version}`} value={m.id}>{m.graph.title || m.graph.name}{m.origine === "personnel" ? " (personnel)" : ""}</option>)}
         </select></label>
-        <label>Priorité<select name="priorite" defaultValue="normale">
-          <option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option>
-        </select></label>
       </div>
+      <label className="cal-prioritaire"><input type="checkbox" role="switch" name="prioritaire" /> Run prioritaire</label>
       {!modeles.length && <p className="cal-aide">Aucun pipeline rattaché à ce projet.</p>}
       <label>Objectif<textarea name="objectif" rows={2} required placeholder="Ce que le run doit produire" /></label>
       <label>Critères de réussite<textarea name="criteres" rows={2} required placeholder="Un critère par ligne" /></label>
@@ -117,13 +114,11 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
     <header>
       <p className="kicker">{objectif.projectId} · {objectif.brouillon.graph.title || objectif.brouillon.graph.name}</p>
       <h3>{objectif.titre}</h3>
-      <p>{MOT_REPETITION[objectif.repetition]} à {objectif.heure} · priorité {MOT_PRIORITE[objectif.priority]} · {objectif.active ? "active" : "en pause"}</p>
+      <p>{MOT_REPETITION[objectif.repetition]} à {objectif.heure} · {objectif.active ? "active" : "en pause"}</p>
     </header>
     <div className="cal-actions">
       <button type="button" className="cal-action" disabled={envoi} onClick={() => void changer({ active: !objectif.active })}>{objectif.active ? "Mettre en pause" : "Activer"}</button>
-      <label>Priorité<select value={objectif.priority} disabled={envoi} onChange={(e) => void changer({ priority: e.target.value as Priorite })}>
-        <option value="haute">Haute</option><option value="normale">Normale</option><option value="basse">Basse</option>
-      </select></label>
+      <label className="cal-prioritaire"><input type="checkbox" role="switch" checked={objectif.priority === "haute"} disabled={envoi} onChange={(e) => void changer({ priority: e.target.checked ? "haute" : "normale" })} /> Run prioritaire</label>
     </div>
     {prochain && <form className="cal-champs" onSubmit={deplacer} key={objectif.revision}>
       <label>Prochain départ<input type="date" name="date" defaultValue={prochain.date} required /></label>
