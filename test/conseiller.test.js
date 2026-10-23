@@ -262,6 +262,9 @@ test("sans variable, les défauts du conseiller sont inchangés", () => {
     delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
     assert.strictEqual(configuration("http:conseiller"), 30_000);
     assert.strictEqual(configuration("ollama"), 120_000);
+    // Le lot du vault avait son propre délai avant le lot 2.6 : il ne tombe pas sur les 30 s.
+    const source = fs.readFileSync(path.join(__dirname, "../bin/conseiller-pc.js"), "utf8");
+    assert.match(source, /appelAvec\(\{ delaiMs: 120_000 \}\)\("vault\/lot"/);
   } finally {
     if (precedentHttp === undefined) delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
     else process.env.CONSEILLER_HTTP_TIMEOUT_MS = precedentHttp;

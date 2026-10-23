@@ -21,7 +21,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execFileSyncBorne, configuration: delaiConfigure, limiteExecution, sousDelaiHttp } = require("../src/operations-bornees");
+const { execFileSyncBorne, configuration: delaiConfigure, sousDelaiHttp } = require("../src/operations-bornees");
 const { dansPerimetre } = require("../src/vault-index");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -156,7 +156,8 @@ async function synchroniser() {
   let taille = 0;
   let debut = true;
   const envoyer = async (fin) => {
-    await appel("vault/lot", { head, debut, fin, fichiers: lot, supprimes: fin ? [...supprimes] : [] });
+    // Un lot du vault s'indexe côté cockpit : il garde son délai propre de 120 s.
+    await appelAvec({ delaiMs: 120_000 })("vault/lot", { head, debut, fin, fichiers: lot, supprimes: fin ? [...supprimes] : [] });
     debut = false;
     lot = [];
     taille = 0;
