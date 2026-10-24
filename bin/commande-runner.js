@@ -31,9 +31,10 @@ let arret = false;
 const enfants = new Set();
 let prochaineSondeQuotaCodex = 0;
 let sondeQuotaCodexEnCours = false;
+const controleQuotaCodex = new AbortController();
 let dernierEtatQuotaLogge = null;
 // Le maître permanent (agent-orchestrator, src/maitre-distant.js) et son service. Null tant
-// qu'il n'écoute pas : un run lancé entre-temps ouvre alors son propre maître, comme avant.
+// qu'il n'écoute pas : les lancements restent en file jusqu'à son ouverture.
 let maitre = null;
 let serviceMaitre = null;
 const REESSAI_MAITRE_MS = 30_000;
@@ -43,7 +44,7 @@ function sonderQuotaCodex(store) {
   if (sondeQuotaCodexEnCours || Date.now() < prochaineSondeQuotaCodex) return;
   sondeQuotaCodexEnCours = true;
   prochaineSondeQuotaCodex = Date.now() + 5 * 60_000;
-  void require("../src/codex-quota").lireQuotaCodex().then((snapshot) => {
+  void require("../src/codex-quota").lireQuotaCodex({ signal: controleQuotaCodex.signal }).then((snapshot) => {
     if (snapshot) store.emettre({ type: "runtime.quota_snapshot", payload: snapshot });
   }).catch((err) => {
     console.warn(`Quota Codex inconnu : ${err.message}`);
@@ -447,6 +448,7 @@ async function demarrer() {
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
   } finally {
+    controleQuotaCodex.abort();
     clearInterval(renouvellement);
     if (serviceMaitre) await serviceMaitre.arreter();
     if (maitre) await maitre.arreter();
@@ -458,6 +460,7 @@ async function demarrer() {
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     arret = true;
+    controleQuotaCodex.abort();
     for (const processus of enfants) processus.kill(signal);
   });
 }

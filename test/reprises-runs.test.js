@@ -258,14 +258,18 @@ test("retour machine après redémarrage : même run et contrat, sans refaire le
   } finally { await f.fermer(); }
 });
 
-test('trois objectifs prêts : deux runs se chevauchent et le troisième attend la capacité',async()=>{
+for (const restant of [null,25,24]) test(`trois objectifs prêts : deux simultanés, priorité selon le quota ${restant ?? 'inconnu'}`,async()=>{
   const f=fixture('parallele');
   try {
-    for(let i=0;i<2;i++)f.store.creerCommande({kind:'run.start',payload:f.commande.payload,par:'recette'});
+    const deuxieme=f.store.creerCommande({kind:'run.start',payload:f.commande.payload,par:'recette'});
+    const prioritaire=f.store.creerCommande({kind:'run.start',payload:{...f.commande.payload,scheduling:{source:'calendar',priority:'haute'}},par:'recette'});
+    if(restant!==null)for(const runtime of ['claude','codex'])f.store.emettre({type:'runtime.quota_snapshot',payload:{runtime,observeLe:new Date().toISOString(),fenetres:[{id:'primary',restant,utilisation:100-restant,reinitialisation:null}]}});
     const runner=f.runner();
     await jusqua(()=>f.lectures().length===2,()=>runner.sortie);
     assert.equal(f.store.runs().filter(r=>r.status==='running').length,2);
     assert.equal(f.store.commandes().filter(c=>c.kind==='run.start'&&c.status==='pending').length,1);
+    assert.equal(f.store.commande(prioritaire.id).status,restant===24?'taken':'pending','le toggle agit uniquement sous 25 %');
+    assert.equal(f.store.commande(deuxieme.id).status,restant===24?'pending':'taken');
     await pause(200);assert.equal(f.lectures().length,2,'la capacité empêche le troisième lancement');
     fs.writeFileSync(f.pret,'oui');
     await jusqua(()=>f.store.runs().filter(r=>r.status==='succeeded').length===3,()=>runner.sortie);
