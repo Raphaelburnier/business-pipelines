@@ -7,6 +7,7 @@ const contrats = require('agent-orchestrator/src/mission');
 const schema = require('agent-orchestrator/packages/schemas/travaux');
 const { fichiersEchange } = require('agent-orchestrator/src/checkpoints');
 const dates = require('./atelier-dates');
+const { runtimeBloque } = require('agent-orchestrator/src/quota-reprise');
 const initialises = new WeakSet();
 const vivant = new Set(['queued', 'running', 'paused', 'waiting_quota', 'waiting_machine', 'waiting_auth', 'waiting_approval', 'waiting_freshness']);
 function initialiser(store) {
@@ -258,9 +259,9 @@ function modifier(store, id, brut) {
 function exclus(store, verifierBackend, maintenant = Date.now()) {
   initialiser(store);
   const bloques = new Map();
-  for (const w of store.db.prepare("SELECT w.cause_json FROM run_waits w JOIN runs r ON r.id=w.run_id WHERE r.status IN ('waiting_quota','waiting_auth')").all()) {
+  for (const w of store.db.prepare("SELECT w.* FROM run_waits w JOIN runs r ON r.id=w.run_id WHERE r.status IN ('waiting_quota','waiting_auth')").all()) {
     const cause = JSON.parse(w.cause_json);
-    if (cause.statut === 'waiting_auth' || !cause.resetAt || Date.parse(cause.resetAt) > maintenant) bloques.set(cause.runtime, cause.raison);
+    if (runtimeBloque({ ...w, cause }, maintenant)) bloques.set(cause.runtime, cause.raison);
   }
   const ids = [];
   for (const ligne of store.db.prepare("SELECT id FROM commands WHERE status='pending' AND kind IN ('run.start','run.resume','run.reverify')").all()) {
@@ -279,11 +280,7 @@ function exclus(store, verifierBackend, maintenant = Date.now()) {
           if (c.kind !== 'run.resume' && llm && bloques.has(llm.via === 'anthropic' ? 'claude' : llm.via)) throw new Error(bloques.get(llm.via === 'anthropic' ? 'claude' : llm.via));
           verifierBackend(llm, n, { pipeline: r.pipeline, agent: r.agents[n.agent] });
         }
-        if (!original.run_id && r.budget.usdPerMonth) {
-          const mois = new Date(maintenant).toISOString().slice(0, 7) + '-01T00:00:00.000Z';
-          const cout = store.db.prepare('SELECT COALESCE(SUM(est_cost_usd),0) AS total FROM runs WHERE project_id=? AND started_at>=?').get(r.projet.id, mois).total;
-          if (cout >= r.budget.usdPerMonth) throw new Error('Budget mensuel du projet atteint.');
-        }
+        // Le budget mensuel du projet ne retient plus un départ planifié (décision du 24 octobre).
       }
     } catch (err) { raison = err.message; ids.push(c.id); }
     if (original) store.db.prepare('UPDATE atelier_occurrences SET block_reason=? WHERE command_id=?').run(raison, original.id);
