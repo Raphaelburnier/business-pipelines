@@ -59,6 +59,7 @@ Pas de nouvelle dépendance, migration de schéma ni changement de modèle de li
 Les workflows de fusion et de correction CI doivent synchroniser les deux entrées
 sensibles `bin/chat-outils-mcp.js` et `src/api-chat.js`, déjà ajoutées au moteur par le
 lot F13. Les tests vérifient l'identité entre dépôts et la couverture du correcteur CI.
-Cette synchronisation nécessite une fusion explicite.
+La synchronisation a été fusionnée séparément par le lot F13 ; la PR finale 2.8
+ne présente donc plus de différence de workflow par rapport à sa base.
 La politique calendrier non livrée (12.2) reste séparée. Les fichiers sensibles gardent
 leur règle de fusion explicite ; aucun contrôle humain n'est automatiquement validé.

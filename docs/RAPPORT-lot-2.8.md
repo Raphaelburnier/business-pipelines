@@ -52,7 +52,8 @@ Les listes des workflows de fusion et de correction CI sont synchronisées avec 
 durcissement F13 du moteur : deux chemins d'autorité du chat sont ajoutés. Les contrôles
 CI ont détecté la divergence entre dépôts, puis la liste jumelle manquante ; les deux
 contrôles restent actifs. La suite serveur complète passe avec le moteur courant
-`dbbe8b6`. Cette synchronisation exige une fusion explicite.
+`dbbe8b6`. Les mêmes modifications ont ensuite été fusionnées séparément dans `main` par le
+lot F13. Après intégration de cette base, la PR 2.8 ne modifie plus aucun workflow.
 La reprise garde les signatures, le contrat de mission et l'acquittement
 atomique livrés au lot 2.7.
 
