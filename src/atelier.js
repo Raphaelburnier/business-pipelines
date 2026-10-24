@@ -7,6 +7,7 @@ const contrats = require('agent-orchestrator/src/mission');
 const schema = require('agent-orchestrator/packages/schemas/travaux');
 const { fichiersEchange } = require('agent-orchestrator/src/checkpoints');
 const dates = require('./atelier-dates');
+const { runtimeBloque } = require('agent-orchestrator/src/quota-reprise');
 const initialises = new WeakSet();
 const vivant = new Set(['queued', 'running', 'paused', 'waiting_quota', 'waiting_machine', 'waiting_auth', 'waiting_approval', 'waiting_freshness']);
 function initialiser(store) {
@@ -258,9 +259,9 @@ function modifier(store, id, brut) {
 function exclus(store, verifierBackend, maintenant = Date.now()) {
   initialiser(store);
   const bloques = new Map();
-  for (const w of store.db.prepare("SELECT w.cause_json FROM run_waits w JOIN runs r ON r.id=w.run_id WHERE r.status IN ('waiting_quota','waiting_auth')").all()) {
+  for (const w of store.db.prepare("SELECT w.* FROM run_waits w JOIN runs r ON r.id=w.run_id WHERE r.status IN ('waiting_quota','waiting_auth')").all()) {
     const cause = JSON.parse(w.cause_json);
-    if (cause.statut === 'waiting_auth' || !cause.resetAt || Date.parse(cause.resetAt) > maintenant) bloques.set(cause.runtime, cause.raison);
+    if (runtimeBloque({ ...w, cause }, maintenant)) bloques.set(cause.runtime, cause.raison);
   }
   const ids = [];
   for (const ligne of store.db.prepare("SELECT id FROM commands WHERE status='pending' AND kind IN ('run.start','run.resume','run.reverify')").all()) {

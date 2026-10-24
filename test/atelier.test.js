@@ -85,6 +85,24 @@ test('un worker indisponible est exclu sans prendre la commande', t => {
   assert.equal(atelier.lire(f.store, f.demande.requestId).occurrences[0].raison, 'worker indisponible');
   assert.deepEqual(atelier.exclus(f.store, () => {}), []);
 });
+
+test('quota sans reset : planificateur et file partagent le dernier délai de prudence', t => {
+  const f = fixture(t), maintenant = Date.parse('2026-10-24T10:00:00Z'), fenetre = 5*3600_000;
+  const { runtimesBloques } = require('../src/api-plans-missions');
+  atelier.creer(f.store, f.params, f.demande, f.qui, maintenant);
+  const [c] = atelier.programmer(f.store, maintenant);
+  const runId = f.store.creerRun({ pipelineRef: 'demo@1', projectId: 'demo' });
+  const s = f.store.creerEtape({ runId, nodeId: 'rediger', type: 'agent', llmVia: 'claude', machineId: 'pc' });
+  f.store.majEtape(s, { status: 'waiting_quota' });
+  f.store.attentes.enregistrer(runId, { name: 'QuotaAtteint' }, { maintenant });
+  assert.ok(runtimesBloques(f.store, 300, maintenant+fenetre-1).claude);
+  assert.deepEqual(atelier.exclus(f.store, () => {}, maintenant+fenetre-1), [c.id]);
+  assert.deepEqual(runtimesBloques(f.store, 300, maintenant+fenetre), {});
+  assert.deepEqual(atelier.exclus(f.store, () => {}, maintenant+fenetre), []);
+  f.store.attentes.enregistrer(runId, { name: 'QuotaAtteint' }, { maintenant: maintenant+fenetre });
+  assert.ok(runtimesBloques(f.store, 300, maintenant+fenetre+1).claude, 'le nouveau quota bloque même si le premier date de plus de cinq heures');
+  assert.deepEqual(atelier.exclus(f.store, () => {}, maintenant+fenetre+1), [c.id]);
+});
 for (const repetition of ['daily', 'weekdays', 'weekly']) for (const etat of ['pending', 'running', 'succeeded']) {
   test(`report du prochain départ ${repetition} après une occurrence ${etat}`, t => {
     const f = fixture(t), now = Date.parse('2026-10-21T08:00Z');

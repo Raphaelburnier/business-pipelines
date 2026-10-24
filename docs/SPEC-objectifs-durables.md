@@ -21,8 +21,8 @@ sera superposé à cette liste, sans modifier le statut Git de la feuille au lan
   tant que le travail est actif ou en attente.
 - La tâche est liée au runId créé par le mécanisme existant de missions.
 - waiting_quota conserve la tâche et le run. La reprise automatique utilise le mécanisme
-  existant si l’échéance du fournisseur est connue ; sinon l’état reste visible et la
-  reprise manuelle actuelle s’applique.
+  du moteur : échéance fournisseur fiable, ou délai de prudence borné si elle manque
+  (lot 2.8, [spécification](SPEC-reprise-quota.md)). Aucun reset n'est inventé.
 - Les objectifs différents peuvent être attribués à des agents différents ; l’ordonnanceur
   respecte la capacité disponible du worker.
 
@@ -47,8 +47,8 @@ priorité des tâches » plus bas élargit explicitement le périmètre pour pla
 - L’orchestrateur est la source canonique des commandes, runs et événements persistants.
 - Une mission existante a un requestId idempotent, mais il ne garantit pas l’exclusivité
   entre deux demandes différentes liées au même objectif de la feuille.
-- La reprise après quota utilise le même run et sa charge immuable. Les attentes sans date
-  fiable ne sont pas relancées automatiquement.
+- La reprise après quota utilise le même run et sa charge immuable. Le lot 2.8 ajoute
+  une tentative bornée après un délai de prudence pour les attentes sans date fiable.
 
 ## Contrat fonctionnel
 
@@ -90,7 +90,7 @@ résultat vérifié et le statut de livraison du run, pas seulement la fin d’u
 - Tests unitaires : attribution concurrente, idempotence, refus d’un objectif déjà réservé,
   libération après annulation et liaison exacte entre objectif et run.
 - Tests d’intégration : mission attribuée → quota connu → reprise du même runId sans
-  nouvelle attribution ; échéance inconnue → attente visible et pas de relance inventée.
+  nouvelle attribution ; échéance inconnue → tentative bornée sans date fournisseur inventée.
 - Tests cockpit : états de l’objectif, projet/agent/run affichés, actions admissibles selon
   le statut.
 - CI de chaque dépôt sur le SHA exact ; recette de fusion et livraison selon la politique
@@ -116,7 +116,7 @@ résultat vérifié et le statut de livraison du run, pas seulement la fin d’u
    redémarrage des services.
 4. Après waiting_quota, la reprise garde le même objectif et le même runId ; aucun
    doublon n’est créé.
-5. Une échéance inconnue reste en attente et requiert la reprise manuelle existante.
+5. Une échéance inconnue programme une tentative de prudence bornée, sans inventer de reset fournisseur.
 6. Les fusions et livraisons continuent d’appliquer leurs contrôles habituels.
 
 ## Décision UX validée
@@ -162,7 +162,7 @@ persisté.
   ni la date de création ni le `requestHash` de la mission.
 - La sélection suit cet ordre strict et ne réserve que des commandes admissibles, encore
   non terminales :
-  1. `run.resume` automatique de quota dont le reset fournisseur est fiable et arrivé à
+  1. `run.resume` automatique de quota dont la date fournisseur ou le délai de prudence est arrivé à
      échéance, en reprenant le même `runId` et en conservant le FIFO stable.
   2. Les commandes de contrôle `approval.decide`, `run.reverify` et les reprises manuelles
      (`run.resume`) en FIFO stable entre elles, sans réordonner leur ordre relatif.
@@ -171,9 +171,8 @@ persisté.
      pas une commande admissible.
 - `run.resume` ne duplique pas la priorité : il l’hérite depuis le `run.start` lié au même
   `runId`. La reprise ne crée pas un nouveau run.
-- Une attente quota sans échéance fiable, ou dont le reset n’est pas encore arrivé, ne peut
-  pas être choisie pour une reprise automatique. Elle reste sur le même run et suit l’action
-  manuelle existante.
+- Une attente quota reste sur le même run. Elle ne reprend pas avant son reset fiable
+  ou, sans date fournisseur, avant le délai de prudence de cinq heures défini au lot 2.8.
 - Un run `running` n’entre pas dans le tri des tâches à lancer. Il continue jusqu’à son
   propre état terminal ou d’attente ; aucune préemption ni interruption implicite n’est
   autorisée.
@@ -186,15 +185,14 @@ persisté.
   n’a pas de preuve fraîche, la tâche reste bloquée ou le lancement est refusé ; elle n’est
   pas réservée comme commande exécutable.
 - Un `run.resume` automatique est admissible uniquement pour une attente `waiting_quota`
-  munie d’un reset fournisseur fiable, échu, et toujours associée au même run. L’authentification
+  dont la date de reprise bornée est échue et toujours associée au même run. L’authentification
   expirée demande une reconnexion explicite ; une attente `waiting_auth` n’est jamais reprise
   automatiquement.
 - Une machine indisponible, une vérification de fraîcheur périmée ou inconnue, une dépendance
-  non satisfaite et un quota sans reset fiable restent bloqués. La planification ne réveille
-  pas de machine et n’invente aucune échéance.
-- Les limites actuelles du moteur sur les reprises quota (échéance fournisseur fiable,
-  fenêtre maximale et plafonds de tentatives) continuent de s’appliquer. Une échéance absente,
-  dépassée ou hors fenêtre n’est jamais inventée ni contournée.
+  non satisfaite et un quota dont le délai n'est pas écoulé restent bloqués. La planification
+  ne réveille pas de machine et n'invente aucune date fournisseur.
+- Les limites du moteur sur les reprises quota (fenêtre maximale et plafonds par run et
+  compte) continuent de s'appliquer. Une borne atteinte requiert la reprise manuelle.
 - Une tâche lancée n’est pas préemptée pour laisser passer une priorité supérieure. L’arrêt
   ou l’annulation d’un run actif n’est possible que via une commande moteur explicite ; le
   schéma courant ne déclare pas `run.cancel`.
@@ -222,7 +220,7 @@ changement de colonne ou migration de table n’est requis.
 La priorité du run se retrouve via son `run.start` source, lié au `runId`. `run.resume` garde
 son payload, son `waitId` et ses règles d’idempotence actuels ; l’ordonnanceur consulte la
 priorité du `run.start` lié au lieu de créer une nouvelle demande. La sélection applique cet
-ordre strict : reprises automatiques `run.resume` de quota fiables et dues, en conservant le
+ordre strict : reprises automatiques `run.resume` de quota dues et bornées, en conservant le
 même `runId` et le FIFO stable ; commandes de contrôle
 `approval.decide`, `run.reverify` et reprises manuelles dans leur FIFO relatif ; nouveaux
 `run.start` admissibles par priorité haute, normale, basse puis FIFO stable (`created_at`,
