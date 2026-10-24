@@ -131,3 +131,7 @@ details.av-section > ul > li:first-child { border-top: 0; }
 .av-compact { padding: 6px 16px; }
 .av-correctif { color: var(--color-douce); font-size: 12px; white-space: nowrap; }
 @media (max-width: 640px) { .av-correctif { white-space: normal; } }
+
+.av-choix-agents { display: grid; gap: .65rem; padding: .75rem; border: 1px solid var(--color-trait); border-radius: .5rem; }
+.av-choix-agents label { display: grid; gap: .3rem; }
+.av-choix-agents select { width: 100%; min-width: 0; padding: .45rem; color: inherit; background: var(--color-surface); border: 1px solid var(--color-trait); border-radius: .3rem; }

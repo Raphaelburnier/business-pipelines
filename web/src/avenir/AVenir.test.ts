@@ -90,3 +90,10 @@ describe("attribution depuis À venir", () => {
     expect(expliquerConflitAttribution("réseau hors ligne")).toBe("réseau hors ligne");
   });
 });
+
+it("permet de renforcer manuellement une tâche non sensible et retire le renommage 11.1", () => {
+  const presentation = toutesLesEtapes.find((e) => e.id === "13.1")!;
+  expect(construireSpecAttribution(presentation, "business-pipelines", ["Vérifié"], true).exigences).toEqual(["revue-securite"]);
+  expect(toutesLesEtapes.some((e) => e.id === "11.1")).toBe(false);
+  expect(LOTS.find((l) => l.id === "11")?.titre).toContain("TaskBoard");
+});
