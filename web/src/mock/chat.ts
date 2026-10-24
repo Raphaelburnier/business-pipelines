@@ -28,6 +28,7 @@ const MISSION: ActionChat = {
     document: "",
     contexte: {},
     exigences: [],
+    agents: [],
     runtimesExclus: [],
   },
 };

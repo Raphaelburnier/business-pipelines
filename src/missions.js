@@ -62,6 +62,14 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     parNoeud.set(c.noeud, c);
   }
   const roles = actifs(resolution);
+  if (objectifFeuille) {
+    const cadre = require("./objectifs-avenirs").cadrerSensibilite({ ...d.demande, projectId: d.projectId, contexte: d.demande.spec, exigences: [] });
+    if (cadre.exigences.includes("revue-securite") && !roles.some((n) => n.type === "review" && n.agent.split("@")[0] === "security-reviewer")) {
+      throw new Error("Cet objectif sensible exige une revue de sécurité active dans le pipeline.");
+    }
+    d.demande.criteres = cadre.criteres;
+    d.demande.document = cadre.document;
+  }
   if (parNoeud.size !== roles.length || [...parNoeud.keys()].some((id) => !roles.some((n) => n.id === id))) {
     throw new Error("La sélection doit couvrir exactement les rôles actifs du workflow, y compris les revues.");
   }
@@ -112,7 +120,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     llmOverrides: Object.fromEntries(participants.map((p) => [p.noeud, p.llm])), demande: d };
 }
 
-function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan, scheduling = { priority: "normale" } }) {
+function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan, scheduling = { priority: "normale" }, planSpecHash }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
@@ -135,7 +143,8 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
       }
       const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
-        pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash, scheduling }, par: qui.par, canal: qui.canal });
+        pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash, scheduling,
+        ...(planSpecHash ? { planSpecHash } : {}) }, par: qui.par, canal: qui.canal });
     }
     store.db.exec("COMMIT");
     return commande;

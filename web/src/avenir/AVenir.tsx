@@ -5,7 +5,7 @@ import "./avenir.css";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { dateCivile, FUSEAU, instantZurich } from "../calendrier/semaine";
 import { useCharge, useSource } from "../donnees/contexte";
-import { lignes, type PropositionPlan, type SpecMission } from "../donnees/missions";
+import { lignes, type OptionsMission, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import type { AttributionAvenir } from "../donnees/source";
 import { sourceCalendrierApi, sourceCalendrierMaquette } from "../calendrier/api";
 import { Planifier } from "../calendrier/Calendrier";
@@ -34,7 +34,7 @@ const prefixeDepot = (projectId: string) => PREFIXES[projectId] ?? `${projectId}
 
 // Pas de choix de runtime : un pipeline de développement planifie et relit avec Claude et code
 // avec Codex. Exclure l'un des deux bloquait le plan ; le planificateur choisit étape par étape.
-export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[]): SpecMission {
+export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[], sensibleManuel = false): SpecMission {
   const ailleurs = etape.fichiers.filter((f) => !f.startsWith(prefixeDepot(projectId)));
   const sensibilite = sensibiliteEtape(etape);
   return {
@@ -42,9 +42,41 @@ export function construireSpecAttribution(etape: Etape, projectId: string, crite
     document: `${etape.detail}\n\nFichiers annoncés : ${etape.fichiers.join(", ")}.${sensibilite.sensible ? `\n\nSensibilité :\n${sensibilite.raisons.join("\n")}` : ""}`,
     directives: "Respecter les instructions du dépôt et produire une PR vérifiable.",
     exclusions: ailleurs.length ? `Ce run ne modifie que ${projectId}. Hors périmètre, à traiter dans une autre mission : ${ailleurs.join(", ")}.` : "",
-    exigences: sensibilite.sensible ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
+    exigences: sensibilite.sensible || sensibleManuel ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
     contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
   };
+}
+
+type ChoixAgents = NonNullable<SpecMission["agents"]>;
+
+export function AgentsAttribution({ projectId, index, choix, onChange, disabled }: {
+  projectId: string; index: number; choix: ChoixAgents; onChange: (choix: ChoixAgents) => void; disabled: boolean;
+}) {
+  const { source } = useSource();
+  const [options, setOptions] = useState<OptionsMission | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  useEffect(() => {
+    let annule = false;
+    setOptions(null); setErreur(null);
+    source.preparerMission(projectId, index).then((o) => { if (!annule) setOptions(o); })
+      .catch((err: unknown) => { if (!annule) setErreur(err instanceof Error ? err.message : String(err)); });
+    return () => { annule = true; };
+  }, [source, projectId, index]);
+  return <fieldset className="av-choix-agents" disabled={disabled}>
+    <legend>Agents du plan</legend>
+    <p>Le choix automatique tient compte des disponibilités. Un agent choisi explicitement doit être disponible pour lancer le run.</p>
+    {erreur && <p role="status">Choix des agents indisponible : {erreur}</p>}
+    {!options && !erreur && <p>Chargement des agents compatibles…</p>}
+    {options?.roles.map((r) => <label key={r.noeud}>{r.noeud}{r.type === "review" ? " · revue indépendante" : ""}
+      <select value={choix.find((c) => c.noeud === r.noeud)?.membre ?? ""} onChange={(e) => {
+        const autres = choix.filter((c) => c.noeud !== r.noeud);
+        onChange(e.target.value ? [...autres, { noeud: r.noeud, membre: e.target.value }] : autres);
+      }}>
+        <option value="">Automatique — orchestrateur</option>
+        {r.membres.map((m) => <option key={m.id} value={m.id}>{m.nom} · {m.role} · {m.llm.via}</option>)}
+      </select>
+    </label>)}
+  </fieldset>;
 }
 
 export function expliquerConflitAttribution(message: string): string {
@@ -66,6 +98,10 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const [proposition, setProposition] = useState<{ spec: SpecMission; reponse: PropositionPlan } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [attente, setAttente] = useState(false);
+  const [sensibleManuel, setSensibleManuel] = useState(false);
+  const [choixAgents, setChoixAgents] = useState<ChoixAgents>([]);
+  const [choixModifies, setChoixModifies] = useState(false);
+  const [indexAgents, setIndexAgents] = useState<number | null>(null);
   const [accepteDegrade, setAccepteDegrade] = useState(false);
   const [priorite, setPriorite] = useState<"haute" | "normale">(attribution.priorite === "haute" ? "haute" : "normale");
   const [reclassement, setReclassement] = useState(false);
@@ -82,15 +118,32 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     const criteres = lignes(String(formulaire.get("criteres") || ""));
     if (!projectId) return;
     if (!criteres.length) { setErreur("Renseigne au moins un critère."); return; }
-    const spec = construireSpecAttribution(etape, projectId, criteres);
+    const spec = construireSpecAttribution(etape, projectId, criteres, sensibleManuel);
+    setChoixAgents([]); setChoixModifies(false); setIndexAgents(null);
     setErreur(null); setAttente(true);
-    try { setProposition({ spec, reponse: await source.proposerPlan(spec) }); setAccepteDegrade(false); }
+    try {
+      const reponse = await source.proposerPlan(spec);
+      setProposition({ spec, reponse }); setIndexAgents(reponse.plan?.pipeline.index ?? null); setAccepteDegrade(false);
+    }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
     finally { setAttente(false); }
   }
 
+  async function recalculer() {
+    if (!proposition) return;
+    const spec = { ...proposition.spec, agents: choixAgents };
+    setErreur(null); setAttente(true);
+    try {
+      const reponse = await source.proposerPlan(spec);
+      setProposition({ spec, reponse });
+      if (reponse.plan) setIndexAgents(reponse.plan.pipeline.index);
+      setChoixModifies(false); setAccepteDegrade(false); tentative.current = null;
+    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    finally { setAttente(false); }
+  }
+
   async function lancer() {
-    if (!proposition?.reponse.empreinte) return;
+    if (!proposition?.reponse.empreinte || choixModifies) return;
     let notBefore: string | undefined;
     try { notBefore = quand.planifie ? instantZurich(quand.date, quand.heure) : undefined; }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); return; }
@@ -148,7 +201,9 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {erreur && <p className="av-attribution-erreur" role="alert">{erreur}</p>}
     {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
       <p className="av-form-depot">Dépôt : <code>{projectId}</code></p>
-      <p className="av-form-depot">Agents : choisis par le planificateur, visibles dans le plan.</p>
+      <p className="av-form-depot">Le plan propose les agents ; tu peux ensuite les choisir pour chaque rôle.</p>
+      <label><input type="checkbox" checked={sensibiliteEtape(etape).sensible || sensibleManuel} disabled={sensibiliteEtape(etape).sensible} onChange={(e) => setSensibleManuel(e.target.checked)} /> Sensible — revue de sécurité et vérifications renforcées</label>
+      {sensibiliteEtape(etape).sensible && <p className="av-form-depot">Imposé par les fichiers annoncés ou le risque du cadrage. Le serveur revérifie cette exigence.</p>}
       <InterrupteurPrioritaire checked={priorite === "haute"} onChange={(prioritaire) => setPriorite(prioritaire ? "haute" : "normale")} />
       <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
       <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
@@ -156,6 +211,11 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {plan && <section className="av-plan" aria-live="polite"><b>{plan.statut === "bloque" ? "Plan bloqué" : "Plan proposé"}{plan.projet ? ` · ${plan.projet.nom}` : ""}</b>
       {plan.blocages.map((b, i) => <p key={i}>{b.message}</p>)}
       {plan.plan?.etapes.map((e) => <p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}
+      {indexAgents !== null && <>
+        <AgentsAttribution projectId={projectId!} index={indexAgents} choix={choixAgents} disabled={attente} onChange={(choix) => { setChoixAgents(choix); setChoixModifies(true); }} />
+        {choixModifies && <button type="button" disabled={attente} onClick={() => void recalculer()}>{attente ? "Recalcul du plan…" : "Appliquer les choix et recalculer le plan"}</button>}
+      </>}
+      {plan.plan && <details><summary>Critères vérifiés par le plan</summary><ul>{plan.plan.criteres.map((c) => <li key={c.texte}>{c.texte}</li>)}</ul></details>}
       {plan.statut === "degrade" && <label><input type="checkbox" checked={accepteDegrade} onChange={(e) => setAccepteDegrade(e.target.checked)} /> Accepter ce plan dégradé</label>}
       {plan.statut !== "bloque" && <fieldset className="av-quand">
         <legend>Départ</legend>
@@ -166,7 +226,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
           <label>Heure ({FUSEAU})<input type="time" value={quand.heure} onChange={(e) => setQuand({ ...quand, heure: e.target.value })} /></label>
         </>}
       </fieldset>}
-      {plan.statut !== "bloque" && <button type="button" disabled={attente || (plan.statut === "degrade" && !accepteDegrade) || (quand.planifie && (!quand.date || !quand.heure))} onClick={lancer}>{attente ? "Envoi…" : quand.planifie ? "Planifier la mission" : "Lancer la mission"}</button>}
+      {plan.statut !== "bloque" && <button type="button" disabled={attente || choixModifies || (plan.statut === "degrade" && !accepteDegrade) || (quand.planifie && (!quand.date || !quand.heure))} onClick={lancer}>{attente ? "Envoi…" : quand.planifie ? "Planifier la mission" : "Lancer la mission"}</button>}
       <button type="button" disabled={attente} onClick={() => { setProposition(null); tentative.current = null; }}>Modifier la mission</button>
     </section>}
   </div>;

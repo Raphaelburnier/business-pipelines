@@ -230,13 +230,12 @@ export const LOTS: Lot[] = [
   },
   {
     id: "11",
-    titre: "Coming soon",
+    titre: "TaskBoard : attribution des tâches",
     but: "Attribuer un objectif en choisissant qui, quand et avec quelle urgence.",
     etapes: [
-      { id: "11.1", titre: "Renommer « À venir » en « Coming soon »", detail: "Menu, titre de la page et en-tête.", fichiers: ["BP web/src/App.tsx:235", "BP web/src/avenir/AVenir.tsx"], statut: "a-faire" },
-      { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Aujourd'hui : « choisis par le planificateur ».", fichiers: ["BP web/src/avenir/AVenir.tsx:141", "BP src/objectifs-avenirs.js"], statut: "a-faire" },
+      { id: "11.2", titre: "Choisir l'agent dans Attribuer", detail: "Chaque rôle du plan permet le choix automatique ou un membre compatible. Un choix explicite est vérifié, puis le plan doit être recalculé et relu avant le départ immédiat ou planifié.", fichiers: ["BP web/src/avenir/AVenir.tsx", "BP src/planificateur.js", "AO packages/schemas/plan.js"], statut: "fait" },
       { id: "11.3", titre: "Interrupteur Prioritaire", detail: "Un interrupteur Run prioritaire remplace les trois niveaux dans À venir et le Calendrier ; la file existante applique haute ou normale, après les reprises admissibles.", fichiers: ["BP web/src/InterrupteurPrioritaire.tsx", "BP web/src/avenir/AVenir.tsx", "BP web/src/calendrier/Calendrier.tsx"], statut: "fait" },
-      { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Revue et tests plus sévères ; posé par l'orchestrateur, que Raphaël peut aussi cocher.", fichiers: ["BP web/src/avenir/AVenir.tsx", "AO src/maitre.js"], statut: "a-faire" },
+      { id: "11.4", titre: "Label Sensible décidé par l'orchestrateur", detail: "Le serveur impose la sensibilité des fichiers annoncés et du risque de cadrage. Raphaël peut ajouter une revue de sécurité ; les critères renforcés et la revue indépendante sont figés dans le contrat, y compris pour un départ planifié.", fichiers: ["BP web/src/avenir/AVenir.tsx", "BP src/objectifs-avenirs.js", "BP src/missions.js"], statut: "fait" },
       { id: "11.5", titre: "Planifier une tâche", detail: "Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.", fichiers: ["BP web/src/avenir/AVenir.tsx"], statut: "fait", raisonSensibilite: "Planifier une tâche autorise un lancement différé." },
     ],
   },
