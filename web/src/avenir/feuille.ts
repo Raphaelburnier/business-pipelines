@@ -66,7 +66,7 @@ export const PRIORITES = [
   },
   {
     titre: "Installer les garde-fous d'exploitation",
-    detail: "Ordre conseillé : arrêt d'urgence (4.1), budgets (4.4), sauvegardes (4.5), santé (4.3), puis alertes externes (4.2). Raccorder l'arrêt au pilotage des runs (10.4).",
+    detail: "Ordre conseillé : arrêt d'urgence (4.1), sauvegardes (4.5), santé (4.3), puis alertes externes (4.2). Raccorder l'arrêt au pilotage des runs (10.4). Le budget des runs n'est plus suivi depuis le 24 octobre (4.4).",
     lots: ["4"],
   },
   {
@@ -153,9 +153,9 @@ export const LOTS: Lot[] = [
     prerequis: "À livrer avant le lot 5",
     etapes: [
       { id: "4.1", titre: "Arrêt d'urgence", detail: "run.cancel et pause globale de la file.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "a-faire" },
-      { id: "4.2", titre: "Alertes hors du cockpit", detail: "Consommateur des événements alerte, run.failed et budgets.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "a-faire" },
+      { id: "4.2", titre: "Alertes hors du cockpit", detail: "Consommateur des événements alerte et run.failed.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "a-faire" },
       { id: "4.3", titre: "Santé de la plateforme", detail: "/api/sante, healthcheck Docker, rotation des logs.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "a-faire" },
-      { id: "4.4", titre: "Budgets", detail: "Plafond quotidien, budget mensuel aussi sur POST /api/runs.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "a-faire" },
+      { id: "4.4", titre: "Budgets", detail: "Abandonné le 24 octobre 2026 : le coût d'un run n'est plus pris en compte et n'ouvre plus d'approbation, les agents tournant sur abonnement. Seuls les tours bornent un run (moteur 97). Pas de plafond quotidien ni mensuel à construire.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "fait" },
       { id: "4.5", titre: "Sauvegardes", detail: "events.sqlite, specs/ et workers.json hors NAS.", fichiers: ["BP deploy/nas/deploy.sh.modele", "AO scripts/nas/nettoyer-runs.sh:11"], statut: "a-faire" },
     ],
   },
@@ -301,7 +301,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "F10", severite: "moyenne", titre: "IP_HEADER=X-Forwarded-For contournable depuis le loopback", fichiers: "BP nas/vaultwarden/docker-compose.yaml:34", correctif: "Corollaire de 0.1", statut: "a-faire" },
   { id: "O1", severite: "moyenne", titre: "Événements alerte sans lecteur, alerter.js jamais lancé", fichiers: "AO src/maitre.js:483 ; BP bin/alerter.js", correctif: "Lot 4.2", statut: "a-faire" },
   { id: "O2", severite: "moyenne", titre: "deploy.sh coupe le runner sans vérifier les runs", fichiers: "BP deploy/nas/deploy.sh.modele:106-110", correctif: "Lot 7.3", statut: "a-faire" },
-  { id: "O3", severite: "moyenne", titre: "POST /api/runs sans contrôle du budget mensuel", fichiers: "BP bin/cockpit.js:633-698", correctif: "Lot 4.4", statut: "a-faire" },
+  { id: "O3", severite: "moyenne", titre: "POST /api/runs sans contrôle du budget mensuel", fichiers: "BP bin/cockpit.js:633-698", correctif: "Sans objet : budget des runs abandonné le 24 octobre (4.4)", statut: "fait" },
   { id: "O4", severite: "moyenne", titre: "Tag de pipeline inconnu ignoré sans message", fichiers: "BP src/planificateur.js:26-33", correctif: "Lot 3.2", statut: "fait" },
   { id: "O5", severite: "moyenne", titre: "Hook Stop qui injecte un log brut de PR", fichiers: "~/.claude/hooks/ci-pr/stop_ci.py:53-64", correctif: "Lot 6.5", statut: "a-faire" },
   { id: "F13", severite: "basse", titre: "Actions GitHub épinglées par tag", fichiers: "ci.yml ; ci-autofix.yml", correctif: "Lot 0.8", statut: "fait" },
@@ -319,7 +319,7 @@ export const DEFAUTS: Defaut[] = [
 ];
 
 export const SUGGESTIONS: string[] = [
-  "Écrire la politique d'escalade (profondeur de missions dérivées, modèles de secours, budget cumulé) avant de coder le superviseur.",
+  "Écrire la politique d'escalade (profondeur de missions dérivées, modèles de secours, tours cumulés) avant de coder le superviseur.",
   "Garder deux clics humains : fusion d'un fichier sensible et mise en production.",
   "Afficher dans la carte de livraison les commits auto-fusionnés depuis la dernière release.",
   "Ventiler le verdict des reviewers par critère d'acceptation.",

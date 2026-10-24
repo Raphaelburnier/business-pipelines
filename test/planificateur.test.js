@@ -408,7 +408,7 @@ test("le relecteur n'est jamais l'auteur : un membre qui incarne les deux est é
   } finally { f.fermer(); }
 });
 
-test("membre affecté à un autre projet, budget épuisé ou runtime exclu : écartés avec leur raison", () => {
+test("membre affecté à un autre projet ou runtime exclu : écartés ; budget dépassé : seulement signalé", () => {
   const f = fixture();
   try {
     f.params.affectations = { theo: { projet: "autre", depuis: "2026-10-01T00:00:00.000Z" } };
@@ -418,18 +418,22 @@ test("membre affecté à un autre projet, budget épuisé ou runtime exclu : éc
     assert.match(message, /Sacha .*runtime codex exclu par la spec/);
     const proposePlan = planificateur.proposer({ spec: spec(), params: f.params, etat: { depensesMembres: { margaux: 60 } } });
     const plan = Object.fromEntries(proposePlan.plan.etapes.map((e) => [e.noeud, e]));
-    assert.notEqual(plan.plan.membre, "margaux");
-    assert.ok(plan.plan.raisons.some((r) => /Margaux .*budget mensuel épuisé/.test(r)));
+    // Décision du 24 octobre : le budget en dollars n'écarte plus un membre.
+    assert.equal(plan.plan.membre, "margaux");
+    assert.ok(plan.plan.raisons.some((r) => /Margaux a dépassé son budget mensuel indicatif \(60\.00 \/ 60 \$\)/.test(r)));
     assert.equal(plan.review.membre, "ines", "Théo est affecté ailleurs");
     assert.ok(plan.review.raisons.some((r) => /Théo .*affecté au projet autre/.test(r)));
   } finally { f.fermer(); }
 });
 
-test("budget mensuel du projet atteint : blocage avant tout run", () => {
+test("budget mensuel du projet dépassé : un avertissement, jamais un blocage", () => {
   const f = fixture();
   try {
     const p = planificateur.proposer({ spec: spec(), params: f.params, etat: { depensesProjets: { app: 15.2 } } });
-    assert.equal(p.blocages[0].code, "budget-epuise");
+    assert.ok(!(p.blocages || []).some((b) => b.code === "budget-epuise"));
+    assert.ok(p.plan.avertissements.some((a) => /Budget mensuel indicatif du projet dépassé : 15\.20/.test(a)));
+    // Un avertissement de budget ne rend pas le plan dégradé : aucune confirmation de plus.
+    assert.equal(p.plan.degrade, false);
   } finally { f.fermer(); }
 });
 
