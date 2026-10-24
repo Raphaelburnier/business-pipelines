@@ -210,6 +210,10 @@ function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = n
   }
 }
 
+// La sortie de deploy.sh mêle la sienne à celle du build, tests compris : un test nommé
+// « restauration non confirmée » faisait passer une livraison échouée au build pour une
+// restauration ratée, et l'incident suspendait toutes les suivantes. Seules les lignes de
+// deploy.sh comptent, dans l'ordre du script.
 /**
  * L'étape que révèle une ligne de deploy.sh, ou null. Les repères sont les messages que le
  * script imprime déjà : les changer là-bas demande de les changer ici.
@@ -217,9 +221,9 @@ function preparerRelease({ git, miroirs, payload, modeleDe, releasesDir, par = n
  * @param {string} courante
  */
 function etapeDeLigne(ligne, courante) {
-  if (/^Construction des images/.test(ligne)) return "construire";
-  if (/^Bascule/.test(ligne)) return "basculer";
-  if (/restauration/i.test(ligne)) return "restaurer";
+  if (["preparer", "sauvegarder"].includes(courante) && /^Construction des images/.test(ligne)) return "construire";
+  if (courante === "construire" && /^Bascule\.\.\./.test(ligne)) return "basculer";
+  if (["basculer", "sante"].includes(courante) && /^Échec après la bascule ; restauration/.test(ligne)) return "restaurer";
   // sha256sum -c valide l'archive, puis le script sauvegarde l'installation en place.
   if (courante === "preparer" && /: OK$/.test(ligne)) return "sauvegarder";
   if (courante === "basculer" && /\b(Started|Running|Healthy)\b/.test(ligne)) return "sante";
