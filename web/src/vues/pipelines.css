@@ -1,6 +1,10 @@
 /* Écran Pipelines : liste des runs, graphe du travail et du contexte, inspecteur. */
 .pl-ecran > * { min-width: 0; }
 .pl-ecran { display: grid; grid-template-columns: 220px minmax(0, 1fr) 320px; grid-template-rows: auto minmax(0, 1fr); gap: 16px; height: 100%; min-height: 0; }
+.pl-ecran.pl-catalogue { grid-template-columns: 240px minmax(0, 1fr); }
+.pl-catalogue .pl-centre { overflow: auto; gap: 12px; padding-bottom: 12px; }
+.pl-versions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-versions .on { color: var(--color-accent); }
 .pl-resume { grid-column: 1 / -1; margin: 0; font: 400 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
 
 .pl-liste { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: auto; }
@@ -131,6 +135,7 @@
 
 @media (max-width: 1180px) {
   .pl-ecran { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
+  .pl-ecran.pl-catalogue { grid-template-columns: minmax(0, 1fr); }
   .pl-liste { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .pl-liste a { flex: none; width: 200px; }
   .pl-centre { min-height: 480px; }

@@ -22,7 +22,6 @@
   {"id": "7.1", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP docker-compose.yaml:117-119"]},
   {"id": "7.2", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO deploy/systemd/orch-worker.service"]},
   {"id": "7.3", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP deploy/nas/deploy.sh.modele:106-110", "BP Dockerfile"]},
-  {"id": "9.1", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP web/src/vues/Pipelines.tsx", "BP web/src/donnees/pipelines.ts"]},
   {"id": "9.2", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP bin/cockpit.js:442"]},
   {"id": "9.3", "revision": 1, "projet": null, "fichiers": ["BP web/src/vues/Pipelines.tsx", "REG pipelines/"], "raisonSensibilite": "Publier un pipeline modifie les actions que le moteur peut exécuter."},
   {"id": "9.4", "revision": 1, "projet": null, "fichiers": ["BP web/src/vues/Pipelines.tsx", "REG pipelines/<nom>/v<n>/pipeline.json"], "raisonSensibilite": "Modifier le graphe change les étapes exécutables et leurs contrôles."},

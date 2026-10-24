@@ -14,7 +14,11 @@ import { catalogueMaquette } from "./modeles";
 import { etatA } from "./scenario";
 import { idPipeline, type PipelineConnu, type Rattachement } from "../donnees/pipelines";
 
-const TITRES: Record<string, string> = { marketing: "Plan marketing à deux voix" };
+const REGISTRE: Record<string, { titre: string | null; versions: number[] }> = {
+  marketing: { titre: "Plan marketing à deux voix", versions: [1] },
+  "saas-build": { titre: "Construire un SaaS", versions: [2, 3] },
+  sauvegarde: { titre: "Sauvegarde du NAS", versions: [1] },
+};
 
 export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(), pasMs = 500 } = {}): Source {
   const etat = () => etatA(t0, maintenant() - t0);
@@ -162,11 +166,12 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
     profil: equipe.profil,
     async pipelines() {
       const parId = new Map<string, PipelineConnu>();
+      for (const [id, registre] of Object.entries(REGISTRE)) {
+        parId.set(id, { id, nom: null, perso: false, titreRegistre: registre.titre, versions: [...registre.versions], projets: [], runs: 0, dernierRun: null });
+      }
       for (const r of etat().runs) {
         const id = idPipeline(r.pipeline);
-        const p = parId.get(id) ?? { id, nom: null, perso: false, titreRegistre: TITRES[id] ?? null, versions: [], projets: [], runs: 0, dernierRun: null };
-        const v = Number(r.pipeline.split("@")[1]);
-        if (v && !p.versions.includes(v)) p.versions.push(v);
+        const p = parId.get(id) ?? { id, nom: null, perso: false, titreRegistre: null, versions: [], projets: [], runs: 0, dernierRun: null };
         if (r.projet && !p.projets.includes(r.projet)) p.projets.push(r.projet);
         p.runs += 1;
         if (r.debut && (!p.dernierRun || r.debut > p.dernierRun)) p.dernierRun = r.debut;

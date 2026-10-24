@@ -208,7 +208,7 @@ export const LOTS: Lot[] = [
     titre: "Pipelines : le catalogue",
     but: "Une page qui ne montre que les pipelines enregistrés, prêts à l'emploi, et permet d'en créer ou d'en modifier.",
     etapes: [
-      { id: "9.1", titre: "N'afficher que les pipelines enregistrés", detail: "Le catalogue du registre, utilisable directement ; les runs des projets partent sur la page Run (10.1).", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/donnees/pipelines.ts"], statut: "a-faire" },
+      { id: "9.1", titre: "N'afficher que les pipelines enregistrés", detail: "Catalogue des pipelines enregistrés du registre, avec versions, projets, renommage et rattachement ; la vue par run attend la page Run (10.1).", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/donnees/pipelines.ts"], statut: "fait" },
       { id: "9.2", titre: "Servir /pipelines au rechargement", detail: "Un lien direct ou un F5 sur /pipelines renvoie « route inconnue » : la route manque dans la liste du serveur.", fichiers: ["BP bin/cockpit.js:442"], statut: "a-faire" },
       { id: "9.3", titre: "Créer un pipeline", detail: "Nouveau pipeline depuis la page, publié en v1 dans le registre.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/"], statut: "a-faire", raisonSensibilite: "Publier un pipeline modifie les actions que le moteur peut exécuter." },
       { id: "9.4", titre: "Modifier un pipeline par glisser-déposer", detail: "Éditeur de graphe : ajouter, retirer, réordonner les étapes. Enregistrer publie la version suivante ; une version publiée ne change jamais et les projets restent épinglés.", fichiers: ["BP web/src/vues/Pipelines.tsx", "REG pipelines/<nom>/v<n>/pipeline.json"], statut: "a-faire", raisonSensibilite: "Modifier le graphe change les étapes exécutables et leurs contrôles." },
@@ -220,7 +220,7 @@ export const LOTS: Lot[] = [
     titre: "Run : les pipelines en cours",
     but: "Suivre et piloter les pipelines qui tournent dans les projets.",
     etapes: [
-      { id: "10.1", titre: "Page Run", detail: "Les runs des projets (aujourd'hui sur la page Pipelines) : liste à gauche, graphe et inspecteur.", fichiers: ["BP web/src/vues/Pipelines.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "a-faire" },
+      { id: "10.1", titre: "Page Run", detail: "Les runs des projets (aujourd'hui sur la page Pipelines) : liste à gauche, graphe et inspecteur.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "a-faire" },
       { id: "10.2", titre: "Changer l'agent d'une étape", detail: "Remplacer un agent sans quota ou occupé sur un run en cours.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js"], statut: "a-faire" },
       { id: "10.3", titre: "Agents de secours sur un run", detail: "Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.", fichiers: ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"], statut: "a-faire" },
       { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire" },

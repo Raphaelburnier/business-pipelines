@@ -29,7 +29,7 @@ const Finance = lazy(() => import("./finance/Finance").then((module) => ({ defau
 type Route =
   | { type: "graph" }
   | { type: "agents" }
-  | { type: "pipelines"; runId: string | null }
+  | { type: "pipelines"; pipelineId: string | null }
   | { type: "missions"; projetId: string | null; brouillonId: string | null }
   | { type: "branches" }
   | { type: "marketing"; projetId: string | null; filId: string | null }
@@ -48,7 +48,7 @@ function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
-  if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", runId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
+  if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", pipelineId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
   if (morceaux[0] === "finance" && morceaux.length === 1) return { type: "finance" };
   if (morceaux[0] === "missions" && morceaux[1] === "branches" && morceaux.length === 2) return { type: "branches" };
   if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
@@ -289,7 +289,7 @@ function Coquille() {
             </div>
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
-          {route.type === "pipelines" && <Pipelines runId={route.runId} aller={naviguer} />}
+          {route.type === "pipelines" && <Pipelines pipelineId={route.pipelineId} aller={naviguer} />}
           {route.type === "missions" && <Missions key={`${route.projetId}:${route.brouillonId}`} projetInitial={route.projetId} brouillonId={route.brouillonId} aller={naviguer} />}
           {route.type === "branches" && <Branches aller={naviguer} />}
           {route.type === "finance" && <Suspense fallback={<section className="page-vide"><p>Chargement de Finance…</p></section>}><Finance /></Suspense>}

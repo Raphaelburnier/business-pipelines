@@ -49,8 +49,31 @@ export const versionPipeline = (ref: string): string => {
 /** Le nom à afficher : celui choisi, le titre du registre, sinon l'identifiant rendu lisible. */
 export function nomPipeline(ref: string, connus: ReadonlyMap<string, PipelineConnu>): string {
   const id = idPipeline(ref);
-  const nom = connus.get(id)?.nom;
+  const nom = connus.get(id)?.nom ?? connus.get(id)?.titreRegistre;
   if (nom) return nom;
   const lisible = id.replace(/^adhoc:/, "").replace(/[-_:]+/g, " ").trim();
   return lisible ? lisible.charAt(0).toUpperCase() + lisible.slice(1) : ref;
+}
+
+// Seul `src/pipelines-noms.js` remplit `versions` depuis le registre : un pipeline vu
+// uniquement par un run ou une fiche projet garde donc une liste vide.
+export const estEnregistre = (pipeline: PipelineConnu): boolean => pipeline.versions.length > 0;
+
+/** La version publiée la plus récente, ou `null` hors registre. */
+export const derniereVersion = (pipeline: PipelineConnu): number | null =>
+  pipeline.versions.length ? Math.max(...pipeline.versions) : null;
+
+/** La référence publiée utilisée par les actions du catalogue. */
+export const refPipeline = (pipeline: PipelineConnu): string => {
+  const version = derniereVersion(pipeline);
+  return version === null ? pipeline.id : `${pipeline.id}@${version}`;
+};
+
+/** Les pipelines effectivement publiés par le registre, sans muter la réponse source. */
+export function pipelinesEnregistres(pipelines: readonly PipelineConnu[]): PipelineConnu[] {
+  const connus = new Map(pipelines.map((pipeline) => [pipeline.id, pipeline]));
+  return pipelines
+    .filter(estEnregistre)
+    .slice()
+    .sort((a, b) => nomPipeline(a.id, connus).localeCompare(nomPipeline(b.id, connus)) || a.id.localeCompare(b.id));
 }
