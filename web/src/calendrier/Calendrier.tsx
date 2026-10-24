@@ -20,7 +20,7 @@ function decalerMois(date: string, mois: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function useCalendrier(source: SourceCalendrier) {
+function useCalendrier(source: SourceCalendrier, revision = 0) {
   const [objectifs, setObjectifs] = useState<Objectif[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const recharger = useCallback(async () => {
@@ -32,7 +32,7 @@ function useCalendrier(source: SourceCalendrier) {
     // Les départs changent d'état sans action ici : run lancé, quota épuisé, run terminé.
     const minuterie = window.setInterval(() => void recharger(), 30_000);
     return () => window.clearInterval(minuterie);
-  }, [recharger]);
+  }, [recharger, revision]);
   return { objectifs, erreur, recharger };
 }
 
@@ -70,7 +70,6 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
     finally { setEnvoi(false); }
   }
 
-  const prochaineHeure = `${String((Number(dateCivile(Date.now()).heure.slice(0, 2)) + 1) % 24).padStart(2, "0")}:00`;
   return <form className="cal-form" onSubmit={envoyer}>
     <header><h3>Planifier un run</h3><button type="button" className="cal-lien" onClick={onFermer}>Fermer</button></header>
     {!catalogue && !erreur && <p className="cal-aide">Chargement des projets et pipelines…</p>}
@@ -89,12 +88,12 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
       <label>Critères de réussite<textarea name="criteres" rows={2} required placeholder="Un critère par ligne" /></label>
       <div className="cal-champs">
         <label>Date<input type="date" name="date" defaultValue={aujourdhui} min={aujourdhui} required /></label>
-        <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" name="heure" defaultValue={prochaineHeure} /></label>
+        <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" name="heure" defaultValue="" /></label>
         <label>Répétition<select name="repetition" defaultValue="none">
           {(Object.keys(MOT_REPETITION) as Repetition[]).map((r) => <option key={r} value={r}>{MOT_REPETITION[r]}</option>)}
         </select></label>
       </div>
-      <label className="cal-case"><input type="checkbox" name="active" defaultChecked /> Activer : le moteur lancera le run à l'heure dite</label>
+      <label className="cal-case"><input type="checkbox" name="active" defaultChecked /> Activer : démarrer dès que quota et worker sont disponibles</label>
       {!!catalogue.erreurs.length && <details className="cal-aide"><summary>{catalogue.erreurs.length} élément(s) du registre illisible(s)</summary><ul>{catalogue.erreurs.map((e) => <li key={e}>{e}</li>)}</ul></details>}
       <button type="submit" className="cal-action" disabled={envoi || !modeles.length}>{envoi ? "Planification…" : "Planifier"}</button>
     </>}
@@ -156,7 +155,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
 
 function Carte({ entree, choisie, onChoisir }: { entree: Entree; choisie: boolean; onChoisir: () => void }) {
   const etat = etatEntree(entree);
-  return <li>
+  return <li draggable={entree.genre !== "lance" || entree.occurrence?.statut === "queued"} data-task-payload={JSON.stringify({ type: "projet", titre: entree.objectif.titre, objectif: { id: entree.objectif.id, revision: entree.objectif.revision, heure: entree.objectif.heure, nextAt: entree.objectif.nextAt, aDeplacer: true } })}>
     <button type="button" className={`cal-carte ${etat.ton} ${entree.genre}`} aria-pressed={choisie} onClick={onChoisir}>
       <span className="cal-heure">{entree.heure}</span>
       <strong>{entree.objectif.titre}</strong>
@@ -173,7 +172,7 @@ const ETAPES = new Map(LOTS.flatMap((lot) => lot.etapes.map((e) => [e.id, { lot:
 function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   const etat = etatDepartFeuille(depart);
   const etape = ETAPES.get(depart.objectifId);
-  return <li>
+  return <li draggable={!depart.runId && depart.statut === "queued"} data-task-payload={JSON.stringify({ type: "depart", commandeId: depart.cle, prevuLe: depart.prevuLe })}>
     <a className={`cal-carte feuille ${etat.ton}`} href={`/a-venir#av-etape-${depart.objectifId}`}>
       <span className="cal-heure">{depart.heure}</span>
       <strong>{depart.objectifId} · {etape?.titre ?? "Objectif de la feuille de route"}</strong>
@@ -183,10 +182,10 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   </li>;
 }
 
-export function Calendrier({ integre = false }: { integre?: boolean } = {}) {
+export function Calendrier({ integre = false, sourceCalendrier, revisionExterne = 0, onChangement }: { integre?: boolean; sourceCalendrier?: SourceCalendrier; revisionExterne?: number; onChangement?: () => void } = {}) {
   const { source: principale } = useSource();
-  const source = useMemo(() => (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [principale.nom]);
-  const { objectifs, erreur, recharger } = useCalendrier(source);
+  const source = useMemo(() => (sourceCalendrier ?? (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi)), [principale.nom, sourceCalendrier]);
+  const { objectifs, erreur, recharger } = useCalendrier(source, revisionExterne);
   const maintenant = useHorloge(60_000);
   const aujourdhui = dateCivile(maintenant).date;
   const [dateVue, setDateVue] = useState(aujourdhui);
@@ -199,7 +198,7 @@ export function Calendrier({ integre = false }: { integre?: boolean } = {}) {
   const debutGrilleMois = lundi(debutMois);
   const moisAffiche = dateVue.slice(0, 7);
   const parJour = useMemo(() => semaine(objectifs ?? [], debut), [objectifs, debut]);
-  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs]);
+  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs, revisionExterne]);
   const feuilleParJour = useMemo(() => departsFeuille(attributions ?? [], debut), [attributions, debut]);
   const parJourMois = useMemo(() => {
     const resultats = new Map<string, Array<Entree | DepartFeuille>>();
@@ -258,7 +257,7 @@ export function Calendrier({ integre = false }: { integre?: boolean } = {}) {
       <button type="button" className="cal-action" onClick={() => setFormulaire((v) => !v)} aria-expanded={formulaire}>Planifier un run</button>
     </div>
 
-    {formulaire && <Planifier source={source} aujourdhui={aujourdhui} onFermer={() => setFormulaire(false)} onPlanifie={() => { setFormulaire(false); void recharger(); }} />}
+    {formulaire && <Planifier source={source} aujourdhui={aujourdhui} onFermer={() => setFormulaire(false)} onPlanifie={() => { setFormulaire(false); void recharger(); onChangement?.(); }} />}
     {erreur && <p className="cal-erreur" role="alert">Calendrier indisponible : {erreur}</p>}
     {!!retards.length && <section className="cal-retards" aria-label="Départs en retard">
       <h3>En retard</h3>
@@ -293,7 +292,7 @@ export function Calendrier({ integre = false }: { integre?: boolean } = {}) {
         </li>;
       })}
     </ol>}
-    {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et son heure.</p>}
-    {selection && <Detail objectif={selection} source={source} onChange={() => void recharger()} />}
+    {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et sa journée.</p>}
+    {selection && <Detail objectif={selection} source={source} onChange={() => { void recharger(); onChangement?.(); }} />}
   </div>;
 }

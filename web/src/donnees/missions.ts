@@ -14,3 +14,5 @@ export function specStructuree(texte: string): Record<string, unknown> {
   if (!spec || Array.isArray(spec) || typeof spec !== "object") throw new Error("Le contexte structuré doit être un objet JSON.");
   return spec as Record<string, unknown>;
 }
+
+export type GroupePlan = z.input<typeof plan.groupePlan>;

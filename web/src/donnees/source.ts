@@ -105,6 +105,8 @@ export interface Source {
   filConseil(dossier: string): Promise<FilConseil>;
   poserConseil(dossier: string, texte: string): Promise<FilConseil>;
   /** L'équipe d'agents : qui est libre, sur quel projet, et le budget du mois qui reste. */
+  planifierGroupe(demande: import("./missions").GroupePlan): Promise<{ objectifs: import("../calendrier/api").Objectif[] }>;
+  deplacerPlan(demande: { commandeId: string; prevuLe: string; date: string }): Promise<void>;
   equipe(): Promise<ReponseEquipe>;
   /** Associe ces agents à un projet (existant ou nouveau), ou les libère avec `null`. */
   affecter(agents: string[], projet: string | null): Promise<void>;

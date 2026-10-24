@@ -47,6 +47,8 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
 
 function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
   const d = lancement.parse(brut);
+  const objectifTaskBoard = d.demande.spec._taskBoardObjective
+    ? validerReference(d.demande.spec._taskBoardObjective, d.projectId, { taskBoard: true }) : null;
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
     ? validerReference(d.demande.spec._roadmapObjective, d.projectId)
     : null;
@@ -62,7 +64,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     parNoeud.set(c.noeud, c);
   }
   const roles = actifs(resolution);
-  if (objectifFeuille) {
+  if (objectifFeuille || objectifTaskBoard) {
     const cadre = require("./objectifs-avenirs").cadrerSensibilite({ ...d.demande, projectId: d.projectId, contexte: d.demande.spec, exigences: [] });
     if (cadre.exigences.includes("revue-securite") && !roles.some((n) => n.type === "review" && n.agent.split("@")[0] === "security-reviewer")) {
       throw new Error("Cet objectif sensible exige une revue de sécurité active dans le pipeline.");
@@ -110,6 +112,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     _mission: { projectId: d.projectId, objectif: d.demande.objectif, criteres: d.demande.criteres,
       directives: d.demande.directives, exclusions: d.demande.exclusions, document: d.demande.document,
       ...(objectifFeuille ? { objectifFeuille: { id: objectifFeuille.id, revision: objectifFeuille.revision } } : {}),
+      ...(objectifTaskBoard ? { taskBoardObjective: { id: objectifTaskBoard.id, revision: objectifTaskBoard.revision, groupeId: d.demande.spec._taskBoardObjective.groupeId } } : {}),
       ...(origine ? { origine, contexteEquipe: brouillon.contexte } : {}) } };
   for (const n of roles) {
     if (Array.isArray(n.slice)) for (const key of n.slice) {
@@ -126,6 +129,8 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
     ? validerReference(d.demande.spec._roadmapObjective, d.projectId)
     : null;
+  const reserve = d.demande.spec._taskBoardObjective
+    ? validerReference(d.demande.spec._taskBoardObjective, d.projectId, { taskBoard: true }) : objectifFeuille;
   store.db.exec("BEGIN IMMEDIATE");
   try {
     const ancienne = store.db.prepare("SELECT id FROM commands WHERE kind = 'run.start' AND json_extract(payload_json, '$.requestId') = ? LIMIT 1").get(d.requestId);
@@ -136,8 +141,8 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
         throw new Error("Cette demande a déjà été utilisée avec un autre contenu ou auteur.");
       }
     } else {
-      if (objectifFeuille && objectifActif(store, objectifFeuille.id)) {
-        const occupe = new Error(`L'objectif ${objectifFeuille.id} est déjà attribué à un run actif.`);
+      if (reserve && objectifActif(store, reserve.id)) {
+        const occupe = new Error(`L'objectif ${reserve.id} est déjà attribué à un run actif.`);
         occupe.code = "OBJECTIF_OCCUPE";
         throw occupe;
       }
@@ -154,6 +159,10 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
 const RUNS_VIVANTS = new Set(["queued", "running", "paused", "waiting_approval", "waiting_quota", "waiting_auth", "waiting_machine", "waiting_freshness"]);
 
 function objectifActif(store, objectifId) {
+  if (store.db.prepare("SELECT 1 FROM sqlite_master WHERE name='atelier_goals'").get()) {
+    const prevu = store.db.prepare("SELECT id FROM atelier_goals WHERE next_at IS NOT NULL AND json_extract(mission_json,'$.resolution.spec._mission.taskBoardObjective.id')=? LIMIT 1").get(objectifId);
+    if (prevu) return prevu;
+  }
   const lignes = store.db.prepare(`
     SELECT c.status AS commande_statut, c.run_id AS run_id,
       r.status AS run_statut, d.status AS livraison_statut, d.finished_at AS livraison_fin,
@@ -162,7 +171,7 @@ function objectifActif(store, objectifId) {
     LEFT JOIN runs r ON r.id = c.run_id
     LEFT JOIN deliveries d ON d.run_id = r.id
     WHERE c.kind = 'run.start'
-      AND json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id') = ?
+      AND COALESCE(json_extract(c.payload_json, '$.mission.resolution.spec._mission.objectifFeuille.id'),json_extract(c.payload_json, '$.mission.resolution.spec._mission.taskBoardObjective.id')) = ?
     ORDER BY c.created_at DESC, c.rowid DESC`).all(objectifId);
   return lignes.find((ligne) => {
     if (!ligne.run_id) return ["pending", "taken"].includes(ligne.commande_statut);
@@ -171,4 +180,4 @@ function objectifActif(store, objectifId) {
     return false;
   }) || null;
 }
-module.exports = { lire, construire, demander };
+module.exports = { lire, construire, demander, objectifActif };

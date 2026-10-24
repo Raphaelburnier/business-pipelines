@@ -51,10 +51,24 @@ function sonderQuotaCodex(store) {
 }
 
 // Les reprises et décisions utilisent le même chemin de lancement que les nouveaux runs.
-async function lancerParallele(...args) {
-  while (!arret && !maitre) await attendre(INTERVALLE);
-  if (arret) return Promise.resolve({ code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" });
-  return lancer(...args);
+const lancementsParRun = new Map();
+function capaciteRuns() {
+  const distants=[...(maitre?.connexions.values() || [])].reduce((n,c)=>n+(Number.isInteger(c.capacites?.concurrence)?c.capacites.concurrence:1),0);
+  return Math.min(64,1+distants); // une voie locale, puis la capacité annoncée des workers
+}
+function lancerParallele(lancement, options = {}) {
+  const key = options.runId ? options.store?.commandeLancementRun(options.runId)?.id || options.runId : options.commandId;
+  const avant = lancementsParRun.get(key) || Promise.resolve();
+  const operation = avant.catch(()=>{}).then(async()=> {
+    while (!arret && (!maitre || enfants.size >= capaciteRuns())) await attendre(Math.min(INTERVALLE,50));
+    if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
+    return lancer(lancement, options);
+  });
+  if (key) {
+    lancementsParRun.set(key,operation);
+    void operation.finally(()=>{if(lancementsParRun.get(key)===operation)lancementsParRun.delete(key);}).catch(()=>{});
+  }
+  return operation;
 }
 
 function projet(projectId) {
@@ -210,11 +224,12 @@ async function repondre(store, commande) {
 // Deux files dans le même processus : un run tient sa boucle pendant des minutes, une
 // question ne doit pas l'attendre. Chaque boucle ne réserve que ses propres commandes.
 async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
+  const enCours = new Set();
   while (!arret) {
     let exclure = [];
     if (kinds.includes("run.resume")) {
       sonderQuotaCodex(store);
-      store.attentes.programmer();
+      store.attentes.programmer({ machineDisponible });
       // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
       // sans exclusions, comme avant le calendrier.
       try {
@@ -229,6 +244,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
         console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
       }
     }
+    if (kinds.includes("run.resume")) exclure.push(...store.attentes.exclureMachines(machineDisponible));
     const quota = kinds.includes("run.resume") ? require("../src/quota").etatQuota(store) : null;
     if (quota && quota.statut !== dernierEtatQuotaLogge) {
       dernierEtatQuotaLogge = quota.statut;
@@ -239,6 +255,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
     }
     const sousSeuil = Boolean(prioriserRuns && quota?.sousSeuil);
     const filtre = kinds.includes("run.resume") ? { kinds, prioriserRuns: sousSeuil, exclure } : { kinds };
+    if (kinds.includes("run.resume") && (!maitre || enCours.size >= capaciteRuns())) { await attendre(INTERVALLE); continue; }
     const commande = store.prendreCommande(filtre);
     if (!commande) {
       await attendre(INTERVALLE);
@@ -246,8 +263,15 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
     }
     console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
     // La réservation durable empêche les doublons. Le maître borne la concurrence réelle.
-    void traiterCommande(store, commande, executer);
+    if (!kinds.includes("run.resume")) await traiterCommande(store, commande, executer);
+    else {
+      let operation;
+      operation = traiterCommande(store, commande, executer).catch(err=>console.error(err.message)).finally(()=>enCours.delete(operation));
+      enCours.add(operation);
+      await new Promise(resolve => setImmediate(resolve));
+    }
   }
+  await Promise.allSettled(enCours);
 }
 
 // Les décisions sont enregistrées immédiatement, puis leurs reprises attendent le verrou
@@ -326,7 +350,7 @@ async function deciderEtReprendre(store, commande, lancerRun = lancerParallele) 
   const run = store.run(a.run_id);
   if (!run) throw new Error(`run inconnu : ${a.run_id}`);
   const lancement = lancementDe(store, run);
-  const repris = await lancerRun(lancement, { reprendre: true, runId: a.run_id });
+  const repris = await lancerRun(lancement, { reprendre: true, runId: a.run_id, store });
   // « Renvoyer au pipeline » : une orientation que le pipeline ne route nulle part termine
   // simplement le run (marketing@1). Un nouveau tour repart alors, et son nœud `consigne` y
   // reprend la note. Ce nouveau tour est mis en file et lié à sa propre commande.
@@ -361,7 +385,7 @@ async function reverifier(store, commande) {
 
 async function executerRun(store, commande) {
   const lancerAvecDiagnostic = (lancement, options = {}) => lancerParallele(lancement, { ...options, store });
-  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe });
+  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe, machineDisponible });
   if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancerParallele(commande.payload, { commandId: commande.id, store });
   return issue(store, resultat, { runId: store.commande(commande.id)?.run_id || null });

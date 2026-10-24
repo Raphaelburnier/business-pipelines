@@ -24,7 +24,7 @@ function fixture(mode = "quota") {
   for(const d of [path.join(projets,"demo"),path.join(reg,"pipelines/demo/v1"),path.join(reg,"agents/codeur/v1"),bin])fs.mkdirSync(d,{recursive:true});
   fs.writeFileSync(path.join(reg,"agents/codeur/v1/agent.md"),`---\nname: codeur\nversion: 1\ndescription: Codeur fictif\ndefaultLlm: { via: codex, model: gpt }\nallowedTools: [Read, Write]\nskills: []\n---\nProduit le livrable de recette.\n`);
   fs.writeFileSync(path.join(reg,"pipelines/demo/v1/pipeline.json"),JSON.stringify({name:"demo",version:1,nodes:[
-    {id:"preparer",type:"script",runsOn:mode === "machine" ? "nas" : "pc",run:process.execPath,args:["-e",'const fs=require("fs");fs.writeFileSync("compteur.txt",String(Number(fs.existsSync("compteur.txt")?fs.readFileSync("compteur.txt","utf8"):0)+1));']},
+    {id:"preparer",type:"script",runsOn:["machine","parallele"].includes(mode) ? "nas" : "pc",run:process.execPath,args:["-e",'const fs=require("fs");fs.writeFileSync("compteur.txt",String(Number(fs.existsSync("compteur.txt")?fs.readFileSync("compteur.txt","utf8"):0)+1));']},
     {id:"code",type:"agent",agent:"codeur@1",runsOn:"pc",slice:"*",outputs:["livrable.txt"]},
   ],edges:[{from:"preparer",to:"code"}]}));
   const fiche=path.join(projets,"demo/project.json");
@@ -33,6 +33,7 @@ function fixture(mode = "quota") {
   fs.writeFileSync(path.join(dir,"workers.json"),'{"workers":[]}');
   fs.writeFileSync(path.join(bin,"codex"),`#!/usr/bin/env node
 const fs=require('fs');
+if(process.argv[2]==='app-server')process.exit(0); // lecture de quota sans appel d’agent
 if(process.argv[2]==='login'){process.stderr.write('Logged in using ChatGPT');process.exit(0);}
 let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entree+=x);process.stdin.on('end',()=>{
  const appel={args:process.argv.slice(2),cwd:process.cwd(),entree};
@@ -56,7 +57,7 @@ let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entre
   const commande=store.creerCommande({kind:"run.start",payload:{projectId:"demo",mission:contrat},par:"recette"});
   const pret=path.join(dir,"pret"), appels=path.join(dir,"appels.jsonl");
   const env={...process.env,PATH:`${bin}:${process.env.PATH}`,ORCH_EVENT_STORE:file,COCKPIT_PROJETS_DIR:projets,ORCH_REGISTRE:reg,OUTPUT_ROOT:path.join(dir,"workspaces"),NO_VCS:"1",ORCH_ROLE:"pc",ORCH_MACHINE:"pc",COMMAND_POLL_MS:"10",ORCH_MAITRE_PORT:"0",ORCH_MAITRE_HOTE:"127.0.0.1",ORCH_WORKERS:path.join(dir,"workers.json"),RECETTE_MODE:mode,RECETTE_PRET:pret,RECETTE_APPELS:appels};
-  if (mode === "machine") {
+  if (["machine","parallele"].includes(mode)) {
     // Le vrai maître, sa file durable et la vraie CLI ; seul le transport du worker est
     // déterministe. Aucun changement de source de production ni appel fournisseur.
     const precharge = path.join(dir, "maitre-recette.cjs");
@@ -69,10 +70,12 @@ class MaitreRecette extends moteur.Maitre {
   super(options);
   if(process.argv[1].endsWith('/orch.js'))throw new Error('La CLI a ouvert un second maître');
   this.store.majMachine({id:'pc',state:'online',heartbeat:true,meta:{capacites:{missions:1,backends:['codex'],noeuds:['agent','script']}}});
+  if(process.env.RECETTE_MODE==='parallele')this.connexions.set('pc',{capacites:{concurrence:1},socket:{close(){},terminate(){}}});
  }
- machineDisponible(machine){return machine==='pc'&&fs.existsSync(process.env.RECETTE_PRET);}
+ machineDisponible(machine){return machine==='pc'&&(process.env.RECETTE_MODE==='parallele'||fs.existsSync(process.env.RECETTE_PRET));}
  async executer(machine,etape){
   fs.appendFileSync(process.env.RECETTE_APPELS,JSON.stringify({machine,etape})+'\\n');
+  if(process.env.RECETTE_MODE==='parallele')while(!fs.existsSync(process.env.RECETTE_PRET))await new Promise(r=>setTimeout(r,10));
   if(!fs.existsSync(process.env.RECETTE_PRET))throw new MachineIndisponible('worker de recette absent');
   return {statut:'succeeded',outcome:null};
  }
@@ -253,4 +256,20 @@ test("retour machine après redémarrage : même run et contrat, sans refaire le
     const troisieme = f.runner(); await pause(250); await f.arreter(troisieme);
     assert.equal(f.lectures().length, 2);
   } finally { await f.fermer(); }
+});
+
+test('trois objectifs prêts : deux runs se chevauchent et le troisième attend la capacité',async()=>{
+  const f=fixture('parallele');
+  try {
+    for(let i=0;i<2;i++)f.store.creerCommande({kind:'run.start',payload:f.commande.payload,par:'recette'});
+    const runner=f.runner();
+    await jusqua(()=>f.lectures().length===2,()=>runner.sortie);
+    assert.equal(f.store.runs().filter(r=>r.status==='running').length,2);
+    assert.equal(f.store.commandes().filter(c=>c.kind==='run.start'&&c.status==='pending').length,1);
+    await pause(200);assert.equal(f.lectures().length,2,'la capacité empêche le troisième lancement');
+    fs.writeFileSync(f.pret,'oui');
+    await jusqua(()=>f.store.runs().filter(r=>r.status==='succeeded').length===3,()=>runner.sortie);
+    assert.equal(f.lectures().length,3);
+    assert.equal(new Set(f.lectures().map(a=>a.etape.runId)).size,3);
+  }finally{await f.fermer();}
 });

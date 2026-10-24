@@ -1,163 +1,134 @@
-import { AVenir } from "./avenir/AVenir";
-import { Calendrier } from "./calendrier/Calendrier";
-import { useRef, useState, type DragEvent } from "react";
-import { useCharge, useSource } from "./donnees/contexte";
-import { sourceCalendrierApi, sourceCalendrierMaquette } from "./calendrier/api";
-import { dateCivile, instantZurich } from "./calendrier/semaine";
-import type { PropositionPlan, SpecMission } from "./donnees/missions";
-import { InterrupteurPrioritaire } from "./InterrupteurPrioritaire";
-import "./taskboard.css";
+import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { AVenir, AgentsAttribution } from './avenir/AVenir';
+import { LOTS, DEFAUTS } from './avenir/feuille';
+import objectifsSysteme from './avenir/objectifs.json';
+import { sensibiliteEtape } from './avenir/sensibilite';
+import { Calendrier } from './calendrier/Calendrier';
+import { sourceCalendrierApi, sourceCalendrierMaquette, type Objectif } from './calendrier/api';
+import { dateCivile, instantZurich } from './calendrier/semaine';
+import { useCharge, useSource } from './donnees/contexte';
+import type { PropositionPlan, SpecMission } from './donnees/missions';
+import { InterrupteurPrioritaire } from './InterrupteurPrioritaire';
+import './taskboard.css';
 
-/** Tableau commun pour choisir une tâche et la retrouver dans le calendrier. */
+type Tache = { type?: string; ref?: string; titre?: string; detail?: string; fichiers?: string[]; commandeId?: string; prevuLe?: string;
+  objectif?: { id: string; revision: number; heure: string; nextAt?: string | null; aDeplacer?: boolean } };
+type Proposition = { projectId: string; spec: SpecMission; reponse: PropositionPlan; modifie: boolean; index: number | null };
+const TACHES = new Map<string,Tache>([...LOTS.flatMap(l=>l.etapes.map(e=>[e.id,{type:'fonctionnalite',ref:e.id,titre:e.titre,detail:e.detail}] as const)),...DEFAUTS.map(d=>[d.id,{type:'fix',ref:d.id,titre:d.titre,detail:d.correctif}] as const)]);
+const ALIAS: Record<string,string> = { BP:'business-pipelines', AO:'agent-orchestrator', REG:'agent-registry', AS:'agent-secrets' };
+
 export function TaskBoard() {
   const { source } = useSource();
-  const { donnees: topo } = useCharge((s) => s.topologie(), []);
-  const { donnees: usage } = useCharge((s) => s.usage(), []);
-  const calendrier = source.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi;
-  const [message, setMessage] = useState("");
+  const { donnees: topo } = useCharge(s => s.topologie(), []);
+  const { donnees: usage } = useCharge(s => s.usage(), []);
+  const calendrier = useMemo(() => source.nom === 'maquette' ? sourceCalendrierMaquette() : sourceCalendrierApi, [source.nom]);
+  const [revision, setRevision] = useState(0);
+  const [message, setMessage] = useState('');
   const [envoi, setEnvoi] = useState(false);
-  const [tacheSysteme, setTacheSysteme] = useState<{ type?: string; titre?: string; detail?: string; ref?: string; fichiers?: string[]; date: string } | null>(null);
+  const verrou = useRef(false);
+  const [tache, setTache] = useState<(Tache & { date: string }) | null>(null);
   const [projets, setProjets] = useState<string[]>([]);
-  const [propositions, setPropositions] = useState<Array<{ projectId: string; spec: SpecMission; reponse: PropositionPlan }>>([]);
+  const [propositions, setPropositions] = useState<Proposition[]>([]);
   const [accepteDegrade, setAccepteDegrade] = useState(false);
   const [prioritaire, setPrioritaire] = useState(false);
-  const tentatives = useRef(new Map<string, string>());
+  const [sensible, setSensible] = useState(false);
+  const groupe = useRef('');
+  const tentatives = useRef(new Map<string,string>());
+  const objectifCatalogue = objectifsSysteme.find(o => o.id === tache?.ref);
+  const risque = sensibiliteEtape(objectifCatalogue ?? { fichiers: [] });
   const quota = usage?.quota;
-  const quotaTexte = `Quota restant · Claude ${quota?.fournisseurs?.claude ? `${quota.fournisseurs.claude.restant}%` : "inconnu"} · Codex ${quota?.fournisseurs?.codex ? `${quota.fournisseurs.codex.restant}%` : "inconnu"} · ${quota?.statut === "bas" ? "reprises, prioritaires, puis FIFO (<25 %)" : quota?.statut === "normal" ? "ordre normal" : "mesure incomplète, ordre normal"}.`;
-  function glisser(event: DragEvent<HTMLDivElement>) {
-    const cible = (event.target as HTMLElement).closest<HTMLElement>("[data-task-payload]");
+  const quotaTexte = `Quota restant · Claude ${quota?.fournisseurs?.claude ? `${quota.fournisseurs.claude.restant}%` : 'inconnu'} · Codex ${quota?.fournisseurs?.codex ? `${quota.fournisseurs.codex.restant}%` : 'inconnu'} · ${quota?.statut === 'bas' ? 'reprises, prioritaires, puis FIFO (<25 %)' : quota?.statut === 'normal' ? 'ordre normal' : 'mesure incomplète, ordre normal'}.`;
+  const nettoyer = () => document.querySelectorAll('.taskboard-drop-cible').forEach(c => c.classList.remove('taskboard-drop-cible'));
+  function glisser(e: DragEvent<HTMLDivElement>) {
+    const cible = (e.target as HTMLElement).closest<HTMLElement>('[data-task-payload]');
     if (!cible) return;
-    event.dataTransfer.setData("application/x-taskboard-task", cible.dataset.taskPayload || "");
-    event.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData('application/x-taskboard-task', cible.dataset.taskPayload || '');
+    e.dataTransfer.effectAllowed = 'move';
   }
-  function survoler(event: DragEvent<HTMLDivElement>) {
-    const jour = (event.target as HTMLElement).closest<HTMLElement>("[data-calendar-date]");
-    if (jour) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      document.querySelectorAll(".taskboard-drop-cible").forEach((cellule) => cellule.classList.remove("taskboard-drop-cible"));
-      jour.classList.add("taskboard-drop-cible");
-    }
-  }
-  async function deposer(event: DragEvent<HTMLDivElement>) {
-    const jour = (event.target as HTMLElement).closest<HTMLElement>("[data-calendar-date]")?.dataset.calendarDate;
-    const donnees = event.dataTransfer.getData("application/x-taskboard-task");
-    document.querySelectorAll(".taskboard-drop-cible").forEach((cellule) => cellule.classList.remove("taskboard-drop-cible"));
-    if (!jour || !donnees) return;
-    event.preventDefault();
-    if (jour < dateCivile(Date.now()).date) { setMessage("Choisis aujourd’hui ou un jour futur."); return; }
-    let tache: { type?: string; titre?: string; detail?: string; ref?: string; fichiers?: string[]; objectif?: { id: string; revision: number; heure: string; nextAt: string | null; active: boolean; aDeplacer?: boolean } };
-    try { tache = JSON.parse(donnees); } catch { setMessage("Cette tâche ne peut pas être lue."); return; }
-    if (tache.type !== "projet" || !tache.objectif) {
-      setTacheSysteme({ ...tache, date: jour });
-      setPropositions([]); setMessage(""); setAccepteDegrade(false);
-      const alias: Record<string, string> = { BP: "business-pipelines", AO: "agent-orchestrator", REG: "agent-registry", AS: "agent-secrets" };
-      const cibles = [...new Set((tache.fichiers ?? []).flatMap((f) => {
-        const code = /^([A-Z]{2,5})\s/.exec(f)?.[1];
-        const id = code ? alias[code] : null;
-        return id && topo?.projets.some((p) => p.id === id) ? [id] : [];
-      }))];
-      setProjets(cibles);
+  async function deposer(e: DragEvent<HTMLDivElement>) {
+    const date = (e.target as HTMLElement).closest<HTMLElement>('[data-calendar-date]')?.dataset.calendarDate;
+    const brut = e.dataTransfer.getData('application/x-taskboard-task'); nettoyer();
+    if (!date || !brut || verrou.current || envoi) return;
+    e.preventDefault();
+    if (date < dateCivile(Date.now()).date) { setMessage('Choisis aujourd’hui ou un jour futur.'); return; }
+    let cible: Tache;
+    try { cible = JSON.parse(brut); if (!cible || typeof cible !== 'object') throw new Error(); }
+    catch { setMessage('Cette tâche ne peut pas être lue.'); return; }
+    if (cible.type === 'projet' && cible.objectif || cible.type === 'depart') {
+      verrou.current = true; setEnvoi(true); setMessage('');
+      try {
+        if (cible.type === 'depart' && cible.commandeId && cible.prevuLe) await source.deplacerPlan({ commandeId: cible.commandeId, prevuLe: cible.prevuLe, date });
+        else if (cible.objectif) { const o = cible.objectif; await calendrier.modifier(o.id, { revision:o.revision, date, heure:o.nextAt || o.aDeplacer ? o.heure : '00:00', active:true }); }
+        setRevision(r => r+1); setMessage(`Travail planifié le ${date}, dès que quota et worker sont disponibles.`);
+      } catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
+      finally { verrou.current=false; setEnvoi(false); }
       return;
     }
-    setEnvoi(true); setMessage("");
-    try {
-      const { objectif } = tache;
-      const heure = objectif.nextAt || objectif.aDeplacer ? objectif.heure : "00:00";
-      await calendrier.modifier(objectif.id, { revision: objectif.revision, date: jour, heure, active: true });
-      setMessage(`« ${tache.titre} » planifiée le ${jour} ; elle pourra démarrer dès que quota et worker seront disponibles.`);
-    } catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
-    finally { setEnvoi(false); }
+    ouvrir(cible,date);
   }
-  async function proposerPlan() {
-    if (!tacheSysteme || !projets.length) return;
-    const fichiers = tacheSysteme.fichiers ?? [];
-    const alias: Record<string, string> = { BP: "business-pipelines", AO: "agent-orchestrator", REG: "agent-registry", AS: "agent-secrets" };
-    const critereTravail = (tacheSysteme.detail || "").trim().slice(0, 950);
-    const depotsParFichier = new Map(fichiers.map((f) => {
-      const code = /^([A-Z]{2,5})\s/.exec(f)?.[1];
-      return [f, code ? alias[code] || projets[0]! : projets[0]!];
-    }));
-    setEnvoi(true); setMessage("");
+  function ouvrir(cible: Tache,date: string) {
+    if (date<dateCivile(Date.now()).date) {setMessage('Choisis aujourd’hui ou un jour futur.');return;}
+    const reference = objectifsSysteme.find(o => o.id === cible.ref);
+    if (!reference) { setMessage('Cette tâche est terminée, en cours ou périmée : recharge le tableau.'); return; }
+    const ids = [...new Set(reference.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; }))];
+    setTache({ ...cible, fichiers:reference.fichiers, date });
+    setProjets(ids.filter(id => topo?.projets.some(p => p.id===id && p.aFiche && p.pipelines.length)));
+    setPropositions([]); setMessage(''); setSensible(false); setPrioritaire(false); setAccepteDegrade(false);
+    groupe.current=crypto.randomUUID(); tentatives.current.clear();
+  }
+  async function proposer() {
+    if (!tache || !objectifCatalogue) return;
+    setEnvoi(true); setMessage('');
     try {
-      const reponses = await Promise.all(projets.map(async (projectId) => {
-        const fichiersProjet = fichiers.filter((f) => depotsParFichier.get(f) === projectId);
-        const spec: SpecMission = {
-          projectId,
-          objectif: `${tacheSysteme.ref ? `${tacheSysteme.ref} · ` : ""}${tacheSysteme.titre || "Tâche système"}`,
-          criteres: [critereTravail || "Réaliser la part de travail décrite et fournir les preuves de vérification adaptées."],
-          document: `${tacheSysteme.detail || ""}\n\nFichiers de ce dépôt : ${fichiersProjet.length ? fichiersProjet.join(", ") : "à déterminer par l’agent"}\nDépôts concernés par la tâche complète : ${projets.join(", ")}`,
-          directives: "Proposer un plan propre à ce dépôt. Respecter ses instructions. Le lancement attend la validation explicite de tous les plans proposés.",
-          exclusions: `Le groupe TaskBoard comprend les dépôts ${projets.join(", ")}. Ce run ne modifie que ${projectId}; les autres dépôts sont traités par leurs runs du même groupe.`,
-          exigences: fichiersProjet.some((f) => /(^|\/)(\.github|migrations?|Dockerfile|docker-compose|\.env|terraform|infra)(\/|$)/i.test(f.replace(/^[A-Z]{2,5}\s+/, ""))) ? ["revue-securite"] : [],
-          runtimesExclus: ["omniroute"],
-          contexte: { taskBoard: { type: tacheSysteme.type, ref: tacheSysteme.ref, fichiers: fichiersProjet, groupeDepots: projets } },
-        };
-        return { projectId, spec, reponse: await source.proposerPlan(spec) };
+      const reponses = await Promise.all(projets.map(async projectId => {
+        const spec: SpecMission = { projectId, objectif:`${tache.ref} · ${tache.titre}`, criteres:[(tache.detail || 'Réaliser le changement avec ses preuves de vérification.').slice(0,950)],
+          document:`${tache.detail || ''}\n\nFichiers annoncés : ${objectifCatalogue.fichiers.join(', ')}. Dépôts retenus : ${projets.join(', ')}.`,
+          directives:'Respecter les instructions du dépôt et produire les preuves de vérification du changement.', exclusions:`Ce run ne modifie que ${projectId}. Les autres dépôts font l’objet des autres plans validés du groupe.`,
+          exigences:risque.sensible || sensible ? ['revue-securite'] : [], runtimesExclus:['omniroute'],
+          contexte:{_taskBoardObjective:{id:objectifCatalogue.id,revision:objectifCatalogue.revision}} };
+        const reponse=await source.proposerPlan(spec);
+        return {projectId,spec,reponse,modifie:false,index:reponse.plan?.pipeline.index??null};
       }));
       setPropositions(reponses); setAccepteDegrade(false);
-    }
-    catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
-    finally { setEnvoi(false); }
+    } catch(err) {setMessage(err instanceof Error ? err.message : String(err));}
+    finally{setEnvoi(false);}
   }
-  async function lancerPlanValide() {
-    if (!tacheSysteme || !propositions.length || propositions.some((p) => p.reponse.statut === "bloque" || !p.reponse.empreinte)) return;
-    setEnvoi(true); setMessage("");
+  async function recalculer(p: Proposition) {
+    setEnvoi(true); setMessage('');
+    try {const reponse=await source.proposerPlan(p.spec); setPropositions(ps=>ps.map(x=>x.projectId===p.projectId?{...p,reponse,modifie:false,index:reponse.plan?.pipeline.index??p.index}:x));setAccepteDegrade(false);}
+    catch(err){setMessage(err instanceof Error ? err.message : String(err));} finally{setEnvoi(false);}
+  }
+  async function valider() {
+    if (!tache || verrou.current || propositions.some(p=>p.modifie || !p.reponse.empreinte)) return;
+    verrou.current=true; setEnvoi(true);setMessage('');
     try {
-      await Promise.all(propositions.map((proposition) => {
-        const empreinte = `${proposition.reponse.empreinte}:${tacheSysteme.date}`;
-        const cle = `${proposition.projectId}:${empreinte}`;
-        if (!tentatives.current.has(cle)) tentatives.current.set(cle, crypto.randomUUID());
-        return source.lancerPlan({ spec: proposition.spec, empreinte: proposition.reponse.empreinte!,
-          requestId: tentatives.current.get(cle)!, accepterDegrade: accepteDegrade,
-          scheduling: { priority: prioritaire ? "haute" : "normale", source: "calendar", notBefore: instantZurich(tacheSysteme.date, "00:00") } });
-      }));
-      setMessage(`« ${tacheSysteme.titre} » : ${propositions.length} run(s) planifié(s) le ${tacheSysteme.date}.`);
-      tentatives.current.clear(); setTacheSysteme(null); setPropositions([]);
-    } catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
-    finally { setEnvoi(false); }
+      const missions=propositions.map(p=>{if(!tentatives.current.has(p.projectId))tentatives.current.set(p.projectId,crypto.randomUUID());return {spec:p.spec,empreinte:p.reponse.empreinte!,requestId:tentatives.current.get(p.projectId)!,accepterDegrade:accepteDegrade,scheduling:{source:'calendar' as const,notBefore:instantZurich(tache.date,'00:00'),priority:prioritaire?'haute' as const:'normale' as const}};});
+      await source.planifierGroupe({groupeId:groupe.current,missions});
+      setMessage(`${propositions.length} tâche(s) planifiée(s) le ${tache.date}.`);setRevision(r=>r+1);setTache(null);setPropositions([]);
+    }catch(err){setMessage(err instanceof Error?err.message:String(err));}finally{verrou.current=false;setEnvoi(false);}
   }
-  return <div className="taskboard-page" onDragStart={glisser} onDragOver={survoler} onDragEnd={() => document.querySelectorAll(".taskboard-drop-cible").forEach((cellule) => cellule.classList.remove("taskboard-drop-cible"))} onDrop={(event) => void deposer(event)}>
-    <header className="taskboard-entete">
-      <div>
-        <p className="kicker">Planification · Europe/Zurich</p>
-        <h2>Un tableau pour planifier et suivre le travail</h2>
-        <p>Consulte les runs prévus et retrouve les objectifs, fonctionnalités et correctifs à planifier.</p>
-        <p className="taskboard-quota" aria-live="polite">{quotaTexte}</p>
-      </div>
-    </header>
-    {message && <p className="taskboard-retour" role="status">{envoi ? "Planification… " : ""}{message}</p>}
-    {tacheSysteme && <section className="taskboard-system-plan" aria-label="Planifier une tâche système">
-      <header><h3>Planifier « {tacheSysteme.titre} » le {tacheSysteme.date}</h3><button type="button" onClick={() => { setTacheSysteme(null); setPropositions([]); }}>Annuler</button></header>
-      {!propositions.length && <>
-        <p>Sélectionne les dépôts concernés. L’orchestrateur propose un pipeline et des agents pour chacun ; valide tous les plans avant la mise en file simultanée.</p>
-        <fieldset><legend>Dépôts concernés</legend>
-          {(topo?.projets ?? []).map((p) => <label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={(e) => setProjets((anciens) => e.target.checked ? [...anciens, p.id] : anciens.filter((id) => id !== p.id))} /> {p.nom}</label>)}
-        </fieldset>
-        <InterrupteurPrioritaire checked={prioritaire} onChange={setPrioritaire} />
-        <button type="button" disabled={!projets.length || envoi} onClick={() => void proposerPlan()}>{envoi ? "Analyse…" : "Proposer les plans"}</button>
-      </>}
-      {!!propositions.length && <>
-        {propositions.map((proposition) => <article key={proposition.projectId}>
-          <h4>{topo?.projets.find((p) => p.id === proposition.projectId)?.nom ?? proposition.projectId} · {proposition.reponse.statut}</h4>
-          {proposition.reponse.blocages.map((b, i) => <p key={i}>{b.message}</p>)}
-          {proposition.reponse.plan && <p>{proposition.reponse.plan.pipeline.titre} — {proposition.reponse.plan.pipeline.raison}<br />Résultat : {proposition.reponse.plan.resultat.description}</p>}
-          {proposition.reponse.plan?.etapes.map((e) => <p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}
-          {proposition.reponse.plan?.avertissements.map((a, i) => <p key={`avertissement-${i}`}>{a}</p>)}
-        </article>)}
-        {propositions.some((p) => p.reponse.statut === "degrade") && <label><input type="checkbox" checked={accepteDegrade} onChange={(e) => setAccepteDegrade(e.target.checked)} /> Accepter tous les plans dégradés</label>}
-        <button type="button" disabled={envoi || propositions.some((p) => p.reponse.statut === "bloque" || !p.reponse.empreinte) || (propositions.some((p) => p.reponse.statut === "degrade") && !accepteDegrade)} onClick={() => void lancerPlanValide()}>{envoi ? "Planification…" : "Valider tous les plans et planifier"}</button>
-        <button type="button" disabled={envoi} onClick={() => setPropositions([])}>Modifier les dépôts</button>
-      </>}
-      {message && <p role="alert">{message}</p>}
+  function sansGlisser(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();const f=new FormData(e.currentTarget),ref=String(f.get('tache'));const cible=TACHES.get(ref);
+    if(cible)ouvrir(cible,String(f.get('jour')));
+  }
+  return <div className="taskboard-page" onDragStart={glisser} onDragEnd={nettoyer} onDragOver={e=>{const j=(e.target as HTMLElement).closest<HTMLElement>('[data-calendar-date]');if(j){e.preventDefault();e.dataTransfer.dropEffect='move';nettoyer();j.classList.add('taskboard-drop-cible');}}} onDrop={e=>void deposer(e)}>
+    <header className="taskboard-entete"><div><p className="kicker">Planification · Europe/Zurich</p><h2>Un tableau pour planifier et suivre le travail</h2><p>Dépose une tâche sur un jour. Elle pourra commencer dès que quota et worker sont disponibles, et continuer après minuit.</p><p className="taskboard-quota" aria-live="polite">{quotaTexte}</p></div></header>
+    <details className="taskboard-system-plan"><summary>Planifier une tâche sans glisser</summary><form onSubmit={sansGlisser}><fieldset disabled={envoi}>
+      <label>Tâche à planifier<select name="tache" required defaultValue=""><option value="" disabled>Choisir une tâche…</option>{objectifsSysteme.map(o=><option key={o.id} value={o.id}>{o.id} · {TACHES.get(o.id)?.titre ?? o.id}</option>)}</select></label>
+      <label>Journée<input type="date" name="jour" required min={dateCivile(Date.now()).date} defaultValue={dateCivile(Date.now()).date}/></label><button type="submit">Préparer la planification</button>
+    </fieldset></form></details>
+    {message && <p className="taskboard-retour" role="status">{message}</p>}
+    {tache && <section className="taskboard-system-plan" aria-label="Planifier une tâche système"><header><h3>Planifier « {tache.titre} » le {tache.date}</h3><button type="button" disabled={envoi} onClick={()=>setTache(null)}>Annuler</button></header>
+      {!propositions.length ? <><p>Valide le périmètre proposé puis les plans. Tous seront enregistrés ensemble.</p><fieldset disabled={envoi}><legend>Dépôts concernés</legend>{topo?.projets.filter(p=>p.aFiche && p.pipelines.length).map(p=><label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={e=>setProjets(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/>{p.nom}</label>)}</fieldset>
+        <InterrupteurPrioritaire checked={prioritaire} disabled={envoi} onChange={setPrioritaire}/><label><input type="checkbox" checked={risque.sensible||sensible} disabled={risque.sensible||envoi} onChange={e=>setSensible(e.target.checked)}/> Sensible — revue et vérifications renforcées</label>
+        <button type="button" disabled={envoi||!projets.length} onClick={()=>void proposer()}>Proposer les plans</button></> : <>
+        {propositions.map(p=><article key={p.projectId}><h4>{p.reponse.projet?.nom||p.projectId} · {p.reponse.statut}</h4>{p.reponse.blocages.map((b,i)=><p key={i}>{b.message}</p>)}
+          {p.reponse.plan && <><p>{p.reponse.plan.pipeline.titre} — {p.reponse.plan.pipeline.raison}</p>{p.reponse.plan.etapes.map(e=><p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}<details><summary>Critères et avertissements</summary>{p.reponse.plan.criteres.map(c=><p key={c.texte}>{c.texte}</p>)}{p.reponse.plan.avertissements.map((a,i)=><p key={i}>{a}</p>)}</details></>}
+          {p.index!==null && <AgentsAttribution projectId={p.projectId} index={p.index} choix={p.spec.agents||[]} disabled={envoi} onChange={agents=>setPropositions(ps=>ps.map(x=>x.projectId===p.projectId?{...x,spec:{...x.spec,agents},modifie:true}:x))}/>}
+          {p.modifie && <button type="button" disabled={envoi} onClick={()=>void recalculer(p)}>Appliquer les choix et recalculer le plan</button>}</article>)}
+        {propositions.some(p=>p.reponse.statut==='degrade') && <label><input type="checkbox" checked={accepteDegrade} onChange={e=>setAccepteDegrade(e.target.checked)}/>Accepter tous les plans dégradés</label>}
+        <button type="button" disabled={envoi||propositions.some(p=>p.modifie||!p.reponse.empreinte||p.reponse.statut==='bloque')||propositions.some(p=>p.reponse.statut==='degrade')&&!accepteDegrade} onClick={()=>void valider()}>Valider tous les plans et planifier</button><button type="button" disabled={envoi} onClick={()=>setPropositions([])}>Modifier le périmètre</button></>}
     </section>}
-    <div className="taskboard-grille">
-      <section className="taskboard-calendrier" aria-label="Calendrier des runs">
-        <Calendrier integre />
-      </section>
-      <aside className="taskboard-taches" aria-label="Tâches à venir">
-        <AVenir integre />
-      </aside>
-    </div>
+    <div className="taskboard-grille"><section className="taskboard-calendrier" id="taskboard-calendrier" aria-label="Calendrier des runs"><Calendrier integre sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></section><aside className="taskboard-taches" aria-label="Tâches à venir"><AVenir integre sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></aside></div>
   </div>;
 }

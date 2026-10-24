@@ -37,6 +37,7 @@ export interface Objectif {
   brouillon: BrouillonPlanifie;
   criteres: string[];
   occurrences: Occurrence[];
+  taskBoard?: { id: string; revision: number; groupeId: string } | null;
 }
 
 export interface Modele extends BrouillonPlanifie {
