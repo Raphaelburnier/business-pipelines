@@ -194,7 +194,7 @@ jobs:
 
       - name: Keep the cleaned log for the next jobs
         if: steps.trier.outputs.decision == 'claude'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ci-autofix-log
           path: ${{ runner.temp }}/ci-autofix/ci-echec.log
@@ -262,7 +262,7 @@ jobs:
       contents: read
     steps:
       - name: Check out the exact failing commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.trier.outputs.sha }}
           fetch-depth: 1
@@ -286,7 +286,7 @@ jobs:
           mkdir .ci-autofix
 
       - name: Fetch the cleaned log
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ci-autofix-log
           path: .ci-autofix
@@ -409,7 +409,7 @@ jobs:
 
       - name: Hand the patch to the publishing job
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         env:
           NODE_OPTIONS: ""
           LD_PRELOAD: ""
@@ -443,13 +443,13 @@ jobs:
       - name: Fetch the proposed patch
         id: paquet
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ci-autofix-patch
           path: ${{ runner.temp }}/paquet
 
       - name: Check out the exact failing commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.trier.outputs.sha }}
           path: depot
@@ -526,7 +526,7 @@ jobs:
             fi
             bas="${chemin,,}"
             case "$bas" in
-              .github/*|*/codeowners|codeowners|copilot-instructions.md|*/copilot-instructions.md|agents.md|*/agents.md|claude.md|*/claude.md|claude.local.md|*/claude.local.md|.claude/*|*/.claude/*|.mcp.json|*/.mcp.json|.ci-autofix/*|.gitattributes|*/.gitattributes|.gitmodules|.npmrc|*/.npmrc|package.json|*/package.json|package-lock.json|*/package-lock.json|npm-shrinkwrap.json|*/npm-shrinkwrap.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|*.sql|*/migrations/*|migrations/*|*/migration/*|migration/*|dockerfile*|*/dockerfile*|*.dockerfile|compose.yml|compose.yaml|compose.*.yml|compose.*.yaml|*/compose.yml|*/compose.yaml|*/compose.*.yml|*/compose.*.yaml|.dockerignore|*/.dockerignore|docker-compose*|*/docker-compose*|vercel.json|*/vercel.json|.env|.env.*|*/.env|*/.env.*|*.env|*.env.*|*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*/infra/*|infra/*|*/infrastructure/*|infrastructure/*|*/terraform/*|terraform/*|*.tf|*.tfvars|*/deploy/*|deploy/*|*/deployment/*|deployment/*|src/github-merge-gates.js|src/pull-requests.js|src/api-pull-requests.js|bin/publieur.js|bin/livrer.sh|packages/schemas/commandes.js|specs/livraison.json|*deploy*.sh|*deploy*.js|*deploy*.mjs|*deploy*.cjs|*deploy*.py|src/acces.js|bin/cockpit.js|src/api-livraison.js|src/livreur.js|bin/livreur.js|bin/commande-runner.js|src/chat-outils.js|src/conseiller.js|src/signature-commandes.js|bin/tailnet-relais.sh|src/agent-runner.js|src/codex-runner.js|src/cockpit-read.js|src/chat.js|src/workers.js|src/worker*.js|src/maitre*.js|src/tailnet.js|agents/*)
+              .github/*|*/codeowners|codeowners|copilot-instructions.md|*/copilot-instructions.md|agents.md|*/agents.md|claude.md|*/claude.md|claude.local.md|*/claude.local.md|.claude/*|*/.claude/*|.mcp.json|*/.mcp.json|.ci-autofix/*|.gitattributes|*/.gitattributes|.gitmodules|.npmrc|*/.npmrc|package.json|*/package.json|package-lock.json|*/package-lock.json|npm-shrinkwrap.json|*/npm-shrinkwrap.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|*.sql|*/migrations/*|migrations/*|*/migration/*|migration/*|dockerfile*|*/dockerfile*|*.dockerfile|compose.yml|compose.yaml|compose.*.yml|compose.*.yaml|*/compose.yml|*/compose.yaml|*/compose.*.yml|*/compose.*.yaml|.dockerignore|*/.dockerignore|docker-compose*|*/docker-compose*|vercel.json|*/vercel.json|.env|.env.*|*/.env|*/.env.*|*.env|*.env.*|*secret*|*credential*|*token*|*.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*/infra/*|infra/*|*/infrastructure/*|infrastructure/*|*/terraform/*|terraform/*|*.tf|*.tfvars|*/deploy/*|deploy/*|*/deployment/*|deployment/*|src/github-merge-gates.js|src/pull-requests.js|src/api-pull-requests.js|bin/publieur.js|bin/livrer.sh|packages/schemas/commandes.js|specs/livraison.json|*deploy*.sh|*deploy*.js|*deploy*.mjs|*deploy*.cjs|*deploy*.py|src/acces.js|bin/cockpit.js|bin/chat-outils-mcp.js|src/api-chat.js|src/api-livraison.js|src/livreur.js|bin/livreur.js|bin/commande-runner.js|src/chat-outils.js|src/conseiller.js|src/signature-commandes.js|bin/tailnet-relais.sh|src/agent-runner.js|src/codex-runner.js|src/cockpit-read.js|src/chat.js|src/workers.js|src/worker*.js|src/maitre*.js|src/tailnet.js|agents/*)
                 conclure refus "chemin sensible : $chemin" ;;
             esac
             if [[ "$statut" == D && "$bas" =~ $motif_test ]]; then

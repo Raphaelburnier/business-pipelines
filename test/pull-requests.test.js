@@ -377,7 +377,7 @@ test("les conseillers du chat relancent une CI et écrivent aux agents par les c
 
 test("règles d'agents, dépendances et code d'autorité exigent une fusion explicite", () => {
   for (const f of [".claude/settings.json", "web/.claude/hooks/x.sh", ".mcp.json", "CLAUDE.local.md", "package.json", "web/package-lock.json", ".gitattributes",
-    "src/acces.js", "bin/cockpit.js", "bin/livreur.js", "src/chat-outils.js", "src/agent-runner.js", "src/worker-exec.js", "src/maitre-distant.js", "agents/code-reviewer/v2/agent.md", "deploy/fichiers-sensibles.json",
+    "src/acces.js", "bin/cockpit.js", "bin/livreur.js", "src/chat-outils.js", "bin/chat-outils-mcp.js", "src/api-chat.js", "src/agent-runner.js", "src/worker-exec.js", "src/maitre-distant.js", "agents/code-reviewer/v2/agent.md", "deploy/fichiers-sensibles.json",
     "src/modeles-livraison.js", "src/delais-livraison.js", "bin/modele-livraison.js", "specs/livraison-modeles.json", "specs/livraison-delais.json"]) {
     assert.ok(pullRequests.estSensible(f), f);
   }
