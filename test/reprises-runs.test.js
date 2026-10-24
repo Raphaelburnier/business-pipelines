@@ -144,6 +144,46 @@ test("auth : aucun timer ; reprise manuelle dédupliquée après confirmation",a
   } finally {await f.fermer();}
 });
 
+for (const historique of [false, true]) test(`quota sans échéance${historique ? " depuis 40 h" : ""} : reprise automatique du même run après redémarrage`, async () => {
+  const f = fixture("inconnu");
+  try {
+    const premier = f.runner();
+    const runId = await jusqua(() => f.store.commande(f.commande.id).status === "done" && f.store.commande(f.commande.id).run_id, () => premier.sortie);
+    const vue = api.run(f.store, runId);
+    assert.equal(vue.attente.resetAt, null);
+    assert.ok(vue.attente.prochaineReprise);
+    await pause(150); assert.equal(f.lectures().length, 1);
+    await f.arreter(premier);
+    // Avancer les dates de la base temporaire représente la fenêtre écoulée, sans
+    // attendre réellement cinq heures ni modifier une horloge de production.
+    const fige = Date.now(), ancien = new Date(fige-(historique ? 40 : 5)*3600_000-2000).toISOString();
+    const w = f.store.attentes.lire(runId), cause = { ...w.cause };
+    if (historique) { delete cause.politiqueQuota; delete cause.quotaLe; delete cause.reessaiAuPlusTot; }
+    else { cause.quotaLe = ancien; cause.reessaiAuPlusTot = new Date(fige-1000).toISOString(); }
+    f.store.db.prepare("UPDATE run_waits SET cause_json=?,first_wait_at=?,deadline=?,next_retry_at=?,reason=?,updated_at=? WHERE run_id=?")
+      .run(JSON.stringify(cause), ancien, new Date(Date.parse(ancien)+24*3600_000).toISOString(), historique ? null : cause.reessaiAuPlusTot,
+        historique ? "échéance inconnue" : null, ancien, runId);
+    f.store.db.prepare("UPDATE events SET ts=? WHERE run_id=? AND type='run.waiting_runtime'").run(ancien, runId);
+    fs.writeFileSync(f.pret, "oui");
+    fs.writeFileSync(path.join(f.projets, "demo/project.json"), "fiche devenue invalide");
+    const second = f.runner();
+    await jusqua(() => f.store.run(runId).status === "succeeded", () => second.sortie);
+    await jusqua(() => f.store.commandes().some(c => c.kind === "run.resume" && c.status === "done"), () => second.sortie);
+    const appels = f.lectures(); assert.equal(appels.length, 2);
+    assert.equal(appels[0].cwd, appels[1].cwd);
+    assert.ok(appels[1].args.includes("resume")); assert.ok(appels[1].args.includes("session-native"));
+    assert.ok(appels[1].entree.includes("OBJECTIF_FIGE")); assert.ok(appels[1].entree.includes("SPEC_FIGEE"));
+    assert.equal(fs.readFileSync(path.join(appels[1].cwd, "compteur.txt"), "utf8"), "1");
+    assert.equal(fs.readFileSync(path.join(appels[1].cwd, "partiel.txt"), "utf8"), "travail à conserver");
+    assert.equal(f.store.runs().length, 1);
+    assert.equal(f.store.commandes().filter(c => c.kind === "run.start").length, 1);
+    assert.equal(f.store.attentes.lire(runId).first_wait_at, ancien);
+    await f.arreter(second);
+    const troisieme = f.runner(); await pause(250); await f.arreter(troisieme);
+    assert.equal(f.lectures().length, 2);
+  } finally { await f.fermer(); }
+});
+
 test("un second runner ne remet pas les commandes réservées par le premier en file",async()=>{
   const f=fixture("inconnu");
   try {

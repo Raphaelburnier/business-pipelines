@@ -608,8 +608,8 @@ test("le détail du run expose le plan figé et les critères reliés", () => {
 
 test("runtimes bloqués lus dans les attentes des runs vivants", () => {
   const store = { runs: () => [{ id: "abcdef123456", status: "waiting_quota" }, { id: "x", status: "succeeded" }, { id: "fedcba654321", status: "waiting_auth" }],
-    attentes: { vue: (id) => id === "abcdef123456" ? { statut: "waiting_quota", runtime: "codex", resetAt: "2026-10-12T18:00:00.000Z" } : { statut: "waiting_auth", runtime: "claude", resetAt: null } } };
-  assert.deepEqual(plansMissions.runtimesBloques(store), {
+    attentes: { vue: (id) => id === "abcdef123456" ? { statut: "waiting_quota", runtime: "codex", resetAt: "2026-10-12T18:00:00.000Z", resetSource: "provider.reset_at" } : { statut: "waiting_auth", runtime: "claude", resetAt: null } } };
+  assert.deepEqual(plansMissions.runtimesBloques(store, 300, Date.parse("2026-10-12T17:00:00.000Z")), {
     codex: "quota codex atteint jusqu'à 2026-10-12T18:00:00.000Z (run abcdef12)",
     claude: "connexion claude absente ou expirée (run fedcba65)",
   });

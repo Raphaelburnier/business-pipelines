@@ -4,6 +4,7 @@ const equipe = require("./equipe");
 const runtimeMission = require("./runtime-mission");
 const planificateur = require("./planificateur");
 const { branches } = require("./branches");
+const { runtimeBloque } = require("agent-orchestrator/src/quota-reprise");
 
 /**
  * Le contrôle de lancement d'un nœud de mission : backend joignable, worker à jour pour les
@@ -12,10 +13,6 @@ const { branches } = require("./branches");
  */
 const verifierBackend = runtimeMission.verifier;
 
-// Un quota sans échéance connue ne bloque pas au-delà d'une fenêtre d'abonnement : sinon un
-// run oublié en attente rend le runtime indisponible pour toutes les missions, sans fin.
-const QUOTA_SANS_ECHEANCE_MS = 5 * 60 * 60 * 1000;
-
 /** Runtimes qu'un run vivant attend : quota atteint ou connexion expirée. */
 function runtimesBloques(store, limite = 300, maintenant = Date.now()) {
   const bloques = {};
@@ -23,10 +20,7 @@ function runtimesBloques(store, limite = 300, maintenant = Date.now()) {
     if (!["waiting_quota", "waiting_auth"].includes(run.status)) continue;
     const attente = store.attentes?.vue(run.id);
     if (!attente?.runtime || bloques[attente.runtime]) continue;
-    if (attente.statut === "waiting_quota" && !attente.resetAt) {
-      const depuis = Date.parse(store.attentes.lire?.(run.id)?.first_wait_at);
-      if (Number.isFinite(depuis) && maintenant - depuis >= QUOTA_SANS_ECHEANCE_MS) continue;
-    }
+    if (!runtimeBloque({ ...store.attentes.lire?.(run.id), cause: attente }, maintenant)) continue;
     bloques[attente.runtime] = attente.statut === "waiting_quota"
       ? `quota ${attente.runtime} atteint${attente.resetAt ? ` jusqu'à ${attente.resetAt}` : ", échéance inconnue"} (run ${run.id.slice(0, 8)})`
       : `connexion ${attente.runtime} absente ou expirée (run ${run.id.slice(0, 8)})`;
@@ -57,7 +51,7 @@ function etatPlanification({ store, machines, viaParMachine, roster, affectation
       try { runtimeMission.verifierMachine(machines, machine, noeud, contexte); return { utilisable: true, raison: null }; }
       catch (err) { return { utilisable: false, raison: err.message }; }
     },
-    runtimesBloques: runtimesBloques(store),
+    runtimesBloques: runtimesBloques(store, 300, maintenant),
     depensesMembres: Object.fromEntries(usage.map((a) => [a.id, a.usage.consommeMoisUsd])),
     depensesProjets: depensesProjets(store, maintenant),
   };

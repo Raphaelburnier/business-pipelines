@@ -34,7 +34,7 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
       <p className="mt-2">Vérifie la fraîcheur du contexte, puis demande explicitement la reprise si elle reste pertinente. Aucune reprise automatique n'est planifiée.</p>
     </>}
     {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && !machine && <>
-      <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : "Échéance inconnue : reprise manuelle disponible."}</p>
+      <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : attente.prochaineReprise ? "Échéance fournisseur inconnue : nouvelle tentative après un délai de prudence, sans garantie de réinitialisation du quota." : "Échéance fournisseur inconnue : reprise manuelle disponible."}</p>
       <p>{attente.prochaineReprise ? `Prochaine reprise automatique : ${new Date(attente.prochaineReprise).toLocaleString("fr-CH")}` : attente.raisonManuelle}</p>
       <p className="mt-1 text-xs text-douce">{attente.tentatives}/{attente.maximum} reprises automatiques · limite : {new Date(attente.limiteLe).toLocaleString("fr-CH")}</p>
     </>}

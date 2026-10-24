@@ -3,7 +3,6 @@
   {"id": "1.2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"]},
   {"id": "1.3", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml:36-50,155-161"]},
   {"id": "1.4", "revision": 1, "projet": null, "fichiers": ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"]},
-  {"id": "2.8", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/run-waits.js:84-103", "BP src/api-plans-missions.js"]},
   {"id": "3.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/rattachements.js"]},
   {"id": "3.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/stage-handlers.js", "BP Dockerfile:25-27"]},
   {"id": "3.8", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/graphe.js"]},
