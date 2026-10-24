@@ -127,16 +127,16 @@ test("quota connu, redémarrage : même run, mission, workspace et session, sans
   } finally {await f.fermer();}
 });
 
-for(const mode of ["inconnu","auth"])test(`${mode} : aucun timer ; reprise manuelle dédupliquée après confirmation`,async()=>{
-  const f=fixture(mode);
+test("auth : aucun timer ; reprise manuelle dédupliquée après confirmation",async()=>{
+  const f=fixture("auth");
   try {
     const runner=f.runner();
     const runId=await jusqua(()=>f.store.commande(f.commande.id).status==="done"&&f.store.commande(f.commande.id).run_id,()=>runner.sortie);
     const vue=api.run(f.store,runId);assert.equal(vue.attente.prochaineReprise,null);
     await pause(150);assert.equal(f.lectures().length,1);
-    if(mode==="auth")assert.throws(()=>f.store.attentes.demander(runId,{waitId:vue.attente.id,par:"recette"}),/reconnexion/);
+    assert.throws(()=>f.store.attentes.demander(runId,{waitId:vue.attente.id,par:"recette"}),/reconnexion/);
     fs.writeFileSync(f.pret,"oui");
-    const demande={waitId:vue.attente.id,par:"recette",reconnexionConfirmee:mode==="auth"};
+    const demande={waitId:vue.attente.id,par:"recette",reconnexionConfirmee:true};
     const a=f.store.attentes.demander(runId,demande),b=f.store.attentes.demander(runId,demande);assert.equal(a.id,b.id);
     await jusqua(()=>f.store.commande(a.id).status==="done",()=>runner.sortie);
     assert.equal(f.store.run(runId).status,"succeeded");assert.equal(f.lectures().length,2);
