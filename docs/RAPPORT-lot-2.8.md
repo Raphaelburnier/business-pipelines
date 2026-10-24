@@ -47,8 +47,11 @@ Un cas de rejeu a d'abord échoué avant le raccordement de la réconciliation a
 puis passe avec ce raccordement.
 
 Le chantier calendrier 12.2 non commité reste séparé. Aucune règle d'arrêt à minuit,
-nouvelle dépendance, migration de schéma, modification de CI ni modèle de livraison
-n'est ajoutée. La reprise garde les signatures, le contrat de mission et l'acquittement
+nouvelle dépendance, migration de schéma ni modèle de livraison n'est ajouté.
+La liste du workflow de fusion est synchronisée avec le durcissement F13 du moteur :
+deux chemins d'autorité du chat sont ajoutés. La première CI a détecté cette divergence
+entre dépôts ; le contrôle reste actif et cette synchronisation exige une fusion explicite.
+La reprise garde les signatures, le contrat de mission et l'acquittement
 atomique livrés au lot 2.7.
 
 Spécification : [SPEC-reprise-quota.md](SPEC-reprise-quota.md).
