@@ -7,7 +7,7 @@ import { dateCivile, FUSEAU, instantZurich } from "../calendrier/semaine";
 import { useCharge, useSource } from "../donnees/contexte";
 import { lignes, type OptionsMission, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import type { AttributionAvenir } from "../donnees/source";
-import { sourceCalendrierApi, sourceCalendrierMaquette } from "../calendrier/api";
+import { type Objectif, type SourceCalendrier, sourceCalendrierApi, sourceCalendrierMaquette } from "../calendrier/api";
 import { Planifier } from "../calendrier/Calendrier";
 import { MOT_REPETITION } from "../calendrier/semaine";
 import { DATE_AUDIT, DEFAUTS, LOTS_PRIORISES, PRIORITES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Statut } from "./feuille";
@@ -109,7 +109,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   // « Planifier » place le départ dans le calendrier au lieu de le lancer tout de suite (11.5).
   const [quand, setQuand] = useState<{ planifie: boolean; date: string; heure: string }>(() => {
     const demain = dateCivile(Date.now() + 86_400_000);
-    return { planifie: false, date: demain.date, heure: "07:00" };
+    return { planifie: false, date: demain.date, heure: "" };
   });
   const tentative = useRef<{ empreinte: string; requestId: string } | null>(null);
   async function proposer(event: FormEvent<HTMLFormElement>) {
@@ -145,7 +145,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   async function lancer() {
     if (!proposition?.reponse.empreinte || choixModifies) return;
     let notBefore: string | undefined;
-    try { notBefore = quand.planifie ? instantZurich(quand.date, quand.heure) : undefined; }
+    try { notBefore = quand.planifie ? instantZurich(quand.date, quand.heure || "00:00") : undefined; }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); return; }
     setErreur(null); setAttente(true);
     try {
@@ -223,18 +223,18 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
         <label><input type="radio" name={`quand-${etape.id}`} checked={quand.planifie} onChange={() => setQuand({ ...quand, planifie: true })} /> Planifier</label>
         {quand.planifie && <>
           <label>Date<input type="date" value={quand.date} min={dateCivile(Date.now()).date} onChange={(e) => setQuand({ ...quand, date: e.target.value })} /></label>
-          <label>Heure ({FUSEAU})<input type="time" value={quand.heure} onChange={(e) => setQuand({ ...quand, heure: e.target.value })} /></label>
+          <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" value={quand.heure} onChange={(e) => setQuand({ ...quand, heure: e.target.value })} /></label>
         </>}
       </fieldset>}
-      {plan.statut !== "bloque" && <button type="button" disabled={attente || choixModifies || (plan.statut === "degrade" && !accepteDegrade) || (quand.planifie && (!quand.date || !quand.heure))} onClick={lancer}>{attente ? "Envoi…" : quand.planifie ? "Planifier la mission" : "Lancer la mission"}</button>}
+      {plan.statut !== "bloque" && <button type="button" disabled={attente || choixModifies || (plan.statut === "degrade" && !accepteDegrade) || (quand.planifie && !quand.date)} onClick={lancer}>{attente ? "Envoi…" : quand.planifie ? "Planifier la mission" : "Lancer la mission"}</button>}
       <button type="button" disabled={attente} onClick={() => { setProposition(null); tentative.current = null; }}>Modifier la mission</button>
     </section>}
   </div>;
 }
 
-function EtapeLigne({ e, attribution, projetNom, onRefresh }: { e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void }) {
+function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [] }: { reservations?: Objectif[]; e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void }) {
   const sensibilite = sensibiliteEtape(e);
-  return <li id={`av-etape-${e.id}`}>
+  return <li id={`av-etape-${e.id}`} draggable={e.statut === "a-faire" && !reservations.length} data-task-payload={JSON.stringify({ type: "fonctionnalite", titre: e.titre, detail: e.detail, ref: e.id, fichiers: e.fichiers })}>
     <div className="av-ligne">
       <b>{e.id}</b>
       <span className="av-titre">{e.titre}</span>
@@ -242,8 +242,9 @@ function EtapeLigne({ e, attribution, projetNom, onRefresh }: { e: Etape; attrib
       <Pastille statut={e.statut} />
     </div>
     <p>{e.detail}</p>
+    {!!reservations.length && <p>Planifiée pour {reservations.map(o=>`${o.projectId} (${o.date})`).join(", ")} · <a href="#taskboard-calendrier">Voir dans le calendrier</a></p>}
     {attribution && <Attribution etape={e} attribution={attribution} onRefresh={onRefresh} projetNom={projetNom} agentNom={attribution.agent?.nom ?? "Agent inconnu"} />}
-    {estAttribuable(e) && !attribution && <Attribution etape={e} onRefresh={onRefresh} attribution={{ objectif: { id: e.id, revision: revisionObjectif(e.id) ?? 1 }, commandeId: "", runId: null, projetId: "", agent: null, statut: "non_attribue", creeLe: "", raison: null, livraison: null }} projetNom="" agentNom="" />}
+    {estAttribuable(e) && !attribution && !reservations.length && <Attribution etape={e} onRefresh={onRefresh} attribution={{ objectif: { id: e.id, revision: revisionObjectif(e.id) ?? 1 }, commandeId: "", runId: null, projetId: "", agent: null, statut: "non_attribue", creeLe: "", raison: null, livraison: null }} projetNom="" agentNom="" />}
     <div className="av-fichiers">{e.fichiers.map((f) => <code key={f}>{f}</code>)}</div>
   </li>;
 }
@@ -252,7 +253,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
   const o = tache.objectif!;
   const prochain = o.nextAt ? new Date(o.nextAt).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" }) : null;
   const dernier = o.occurrences[0];
-  return <li>
+  return <li draggable={tache.statut === "a-faire"} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: tache.detail, objectif: { id: o.id, revision: o.revision, heure: o.heure, nextAt: o.nextAt, active: o.active, aDeplacer: o.occurrences.some((occurrence) => occurrence.statut === "queued") } })}>
     <div className="av-ligne">
       <span className="av-type projet">{tache.ref}</span>
       <span className="av-titre">{o.titre}</span>
@@ -268,14 +269,15 @@ function TacheProjet({ tache }: { tache: Tache }) {
   </li>;
 }
 
-function Fix({ tache }: { tache: Tache }) {
+function Fix({ tache, reservations = [] }: { tache: Tache; reservations?: Objectif[] }) {
   const d = DEFAUTS.find((x) => x.id === tache.ref)!;
-  return <li className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
+  return <li id={`av-etape-${d.id}`} draggable={d.statut === "a-faire" && !reservations.length} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
     <div className="av-ligne">
       <b>{d.id}</b>
       <span className={`av-severite ${d.severite}`}>{d.severite}</span>
       <span className="av-titre">{d.titre}</span>
       <span className="av-correctif">{d.correctif}</span>
+      {!!reservations.length && <a href="#taskboard-calendrier">Planifiée ({reservations.length} dépôt(s))</a>}
       <Pastille statut={d.statut} />
     </div>
   </li>;
@@ -288,16 +290,16 @@ const TYPES: Array<{ id: Filtre["type"]; nom: string }> = [
   { id: "fix", nom: "Fix" },
 ];
 
-export function AVenir() {
+export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0, onChangement }: { integre?: boolean; sourceCalendrier?: SourceCalendrier; revisionExterne?: number; onChangement?: () => void } = {}) {
   const { source } = useSource();
-  const calendrier = useMemo(() => (source.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [source.nom]);
+  const calendrier = useMemo(() => (sourceCalendrier ?? (source.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi)), [source.nom, sourceCalendrier]);
   const [revision, setRevision] = useState(0);
-  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [revision]);
+  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [revision, revisionExterne]);
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
-  const { donnees: objectifs, erreur: erreurObjectifs } = useCharge(() => calendrier.objectifs(), [calendrier, revision]);
+  const { donnees: objectifs, erreur: erreurObjectifs } = useCharge(() => calendrier.objectifs(), [calendrier, revision, revisionExterne]);
   const [filtre, setFiltre] = useState<Filtre>(FILTRE_DEFAUT);
   const [nouvelle, setNouvelle] = useState(false);
-  const rafraichir = () => setRevision((n) => n + 1);
+  const rafraichir = () => { setRevision((n) => n + 1); onChangement?.(); };
   // Le calendrier renvoie vers une étape : la page arrive en chargement différé, on y défile ensuite.
   useEffect(() => {
     if (window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "center" });
@@ -306,6 +308,7 @@ export function AVenir() {
   const taches = useMemo(() => construireTaches(LOTS_PRIORISES, DEFAUTS, objectifs ?? []), [objectifs]);
   const visibles = filtrer(taches, filtre);
   const projets = projetsDisponibles(taches, (topo?.projets ?? []).map((p) => ({ id: p.id, nom: p.nom })));
+  const reservations = (id: string) => (objectifs ?? []).filter(o=>o.taskBoard?.id===id && (o.nextAt || ['queued','running','waiting_quota','waiting_machine','waiting_approval','waiting_auth','waiting_freshness'].includes(o.occurrences[0]?.statut || '')));
   const nomProjet = (id: string) => projets.find((p) => p.id === id)?.nom ?? id;
   const parObjectif = new Map((attributions ?? []).map((a) => [a.objectif.id, a]));
   const ouvertesDe = (projet: string) => taches.filter((t) => t.projet === projet && t.statut !== "fait").length;
@@ -321,8 +324,8 @@ export function AVenir() {
   const ancre = typeof window === "undefined" ? "" : window.location.hash;
 
   return (
-    <div className="av-page">
-      <section className="av-hero">
+    <div className={`av-page ${integre ? "av-embarque" : ""}`}>
+      {!integre && <section className="av-hero">
         <div>
           <span className="kicker">Audit du {DATE_AUDIT} · tâches des projets en direct</span>
           <h2>Tâches à venir</h2>
@@ -335,7 +338,16 @@ export function AVenir() {
           <div><dt>fix ouverts</dt><dd>{compter(taches, "fix")}</dd></div>
           <div className={critiques ? "alerte" : ""}><dt>critiques</dt><dd>{critiques}</dd></div>
         </dl>
-      </section>
+      </section>}
+      {integre && <header className="av-embarque-titre">
+        <div><span className="kicker">À planifier</span><h2>Tâches</h2></div>
+        <dl className="av-chiffres av-chiffres-compact">
+          <div><dt>projets</dt><dd>{compter(taches, "projet")}</dd></div>
+          <div><dt>fonctionnalités</dt><dd>{compter(taches, "fonctionnalite")}</dd></div>
+          <div><dt>fix ouverts</dt><dd>{compter(taches, "fix")}</dd></div>
+          <div className={critiques ? "alerte" : ""}><dt>critiques</dt><dd>{critiques}</dd></div>
+        </dl>
+      </header>}
 
       <section className="av-filtres-bloc" aria-label="Filtres">
         <div className="av-filtres" role="group" aria-label="Filtrer par projet">
@@ -380,7 +392,7 @@ export function AVenir() {
           <span className="av-section-titre">Fix</span>
           <span className="av-section-compte">{fix.length}{fix.some((t) => t.severite === "critique") ? ` · ${fix.filter((t) => t.severite === "critique").length} critique(s)` : ""}</span>
         </summary>
-        <ul className="av-liste">{fix.map((t) => <Fix key={t.cle} tache={t} />)}</ul>
+        <ul className="av-liste">{fix.map((t) => <Fix key={t.cle} tache={t} reservations={reservations(t.ref)} />)}</ul>
       </details>}
 
       {!!lots.length && <>
@@ -405,7 +417,7 @@ export function AVenir() {
                 <span className="av-section-but">{lot.but}</span>
               </summary>
               <ul>
-                {lot.etapes.filter((e) => etapesVisibles.has(e.id)).map((e) => <EtapeLigne key={e.id} e={e} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
+                {lot.etapes.filter((e) => etapesVisibles.has(e.id)).map((e) => <EtapeLigne key={e.id} e={e} reservations={reservations(e.id)} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
                   projetNom={topo?.projets.find((p) => p.id === parObjectif.get(e.id)?.projetId)?.nom ?? parObjectif.get(e.id)?.projetId ?? ""} />)}
               </ul>
             </details></li>;

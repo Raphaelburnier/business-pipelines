@@ -94,6 +94,7 @@ export interface DepartFeuille {
   cle: string;
   objectifId: string;
   projetId: string;
+  prevuLe?: string;
   date: string;
   heure: string;
   statut: string;
@@ -107,7 +108,7 @@ export function departsFeuille(attributions: AttributionAvenir[], debut: string)
     if (!a.prevuLe) continue;
     const { date, heure } = dateCivile(a.prevuLe);
     if (date < debut || date > fin) continue;
-    parJour.set(date, [...(parJour.get(date) ?? []), { cle: a.commandeId, objectifId: a.objectif.id, projetId: a.projetId, date, heure, statut: a.statut, runId: a.runId }]);
+    parJour.set(date, [...(parJour.get(date) ?? []), { cle: a.commandeId, objectifId: a.objectif.id, projetId: a.projetId, date, heure, statut: a.statut, runId: a.runId, prevuLe:a.prevuLe }]);
   }
   return parJour;
 }

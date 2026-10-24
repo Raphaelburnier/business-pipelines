@@ -349,7 +349,7 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
   if (d.scheduling.notBefore) {
     const t = Date.parse(d.scheduling.notBefore);
     // Quelques minutes de marge : le formulaire a pu rester ouvert avant l'envoi.
-    if (t < maintenant - MARGE_PASSE_MS) throw new RefusPlan("La date prévue est déjà passée : choisis un départ futur ou lance tout de suite.");
+    if (t < maintenant - MARGE_PASSE_MS && !(d.scheduling.source === "calendar" && require("./atelier-dates").civil(t).slice(0, 10) === require("./atelier-dates").civil(maintenant).slice(0, 10))) throw new RefusPlan("La date prévue est déjà passée : choisis un départ futur ou lance tout de suite.");
     if (t > maintenant + HORIZON_MS) throw new RefusPlan("La date prévue dépasse un an.");
     d.scheduling = { ...d.scheduling, source: "calendar" };
   }

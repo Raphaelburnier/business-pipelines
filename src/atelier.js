@@ -196,7 +196,7 @@ function lire(store, id) {
   if (!g) throw new Error('Objectif inconnu.');
   return { id: g.id, revision: g.revision, projectId: g.project_id, titre: g.title, priority: g.priority, source: g.source,
     date: g.local_date, heure: g.local_hour, repetition: g.recurrence, active: Boolean(g.active), nextAt: g.next_at,
-    brouillon: JSON.parse(g.draft_json), criteres: JSON.parse(g.mission_json).criteres, occurrences: occurrences(store, id) };
+    brouillon: JSON.parse(g.draft_json), criteres: JSON.parse(g.mission_json).criteres, taskBoard: JSON.parse(g.mission_json).resolution.spec._mission?.taskBoardObjective || null, occurrences: occurrences(store, id) };
 }
 function lister(store) {
   initialiser(store);
@@ -217,7 +217,7 @@ function programmer(store, maintenant = Date.now()) {
       const mission = { ...contenu, id, creeLe: new Date(maintenant).toISOString() };
       mission.empreinte = contrats.empreinte(mission);
       const c = store.creerCommande({ kind: 'run.start', par: g.owner, canal: g.channel,
-        payload: { projectId: g.project_id, pipelineIndex: 0, mission,
+        payload: { projectId: g.project_id, pipelineIndex: original.plan?.pipeline.index || 0, mission,
           llmOverrides: Object.fromEntries(mission.participants.map((p) => [p.noeud, p.llm])), requestId: id, requestHash: contrats.empreinte({ goal: g.id, date: g.next_at }),
           scheduling: { priority: g.priority, source: g.source, notBefore: g.next_at } } });
       store.db.prepare('INSERT INTO atelier_occurrences(id,goal_id,scheduled_at,local_date,command_id) VALUES (?,?,?,?,?)').run(id, g.id, g.next_at, g.local_date, c.id);
@@ -287,4 +287,14 @@ function exclus(store, verifierBackend, maintenant = Date.now()) {
   }
   return ids;
 }
-module.exports = { initialiser, catalogue, resoudre, sauvegarder, creer, lire, lister, programmer, modifier, exclus };
+module.exports = { initialiser, catalogue, resoudre, sauvegarder, creer, lire, lister, programmer, modifier, exclus, enregistrerPlan };
+
+// Appelé uniquement après recalcul du plan, dans la transaction du groupe TaskBoard.
+function enregistrerPlan(store, { id, hash, mission, date, priority, qui, maintenant }) {
+  const r = mission.resolution;
+  const draft = { projectId: r.projet.id, graph: grapheDefinition(r.pipeline), assignments: {}, baseRef: `${r.pipeline.name}@${r.pipeline.version}` };
+  store.db.prepare(`INSERT INTO atelier_goals(id,request_hash,project_id,title,draft_json,mission_json,priority,source,local_date,local_hour,recurrence,active,next_at,owner,channel,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, hash, r.projet.id, mission.objectif, JSON.stringify(draft), JSON.stringify(mission), priority,
+      'calendar', date, '00:00', 'none', 1, dates.instantLocal(date, '00:00'), qui.par, qui.canal || null, new Date(maintenant).toISOString());
+  return lire(store, id);
+}

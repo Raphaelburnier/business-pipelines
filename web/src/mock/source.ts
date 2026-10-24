@@ -98,6 +98,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
           discussion: { gabarit: "marketing-dialogue@1", competences: ["brand-analyst", "economy-analyst", "plan-synthesist"], versNature: "developpement" } },
       ] };
     },
+    async planifierGroupe() { throw new Error("La maquette ne réserve pas de tâches système. Utiliser le cockpit connecté pour valider les plans."); },
+    async deplacerPlan() { throw new Error("Déplacement de départ disponible dans le cockpit connecté."); },
     async preparerMission(projectId, pipelineIndex) {
       const projet = etat().topologie.projets.find((p) => p.id === projectId);
       if (!projet) throw new Error("Projet inconnu");

@@ -12,8 +12,15 @@ import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const titreJour = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", day: "numeric", month: "short" });
 const jourLisible = (date: string) => titreJour.format(new Date(`${date}T12:00:00Z`));
+const libelleMois = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", month: "long", year: "numeric" });
 
-function useCalendrier(source: SourceCalendrier) {
+function decalerMois(date: string, mois: number): string {
+  const d = new Date(`${date.slice(0, 7)}-01T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + mois);
+  return d.toISOString().slice(0, 10);
+}
+
+function useCalendrier(source: SourceCalendrier, revision = 0) {
   const [objectifs, setObjectifs] = useState<Objectif[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const recharger = useCallback(async () => {
@@ -25,7 +32,7 @@ function useCalendrier(source: SourceCalendrier) {
     // Les départs changent d'état sans action ici : run lancé, quota épuisé, run terminé.
     const minuterie = window.setInterval(() => void recharger(), 30_000);
     return () => window.clearInterval(minuterie);
-  }, [recharger]);
+  }, [recharger, revision]);
   return { objectifs, erreur, recharger };
 }
 
@@ -63,7 +70,6 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
     finally { setEnvoi(false); }
   }
 
-  const prochaineHeure = `${String((Number(dateCivile(Date.now()).heure.slice(0, 2)) + 1) % 24).padStart(2, "0")}:00`;
   return <form className="cal-form" onSubmit={envoyer}>
     <header><h3>Planifier un run</h3><button type="button" className="cal-lien" onClick={onFermer}>Fermer</button></header>
     {!catalogue && !erreur && <p className="cal-aide">Chargement des projets et pipelines…</p>}
@@ -82,12 +88,12 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
       <label>Critères de réussite<textarea name="criteres" rows={2} required placeholder="Un critère par ligne" /></label>
       <div className="cal-champs">
         <label>Date<input type="date" name="date" defaultValue={aujourdhui} min={aujourdhui} required /></label>
-        <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" name="heure" defaultValue={prochaineHeure} /></label>
+        <label>Heure ({FUSEAU}, facultative : minuit si vide)<input type="time" name="heure" defaultValue="" /></label>
         <label>Répétition<select name="repetition" defaultValue="none">
           {(Object.keys(MOT_REPETITION) as Repetition[]).map((r) => <option key={r} value={r}>{MOT_REPETITION[r]}</option>)}
         </select></label>
       </div>
-      <label className="cal-case"><input type="checkbox" name="active" defaultChecked /> Activer : le moteur lancera le run à l'heure dite</label>
+      <label className="cal-case"><input type="checkbox" name="active" defaultChecked /> Activer : démarrer dès que quota et worker sont disponibles</label>
       {!!catalogue.erreurs.length && <details className="cal-aide"><summary>{catalogue.erreurs.length} élément(s) du registre illisible(s)</summary><ul>{catalogue.erreurs.map((e) => <li key={e}>{e}</li>)}</ul></details>}
       <button type="submit" className="cal-action" disabled={envoi || !modeles.length}>{envoi ? "Planification…" : "Planifier"}</button>
     </>}
@@ -149,7 +155,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
 
 function Carte({ entree, choisie, onChoisir }: { entree: Entree; choisie: boolean; onChoisir: () => void }) {
   const etat = etatEntree(entree);
-  return <li>
+  return <li draggable={entree.genre !== "lance" || entree.occurrence?.statut === "queued"} data-task-payload={JSON.stringify({ type: "projet", titre: entree.objectif.titre, objectif: { id: entree.objectif.id, revision: entree.objectif.revision, heure: entree.objectif.heure, nextAt: entree.objectif.nextAt, aDeplacer: true } })}>
     <button type="button" className={`cal-carte ${etat.ton} ${entree.genre}`} aria-pressed={choisie} onClick={onChoisir}>
       <span className="cal-heure">{entree.heure}</span>
       <strong>{entree.objectif.titre}</strong>
@@ -166,7 +172,7 @@ const ETAPES = new Map(LOTS.flatMap((lot) => lot.etapes.map((e) => [e.id, { lot:
 function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   const etat = etatDepartFeuille(depart);
   const etape = ETAPES.get(depart.objectifId);
-  return <li>
+  return <li draggable={!depart.runId && depart.statut === "queued"} data-task-payload={JSON.stringify({ type: "depart", commandeId: depart.cle, prevuLe: depart.prevuLe })}>
     <a className={`cal-carte feuille ${etat.ton}`} href={`/a-venir#av-etape-${depart.objectifId}`}>
       <span className="cal-heure">{depart.heure}</span>
       <strong>{depart.objectifId} · {etape?.titre ?? "Objectif de la feuille de route"}</strong>
@@ -176,27 +182,51 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   </li>;
 }
 
-export function Calendrier() {
+export function Calendrier({ integre = false, sourceCalendrier, revisionExterne = 0, onChangement }: { integre?: boolean; sourceCalendrier?: SourceCalendrier; revisionExterne?: number; onChangement?: () => void } = {}) {
   const { source: principale } = useSource();
-  const source = useMemo(() => (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [principale.nom]);
-  const { objectifs, erreur, recharger } = useCalendrier(source);
+  const source = useMemo(() => (sourceCalendrier ?? (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi)), [principale.nom, sourceCalendrier]);
+  const { objectifs, erreur, recharger } = useCalendrier(source, revisionExterne);
   const maintenant = useHorloge(60_000);
   const aujourdhui = dateCivile(maintenant).date;
-  const [debut, setDebut] = useState(() => lundi(aujourdhui));
+  const [dateVue, setDateVue] = useState(aujourdhui);
+  const [vue, setVue] = useState<"semaine" | "mois">("semaine");
   const [choisi, setChoisi] = useState<string | null>(null);
   const [formulaire, setFormulaire] = useState(false);
 
+  const debut = lundi(dateVue);
+  const debutMois = `${dateVue.slice(0, 7)}-01`;
+  const debutGrilleMois = lundi(debutMois);
+  const moisAffiche = dateVue.slice(0, 7);
   const parJour = useMemo(() => semaine(objectifs ?? [], debut), [objectifs, debut]);
-  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs]);
+  const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs, revisionExterne]);
   const feuilleParJour = useMemo(() => departsFeuille(attributions ?? [], debut), [attributions, debut]);
+  const parJourMois = useMemo(() => {
+    const resultats = new Map<string, Array<Entree | DepartFeuille>>();
+    for (let semaineNo = 0; semaineNo < 6; semaineNo++) {
+      const semaineDebut = decaler(debutGrilleMois, semaineNo * 7);
+      const runs = semaine(objectifs ?? [], semaineDebut);
+      const feuille = departsFeuille(attributions ?? [], semaineDebut);
+      for (const jour of joursDeLaSemaine(semaineDebut)) {
+        resultats.set(jour, [...(runs.get(jour) ?? []), ...(feuille.get(jour) ?? [])].sort((a, b) => a.heure.localeCompare(b.heure)));
+      }
+    }
+    return resultats;
+  }, [objectifs, attributions, debutGrilleMois]);
   const retards = (objectifs ?? []).filter((o) => enRetard(o, maintenant));
   const actifs = (objectifs ?? []).filter((o) => o.active && o.nextAt);
   const aujourdhuiEntrees = [...(semaine(objectifs ?? [], lundi(aujourdhui)).get(aujourdhui) ?? []), ...(departsFeuille(attributions ?? [], lundi(aujourdhui)).get(aujourdhui) ?? [])];
   const selection = objectifs?.find((o) => o.id === choisi) ?? null;
   const fin = decaler(debut, 6);
+  const aujourdHuiDansLaPeriode = vue === "semaine"
+    ? aujourdhui >= debut && aujourdhui <= fin
+    : aujourdhui.slice(0, 7) === moisAffiche;
+  const datePeriode = vue === "semaine" ? debut : debutMois;
+  const changerPeriode = (sens: -1 | 1) => setDateVue((date) => vue === "semaine"
+    ? decaler(date, sens * 7)
+    : decalerMois(date, sens));
 
-  return <div className="cal-page">
-    <section className="cal-hero">
+  return <div className={`cal-page ${integre ? "cal-embarque" : ""}`}>
+    {!integre && <section className="cal-hero">
       <div>
         <p className="kicker">Lot 12 · heure de Zurich</p>
         <h2>Runs planifiés</h2>
@@ -208,17 +238,26 @@ export function Calendrier() {
         <div><dt>Programmations actives</dt><dd>{actifs.length}</dd></div>
         <div className={retards.length ? "alerte" : ""}><dt>En retard</dt><dd>{retards.length}</dd></div>
       </dl>
-    </section>
+    </section>}
+    {integre && <dl className="cal-chiffres cal-chiffres-compact">
+      <div><dt>Aujourd’hui</dt><dd>{aujourdhuiEntrees.length}</dd></div>
+      <div><dt>Programmations actives</dt><dd>{actifs.length}</dd></div>
+      <div className={retards.length ? "alerte" : ""}><dt>En retard</dt><dd>{retards.length}</dd></div>
+    </dl>}
 
     <div className="cal-barre">
-      <button type="button" onClick={() => setDebut(decaler(debut, -7))} aria-label="Semaine précédente">‹</button>
-      <button type="button" onClick={() => setDebut(lundi(aujourdhui))} disabled={debut === lundi(aujourdhui)}>Cette semaine</button>
-      <button type="button" onClick={() => setDebut(decaler(debut, 7))} aria-label="Semaine suivante">›</button>
-      <span className="cal-periode">{jourLisible(debut)} au {jourLisible(fin)}</span>
+      <button type="button" onClick={() => changerPeriode(-1)} aria-label={vue === "semaine" ? "Semaine précédente" : "Mois précédent"}>‹</button>
+      <button type="button" onClick={() => setDateVue(aujourdhui)} disabled={aujourdHuiDansLaPeriode}>{vue === "semaine" ? "Cette semaine" : "Ce mois"}</button>
+      <button type="button" onClick={() => changerPeriode(1)} aria-label={vue === "semaine" ? "Semaine suivante" : "Mois suivant"}>›</button>
+      <span className="cal-periode">{vue === "semaine" ? `${jourLisible(debut)} au ${jourLisible(fin)}` : libelleMois.format(new Date(`${datePeriode}T12:00:00Z`))}</span>
+      <div className="cal-vues" role="group" aria-label="Affichage du calendrier">
+        <button type="button" aria-pressed={vue === "semaine"} onClick={() => setVue("semaine")}>Semaine</button>
+        <button type="button" aria-pressed={vue === "mois"} onClick={() => setVue("mois")}>Mois</button>
+      </div>
       <button type="button" className="cal-action" onClick={() => setFormulaire((v) => !v)} aria-expanded={formulaire}>Planifier un run</button>
     </div>
 
-    {formulaire && <Planifier source={source} aujourdhui={aujourdhui} onFermer={() => setFormulaire(false)} onPlanifie={() => { setFormulaire(false); void recharger(); }} />}
+    {formulaire && <Planifier source={source} aujourdhui={aujourdhui} onFermer={() => setFormulaire(false)} onPlanifie={() => { setFormulaire(false); void recharger(); onChangement?.(); }} />}
     {erreur && <p className="cal-erreur" role="alert">Calendrier indisponible : {erreur}</p>}
     {!!retards.length && <section className="cal-retards" aria-label="Départs en retard">
       <h3>En retard</h3>
@@ -227,20 +266,33 @@ export function Calendrier() {
     </section>}
 
     {objectifs === null && !erreur && <p className="cal-aide">Chargement du calendrier…</p>}
-    {objectifs && <ol className="cal-semaine">
+    {objectifs && vue === "semaine" && <ol className="cal-semaine">
       {joursDeLaSemaine(debut).map((jour, i) => {
         const cartes = [
           ...(parJour.get(jour) ?? []).map((e) => ({ cle: e.cle, heure: e.heure, carte: <Carte key={e.cle} entree={e} choisie={choisi === e.objectif.id} onChoisir={() => setChoisi(choisi === e.objectif.id ? null : e.objectif.id)} /> })),
           ...(feuilleParJour.get(jour) ?? []).map((d) => ({ cle: d.cle, heure: d.heure, carte: <CarteFeuille key={d.cle} depart={d} /> })),
         ].sort((a, b) => a.heure.localeCompare(b.heure));
-        return <li key={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
+        return <li key={jour} data-calendar-date={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
           <h3><span>{JOURS[i]}</span> {jourLisible(jour)}</h3>
           {cartes.length ? <ul>{cartes.map((c) => c.carte)}</ul>
             : <p className="cal-vide">Rien de prévu</p>}
         </li>;
       })}
     </ol>}
-    {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et son heure.</p>}
-    {selection && <Detail objectif={selection} source={source} onChange={() => void recharger()} />}
+    {objectifs && vue === "mois" && <ol className="cal-mois" aria-label="Calendrier du mois">
+      {JOURS.map((jour) => <li key={`entete-${jour}`} className="cal-mois-entete">{jour}</li>)}
+      {Array.from({ length: 42 }, (_, index) => decaler(debutGrilleMois, index)).map((jour) => {
+        const cartes = (parJourMois.get(jour) ?? []).map((entree) => "objectifId" in entree
+          ? { cle: entree.cle, heure: entree.heure, carte: <CarteFeuille key={entree.cle} depart={entree} /> }
+          : { cle: entree.cle, heure: entree.heure, carte: <Carte key={entree.cle} entree={entree} choisie={choisi === entree.objectif.id} onChoisir={() => setChoisi(choisi === entree.objectif.id ? null : entree.objectif.id)} /> });
+        return <li key={jour} data-calendar-date={jour} className={`cal-mois-jour ${jour.slice(0, 7) !== moisAffiche ? "hors-mois" : ""} ${jour === aujourdhui ? "aujourdhui" : ""}`}>
+          <h3><b>{new Date(`${jour}T12:00:00Z`).getUTCDate()}</b></h3>
+          {cartes.length > 0 && <ul>{cartes.slice(0, 3).map((c) => c.carte)}</ul>}
+          {cartes.length > 3 && <span className="cal-plus">+{cartes.length - 3} autres</span>}
+        </li>;
+      })}
+    </ol>}
+    {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et sa journée.</p>}
+    {selection && <Detail objectif={selection} source={source} onChange={() => { void recharger(); onChangement?.(); }} />}
   </div>;
 }

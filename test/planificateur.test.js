@@ -27,7 +27,9 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
     const ligne = feuille.find((l) => l.includes(`id: "${objectif.id}"`));
     assert.ok(ligne, `${objectif.id} doit exister dans la feuille de route`);
     assert.match(ligne, /statut: "a-faire"/, `${objectif.id} doit rester à faire`);
-    assert.deepEqual(objectif.fichiers, JSON.parse(/fichiers: (\[[^\]]*\])/.exec(ligne)[1]), `${objectif.id} : fichiers partagés avec le serveur`);
+    assert.deepEqual(objectif.fichiers, objectif.type === "fix"
+      ? JSON.parse(/fichiers: ("(?:[^"\\]|\\.)*")/.exec(ligne)[1]).split(/\s*[;,]\s*(?=(?:BP|AO|REG|AS)\s)/)
+      : JSON.parse(/fichiers: (\[[^\]]*\])/.exec(ligne)[1]), `${objectif.id} : fichiers partagés avec le serveur`);
     const raison = /raisonSensibilite: ("(?:[^"\\]|\\.)*")/.exec(ligne);
     assert.equal(objectif.raisonSensibilite, raison ? JSON.parse(raison[1]) : undefined, `${objectif.id} : risque partagé`);
     assert.equal(Number.isInteger(objectif.revision) && objectif.revision > 0, true);
@@ -39,48 +41,7 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   assert.throws(() => objectifsAvenirs.validerReference({ id: "3.7", revision: 1 }, "steam-tierlist"), /se traite dans business-pipelines/);
 });
 
-const claudeSonnet = { via: "claude", model: "sonnet" };
-const claudeOpus = { via: "claude", model: "opus" };
-const codex = { via: "codex", model: "gpt-5.6-terra:medium" };
-
-const ROSTER = [
-  { id: "margaux", nom: "Margaux", role: "Cheffe de projet", famille: "claude", llm: claudeOpus, registre: ["improvement-planner", "plan-synthesist"], budgetMensuelUsd: 60 },
-  { id: "sacha", nom: "Sacha", role: "Édition de code", famille: "codex", llm: codex, registre: ["improvement-editor"], budgetMensuelUsd: null },
-  { id: "theo", nom: "Théo", role: "Relecteur", famille: "claude", llm: claudeSonnet, registre: ["code-reviewer"], budgetMensuelUsd: 30 },
-  { id: "ines", nom: "Inès", role: "Relectrice Codex", famille: "codex", llm: codex, registre: ["code-reviewer"], budgetMensuelUsd: null },
-  { id: "camille", nom: "Camille", role: "Marque", famille: "claude", llm: claudeSonnet, registre: ["brand-analyst"], budgetMensuelUsd: 40 },
-  { id: "elise", nom: "Élise", role: "Économie", famille: "codex", llm: codex, registre: ["economy-analyst"], budgetMensuelUsd: null },
-];
-
-function fixture({ securite = false, roster = ROSTER, financeDisponible, financeVersion = 1 } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "planificateur-"));
-  const reg = path.join(dir, "registre");
-  fs.cpSync(REGISTRE_SOURCE, reg, { recursive: true });
-  const projets = path.join(dir, "projects");
-  const ecrire = (id, fiche, fichiers = {}) => {
-    fs.mkdirSync(path.join(projets, id), { recursive: true });
-    fs.writeFileSync(path.join(projets, id, "project.json"), JSON.stringify(fiche, null, 2));
-    for (const [nom, contenu] of Object.entries(fichiers)) fs.writeFileSync(path.join(projets, id, nom), JSON.stringify(contenu));
-  };
-  ecrire("app", { id: "app", name: "Application", business: "outils-perso", homeMachine: "nas", repo: "/git/app.git", publier: true, github: "Raphaelburnier/app",
-    verification: { checks: [{ kind: "test", command: "npm", args: ["test"], timeoutMs: 60000 }] },
-    pipelines: [{ extends: "improve-app@7", overrides: { nodes: securite ? { "review-security": { enabled: true } } : {} }, budget: { usdPerRun: 4, usdPerMonth: 15 } }] });
-  ecrire("marketing", { id: "marketing", name: "Plan marketing", business: "marketing", homeMachine: "pc", repo: "/git/marketing.git",
-    pipelines: [{ extends: "marketing@1", spec: "spec.json", overrides: { nodes: { consigne: { runsOn: "nas" }, couverture: { runsOn: "nas" } } }, budget: { usdPerRun: 2, usdPerMonth: 20 } }] },
-  { "spec.json": { offre: "Cartes triées", marche: "Collectionneurs", questions: ["Quel prix ?"], contraintes: [] } });
-  ecrire("vide", { id: "vide", name: "Sans pipeline", business: "x", homeMachine: "nas", repo: "/git/vide.git", pipelines: [{ extends: "marketing-dialogue@1" }] });
-  const financeProject = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "project.json")));
-  financeProject.pipelines[0].extends = `finance-research@${financeVersion}`;
-  ecrire("finance", financeProject, {
-    "spec.json": JSON.parse(fs.readFileSync(path.join(__dirname, "..", "projects", "finance", "spec.json"))),
-  });
-  process.env.ORCH_REGISTRE = reg;
-  const store = new EventStore(path.join(dir, "events.sqlite"));
-  const params = { projetsDir: projets, roster, affectations: {}, financeDisponible };
-  return { dir, reg, projets, store, params, fermer: () => { store.fermer(); fs.rmSync(dir, { recursive: true, force: true }); } };
-}
-
-const YANIS = { id: "yanis", nom: "Yanis", role: "Sécurité", famille: "claude", llm: claudeOpus, registre: ["security-reviewer"], budgetMensuelUsd: 30 };
+const {fixture,ROSTER,YANIS,claudeSonnet,claudeOpus,codex}=require('./fixtures/planificateur');
 
 const spec = (surcharges = {}) => ({ projectId: "app", objectif: "Ajouter un tri par note", criteres: ["La liste se trie par note", "Les tests existants restent verts"], ...surcharges });
 const etatLibre = (surcharges = {}) => surcharges;
@@ -805,4 +766,62 @@ test("lot 11 : retirer l'exigence côté client ne retire pas la sécurité de l
     const o = require("../src/missions").lire({ ...f.params, projectId: "agent-orchestrator" }).options;
     assert.throws(() => require("../src/missions").construire(f.params, { projectId: o.projectId, pipelineIndex: 0, configuration: o.configuration, requestId: crypto.randomUUID(), demande: { objectif: demande.objectif, criteres: demande.criteres, spec: demande.contexte, agents: o.roles.map((r) => ({ noeud: r.noeud, membre: null, llm: r.llm })) } }), /exige une revue de sécurité/);
   } finally { f.fermer(); }
+});
+
+test('TaskBoard : plans multi-dépôts atomiques, idempotents et planifiés aujourd’hui sans heure',()=>{
+  const f=fixture({securite:true,roster:[...ROSTER,YANIS]});
+  const board=require('../src/taskboard'),atelier=require('../src/atelier'),dates=require('../src/atelier-dates');
+  try{
+    const app=JSON.parse(fs.readFileSync(path.join(f.projets,'app','project.json')));
+    fs.mkdirSync(path.join(f.projets,'autre'));fs.writeFileSync(path.join(f.projets,'autre','project.json'),JSON.stringify({...app,id:'autre'}));
+    const maintenant=Date.parse('2026-10-25T12:00:00Z'),date='2026-10-25';
+    const missions=['app','autre'].map(projectId=>{
+      const s=spec({projectId,contexte:{_taskBoardObjective:{id:'1.2',revision:1}}});
+      const p=planificateur.proposer({spec:s,params:f.params,etat:{}});assert.equal(p.statut,'lancable',JSON.stringify(p));
+      return{spec:s,empreinte:p.empreinte,requestId:crypto.randomUUID(),scheduling:{priority:'haute',source:'calendar',notBefore:dates.instantLocal(date)}};
+    });
+    const corps={groupeId:crypto.randomUUID(),missions};
+    const demande=c=>board.planifier({store:f.store,qui,params:f.params,corps:c,etat:{},maintenant});
+    assert.throws(()=>demande({...corps,missions:[missions[0],{...missions[1],empreinte:'0'.repeat(64)}]}),/plan a changé/);
+    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,0);
+    f.store.db.exec("CREATE TRIGGER echec_groupe BEFORE INSERT ON atelier_goals WHEN NEW.project_id='autre' BEGIN SELECT RAISE(ABORT,'panne-injectee'); END");
+    assert.throws(()=>demande(corps),/panne-injectee/);
+    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,0,'aucun premier dépôt laissé planifié après un échec du second');
+    f.store.db.exec('DROP TRIGGER echec_groupe');
+    const objectifs=demande(corps);assert.equal(objectifs.length,2);
+    assert.ok(objectifs.every(o=>o.heure==='00:00'&&o.repetition==='none'&&o.taskBoard.id==='1.2'&&o.priority==='haute'));
+    assert.deepEqual(demande(corps).map(o=>o.id),objectifs.map(o=>o.id));
+    assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,2);
+    assert.throws(()=>demande({...corps,missions:missions.map(m=>({...m,requestId:crypto.randomUUID()}))}),/déjà attribuée ou planifiée/);
+    const commandes=atelier.programmer(f.store,maintenant);assert.equal(commandes.length,2,'tous les prêts sont mis en file ensemble');
+    for(const c of commandes){assert.equal(c.payload.scheduling.source,'calendar');assert.ok(c.payload.mission.plan.etapes.some(e=>e.agent?.startsWith('security-reviewer@')));}
+    assert.deepEqual(atelier.programmer(f.store,maintenant+1),[]);
+    assert.equal(f.store.runs().length,0,'aucun modèle réellement lancé');
+  }finally{f.fermer();}
+});
+
+test('TaskBoard : déplacement d’un ancien départ conserve heure et contrat, refuse après lancement',()=>{
+  const f=fixture({securite:true,roster:[...ROSTER,YANIS]});
+  try{
+    const fiche=JSON.parse(fs.readFileSync(path.join(f.projets,'app','project.json')));
+    fs.mkdirSync(path.join(f.projets,'agent-orchestrator'));fs.writeFileSync(path.join(f.projets,'agent-orchestrator','project.json'),JSON.stringify({...fiche,id:'agent-orchestrator'}));
+    const s=spec({projectId:'agent-orchestrator',contexte:{_roadmapObjective:{id:'1.1',revision:1}}});
+    const p=planificateur.proposer({spec:s,params:f.params,etat:{}}),maintenant=Date.parse('2026-10-24T10:00:00Z');
+    const c=planificateur.lancer({store:f.store,qui,params:f.params,etat:{},maintenant,corps:{spec:s,empreinte:p.empreinte,requestId:crypto.randomUUID(),scheduling:{source:'calendar',notBefore:'2026-10-25T07:30:00.000Z'}}});
+    const deplacer=require('../src/taskboard').deplacer;
+    const changement={commandeId:c.id,prevuLe:'2026-10-25T07:30:00.000Z',date:'2026-10-26'};
+    assert.equal(deplacer({store:f.store,corps:changement,maintenant}).prevuLe,'2026-10-26T07:30:00.000Z');
+    assert.deepEqual(f.store.commande(c.id).payload.mission,c.payload.mission);
+    assert.throws(()=>deplacer({store:f.store,corps:changement,maintenant}),/a changé/);
+    f.store.prendreCommande({kinds:['run.start'],aLaDate:'2026-10-26T08:30:00.000Z'});
+    assert.throws(()=>deplacer({store:f.store,corps:{...changement,prevuLe:'2026-10-26T07:30:00.000Z'},maintenant}),/déjà commencé/);
+  }finally{f.fermer();}
+});
+
+test('TaskBoard : les dépôts annoncés sont autorisés, l’attribution historique reste mono-dépôt',()=>{
+  const {validerReference}=require('../src/objectifs-avenirs');
+  assert.equal(validerReference({id:'4.1',revision:1},'business-pipelines',{taskBoard:true}).id,'4.1');
+  assert.equal(validerReference({id:'4.1',revision:1},'agent-orchestrator',{taskBoard:true}).id,'4.1');
+  assert.throws(()=>validerReference({id:'4.1',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
+  assert.throws(()=>validerReference({id:'4.1',revision:1},'business-pipelines'),/pas dans business-pipelines/);
 });

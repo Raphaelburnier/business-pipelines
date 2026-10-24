@@ -71,7 +71,7 @@ async function traiter({ req, res, chemin, json, corps, store, qui, params, mach
     catch (err) { json(res, 500, { erreur: `natures illisibles : ${err.message}` }); }
     return true;
   }
-  if (req.method !== "POST" || !["/api/missions/plan", "/api/missions/lancer"].includes(chemin)) return false;
+  if (req.method !== "POST" || !["/api/missions/plan", "/api/missions/lancer", "/api/missions/planifier-groupe", "/api/missions/deplacer"].includes(chemin)) return false;
   if (!origineAutorisee(req)) { json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" }); return true; }
   const magasin = store();
   if (!magasin) { json(res, 503, { erreur: "event store indisponible" }); return true; }
@@ -81,7 +81,13 @@ async function traiter({ req, res, chemin, json, corps, store, qui, params, mach
     const p = params();
     const etatMachines = machines(magasin);
     const etat = etatPlanification({ store: magasin, machines: etatMachines, viaParMachine, roster: p.roster, affectations: p.affectations });
-    if (chemin === "/api/missions/plan") {
+    if (chemin === "/api/missions/deplacer") {
+      json(res, 200, require("./taskboard").deplacer({ store: magasin, corps: demande }));
+    } else if (chemin === "/api/missions/planifier-groupe") {
+      const objectifs = require("./taskboard").planifier({ store: magasin, qui, params: p, corps: demande, etat,
+        verifierBackend: verifierBackend({ viaParMachine, machines: etatMachines }) });
+      json(res, 202, { objectifs });
+    } else if (chemin === "/api/missions/plan") {
       json(res, 200, planificateur.proposer({ spec: demande.spec, params: p, etat }));
     } else {
       const commande = planificateur.lancer({ store: magasin, qui, params: p, corps: demande, etat,

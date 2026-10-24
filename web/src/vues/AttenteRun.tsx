@@ -36,7 +36,9 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
     {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && !machine && <>
       <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : attente.prochaineReprise ? "Échéance fournisseur inconnue : nouvelle tentative après un délai de prudence, sans garantie de réinitialisation du quota." : "Échéance fournisseur inconnue : reprise manuelle disponible."}</p>
       <p>{attente.prochaineReprise ? `Prochaine reprise automatique : ${new Date(attente.prochaineReprise).toLocaleString("fr-CH")}` : attente.raisonManuelle}</p>
-      <p className="mt-1 text-xs text-douce">{attente.tentatives}/{attente.maximum} reprises automatiques · limite : {new Date(attente.limiteLe).toLocaleString("fr-CH")}</p>
+      <p className="mt-1 text-xs text-douce">{attente.maximum === 0
+        ? `${attente.tentatives} reprise(s) automatique(s) · sans limite pour ce run planifié`
+        : `${attente.tentatives}/${attente.maximum} reprises automatiques · limite : ${new Date(attente.limiteLe).toLocaleString("fr-CH")}`}</p>
     </>}
     {connexion && !enFile && <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={confirmation} onChange={e => setConfirmation(e.target.checked)} />J'ai reconnecté ce runtime sur cette machine</label>}
     {enFile ? <p role="status" className="mt-3">Reprise mise en file pour ce run.</p> : attente.actions.length > 0 && <button type="button" className="mt-3 rounded border border-accent px-3 py-1.5 font-semibold text-accent disabled:opacity-50" disabled={envoi || (connexion && !confirmation)} onClick={() => void reprendre()}>{envoi ? "Mise en file…" : fraicheur ? "Revérifier et reprendre le run" : "Reprendre le même run"}</button>}

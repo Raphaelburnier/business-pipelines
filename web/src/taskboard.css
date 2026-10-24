@@ -1,0 +1,84 @@
+.taskboard-page { display: flex; width: min(100%, 1800px); flex-direction: column; gap: 14px; margin-inline: auto; padding-bottom: 32px; }
+.taskboard-entete { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 18px 22px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); }
+.taskboard-entete .kicker { margin: 0; font: 400 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-douce); }
+.taskboard-entete h2 { margin: 5px 0 6px; font: 700 clamp(20px, 2.4vw, 30px)/1.12 var(--font-sans); color: var(--color-encre); }
+.taskboard-entete p:last-child { margin: 0; max-width: 70ch; color: var(--color-douce); }
+.taskboard-grille { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(340px, .9fr); gap: 12px; align-items: start; }
+.taskboard-calendrier, .taskboard-taches { min-width: 0; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-surface); }
+.taskboard-calendrier { border-top: 2px solid var(--color-accent); }
+.taskboard-taches { max-height: calc(100vh - 190px); overflow: auto; scrollbar-color: var(--color-trait-fort) transparent; }
+.taskboard-page :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.taskboard-retour { margin: 0; padding: 9px 12px; border-left: 3px solid var(--color-accent); background: var(--color-surface); color: var(--color-encre); }
+.taskboard-quota { margin-top: 7px !important; font: 400 11px/1.4 var(--font-mono); color: var(--color-douce); }
+.taskboard-system-plan { display: flex; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid var(--color-trait-fort); border-left: 3px solid var(--color-accent); background: var(--color-surface); }
+.taskboard-system-plan > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.taskboard-system-plan h3, .taskboard-system-plan h4 { margin: 0; color: var(--color-encre); }
+.taskboard-system-plan article { padding: 10px; border: 1px solid var(--color-trait); }
+.taskboard-system-plan article p { margin: 6px 0; }
+.taskboard-system-plan fieldset { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px; border: 1px solid var(--color-trait); }
+.taskboard-system-plan button { align-self: flex-start; }
+.taskboard-taches [draggable="true"] { cursor: grab; }
+.taskboard-taches [draggable="true"]:active { cursor: grabbing; }
+[data-calendar-date] { transition: background-color .12s ease, outline-color .12s ease; }
+[data-calendar-date].taskboard-drop-cible { outline: 2px dashed var(--color-accent); outline-offset: -3px; background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
+.cal-embarque, .av-embarque { width: 100%; margin: 0; padding: 0; }
+.av-embarque { gap: 10px; }
+.av-embarque-titre { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); gap: 8px; align-items: center; padding: 2px 4px 8px; border-bottom: 1px solid var(--color-trait); }
+.av-embarque-titre .kicker { display: block; }
+.av-embarque-titre h2 { margin: 2px 0 0; font: 700 18px/1.2 var(--font-sans); color: var(--color-encre); }
+.av-chiffres-compact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.av-chiffres-compact div { min-width: 0; padding: 4px 6px; }
+.av-chiffres-compact dt { font-size: 9px; }
+.av-chiffres-compact dd { font-size: 17px; }
+.cal-chiffres-compact { gap: 5px; }
+.cal-chiffres-compact div { min-width: 72px; padding: 5px 8px; }
+.cal-chiffres-compact dt { font-size: 9px; }
+.cal-chiffres-compact dd { font-size: 18px; }
+.av-embarque .av-filtres-bloc { padding: 9px; }
+.av-embarque .av-filtres { gap: 5px; }
+.av-embarque .av-filtres button { padding: 6px 8px; font-size: 11px; }
+.av-embarque .av-filtres label { margin-left: 0; }
+.av-embarque .av-lot > header, .av-embarque details.av-section > summary { padding: 10px 12px; }
+.av-embarque .av-lot ul > li, .av-embarque .av-defaut { padding: 9px 12px; }
+.av-embarque .av-section-but { font-size: 12px; }
+
+.cal-vues { display: inline-flex; border: 1px solid var(--color-trait); }
+.cal-vues button { min-height: 36px; padding: 0 10px; border: 0; background: var(--color-carte); color: var(--color-douce); font: 600 11px/1 var(--font-mono); text-transform: uppercase; cursor: pointer; }
+.cal-vues button + button { border-left: 1px solid var(--color-trait); }
+.cal-vues button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-sur-accent); }
+.cal-mois { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin: 0; padding: 0; list-style: none; }
+.cal-mois-entete { padding: 4px 6px; border-bottom: 1px solid var(--color-trait-fort); color: var(--color-douce); font: 400 10px/1.2 var(--font-mono); letter-spacing: .08em; text-align: center; text-transform: uppercase; }
+.cal-mois-jour { min-width: 0; min-height: 112px; padding: 6px; border: 1px solid var(--color-trait); background: var(--color-surface); }
+.cal-mois-jour.aujourdhui { border-color: var(--color-accent); box-shadow: inset 0 2px 0 var(--color-accent); }
+.cal-mois-jour.hors-mois { opacity: .48; }
+.cal-mois-jour > h3 { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; font: 400 10px/1.2 var(--font-mono); color: var(--color-douce); text-transform: uppercase; }
+.cal-mois-jour > h3 b { font-size: 12px; color: var(--color-encre); }
+.cal-mois-jour > ul { display: flex; flex-direction: column; gap: 4px; }
+.cal-mois-jour .cal-carte { gap: 2px; padding: 5px; }
+.cal-mois-jour .cal-carte strong { font-size: 10px; }
+.cal-mois-jour .cal-carte small, .cal-mois-jour .cal-etat, .cal-mois-jour .cal-heure { display: none; }
+.cal-plus { display: block; margin-top: 4px; color: var(--color-douce); font: 400 10px/1.2 var(--font-mono); }
+
+@media (max-width: 1320px) {
+  .taskboard-grille { grid-template-columns: minmax(0, 1.35fr) minmax(300px, .85fr); }
+  .cal-semaine { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+}
+@media (max-width: 980px) {
+  .taskboard-grille { grid-template-columns: minmax(0, 1fr); }
+  .taskboard-taches { max-height: none; }
+}
+@media (max-width: 640px) {
+  .taskboard-entete { padding: 15px; }
+  .av-embarque-titre { grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); }
+  .taskboard-calendrier, .taskboard-taches { padding: 9px; }
+  .cal-barre { align-items: center; }
+  .cal-periode { flex: 1 1 140px; }
+  .cal-vues { order: 2; }
+  .cal-barre > .cal-action { order: 3; }
+  .cal-mois { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .cal-mois-jour { min-height: 76px; padding: 3px; }
+  .cal-mois-jour > h3 { font-size: 9px; }
+  .cal-mois-jour .cal-carte { padding: 3px; }
+  .cal-mois-jour .cal-carte strong { font-size: 9px; }
+  .cal-plus { font-size: 9px; }
+}
