@@ -280,11 +280,7 @@ function exclus(store, verifierBackend, maintenant = Date.now()) {
           if (c.kind !== 'run.resume' && llm && bloques.has(llm.via === 'anthropic' ? 'claude' : llm.via)) throw new Error(bloques.get(llm.via === 'anthropic' ? 'claude' : llm.via));
           verifierBackend(llm, n, { pipeline: r.pipeline, agent: r.agents[n.agent] });
         }
-        if (!original.run_id && r.budget.usdPerMonth) {
-          const mois = new Date(maintenant).toISOString().slice(0, 7) + '-01T00:00:00.000Z';
-          const cout = store.db.prepare('SELECT COALESCE(SUM(est_cost_usd),0) AS total FROM runs WHERE project_id=? AND started_at>=?').get(r.projet.id, mois).total;
-          if (cout >= r.budget.usdPerMonth) throw new Error('Budget mensuel du projet atteint.');
-        }
+        // Le budget mensuel du projet ne retient plus un départ planifié (décision du 24 octobre).
       }
     } catch (err) { raison = err.message; ids.push(c.id); }
     if (original) store.db.prepare('UPDATE atelier_occurrences SET block_reason=? WHERE command_id=?').run(raison, original.id);

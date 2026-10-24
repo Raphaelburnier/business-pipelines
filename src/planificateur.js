@@ -102,8 +102,11 @@ function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contex
       const affectation = affectations[o.membre.id];
       const depense = etat.depensesMembres[o.membre.id] || 0;
       if (affectation && affectation.projet !== projectId) rejet = `affecté au projet ${affectation.projet}`;
-      else if (o.membre.budgetMensuelUsd !== null && depense >= o.membre.budgetMensuelUsd) rejet = `budget mensuel épuisé (${depense.toFixed(2)} / ${o.membre.budgetMensuelUsd} $)`;
       else if (estRelecteur(noeud) && auteurs.some((a) => a.membre === o.membre.id)) rejet = "déjà auteur du travail à relire";
+      // Décision du 24 octobre : le budget en dollars n'écarte plus personne, il s'affiche.
+      if (!rejet && o.membre.budgetMensuelUsd !== null && depense >= o.membre.budgetMensuelUsd) {
+        raisons.push(`${o.membre.nom} a dépassé son budget mensuel indicatif (${depense.toFixed(2)} / ${o.membre.budgetMensuelUsd} $).`);
+      }
       if (!rejet && affectation) { score += 100; raisons.push(`${o.membre.nom} est affecté à ce projet.`); }
       // Un membre de l'équipe passe devant l'agent du workflow, même sur un runtime moins varié.
       if (!rejet) { score += 30; raisons.push(`${o.membre.nom} (${o.membre.role}) incarne ${nomAgent(noeud.agent)} dans l'équipe.`); }
@@ -164,9 +167,9 @@ function evaluer({ spec, index, params, etat }) {
 
   const budget = resolution.budget || {};
   const depenseProjet = etat.depensesProjets[spec.projectId] || 0;
+  // Décision du 24 octobre : le budget des runs ne bloque plus (abonnements, coût équivalent API).
   if (typeof budget.usdPerMonth === "number" && depenseProjet >= budget.usdPerMonth) {
-    bloquer("budget-epuise", `Budget mensuel du projet atteint : ${depenseProjet.toFixed(2)} / ${budget.usdPerMonth} $.`,
-      `Relever budget.usdPerMonth dans la fiche du projet ou attendre le mois prochain.`);
+    avertissements.push(`Budget mensuel indicatif du projet dépassé : ${depenseProjet.toFixed(2)} / ${budget.usdPerMonth} $.`);
   }
 
   // Agents d'abord (les auteurs), revues ensuite : une revue connaît ceux qu'elle relit.
