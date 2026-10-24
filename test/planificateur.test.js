@@ -27,6 +27,9 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
     const ligne = feuille.find((l) => l.includes(`id: "${objectif.id}"`));
     assert.ok(ligne, `${objectif.id} doit exister dans la feuille de route`);
     assert.match(ligne, /statut: "a-faire"/, `${objectif.id} doit rester à faire`);
+    assert.deepEqual(objectif.fichiers, JSON.parse(/fichiers: (\[[^\]]*\])/.exec(ligne)[1]), `${objectif.id} : fichiers partagés avec le serveur`);
+    const raison = /raisonSensibilite: ("(?:[^"\\]|\\.)*")/.exec(ligne);
+    assert.equal(objectif.raisonSensibilite, raison ? JSON.parse(raison[1]) : undefined, `${objectif.id} : risque partagé`);
     assert.equal(Number.isInteger(objectif.revision) && objectif.revision > 0, true);
   }
   assert.throws(() => objectifsAvenirs.validerReference({ id: "inconnu", revision: 1 }), /objectif.*inconnu/i);
@@ -76,6 +79,8 @@ function fixture({ securite = false, roster = ROSTER, financeDisponible, finance
   const params = { projetsDir: projets, roster, affectations: {}, financeDisponible };
   return { dir, reg, projets, store, params, fermer: () => { store.fermer(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
+
+const YANIS = { id: "yanis", nom: "Yanis", role: "Sécurité", famille: "claude", llm: claudeOpus, registre: ["security-reviewer"], budgetMensuelUsd: 30 };
 
 const spec = (surcharges = {}) => ({ projectId: "app", objectif: "Ajouter un tri par note", criteres: ["La liste se trie par note", "Les tests existants restent verts"], ...surcharges });
 const etatLibre = (surcharges = {}) => surcharges;
@@ -503,14 +508,14 @@ test("lancement refusé si le plan a changé depuis sa présentation ou s'il est
 });
 
 test("objectif À venir : référence signée, lancement idempotent, réservation exclusive et état projeté", () => {
-  const f = fixture();
+  const f = fixture({ securite: true, roster: [...ROSTER, YANIS] });
   const missions = require("../src/missions");
   const reference = { id: "1.1", revision: 1 };
   const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
   fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
   fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
   const lancerObjectif = (requestId = crypto.randomUUID(), objectif = reference, scheduling = { priority: "normale" }, projectId = "agent-orchestrator") => {
-    const preparation = planificateur.planifier({ spec: spec({ projectId }), params: f.params, etat: {} });
+    const preparation = planificateur.planifier({ spec: spec({ projectId, contexte: { _roadmapObjective: objectif } }), params: f.params, etat: {} });
     const demande = structuredClone(preparation.lancement);
     demande.requestId = requestId;
     demande.demande.spec._roadmapObjective = objectif;
@@ -618,11 +623,11 @@ test("runtimes bloqués lus dans les attentes des runs vivants", () => {
 test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, lancement dédupliqué", async () => {
   const { spawn } = require("node:child_process");
   const http = require("node:http");
-  const f = fixture();
+  const f = fixture({ securite: true, roster: [...ROSTER, YANIS] });
   const port = 4689;
   f.store.majMachine({ id: "pc", state: "online", heartbeat: true, meta: { capacites: { backends: ["claude", "codex"], noeuds: ["agent", "script", "review"], missions: 1, documents: 1, procedures: 1 } } });
   const roster = path.join(f.dir, "agents.json");
-  fs.writeFileSync(roster, JSON.stringify({ agents: ROSTER }));
+  fs.writeFileSync(roster, JSON.stringify({ agents: f.params.roster }));
   const poster = (chemin, corps, entetes = {}) => new Promise((resoudre, rejeter) => {
     const brut = JSON.stringify(corps);
     const req = http.request({ host: "127.0.0.1", port, method: "POST", path: chemin,
@@ -739,5 +744,61 @@ test("A4 : Finance v2 prépare six étapes, deux sessions métier et une seule c
     assert.equal(p.plan.limites.corrections[0].maxLoops, 1);
     const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps: { spec: specFinance(), empreinte: p.empreinte, requestId: crypto.randomUUID() }, etat: {} });
     assert.equal(f.store.commande(c.id).payload.mission.resolution.pipeline.version, 2);
+  } finally { f.fermer(); }
+});
+
+test("lot 11 : choix explicite conservé dans le contrat et reprise idempotente sans substitution", () => {
+  const f = fixture();
+  try {
+    const demande = spec({ agents: [{ noeud: "review", membre: "ines" }] });
+    const p = planificateur.proposer({ spec: demande, params: f.params, etat: {} });
+    assert.equal(p.statut, "lancable");
+    assert.equal(p.plan.etapes.find((e) => e.noeud === "review").membre, "ines");
+    const corps = { spec: demande, empreinte: p.empreinte, accepterDegrade: true, requestId: crypto.randomUUID() };
+    const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} });
+    assert.equal(contrat.valider(c.payload.mission).participants.find((e) => e.noeud === "review").membre, "ines");
+    assert.deepEqual(c.payload.llmOverrides.review, codex);
+    assert.equal(planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} }).id, c.id);
+    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps: { ...corps, spec: spec() }, etat: {} }), /déjà été utilisée/);
+    const indisponible = planificateur.proposer({ spec: demande, params: f.params, etat: { runtimesBloques: { codex: "Quota atteint" } } });
+    assert.equal(indisponible.statut, "bloque");
+    assert.equal(indisponible.plan, null);
+    assert.match(indisponible.blocages.find((b) => b.noeud === "review").message, /Quota atteint/);
+  } finally { f.fermer(); }
+});
+
+test("lot 11 : rôles inconnus, doublons, incompatibilité, affectation et indépendance contrôlés", () => {
+  const f = fixture({ roster: ROSTER.map((m) => m.id === "sacha" ? { ...m, registre: ["improvement-editor", "code-reviewer"] } : m) });
+  try {
+    for (const agents of [
+      [{ noeud: "review", membre: "absent" }], [{ noeud: "review", membre: "margaux" }],
+      [{ noeud: "inconnu", membre: "sacha" }], [{ noeud: "verify", membre: "sacha" }],
+      [{ noeud: "review", membre: "sacha" }],
+    ]) assert.equal(planificateur.proposer({ spec: spec({ agents }), params: f.params, etat: {} }).statut, "bloque", JSON.stringify(agents));
+    assert.throws(() => planificateur.proposer({ spec: spec({ agents: [{ noeud: "review", membre: "theo" }, { noeud: "review", membre: "ines" }] }), params: f.params, etat: {} }), /un seul choix/);
+    f.params.affectations.ines = { projet: "autre" };
+    assert.equal(planificateur.proposer({ spec: spec({ agents: [{ noeud: "review", membre: "ines" }] }), params: f.params, etat: {} }).statut, "bloque");
+  } finally { f.fermer(); }
+});
+
+test("lot 11 : retirer l'exigence côté client ne retire pas la sécurité de l'objectif", () => {
+  const f = fixture({ securite: true, roster: [...ROSTER, YANIS] });
+  try {
+    const fiche = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
+    fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
+    fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...fiche, id: "agent-orchestrator" }));
+    const demande = spec({ projectId: "agent-orchestrator", exigences: [], contexte: { _roadmapObjective: { id: "1.1", revision: 1 } } });
+    const p = planificateur.proposer({ spec: demande, params: f.params, etat: {} });
+    assert.equal(p.statut, "lancable");
+    const critere = require("../src/objectifs-avenirs").CRITERE_SECURITE;
+    assert.ok(p.plan.criteres.some((c) => c.texte === critere && c.jugePar.includes("review-security") && c.jugePar.includes("verify")));
+    const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps: { spec: demande, empreinte: p.empreinte, requestId: crypto.randomUUID() }, etat: {} });
+    assert.ok(c.payload.mission.criteres.includes(critere));
+    assert.match(c.payload.mission.document, /Sensibilité vérifiée par l'orchestrateur/);
+    const modifiee = structuredClone(fiche); modifiee.id = "agent-orchestrator"; modifiee.pipelines[0].overrides.nodes = {};
+    fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify(modifiee));
+    assert.equal(planificateur.proposer({ spec: demande, params: f.params, etat: {} }).statut, "bloque");
+    const o = require("../src/missions").lire({ ...f.params, projectId: "agent-orchestrator" }).options;
+    assert.throws(() => require("../src/missions").construire(f.params, { projectId: o.projectId, pipelineIndex: 0, configuration: o.configuration, requestId: crypto.randomUUID(), demande: { objectif: demande.objectif, criteres: demande.criteres, spec: demande.contexte, agents: o.roles.map((r) => ({ noeud: r.noeud, membre: null, llm: r.llm })) } }), /exige une revue de sécurité/);
   } finally { f.fermer(); }
 });

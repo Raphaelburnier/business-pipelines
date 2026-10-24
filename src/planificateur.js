@@ -78,12 +78,18 @@ function pipelinesDuRegistre(nature, dossier = registre.dossierRegistre()) {
  * membre affecté au projet (100), puis un membre de l'équipe (30), puis pour une revue un
  * runtime différent du développement (20), puis le modèle recommandé par le pipeline (5).
  */
-function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contexte }) {
-  const options = [...roster.filter((m) => incarne(m, noeud)).map((m) => ({ membre: m, llm: m.llm })), { membre: null, llm: noeud.llm }];
+function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contexte, impose }) {
+  if (impose && !roster.some((m) => m.id === impose && incarne(m, noeud))) {
+    return { choix: null, ecartes: [`${impose} : membre inconnu ou incompatible avec ${noeud.agent}`] };
+  }
+  const options = impose
+    ? roster.filter((m) => m.id === impose).map((m) => ({ membre: m, llm: m.llm }))
+    : [...roster.filter((m) => incarne(m, noeud)).map((m) => ({ membre: m, llm: m.llm })), { membre: null, llm: noeud.llm }];
   const viasAuteurs = new Set(auteurs.map((a) => a.llm?.via).filter(Boolean));
   const evaluees = options.map((o, rang) => {
     const qui = o.membre ? o.membre.nom : `agent du workflow ${noeud.agent}`;
     const raisons = [];
+    if (impose) raisons.push(`${impose} choisi explicitement pour ce rôle.`);
     let score = 0;
     let rejet = null;
     if (etat.runtimesExclus.includes(o.llm.via)) rejet = `runtime ${o.llm.via} exclu par la spec`;
@@ -166,10 +172,13 @@ function evaluer({ spec, index, params, etat }) {
   // Agents d'abord (les auteurs), revues ensuite : une revue connaît ceux qu'elle relit.
   const choisis = new Map();
   const ordre = [...actifs.filter((n) => n.type === "agent" && !estRelecteur(n)), ...actifs.filter(estRelecteur)];
+  for (const c of spec.agents) {
+    if (!ordre.some((n) => n.id === c.noeud)) bloquer("aucun-agent", `Le rôle choisi ${c.noeud} n'est pas un rôle agent actif de ${ref}.`, "Recalculer les choix d'agents.", c.noeud);
+  }
   for (const n of ordre) {
     const auteurs = estRelecteur(n) ? auteursDe(actifs, roleDe).map((id) => choisis.get(id)).filter(Boolean) : [];
     const { choix, ecartes } = choisir(n, { projectId: spec.projectId, roster: params.roster, affectations: params.affectations, etat, auteurs,
-      contexte: { pipeline: p, agent: resolution.agents[n.agent] } });
+      contexte: { pipeline: p, agent: resolution.agents[n.agent] }, impose: spec.agents.find((c) => c.noeud === n.id)?.membre });
     if (!choix) {
       bloquer("aucun-agent", `Aucun agent disponible pour ${n.id} (${n.agent}) : ${ecartes.join(" ; ")}.`,
         "Réveiller ou mettre à jour le worker, attendre la fin du quota, ou affecter un membre disponible au projet.", n.id);
@@ -254,7 +263,9 @@ function evaluer({ spec, index, params, etat }) {
 function proposer(entree) { return planifier(entree).proposition; }
 
 function planifier({ spec: brute, params, etat: etatBrut }) {
-  const spec = schemas.spec.parse(brute);
+  const spec = schemas.spec.parse(require("./objectifs-avenirs").cadrerSensibilite(schemas.spec.parse(brute)));
+  spec.agents ??= [];
+  if (new Set(spec.agents.map((c) => c.noeud)).size !== spec.agents.length) throw new Error("Un rôle ne peut recevoir qu'un seul choix d'agent.");
   const etat = { runtimesBloques: {}, depensesMembres: {}, depensesProjets: {}, disponibilite: () => ({ utilisable: true }), machine: () => ({ utilisable: true }), ...etatBrut, runtimesExclus: spec.runtimesExclus };
   const sans = (statut, blocages, projet = null) => ({ proposition: schemas.proposition.parse({ statut, plan: null, blocages, empreinte: null, projet }), lancement: null });
   const fiche = path.join(params.projetsDir, spec.projectId, "project.json");
@@ -331,6 +342,7 @@ const HORIZON_MS = 366 * 86_400_000;
 
 function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant = Date.now() }) {
   const d = schemas.lancementPlan.parse(corps);
+  const planSpecHash = contrat.empreinte({ spec: d.spec, empreinte: d.empreinte });
   if (d.scheduling.notBefore) {
     const t = Date.parse(d.scheduling.notBefore);
     // Quelques minutes de marge : le formulaire a pu rester ouvert avant l'envoi.
@@ -342,8 +354,7 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
   if (ancienne) {
     const c = store.commande(ancienne.id);
     const m = c.payload.mission;
-    if (c.par !== qui.par || c.canal !== qui.canal || !m?.plan || c.payload.projectId !== d.spec.projectId ||
-        m.objectif !== d.spec.objectif || JSON.stringify(m.criteres) !== JSON.stringify(d.spec.criteres)) {
+    if (c.par !== qui.par || c.canal !== qui.canal || !m?.plan || c.payload.planSpecHash !== planSpecHash) {
       throw new Error("Cette demande a déjà été utilisée avec un autre contenu ou auteur.");
     }
     return c;
@@ -352,7 +363,7 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
   if (proposition.statut === "bloque") throw new RefusPlan(`Plan non lançable : ${proposition.blocages.map((b) => b.message).join(" ")}`);
   if (proposition.empreinte !== d.empreinte) throw new RefusPlan("Le plan a changé depuis sa présentation (équipe, registre, machines ou quotas) : relire le plan.");
   if (proposition.statut === "degrade" && !d.accepterDegrade) throw new RefusPlan("Plan dégradé : confirmer explicitement ses avertissements avant le lancement.");
-  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling });
+  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash });
 }
 
 class RefusPlan extends Error {}

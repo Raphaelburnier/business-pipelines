@@ -4,6 +4,26 @@
 // un objectif sans projet (gates partagés, autre dépôt) se traite hors du cockpit.
 const objectifs = require("../web/src/avenir/objectifs.json");
 const parId = new Map(objectifs.map((objectif) => [objectif.id, objectif]));
+const motifs = require("../deploy/fichiers-sensibles.json").motifs.map((m) => new RegExp(m, "i"));
+const CRITERE_SECURITE = "Les contrôles d'accès, les entrées invalides et la non-régression du changement sont vérifiés et documentés par des preuves ; la revue de sécurité indépendante est favorable.";
+
+// Le client peut renforcer la revue. Les risques du catalogue sont décidés par le serveur.
+function cadrerSensibilite(spec) {
+  const ref = spec.contexte._roadmapObjective;
+  const objectif = ref ? validerReference(ref, spec.projectId) : null;
+  const fichiers = (objectif?.fichiers || []).filter((f) => {
+    let chemin = f.replace(/^(BP|AO|REG|AS)\s+/, "").replace(/:\d[\d,\s-]*$/, "");
+    if (/^(agent-gated-merge|ci-autofix|ci|claude|claude-code-review)\.ya?ml$/i.test(chemin)) chemin = `.github/workflows/${chemin}`;
+    return motifs.some((motif) => motif.test(chemin));
+  });
+  const raisons = [...fichiers.map((f) => `Fichier protégé annoncé : ${f}.`),
+    ...(objectif?.raisonSensibilite ? [`Risque signalé dans le cadrage : ${objectif.raisonSensibilite}`] : [])];
+  if (!raisons.length && !spec.exigences.includes("revue-securite")) return spec;
+  const controle = `Sensibilité vérifiée par l'orchestrateur :\n${raisons.length ? raisons.join("\n") : "Revue de sécurité supplémentaire demandée par l'utilisateur."}`;
+  return { ...spec, exigences: [...new Set([...spec.exigences, "revue-securite"])],
+    criteres: [...new Set([...spec.criteres, CRITERE_SECURITE])],
+    document: spec.document.includes(controle) ? spec.document : `${spec.document}\n\n${controle}` };
+}
 
 function validerReference(reference, projectId) {
   if (!reference || typeof reference.id !== "string" || !Number.isInteger(reference.revision) || reference.revision < 1) {
@@ -21,4 +41,4 @@ function validerReference(reference, projectId) {
   return objectif;
 }
 
-module.exports = { objectifs, validerReference };
+module.exports = { objectifs, validerReference, cadrerSensibilite, CRITERE_SECURITE };
