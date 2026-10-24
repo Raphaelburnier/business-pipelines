@@ -817,3 +817,11 @@ test('TaskBoard : déplacement d’un ancien départ conserve heure et contrat, 
     assert.throws(()=>deplacer({store:f.store,corps:{...changement,prevuLe:'2026-10-26T07:30:00.000Z'},maintenant}),/déjà commencé/);
   }finally{f.fermer();}
 });
+
+test('TaskBoard : les dépôts annoncés sont autorisés, l’attribution historique reste mono-dépôt',()=>{
+  const {validerReference}=require('../src/objectifs-avenirs');
+  assert.equal(validerReference({id:'4.1',revision:1},'business-pipelines',{taskBoard:true}).id,'4.1');
+  assert.equal(validerReference({id:'4.1',revision:1},'agent-orchestrator',{taskBoard:true}).id,'4.1');
+  assert.throws(()=>validerReference({id:'4.1',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
+  assert.throws(()=>validerReference({id:'4.1',revision:1},'business-pipelines'),/pas dans business-pipelines/);
+});

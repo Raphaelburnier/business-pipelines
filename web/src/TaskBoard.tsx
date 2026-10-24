@@ -35,6 +35,7 @@ export function TaskBoard() {
   const groupe = useRef('');
   const tentatives = useRef(new Map<string,string>());
   const objectifCatalogue = objectifsSysteme.find(o => o.id === tache?.ref);
+  const depotsAnnonces = objectifCatalogue ? [...new Set([objectifCatalogue.projet, ...objectifCatalogue.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; })].filter((id): id is string => Boolean(id)))] : [];
   const risque = sensibiliteEtape(objectifCatalogue ?? { fichiers: [] });
   const quota = usage?.quota;
   const quotaTexte = `Quota restant · Claude ${quota?.fournisseurs?.claude ? `${quota.fournisseurs.claude.restant}%` : 'inconnu'} · Codex ${quota?.fournisseurs?.codex ? `${quota.fournisseurs.codex.restant}%` : 'inconnu'} · ${quota?.statut === 'bas' ? 'reprises, prioritaires, puis FIFO (<25 %)' : quota?.statut === 'normal' ? 'ordre normal' : 'mesure incomplète, ordre normal'}.`;
@@ -70,7 +71,7 @@ export function TaskBoard() {
     if (date<dateCivile(Date.now()).date) {setMessage('Choisis aujourd’hui ou un jour futur.');return;}
     const reference = objectifsSysteme.find(o => o.id === cible.ref);
     if (!reference) { setMessage('Cette tâche est terminée, en cours ou périmée : recharge le tableau.'); return; }
-    const ids = [...new Set(reference.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; }))];
+    const ids = [...new Set([reference.projet, ...reference.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; })].filter((id): id is string => Boolean(id)))];
     setTache({ ...cible, fichiers:reference.fichiers, date });
     setProjets(ids.filter(id => topo?.projets.some(p => p.id===id && p.aFiche && p.pipelines.length)));
     setPropositions([]); setMessage(''); setSensible(false); setPrioritaire(false); setAccepteDegrade(false);
@@ -119,7 +120,7 @@ export function TaskBoard() {
     </fieldset></form></details>
     {message && <p className="taskboard-retour" role="status">{message}</p>}
     {tache && <section className="taskboard-system-plan" aria-label="Planifier une tâche système"><header><h3>Planifier « {tache.titre} » le {tache.date}</h3><button type="button" disabled={envoi} onClick={()=>setTache(null)}>Annuler</button></header>
-      {!propositions.length ? <><p>Valide le périmètre proposé puis les plans. Tous seront enregistrés ensemble.</p><fieldset disabled={envoi}><legend>Dépôts concernés</legend>{topo?.projets.filter(p=>p.aFiche && p.pipelines.length).map(p=><label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={e=>setProjets(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/>{p.nom}</label>)}</fieldset>
+      {!propositions.length ? <><p>Valide le périmètre proposé puis les plans. Tous seront enregistrés ensemble.</p><fieldset disabled={envoi}><legend>Dépôts concernés</legend>{topo?.projets.filter(p=>p.aFiche && p.pipelines.length && (!objectifCatalogue?.projet || depotsAnnonces.includes(p.id))).map(p=><label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={e=>setProjets(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/>{p.nom}</label>)}</fieldset>
         <InterrupteurPrioritaire checked={prioritaire} disabled={envoi} onChange={setPrioritaire}/><label><input type="checkbox" checked={risque.sensible||sensible} disabled={risque.sensible||envoi} onChange={e=>setSensible(e.target.checked)}/> Sensible — revue et vérifications renforcées</label>
         <button type="button" disabled={envoi||!projets.length} onClick={()=>void proposer()}>Proposer les plans</button></> : <>
         {propositions.map(p=><article key={p.projectId}><h4>{p.reponse.projet?.nom||p.projectId} · {p.reponse.statut}</h4>{p.reponse.blocages.map((b,i)=><p key={i}>{b.message}</p>)}
