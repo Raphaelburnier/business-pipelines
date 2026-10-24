@@ -264,6 +264,7 @@ function proposer(entree) { return planifier(entree).proposition; }
 
 function planifier({ spec: brute, params, etat: etatBrut }) {
   const spec = schemas.spec.parse(require("./objectifs-avenirs").cadrerSensibilite(schemas.spec.parse(brute)));
+  spec.agents ??= [];
   if (new Set(spec.agents.map((c) => c.noeud)).size !== spec.agents.length) throw new Error("Un rôle ne peut recevoir qu'un seul choix d'agent.");
   const etat = { runtimesBloques: {}, depensesMembres: {}, depensesProjets: {}, disponibilite: () => ({ utilisable: true }), machine: () => ({ utilisable: true }), ...etatBrut, runtimesExclus: spec.runtimesExclus };
   const sans = (statut, blocages, projet = null) => ({ proposition: schemas.proposition.parse({ statut, plan: null, blocages, empreinte: null, projet }), lancement: null });
