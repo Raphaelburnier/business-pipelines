@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Consomme les commandes durables du cockpit. Une seule commande de run à la fois pour
-// garder l'ordre de lancement et la concurrence de quota prévue.
+// Consomme les commandes durables du cockpit. Les runs peuvent être lancés en parallèle ;
+// le maître applique la capacité configurée de chaque worker au dispatch des étapes.
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
@@ -28,28 +28,33 @@ const ENV_OUTILS = ["ORCH_EVENT_STORE", "ORCH_REGISTRE", "ORCH_MACHINE", "COCKPI
 const CODES_ATTENDUS = new Set([0, 75, 76, 77, 78]);
 
 let arret = false;
-let enfant = null;
-// Le maître permanent et son service. Une CLI attend sa disponibilité et ne prend jamais
-// elle-même son port : le runner reste l'unique propriétaire du maître.
+const enfants = new Set();
+let prochaineSondeQuotaCodex = 0;
+let sondeQuotaCodexEnCours = false;
+let dernierEtatQuotaLogge = null;
+// Le maître permanent (agent-orchestrator, src/maitre-distant.js) et son service. Null tant
+// qu'il n'écoute pas : un run lancé entre-temps ouvre alors son propre maître, comme avant.
 let maitre = null;
 let serviceMaitre = null;
 const REESSAI_MAITRE_MS = 30_000;
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Les décisions d'approbation ont leur file courte, mais la reprise reste exclusive avec
-// tous les autres lancements de CLI du worker.
-let finFileLancements = Promise.resolve();
-let lancementsReserves = 0;
-function lancerExclusif(...args) {
-  lancementsReserves += 1;
-  const lancement = finFileLancements.then(async () => {
-    while (!arret && !maitre) await attendre(INTERVALLE);
-    if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
-    return lancer(...args);
-  });
-  finFileLancements = lancement.then(() => undefined, () => undefined);
-  lancement.finally(() => { lancementsReserves -= 1; }).catch(() => undefined);
-  return lancement;
+function sonderQuotaCodex(store) {
+  if (sondeQuotaCodexEnCours || Date.now() < prochaineSondeQuotaCodex) return;
+  sondeQuotaCodexEnCours = true;
+  prochaineSondeQuotaCodex = Date.now() + 5 * 60_000;
+  void require("../src/codex-quota").lireQuotaCodex().then((snapshot) => {
+    if (snapshot) store.emettre({ type: "runtime.quota_snapshot", payload: snapshot });
+  }).catch((err) => {
+    console.warn(`Quota Codex inconnu : ${err.message}`);
+  }).finally(() => { sondeQuotaCodexEnCours = false; });
+}
+
+// Les reprises et décisions utilisent le même chemin de lancement que les nouveaux runs.
+async function lancerParallele(...args) {
+  while (!arret && !maitre) await attendre(INTERVALLE);
+  if (arret) return Promise.resolve({ code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" });
+  return lancer(...args);
 }
 
 function projet(projectId) {
@@ -129,7 +134,7 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
     const debut = new Date().toISOString();
     const seuilMs = delaiDiagnosticRun();
     const processus = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
-    enfant = processus;
+    enfants.add(processus);
     let diagnostique = false;
     const surveillance = setInterval(() => {
       if (diagnostique || Date.now() - Date.parse(debut) < seuilMs) return;
@@ -145,7 +150,7 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
     }, Math.min(INTERVALLE, 1000));
     const terminer = (resultat) => {
       clearInterval(surveillance);
-      if (enfant === processus) enfant = null;
+      enfants.delete(processus);
       resolve(resultat);
     };
     processus.once("error", (err) => terminer({ code: 1, erreur: err.message, debut }));
@@ -208,7 +213,8 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
   while (!arret) {
     let exclure = [];
     if (kinds.includes("run.resume")) {
-      store.attentes.programmer({ machineDisponible });
+      sonderQuotaCodex(store);
+      store.attentes.programmer();
       // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
       // sans exclusions, comme avant le calendrier.
       try {
@@ -222,16 +228,25 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
       } catch (err) {
         console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
       }
-      exclure.push(...store.attentes.exclureMachines(machineDisponible));
-      if (lancementsReserves) { await attendre(INTERVALLE); continue; }
     }
-    const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true, exclure } : { kinds });
+    const quota = kinds.includes("run.resume") ? require("../src/quota").etatQuota(store) : null;
+    if (quota && quota.statut !== dernierEtatQuotaLogge) {
+      dernierEtatQuotaLogge = quota.statut;
+      console.info(quota.statut === "inconnu"
+        ? "Quota Claude Code/Codex inconnu : ordre normal de file."
+        : quota.statut === "bas" ? `Quota bas (<25 %, fenêtre la plus basse : ${quota.restantLePlusBas} %) : reprises, runs prioritaires, puis FIFO.`
+          : `Quota suffisant (fenêtre la plus basse : ${quota.restantLePlusBas} %) : ordre normal de file.`);
+    }
+    const sousSeuil = Boolean(prioriserRuns && quota?.sousSeuil);
+    const filtre = kinds.includes("run.resume") ? { kinds, prioriserRuns: sousSeuil, exclure } : { kinds };
+    const commande = store.prendreCommande(filtre);
     if (!commande) {
       await attendre(INTERVALLE);
       continue;
     }
     console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
-    await traiterCommande(store, commande, executer);
+    // La réservation durable empêche les doublons. Le maître borne la concurrence réelle.
+    void traiterCommande(store, commande, executer);
   }
 }
 
@@ -248,7 +263,7 @@ async function boucleApprobations(store) {
     }
     console.log(`Commande ${commande.id} : ${commande.kind}, demandée par ${commande.par}`);
     let operation;
-    operation = traiterCommande(store, commande, (c) => deciderEtReprendre(store, c, lancerExclusif))
+    operation = traiterCommande(store, commande, (c) => deciderEtReprendre(store, c, lancerParallele))
       .finally(() => enCours.delete(operation));
     enCours.add(operation);
   }
@@ -298,7 +313,7 @@ function lancementDe(store, run) {
 // Trancher puis reprendre (phase 5). La décision est écrite par `deciderApprobation`, qui
 // revérifie tout, sous la signature de la commande. Rejouée après un redémarrage du runner,
 // une décision déjà écrite par cette même commande n'est pas réécrite : seul le run reprend.
-async function deciderEtReprendre(store, commande, lancerRun = lancerExclusif) {
+async function deciderEtReprendre(store, commande, lancerRun = lancerParallele) {
   const { approbationId, decision, note = null, actions = [] } = commande.payload;
   const a = store.approbation(approbationId);
   if (!a) throw new Error(`approbation inconnue : ${approbationId}`);
@@ -340,15 +355,15 @@ async function reverifier(store, commande) {
   const { runId, headSha } = commande.payload;
   const run = store.run(runId);
   if (!run) throw new Error(`run inconnu : ${runId}`);
-  const resultat = await lancerExclusif(lancementDe(store, run), { runId, reverifier: headSha, store });
+  const resultat = await lancerParallele(lancementDe(store, run), { runId, reverifier: headSha, store });
   return issue(store, resultat, { runId, headSha });
 }
 
 async function executerRun(store, commande) {
-  const lancerAvecDiagnostic = (lancement, options = {}) => lancerExclusif(lancement, { ...options, store });
-  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe, machineDisponible });
+  const lancerAvecDiagnostic = (lancement, options = {}) => lancerParallele(lancement, { ...options, store });
+  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe });
   if (commande.kind === "run.reverify") return reverifier(store, commande);
-  const resultat = await lancerExclusif(commande.payload, { commandId: commande.id, store });
+  const resultat = await lancerParallele(commande.payload, { commandId: commande.id, store });
   return issue(store, resultat, { runId: store.commande(commande.id)?.run_id || null });
 }
 
@@ -392,7 +407,7 @@ async function demarrer() {
   store.attentes.reconcilier();
   const renouvellement = setInterval(() => {
     try { store.attentes.renouvelerBail(bail); }
-    catch (err) { console.error(err.message); arret=true; enfant?.kill("SIGTERM"); }
+    catch (err) { console.error(err.message); arret=true; for (const processus of enfants) processus.kill("SIGTERM"); }
   }, 1000);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
@@ -402,8 +417,8 @@ async function demarrer() {
     await Promise.all([
       ouvrirMaitre(store),
       boucle(store, ["run.start", "run.resume", "run.reverify"], (commande) => executerRun(store, commande), { prioriserRuns: true }),
-      // La décision est enregistrée hors de la file longue. Son lancement attend le verrou
-      // partagé avec les runs : le worker n'exécute toujours qu'une seule CLI à la fois.
+      // La décision est enregistrée hors de la file longue ; le maître borne les étapes
+      // concurrentes comme pour les autres runs.
       boucleApprobations(store),
       boucle(store, ["chat.respond"], (commande) => repondre(store, commande)),
     ]);
@@ -419,7 +434,7 @@ async function demarrer() {
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     arret = true;
-    if (enfant) enfant.kill(signal);
+    for (const processus of enfants) processus.kill(signal);
   });
 }
 

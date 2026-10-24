@@ -12,6 +12,13 @@ import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const titreJour = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", day: "numeric", month: "short" });
 const jourLisible = (date: string) => titreJour.format(new Date(`${date}T12:00:00Z`));
+const libelleMois = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", month: "long", year: "numeric" });
+
+function decalerMois(date: string, mois: number): string {
+  const d = new Date(`${date.slice(0, 7)}-01T12:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + mois);
+  return d.toISOString().slice(0, 10);
+}
 
 function useCalendrier(source: SourceCalendrier) {
   const [objectifs, setObjectifs] = useState<Objectif[] | null>(null);
@@ -176,27 +183,51 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   </li>;
 }
 
-export function Calendrier() {
+export function Calendrier({ integre = false }: { integre?: boolean } = {}) {
   const { source: principale } = useSource();
   const source = useMemo(() => (principale.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [principale.nom]);
   const { objectifs, erreur, recharger } = useCalendrier(source);
   const maintenant = useHorloge(60_000);
   const aujourdhui = dateCivile(maintenant).date;
-  const [debut, setDebut] = useState(() => lundi(aujourdhui));
+  const [dateVue, setDateVue] = useState(aujourdhui);
+  const [vue, setVue] = useState<"semaine" | "mois">("semaine");
   const [choisi, setChoisi] = useState<string | null>(null);
   const [formulaire, setFormulaire] = useState(false);
 
+  const debut = lundi(dateVue);
+  const debutMois = `${dateVue.slice(0, 7)}-01`;
+  const debutGrilleMois = lundi(debutMois);
+  const moisAffiche = dateVue.slice(0, 7);
   const parJour = useMemo(() => semaine(objectifs ?? [], debut), [objectifs, debut]);
   const { donnees: attributions } = useCharge((s) => s.attributionsAvenir(), [objectifs]);
   const feuilleParJour = useMemo(() => departsFeuille(attributions ?? [], debut), [attributions, debut]);
+  const parJourMois = useMemo(() => {
+    const resultats = new Map<string, Array<Entree | DepartFeuille>>();
+    for (let semaineNo = 0; semaineNo < 6; semaineNo++) {
+      const semaineDebut = decaler(debutGrilleMois, semaineNo * 7);
+      const runs = semaine(objectifs ?? [], semaineDebut);
+      const feuille = departsFeuille(attributions ?? [], semaineDebut);
+      for (const jour of joursDeLaSemaine(semaineDebut)) {
+        resultats.set(jour, [...(runs.get(jour) ?? []), ...(feuille.get(jour) ?? [])].sort((a, b) => a.heure.localeCompare(b.heure)));
+      }
+    }
+    return resultats;
+  }, [objectifs, attributions, debutGrilleMois]);
   const retards = (objectifs ?? []).filter((o) => enRetard(o, maintenant));
   const actifs = (objectifs ?? []).filter((o) => o.active && o.nextAt);
   const aujourdhuiEntrees = [...(semaine(objectifs ?? [], lundi(aujourdhui)).get(aujourdhui) ?? []), ...(departsFeuille(attributions ?? [], lundi(aujourdhui)).get(aujourdhui) ?? [])];
   const selection = objectifs?.find((o) => o.id === choisi) ?? null;
   const fin = decaler(debut, 6);
+  const aujourdHuiDansLaPeriode = vue === "semaine"
+    ? aujourdhui >= debut && aujourdhui <= fin
+    : aujourdhui.slice(0, 7) === moisAffiche;
+  const datePeriode = vue === "semaine" ? debut : debutMois;
+  const changerPeriode = (sens: -1 | 1) => setDateVue((date) => vue === "semaine"
+    ? decaler(date, sens * 7)
+    : decalerMois(date, sens));
 
-  return <div className="cal-page">
-    <section className="cal-hero">
+  return <div className={`cal-page ${integre ? "cal-embarque" : ""}`}>
+    {!integre && <section className="cal-hero">
       <div>
         <p className="kicker">Lot 12 · heure de Zurich</p>
         <h2>Runs planifiés</h2>
@@ -208,13 +239,22 @@ export function Calendrier() {
         <div><dt>Programmations actives</dt><dd>{actifs.length}</dd></div>
         <div className={retards.length ? "alerte" : ""}><dt>En retard</dt><dd>{retards.length}</dd></div>
       </dl>
-    </section>
+    </section>}
+    {integre && <dl className="cal-chiffres cal-chiffres-compact">
+      <div><dt>Aujourd’hui</dt><dd>{aujourdhuiEntrees.length}</dd></div>
+      <div><dt>Programmations actives</dt><dd>{actifs.length}</dd></div>
+      <div className={retards.length ? "alerte" : ""}><dt>En retard</dt><dd>{retards.length}</dd></div>
+    </dl>}
 
     <div className="cal-barre">
-      <button type="button" onClick={() => setDebut(decaler(debut, -7))} aria-label="Semaine précédente">‹</button>
-      <button type="button" onClick={() => setDebut(lundi(aujourdhui))} disabled={debut === lundi(aujourdhui)}>Cette semaine</button>
-      <button type="button" onClick={() => setDebut(decaler(debut, 7))} aria-label="Semaine suivante">›</button>
-      <span className="cal-periode">{jourLisible(debut)} au {jourLisible(fin)}</span>
+      <button type="button" onClick={() => changerPeriode(-1)} aria-label={vue === "semaine" ? "Semaine précédente" : "Mois précédent"}>‹</button>
+      <button type="button" onClick={() => setDateVue(aujourdhui)} disabled={aujourdHuiDansLaPeriode}>{vue === "semaine" ? "Cette semaine" : "Ce mois"}</button>
+      <button type="button" onClick={() => changerPeriode(1)} aria-label={vue === "semaine" ? "Semaine suivante" : "Mois suivant"}>›</button>
+      <span className="cal-periode">{vue === "semaine" ? `${jourLisible(debut)} au ${jourLisible(fin)}` : libelleMois.format(new Date(`${datePeriode}T12:00:00Z`))}</span>
+      <div className="cal-vues" role="group" aria-label="Affichage du calendrier">
+        <button type="button" aria-pressed={vue === "semaine"} onClick={() => setVue("semaine")}>Semaine</button>
+        <button type="button" aria-pressed={vue === "mois"} onClick={() => setVue("mois")}>Mois</button>
+      </div>
       <button type="button" className="cal-action" onClick={() => setFormulaire((v) => !v)} aria-expanded={formulaire}>Planifier un run</button>
     </div>
 
@@ -227,16 +267,29 @@ export function Calendrier() {
     </section>}
 
     {objectifs === null && !erreur && <p className="cal-aide">Chargement du calendrier…</p>}
-    {objectifs && <ol className="cal-semaine">
+    {objectifs && vue === "semaine" && <ol className="cal-semaine">
       {joursDeLaSemaine(debut).map((jour, i) => {
         const cartes = [
           ...(parJour.get(jour) ?? []).map((e) => ({ cle: e.cle, heure: e.heure, carte: <Carte key={e.cle} entree={e} choisie={choisi === e.objectif.id} onChoisir={() => setChoisi(choisi === e.objectif.id ? null : e.objectif.id)} /> })),
           ...(feuilleParJour.get(jour) ?? []).map((d) => ({ cle: d.cle, heure: d.heure, carte: <CarteFeuille key={d.cle} depart={d} /> })),
         ].sort((a, b) => a.heure.localeCompare(b.heure));
-        return <li key={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
+        return <li key={jour} data-calendar-date={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
           <h3><span>{JOURS[i]}</span> {jourLisible(jour)}</h3>
           {cartes.length ? <ul>{cartes.map((c) => c.carte)}</ul>
             : <p className="cal-vide">Rien de prévu</p>}
+        </li>;
+      })}
+    </ol>}
+    {objectifs && vue === "mois" && <ol className="cal-mois" aria-label="Calendrier du mois">
+      {JOURS.map((jour) => <li key={`entete-${jour}`} className="cal-mois-entete">{jour}</li>)}
+      {Array.from({ length: 42 }, (_, index) => decaler(debutGrilleMois, index)).map((jour) => {
+        const cartes = (parJourMois.get(jour) ?? []).map((entree) => "objectifId" in entree
+          ? { cle: entree.cle, heure: entree.heure, carte: <CarteFeuille key={entree.cle} depart={entree} /> }
+          : { cle: entree.cle, heure: entree.heure, carte: <Carte key={entree.cle} entree={entree} choisie={choisi === entree.objectif.id} onChoisir={() => setChoisi(choisi === entree.objectif.id ? null : entree.objectif.id)} /> });
+        return <li key={jour} data-calendar-date={jour} className={`cal-mois-jour ${jour.slice(0, 7) !== moisAffiche ? "hors-mois" : ""} ${jour === aujourdhui ? "aujourdhui" : ""}`}>
+          <h3><b>{new Date(`${jour}T12:00:00Z`).getUTCDate()}</b></h3>
+          {cartes.length > 0 && <ul>{cartes.slice(0, 3).map((c) => c.carte)}</ul>}
+          {cartes.length > 3 && <span className="cal-plus">+{cartes.length - 3} autres</span>}
         </li>;
       })}
     </ol>}

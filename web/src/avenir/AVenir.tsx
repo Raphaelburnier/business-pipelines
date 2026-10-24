@@ -234,7 +234,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
 
 function EtapeLigne({ e, attribution, projetNom, onRefresh }: { e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void }) {
   const sensibilite = sensibiliteEtape(e);
-  return <li id={`av-etape-${e.id}`}>
+  return <li id={`av-etape-${e.id}`} draggable data-task-payload={JSON.stringify({ type: "fonctionnalite", titre: e.titre, detail: e.detail, ref: e.id, fichiers: e.fichiers })}>
     <div className="av-ligne">
       <b>{e.id}</b>
       <span className="av-titre">{e.titre}</span>
@@ -252,7 +252,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
   const o = tache.objectif!;
   const prochain = o.nextAt ? new Date(o.nextAt).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" }) : null;
   const dernier = o.occurrences[0];
-  return <li>
+  return <li draggable data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: tache.detail, objectif: { id: o.id, revision: o.revision, heure: o.heure, nextAt: o.nextAt, active: o.active, aDeplacer: o.occurrences.some((occurrence) => occurrence.statut === "queued") } })}>
     <div className="av-ligne">
       <span className="av-type projet">{tache.ref}</span>
       <span className="av-titre">{o.titre}</span>
@@ -270,7 +270,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
 
 function Fix({ tache }: { tache: Tache }) {
   const d = DEFAUTS.find((x) => x.id === tache.ref)!;
-  return <li className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
+  return <li draggable data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
     <div className="av-ligne">
       <b>{d.id}</b>
       <span className={`av-severite ${d.severite}`}>{d.severite}</span>
@@ -288,7 +288,7 @@ const TYPES: Array<{ id: Filtre["type"]; nom: string }> = [
   { id: "fix", nom: "Fix" },
 ];
 
-export function AVenir() {
+export function AVenir({ integre = false }: { integre?: boolean } = {}) {
   const { source } = useSource();
   const calendrier = useMemo(() => (source.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi), [source.nom]);
   const [revision, setRevision] = useState(0);
@@ -321,8 +321,8 @@ export function AVenir() {
   const ancre = typeof window === "undefined" ? "" : window.location.hash;
 
   return (
-    <div className="av-page">
-      <section className="av-hero">
+    <div className={`av-page ${integre ? "av-embarque" : ""}`}>
+      {!integre && <section className="av-hero">
         <div>
           <span className="kicker">Audit du {DATE_AUDIT} · tâches des projets en direct</span>
           <h2>Tâches à venir</h2>
@@ -335,7 +335,16 @@ export function AVenir() {
           <div><dt>fix ouverts</dt><dd>{compter(taches, "fix")}</dd></div>
           <div className={critiques ? "alerte" : ""}><dt>critiques</dt><dd>{critiques}</dd></div>
         </dl>
-      </section>
+      </section>}
+      {integre && <header className="av-embarque-titre">
+        <div><span className="kicker">À planifier</span><h2>Tâches</h2></div>
+        <dl className="av-chiffres av-chiffres-compact">
+          <div><dt>projets</dt><dd>{compter(taches, "projet")}</dd></div>
+          <div><dt>fonctionnalités</dt><dd>{compter(taches, "fonctionnalite")}</dd></div>
+          <div><dt>fix ouverts</dt><dd>{compter(taches, "fix")}</dd></div>
+          <div className={critiques ? "alerte" : ""}><dt>critiques</dt><dd>{critiques}</dd></div>
+        </dl>
+      </header>}
 
       <section className="av-filtres-bloc" aria-label="Filtres">
         <div className="av-filtres" role="group" aria-label="Filtrer par projet">

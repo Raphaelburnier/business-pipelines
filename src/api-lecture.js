@@ -411,13 +411,13 @@ function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRu
 // ---------- usage (§8, barre du haut) ----------
 
 /**
- * Runs actifs et coût équivalent sur 24 h et sur le mois (`GET /api/usage`). La jauge de
- * quota reste nulle tant que le maître ne lit pas `getUsage()` du SDK (phase 5) : mieux
- * vaut une jauge absente qu'une jauge inventée.
+ * Runs actifs, coût équivalent et snapshots récents des abonnements Claude Code/Codex.
+ * Une fenêtre manquante, invalide ou trop ancienne est renvoyée inconnue.
  * @param {any} store
  * @param {{ maintenant?: number, limiteRuns?: number }} [options]
  */
 function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
+  const quotas = require("./quota").etatQuota(store, maintenant);
   const liste = store.runs({ limite: limiteRuns });
   const debutJour = maintenant - 24 * 3600 * 1000;
   const date = new Date(maintenant);
@@ -433,7 +433,17 @@ function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
     runsActifs: liste.filter((r) => ETATS_VIVANTS.has(String(r.status))).length,
     coutEquivalentJourUsd: somme(debutJour),
     coutEquivalentMoisUsd: somme(debutMois),
-    quota: null,
+    quota: {
+      cinqHeures: null,
+      septJours: null,
+      statut: quotas.statut,
+      restantLePlusBas: quotas.restantLePlusBas,
+      fournisseurs: Object.fromEntries(["claude", "codex"].map((runtime) => {
+        const etat = quotas[runtime];
+        return [runtime, etat ? { restant: etat.restant, observeLe: etat.observeLe,
+          fenetres: etat.fenetres.map((f) => ({ id: f.id, restant: f.restant, utilisation: 100 - f.restant, reinitialisation: f.reinitialisation })) } : null];
+      })),
+    },
   };
 }
 

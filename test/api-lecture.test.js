@@ -237,7 +237,7 @@ test("la topologie range les projets par catégorie, avec leurs machines réelle
   assert.deepStrictEqual(topo.categories.map((c) => c.id), ["marketing", "sans fiche"]);
 });
 
-test("l'usage compte les runs actifs et le coût équivalent, sans inventer de jauge", () => {
+test("l'usage compte les runs et signale les mesures de quota absentes", () => {
   const { store } = bac();
   const fini = runComplet(store);
   store.statutRun(fini, "succeeded");
@@ -247,8 +247,9 @@ test("l'usage compte les runs actifs et le coût équivalent, sans inventer de j
   assert.strictEqual(u.runsActifs, 1);
   assert.strictEqual(u.coutEquivalentJourUsd, 0.84);
   assert.strictEqual(u.coutEquivalentMoisUsd, 0.84);
-  // Le quota vient de `getUsage()` du SDK, lu par le maître en phase 5 : pas avant.
-  assert.strictEqual(u.quota, null);
+  assert.strictEqual(u.quota.statut, "inconnu");
+  assert.strictEqual(u.quota.fournisseurs.claude, null);
+  assert.strictEqual(u.quota.fournisseurs.codex, null);
 });
 
 test("chaque réponse respecte le schéma que le front et les fixtures partagent", () => {
