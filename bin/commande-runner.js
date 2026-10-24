@@ -8,7 +8,7 @@ const { EventStore, chat, cockpitRead, envLoader, Maitre, servirMaitre, lireWork
 const api = require("../src/api-lecture");
 const chatOutils = require("../src/chat-outils");
 const registre = require("agent-orchestrator/src/registre");
-const { reprendreRun } = require("../src/reprises-runs");
+const { reprendreRun, terminerReprise } = require("../src/reprises-runs");
 const { raisonEchec } = require("../src/echec-run");
 
 const RACINE = path.resolve(__dirname, "..");
@@ -29,8 +29,8 @@ const CODES_ATTENDUS = new Set([0, 75, 76, 77, 78]);
 
 let arret = false;
 let enfant = null;
-// Le maître permanent (agent-orchestrator, src/maitre-distant.js) et son service. Null tant
-// qu'il n'écoute pas : un run lancé entre-temps ouvre alors son propre maître, comme avant.
+// Le maître permanent et son service. Une CLI attend sa disponibilité et ne prend jamais
+// elle-même son port : le runner reste l'unique propriétaire du maître.
 let maitre = null;
 let serviceMaitre = null;
 const REESSAI_MAITRE_MS = 30_000;
@@ -42,7 +42,8 @@ let finFileLancements = Promise.resolve();
 let lancementsReserves = 0;
 function lancerExclusif(...args) {
   lancementsReserves += 1;
-  const lancement = finFileLancements.then(() => {
+  const lancement = finFileLancements.then(async () => {
+    while (!arret && !maitre) await attendre(INTERVALLE);
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
     return lancer(...args);
   });
@@ -124,7 +125,7 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
   }
   return new Promise((resolve) => {
     // Avec le maître permanent en place, le run lui passe ses étapes au lieu d'ouvrir le port.
-    const env = maitre ? { ...process.env, ORCH_MAITRE_DISTANT: "1" } : process.env;
+    const env = { ...process.env, ORCH_MAITRE_DISTANT: "1" };
     const debut = new Date().toISOString();
     const seuilMs = delaiDiagnosticRun();
     const processus = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
@@ -207,7 +208,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
   while (!arret) {
     let exclure = [];
     if (kinds.includes("run.resume")) {
-      store.attentes.programmer();
+      store.attentes.programmer({ machineDisponible });
       // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
       // sans exclusions, comme avant le calendrier.
       try {
@@ -221,6 +222,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
       } catch (err) {
         console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
       }
+      exclure.push(...store.attentes.exclureMachines(machineDisponible));
       if (lancementsReserves) { await attendre(INTERVALLE); continue; }
     }
     const commande = store.prendreCommande(prioriserRuns ? { kinds, prioriserRuns: true, exclure } : { kinds });
@@ -254,18 +256,18 @@ async function boucleApprobations(store) {
 }
 
 async function traiterCommande(store, commande, executer) {
+  const acquitter = (resultat) => commande.kind === "run.resume"
+    ? terminerReprise({ store, commande, resultat }) : store.terminerCommande(commande.id, resultat);
   try {
     const resultat = await executer(commande);
     // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
     // sera remise en file, et retrouvera son run au redémarrage.
     if (!arret || commande.kind === "chat.respond") {
-      store.terminerCommande(commande.id, resultat);
-      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      acquitter(resultat);
     }
   } catch (err) {
     if (!arret || commande.kind === "chat.respond") {
-      store.terminerCommande(commande.id, { ok: false, raison: err.message });
-      if (commande.kind === "run.resume") store.attentes.terminer(commande);
+      acquitter({ ok: false, raison: err.message });
     }
     console.error(`Commande ${commande.id} refusée : ${err.message}`);
   }
@@ -344,10 +346,14 @@ async function reverifier(store, commande) {
 
 async function executerRun(store, commande) {
   const lancerAvecDiagnostic = (lancement, options = {}) => lancerExclusif(lancement, { ...options, store });
-  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe });
+  if (commande.kind === "run.resume") return reprendreRun({ store, commande, lancer: lancerAvecDiagnostic, lancementDe, machineDisponible });
   if (commande.kind === "run.reverify") return reverifier(store, commande);
   const resultat = await lancerExclusif(commande.payload, { commandId: commande.id, store });
   return issue(store, resultat, { runId: store.commande(commande.id)?.run_id || null });
+}
+
+function machineDisponible(machine) {
+  return Boolean(maitre?.machineDisponible(machine));
 }
 
 // Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
@@ -355,11 +361,8 @@ async function executerRun(store, commande) {
 // d'écoute (ORCH_MAITRE_HOTE, l'IP tailnet du NAS) peut manquer au démarrage du NAS, avant
 // Tailscale : le runner ne tombe pas pour autant, il réessaie, et ses autres files tournent.
 async function ouvrirMaitre(store) {
-  // Un moteur antérieur à agent-orchestrator#25 n'a pas de maître permanent : chaque run
-  // ouvre alors le sien, comme avant, au lieu de faire tomber le runner.
   if (typeof Maitre !== "function" || typeof servirMaitre !== "function") {
-    console.error("moteur sans maître permanent : chaque run ouvre son propre maître");
-    return;
+    throw new Error("moteur incompatible : maître permanent requis");
   }
   while (!arret && !maitre) {
     const candidat = new Maitre({
@@ -369,10 +372,10 @@ async function ouvrirMaitre(store) {
     });
     try {
       await candidat.demarrer();
-      maitre = candidat;
       // L'environnement que le run aurait chargé lui-même, rajouté ici : il ne passe jamais
       // par la file, qui est écrite sur le disque.
-      serviceMaitre = servirMaitre({ store, maitre, env: envLoader.load(RACINE, "", process.env.ENV_FILE) });
+      serviceMaitre = servirMaitre({ store, maitre: candidat, env: envLoader.load(RACINE, "", process.env.ENV_FILE) });
+      maitre = candidat;
     } catch (err) {
       await candidat.arreter().catch(() => undefined);
       console.error(`maître permanent indisponible (${err.message}) : nouvel essai dans ${REESSAI_MAITRE_MS / 1000} s`);

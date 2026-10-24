@@ -12,6 +12,7 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   if (!attente) return null;
   const connexion = attente.statut === "waiting_auth";
   const fraicheur = attente.statut === "waiting_freshness";
+  const machine = attente.statut === "waiting_machine";
   const enFile = commande || attente.commande;
   async function reprendre() {
     if (!attente) return;
@@ -22,13 +23,17 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   }
   return <div className="rounded-lg border-l-4 border-alerte bg-alerte-fond p-3 text-sm">
     <p className="font-semibold">{attente.raison}</p>
-    {!fraicheur && <p className="mt-1 text-xs text-douce">{attente.runtime ?? "runtime inconnu"} · {attente.machine ?? "machine inconnue"} · {attente.compte}</p>}
+    {!fraicheur && !machine && <p className="mt-1 text-xs text-douce">{attente.runtime ?? "runtime inconnu"} · {attente.machine ?? "machine inconnue"} · {attente.compte}</p>}
+    {machine && <>
+      <p className="mt-2">{attente.prochaineReprise ? "Le même run reprendra quand le worker sera connecté et disponible." : attente.raisonManuelle}</p>
+      <p className="mt-1 text-xs text-douce">{attente.tentatives}/{attente.maximum} reprises automatiques · limite : {new Date(attente.limiteLe).toLocaleString("fr-CH")}</p>
+    </>}
     {fraicheur && <>
       <p className="mt-2">Le run est suspendu avant l'étape suivante. La branche par défaut n'a pas pu être intégrée ou vérifiée.</p>
       {!!attente.fraicheur?.fichiers && Array.isArray(attente.fraicheur.fichiers) && attente.fraicheur.fichiers.length > 0 && <ul className="mt-2 list-disc pl-5">{attente.fraicheur.fichiers.map((f) => <li key={String(f)}><code>{String(f)}</code></li>)}</ul>}
       <p className="mt-2">Vérifie la fraîcheur du contexte, puis demande explicitement la reprise si elle reste pertinente. Aucune reprise automatique n'est planifiée.</p>
     </>}
-    {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && <>
+    {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && !machine && <>
       <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : "Échéance inconnue : reprise manuelle disponible."}</p>
       <p>{attente.prochaineReprise ? `Prochaine reprise automatique : ${new Date(attente.prochaineReprise).toLocaleString("fr-CH")}` : attente.raisonManuelle}</p>
       <p className="mt-1 text-xs text-douce">{attente.tentatives}/{attente.maximum} reprises automatiques · limite : {new Date(attente.limiteLe).toLocaleString("fr-CH")}</p>
