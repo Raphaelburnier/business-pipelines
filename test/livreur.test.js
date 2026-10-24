@@ -260,6 +260,10 @@ test("les étapes se lisent dans la sortie de deploy.sh", () => {
   assert.strictEqual(livreur.etapeDeLigne(" Container business_cockpit  Started", "basculer"), "sante");
   assert.strictEqual(livreur.etapeDeLigne("Échec après la bascule ; restauration du cockpit et du runner précédents...", "sante"), "restaurer");
   assert.strictEqual(livreur.etapeDeLigne(" Container business_cockpit  Started", "construire"), null);
+  // Pendant le build, la sortie des tests ne change pas d'étape (livraison du 2026-10-24).
+  assert.strictEqual(livreur.etapeDeLigne("# Subtest: restauration non confirmée : restauration-echec", "construire"), null);
+  assert.strictEqual(livreur.etapeDeLigne("Échec après la bascule ; restauration du cockpit et du runner précédents...", "construire"), null);
+  assert.strictEqual(livreur.etapeDeLigne("Bascule...", "preparer"), null);
 });
 
 test("la rétention garde les cinq plus récentes et ne touche à rien d'autre", () => {
