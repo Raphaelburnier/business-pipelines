@@ -56,8 +56,9 @@ dates des fixtures sont fixées ; aucune attente réelle de cinq heures ni appel
 Toujours : préserver les contrôles de mission, les quotas, les approbations et les travaux
 non commités du calendrier 12.2. Le run actif n'est pas interrompu à minuit.
 Pas de nouvelle dépendance, migration de schéma ni changement de modèle de livraison.
-Le workflow de fusion doit synchroniser les deux entrées sensibles `bin/chat-outils-mcp.js`
-et `src/api-chat.js`, déjà ajoutées au moteur par le lot F13 ; le test partagé vérifie
-l'identité de ces listes entre les dépôts. Cette synchronisation nécessite une fusion explicite.
+Les workflows de fusion et de correction CI doivent synchroniser les deux entrées
+sensibles `bin/chat-outils-mcp.js` et `src/api-chat.js`, déjà ajoutées au moteur par le
+lot F13. Les tests vérifient l'identité entre dépôts et la couverture du correcteur CI.
+Cette synchronisation nécessite une fusion explicite.
 La politique calendrier non livrée (12.2) reste séparée. Les fichiers sensibles gardent
 leur règle de fusion explicite ; aucun contrôle humain n'est automatiquement validé.

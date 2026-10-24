@@ -48,9 +48,11 @@ puis passe avec ce raccordement.
 
 Le chantier calendrier 12.2 non commité reste séparé. Aucune règle d'arrêt à minuit,
 nouvelle dépendance, migration de schéma ni modèle de livraison n'est ajouté.
-La liste du workflow de fusion est synchronisée avec le durcissement F13 du moteur :
-deux chemins d'autorité du chat sont ajoutés. La première CI a détecté cette divergence
-entre dépôts ; le contrôle reste actif et cette synchronisation exige une fusion explicite.
+Les listes des workflows de fusion et de correction CI sont synchronisées avec le
+durcissement F13 du moteur : deux chemins d'autorité du chat sont ajoutés. Les contrôles
+CI ont détecté la divergence entre dépôts, puis la liste jumelle manquante ; les deux
+contrôles restent actifs. La suite serveur complète passe avec le moteur courant
+`dbbe8b6`. Cette synchronisation exige une fusion explicite.
 La reprise garde les signatures, le contrat de mission et l'acquittement
 atomique livrés au lot 2.7.
 
