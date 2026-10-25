@@ -9,12 +9,22 @@
 #
 # Se déploie à part du cockpit, dans /volume1/docker/vaultwarden : les deux n'ont rien à
 # partager, et un rebuild du cockpit ne doit jamais toucher au coffre.
+#
+# Durci le 2026-10-25 (F9, F10) d'après la version préparée dans agent-secrets : image
+# épinglée, inscriptions fermées dans ce fichier, limites d'essais, aucun en-tête d'adresse
+# cru. Aucun agent n'a accès à ce service : pas de client Bitwarden sur leurs machines, pas
+# de réseau Docker partagé avec le cockpit.
 
 services:
   vaultwarden:
-    image: vaultwarden/server:latest
+    # Tag ET digest : `latest` faisait tourner ce que Docker Hub servait au dernier pull.
+    # Mettre à jour en changeant les deux après lecture des notes de version.
+    # 1.37.4 : correctifs de sécurité du 2026-10-05 (double authentification, organisations).
+    image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
     container_name: vaultwarden
-    restart: unless-stopped
+    # DSM arrête les conteneurs par `docker stop` au redémarrage : `unless-stopped` ne les
+    # relançait pas.
+    restart: always
     ports:
       # Loopback seulement. 4600 est le cockpit, 4700 le tcg-generator.
       - "127.0.0.1:4800:80"
@@ -23,18 +33,39 @@ services:
     volumes:
       # Base SQLite, pièces jointes, clés RSA du serveur. C'est ce dossier qui se sauvegarde.
       - ./data:/data
-    # ADMIN_TOKEN et le réglage des inscriptions. Gabarit : vaultwarden.env.example.
+    # ADMIN_TOKEN seulement. Gabarit : vaultwarden.env.example.
     env_file:
       - vaultwarden.env
+    # `environment` l'emporte sur `env_file` : ces réglages ne dépendent pas d'un fichier
+    # local qu'on oublie de refermer.
     environment:
       # Port distinct du cockpit : origine distincte, donc aucun droit sur ses écritures.
       # Les applis exigent HTTPS, que `tailscale serve` fournit avec un vrai certificat.
       - DOMAIN=https://nas.tail8296f6.ts.net:8443
-      # Sans ça, les journaux ne voient que l'adresse du relais Tailscale.
-      - IP_HEADER=X-Forwarded-For
+      # Fermées en permanence (F9) : constaté ouvertes le 2026-10-25. Pour créer un compte,
+      # passer à true, `docker compose up -d`, créer le compte, revenir à false.
+      - SIGNUPS_ALLOWED=false
       - INVITATIONS_ALLOWED=false
+      # Aucun en-tête d'adresse (F10). Le port 4800 est joignable de tout processus de l'hôte,
+      # dont les agents du runner (réseau de l'hôte) : avec X-Forwarded-For, chacun choisissait
+      # son adresse et échappait aux limites d'essais. Sans en-tête, toutes les requêtes
+      # viennent de la passerelle Docker et partagent les mêmes limites.
+      - IP_HEADER=none
       - SHOW_PASSWORD_HINT=false
+      - PASSWORD_HINTS_ALLOWED=false
+      # Itérations PBKDF2 côté client pour les nouveaux comptes (recommandation OWASP).
+      - PASSWORD_ITERATIONS=600000
+      # Panneau /admin : session courte et limitation des essais.
+      - ADMIN_SESSION_LIFETIME=20
+      - ADMIN_RATELIMIT_SECONDS=300
+      - ADMIN_RATELIMIT_MAX_BURST=3
+      - LOGIN_RATELIMIT_SECONDS=60
+      - LOGIN_RATELIMIT_MAX_BURST=5
+      - LOG_LEVEL=warn
+      - EXTENDED_LOGGING=true
       - TZ=Europe/Paris
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   coffre:
