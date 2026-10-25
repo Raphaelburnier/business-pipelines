@@ -28,6 +28,10 @@ RUN git config --system --add safe.directory /git/steam-tierlist.git \
  && git config --system --add safe.directory /git/agent-orchestrator.git \
  && git config --system --add safe.directory '/app/workspaces/*'
 ENV USE_BUILTIN_RIPGREP=0
+# L'utilisateur des agents du runner (lot 0.6, F7). Le runner reste root ; il lance le CLI
+# Claude et les commandes des nœuds script sous cet uid (ORCH_AGENT_UTILISATEUR du compose).
+# Ses fichiers ne lui donnent ni la base, ni /root, ni l'environnement du runner.
+RUN addgroup -S -g 1100 agent && adduser -S -D -u 1100 -G agent -h /home/agent -s /bin/bash agent
 
 WORKDIR /app
 

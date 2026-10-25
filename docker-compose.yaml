@@ -133,6 +133,9 @@ services:
       - ORCH_REVEIL_MACHINE=0
       - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
       - OUTPUT_ROOT=/app/workspaces
+      # Les agents tournent sous l'uid 1100 (utilisateur `agent` de l'image), pas en root :
+      # ils n'écrivent plus dans etat/ et ne lisent plus /root (agent-orchestrator, lot 0.6).
+      - ORCH_AGENT_UTILISATEUR=1100:1100
       - ORCH_ROLE=nas
       # Le dépôt monté appartient à admindunas, le runner tourne en root : sans cette
       # exception, git refuse de le cloner (« dubious ownership »). Posé en variables
