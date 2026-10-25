@@ -36,7 +36,5 @@
   {"id": "C2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"], "type": "fix"},
   {"id": "C3", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"], "type": "fix"},
   {"id": "C4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP claude-code-review.yml"], "type": "fix"},
-  {"id": "F9", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP nas/vaultwarden/docker-compose.yaml:15"], "type": "fix"},
-  {"id": "F10", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP nas/vaultwarden/docker-compose.yaml:34"], "type": "fix"},
   {"id": "F14", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP docker-compose.yaml:110,133"], "type": "fix"}
 ]
