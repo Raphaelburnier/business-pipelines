@@ -31,7 +31,6 @@
   {"id": "10.4", "revision": 1, "projet": null, "fichiers": ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"]},
   {"id": "10.5", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"]},
   {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]},
-  {"id": "F6", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/worker.js:127-131 ; src/worker-exec.js:99,133"], "type": "fix"},
   {"id": "R4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP deploy/nas/deploy.sh.modele:45-55"], "type": "fix"},
   {"id": "C1", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml:39"], "type": "fix"},
   {"id": "C2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"], "type": "fix"},
