@@ -67,7 +67,7 @@ services:
     # appeler un modèle ferait du processus exposé au tailnet un moyen de dépenser, ce que
     # tout le reste du dépôt s'emploie à empêcher.
 
-  # Seul ce service reçoit la clé Anthropic. Le cockpit dépose une commande signée dans
+  # Le runner reçoit les identifiants des modèles. Le cockpit dépose une commande dans
   # SQLite ; le runner la prend, lance le pipeline, puis consigne son résultat. Cette
   # séparation empêche le processus exposé au tailnet d'appeler directement un modèle.
   runner:
@@ -141,7 +141,8 @@ services:
       - maitre
 
   # Le maître garde l'adresse réelle du worker : sur DSM, une publication Docker bridge
-  # la remplace par l'adresse de passerelle. Ce service ne lance aucun agent.
+  # la remplace par l'adresse de passerelle. Ce service ne lance aucun agent ; il reprend
+  # la configuration d'exécution que le maître intégré utilisait pour les dispatchs.
   maitre:
     build: .
     container_name: business_maitre
