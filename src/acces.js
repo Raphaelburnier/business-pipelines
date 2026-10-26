@@ -107,10 +107,9 @@ function origineAutorisee(entetes, opts) {
 // Le corps d'une requête ne peut pas dire qui l'envoie. L'identité se lit dans le canal
 // par lequel elle est arrivée, jamais dans ce qu'elle raconte d'elle-même.
 //
-// Sur le NAS, le runner partage le réseau de l'hôte et ses agents ont Bash : ils joignent
-// 127.0.0.1:4600 comme `tailscale serve`. Quand `serve` relaie vers le socket Unix du cockpit
-// (COCKPIT_SOCKET), que le runner ne monte pas, `socketSeul` refuse tout en-tête d'identité
-// arrivé autrement : c'est le chemin qui atteste que Tailscale l'a posé.
+// Le runner est isolé du réseau hôte. Le relais local sans agents rejoint le socket Unix
+// du cockpit (COCKPIT_SOCKET), que le runner ne monte pas. `socketSeul` refuse aussi tout
+// en-tête d'identité arrivé sur le réseau Docker : seul ce chemin atteste le relais.
 function identite(entetes, { tailnet = null, operateurLocal = null, viaSocket = false, socketSeul = false } = {}) {
   const e = entetes || {};
   const login = String(e[EN_TETE_LOGIN] || "").trim();

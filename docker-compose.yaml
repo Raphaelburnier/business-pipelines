@@ -1,6 +1,6 @@
 # Le cockpit sur le NAS, joint par Tailscale, et le pipeline marketing lancé à la demande.
 #
-# Le cockpit n'écoute que sur la boucle locale de l'hôte, et Tailscale relaie vers lui.
+# Le relais du cockpit n'écoute que sur la boucle locale de l'hôte ; Tailscale le joint.
 # C'est la même contrainte que sur le poste, et pour la même raison : les en-têtes
 # d'identité que Tailscale injecte ne sont fiables que si le service reste local.
 
@@ -12,14 +12,8 @@ services:
     # NAS s'éteint, ce qui compte comme un arrêt manuel. Après le redémarrage du 2026-09-23,
     # aucun n'est revenu seul.
     restart: always
-    ports:
-      # Boucle locale de l'hôte uniquement. Écrire "4600:4600" publierait le cockpit sur
-      # tout le réseau, et n'importe quelle machine du LAN pourrait alors fabriquer
-      # l'en-tête Tailscale-User-Login et signer des décisions sous ton nom.
-      - "127.0.0.1:4600:4600"
-    # Un réseau à lui. Lier toutes les interfaces DANS le conteneur le rend joignable par
-    # les autres conteneurs du même réseau, et le NAS en porte sept. Ce réseau-ci n'a que
-    # le cockpit et le cycle, qui sont déjà du même dépôt et lisent les mêmes fichiers.
+    # Réseau de confiance séparé de celui du runner. Le socket Unix atteste le relais ;
+    # aucun port du cockpit n'est publié sur l'hôte.
     networks:
       - business
     volumes:
@@ -55,21 +49,13 @@ services:
       # Le nom du NAS dans le tailnet, pas celui du poste.
       - COCKPIT_TAILNET=nas.tail8296f6.ts.net
       - COCKPIT_SOCKET=/run/cockpit/cockpit.sock
-      # 1 une fois `tailscale serve` passé sur le socket : un en-tête d'identité arrivé par le
-      # port TCP, que les agents du runner joignent, est alors refusé.
-      - COCKPIT_IDENTITE_SOCKET_SEULE=${COCKPIT_IDENTITE_SOCKET_SEULE:-0}
+      # Une identité reçue par TCP interne est toujours refusée. Le relais local est le
+      # seul chemin réseau vers le socket, absent des montages du runner.
+      - COCKPIT_IDENTITE_SOCKET_SEULE=1
       # La clé qui signe fusions, rattachements et livraisons ; absente du runner.
       - COMMANDES_CLE_FICHIER=/app/specs/cles/commandes.key
-      # Lier 127.0.0.1 dans un conteneur ne confine rien, ça rend le service injoignable :
-      # la publication ci-dessus relaie vers l'adresse du conteneur sur son réseau, jamais
-      # vers sa boucle locale à lui, et la connexion est réinitialisée. Le cockpit du NAS a
-      # tourné dix jours dans cet état, « Up » pour Docker et muet pour tout le monde.
-      # Le confinement passe donc à la publication loopback de l'hôte, qui est ce que
-      # Tailscale exige de toute façon pour que ses en-têtes d'identité veuillent dire
-      # quelque chose. COCKPIT_CONTENEUR=1 est la reconnaissance explicite de ce
-      # déplacement : sans elle le cockpit refuse de démarrer sur autre chose que la
-      # boucle locale, pour qu'une faute de frappe dans un .env du poste ne l'ouvre pas
-      # sur le LAN.
+      # Écoute interne au réseau Docker, sans publication ; le relais utilise le socket.
+      # L'option explicite conserve le refus d'une ouverture accidentelle hors conteneur.
       - COCKPIT_HOTE=0.0.0.0
       - COCKPIT_CONTENEUR=1
       - AI_STUDIO_STORAGE_ROOT=/data/ai-studio-work
@@ -94,10 +80,6 @@ services:
     command: ["node", "bin/commande-runner.js"]
     volumes:
       - ./etat:/app/etat
-      # Registre des workers : le maître lit /app/specs/workers.json, sans jamais intégrer le
-      # jeton brut à l'image. Ce fichier seul, pas tout specs/ : les agents de ce conteneur
-      # ont Bash, et specs/ contient les .env des autres projets et le jeton d'abonnement.
-      - ./specs/workers.json:/app/specs/workers.json:ro
       # Qui peut relancer une CI ou écrire sur une PR : les conseillers de « Demander »
       # agissent au nom de la question, et leur droit se lit ici comme pour les boutons.
       - ./specs/livraison.json:/app/specs/livraison.json:ro
@@ -120,18 +102,18 @@ services:
       - /volume1/docker/git/agent-orchestrator.git:/git/agent-orchestrator.git
       # La connexion Codex du conseiller de « Demander » (codex login --device-auth, une
       # fois). Hors de l'image et hors de specs/. Les agents de ce conteneur ont Bash et
-      # peuvent la lire, comme ils voient déjà le jeton d'abonnement Claude du runner.
+      # sous l'uid dédié ne lisent pas /root ; le jeton Claude dans leur environnement
+      # reste le chantier F14 distinct du présent lot.
       - ./codex:/root/.codex
     environment:
       - NODE_ENV=production
       - ORCH_EVENT_STORE=/app/etat/events.sqlite
       - ORCH_MACHINE=nas
       - ORCH_REGISTRE=/app/agent-registry
-      - ORCH_WORKERS=/app/specs/workers.json
       # Une tâche de développement exige le PC déjà disponible. Une course entre le clic
       # et le dispatch échoue clairement au lieu d'envoyer un paquet Wake-on-LAN.
       - ORCH_REVEIL_MACHINE=0
-      - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
+      - ORCH_MAITRE_EXTERNE=1
       - OUTPUT_ROOT=/app/workspaces
       # Les agents tournent sous l'uid 1100 (utilisateur `agent` de l'image), pas en root :
       # ils n'écrivent plus dans etat/ et ne lisent plus /root (agent-orchestrator, lot 0.6).
@@ -152,11 +134,49 @@ services:
       - GIT_CONFIG_VALUE_3=/git/agent-orchestrator.git
     env_file:
       - ./specs/deploiement.env
-    # Le maître éphémère lie directement l'IP Tailscale du NAS. Le mode hôte conserve
-    # l'adresse source du worker pour `tailscale whois`.
+    # Les agents n'ont ni la boucle locale du NAS, ni le réseau du cockpit.
+    networks:
+      - execution
+    depends_on:
+      - maitre
+
+  # Le maître garde l'adresse réelle du worker : sur DSM, une publication Docker bridge
+  # la remplace par l'adresse de passerelle. Ce service ne lance aucun agent.
+  maitre:
+    build: .
+    container_name: business_maitre
+    restart: always
+    command: ["node", "bin/maitre-permanent.js"]
+    volumes:
+      - ./etat:/app/etat
+      - ./specs/workers.json:/app/specs/workers.json:ro
+    environment:
+      - NODE_ENV=production
+      - ORCH_EVENT_STORE=/app/etat/events.sqlite
+      - ORCH_WORKERS=/app/specs/workers.json
+      - ORCH_REVEIL_MACHINE=0
+      - ORCH_TAILNET_WHOIS_URL=http://127.0.0.1:4651
+    env_file:
+      - ./specs/deploiement.env
     network_mode: host
     depends_on:
       - tailscale-whois
+
+  # Tailscale DSM relaie vers la boucle locale. Ce service sans agents transmet au
+  # socket Unix ; le cockpit n'accepte aucune identité sur son port TCP interne.
+  cockpit-relais:
+    build: .
+    container_name: business_cockpit_relais
+    restart: always
+    command: ["node", "deploy/nas/cockpit-relais.js"]
+    volumes:
+      - ./run-cockpit:/run/cockpit:ro
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      - cockpit
 
   # Publie les runs réussis : pousse les branches agent/… des dépôts du NAS vers GitHub et
   # ouvre leur PR ; ramène aussi la branche par défaut de GitHub dans le dépôt du NAS
@@ -272,4 +292,6 @@ services:
 
 networks:
   business:
+    driver: bridge
+  execution:
     driver: bridge

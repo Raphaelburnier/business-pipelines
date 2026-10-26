@@ -33,10 +33,11 @@ let prochaineSondeQuotaCodex = 0;
 let sondeQuotaCodexEnCours = false;
 const controleQuotaCodex = new AbortController();
 let dernierEtatQuotaLogge = null;
-// Le maître permanent (agent-orchestrator, src/maitre-distant.js) et son service. Null tant
-// qu'il n'écoute pas : les lancements restent en file jusqu'à son ouverture.
+// Maître intégré en local, sonde du service séparé sur le NAS. Les lancements restent
+// en file tant que le maître n'est pas prêt.
 let maitre = null;
 let serviceMaitre = null;
+const MAITRE_EXTERNE = process.env.ORCH_MAITRE_EXTERNE === "1";
 const REESSAI_MAITRE_MS = 30_000;
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,7 +62,7 @@ function lancerParallele(lancement, options = {}) {
   const key = options.runId ? options.store?.commandeLancementRun(options.runId)?.id || options.runId : options.commandId;
   const avant = lancementsParRun.get(key) || Promise.resolve();
   const operation = avant.catch(()=>{}).then(async()=> {
-    while (!arret && (!maitre || enfants.size >= capaciteRuns())) await attendre(Math.min(INTERVALLE,50));
+    while (!arret && (!maitre || (MAITRE_EXTERNE && !maitre.pret) || enfants.size >= capaciteRuns())) await attendre(Math.min(INTERVALLE,50));
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
     return lancer(lancement, options);
   });
@@ -256,7 +257,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
     }
     const sousSeuil = Boolean(prioriserRuns && quota?.sousSeuil);
     const filtre = kinds.includes("run.resume") ? { kinds, prioriserRuns: sousSeuil, exclure } : { kinds };
-    if (kinds.includes("run.resume") && (!maitre || enCours.size >= capaciteRuns())) { await attendre(INTERVALLE); continue; }
+    if (kinds.includes("run.resume") && (!maitre || (MAITRE_EXTERNE && !maitre.pret) || enCours.size >= capaciteRuns())) { await attendre(INTERVALLE); continue; }
     const commande = store.prendreCommande(filtre);
     if (!commande) {
       await attendre(INTERVALLE);
@@ -396,11 +397,15 @@ function machineDisponible(machine) {
   return Boolean(maitre?.machineDisponible(machine));
 }
 
-// Le maître vit avec le runner, pas avec un run : le PC reste connecté entre deux runs, et
-// le cockpit le voit en ligne avant d'en lancer un (décision du 2026-10-05). L'adresse
-// d'écoute (ORCH_MAITRE_HOTE, l'IP tailnet du NAS) peut manquer au démarrage du NAS, avant
-// Tailscale : le runner ne tombe pas pour autant, il réessaie, et ses autres files tournent.
+// Le maître vit entre les runs. Sur le NAS il est séparé du runner (lot 0.1) ; le mode
+// intégré conserve le fonctionnement local. Une panne ne ferme pas les autres files.
 async function ouvrirMaitre(store) {
+  if (MAITRE_EXTERNE) {
+    const { MaitreExterne } = require("../src/maitre-externe");
+    maitre = new MaitreExterne({ url: `http://${process.env.ORCH_MAITRE_HOTE}:${process.env.ORCH_MAITRE_PORT || 650}/sante` });
+    while (!arret) { await maitre.sonder(); if (!arret) await attendre(Math.min(INTERVALLE, 1000)); }
+    return;
+  }
   if (typeof Maitre !== "function" || typeof servirMaitre !== "function") {
     throw new Error("moteur incompatible : maître permanent requis");
   }

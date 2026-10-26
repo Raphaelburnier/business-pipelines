@@ -1,71 +1,42 @@
 # Identité par socket et commandes signées (F1, F2)
 
-Audit du 17 octobre 2026, lot 0.1 et 0.2. Nonce et actions du chat ajoutés le 24 octobre 2026.
+## Résumé
 
-## Le problème
+Le lot 0.1 sépare le runner et ses agents du réseau hôte. Un maître sans agents conserve les connexions des workers et un relais local transmet l'accès Tailscale au socket Unix du cockpit. Les commandes d'autorité restent signées. Le nouveau modèle doit être fusionné et approuvé explicitement, puis livré et vérifié avant de déclarer F1 terminé en production.
 
-Le runner tourne en `network_mode: host`, en root, et ses agents ont Bash. Il en découle deux failles.
+## Frontière d'identité — F1
 
-F1. Un agent peut joindre `127.0.0.1:4600` comme le fait `tailscale serve` et poser lui-même l'en-tête `Tailscale-User-Login`. Le cockpit le croit et signe la décision au nom de Raphaël.
+Le runner utilisait le réseau hôte et pouvait joindre la même boucle locale que `tailscale serve`. Un en-tête `Tailscale-User-Login` fabriqué y était encore accepté tant que le mode socket seul restait désactivé.
 
-F2. Le runner monte `etat/` en écriture. Une ligne posée directement dans la table `commands` (`github.merge`, `livraison.start`) avait le même pouvoir qu'un clic, puisque le publieur et le livreur ne relisaient que `par` et `canal`.
+Le montage du lot 0.1 ferme ces deux chemins :
 
-## La correction
+- Le runner utilise son réseau Docker `execution`, distinct du réseau `business` du cockpit. Il n'écoute aucun port sur le NAS et ne monte ni le socket du cockpit, ni LocalAPI Tailscale, ni le registre des workers.
+- `maitre` conserve l'écoute sur l'adresse Tailscale configurée et le port réservé inférieur à 1024 (F6). Ce service n'exécute aucun agent. Le relais whois lui fournit toujours l'identité de la vraie connexion, en plus du jeton vérifié par le moteur.
+- Les étapes empruntent la file durable existante entre le runner et le maître (`MaitreDistant`). La capacité et la disponibilité viennent d'une sonde du maître : une connexion non prête, une étape déjà annoncée, une déconnexion ou une sonde périmée n'autorise pas une reprise.
+- `cockpit-relais` écoute seulement `127.0.0.1:4600` sur le NAS et relaie HTTP et SSE vers le socket Unix. Il n'a aucun agent, secret de modèle ou accès à Docker. Son seul montage est `run-cockpit/` en lecture seule ; son code appartient au modèle protégé `deploy/nas`.
+- Le cockpit ne publie plus de port. `COCKPIT_IDENTITE_SOCKET_SEULE=1` y est imposé : un en-tête d'identité arrivé par TCP interne est refusé. Le canal local conserve uniquement les lectures de santé.
 
-F1 :
-- Le cockpit écoute aussi sur un socket Unix (`COCKPIT_SOCKET`), dans `./run-cockpit/`. Le runner ne monte pas ce dossier.
-- Avec `COCKPIT_IDENTITE_SOCKET_SEULE=1`, un en-tête d'identité qui arrive par le port TCP est refusé.
-- Dans le conteneur, le canal « local » peut lire mais plus écrire. Le contrôle de santé de `deploy.sh` est un GET, il passe toujours.
+Tailscale garde sa cible TCP locale actuelle. Cela fonctionne aussi sur les anciennes versions DSM qui ne prennent pas en charge une cible Unix. Les autres routes du relais Tailscale sont conservées.
 
-F2 :
-- Le cockpit signe en HMAC-SHA256 `github.merge`, `github.project.attach` et `livraison.start`. La signature couvre l'id, le kind, la charge, `par`, `canal` et l'heure de création.
-- Le publieur et le livreur refusent une commande non signée, mal signée ou vieille de plus de 30 minutes.
-- L'id de la commande sert de nonce. Le publieur et le livreur gardent en mémoire les ids déjà exécutés et refusent de les revoir : une ligne remise en file par le runner dans ses 30 minutes ne se rejoue pas. Le registre vit en mémoire, pas dans `etat/` que le runner peut réécrire ; une commande signée avant le démarrage du service est donc refusée (il suffit de recliquer).
-- Le bouton « Relancer la CI » signe `github.ci.rerun`. Le cockpit signe aussi chaque question du chat (`chat.respond`).
-- Le chat tourne dans le runner, sans la clé. Une relance CI ou un commentaire de PR qu'il dépose cite la question signée qui l'a demandé (`payload.origine`). Le publieur exige que cette question soit signée, fraîche, du même auteur et du même canal, et n'accepte pas plus de 5 actions par question.
-- La clé vit dans `specs/cles/commandes.key`. Seuls le cockpit, le publieur et le livreur la montent.
-- La colonne `sig` vient du moteur (agent-orchestrator, PR « store a cockpit signature with each command »), qui doit donc être livré avec ou avant ce changement.
+Une simple publication de port du maître dans un réseau bridge a été écartée : la recette sur le NAS a montré que son proxy Docker masquait l'adresse réelle du worker. Aucun en-tête fourni par le worker ne remplace cette preuve.
 
-Un agent du runner peut encore agir au nom d'une vraie question récente, dans la limite de 5 actions et pendant 30 minutes. Empêcher le modèle du chat d'écrire après avoir lu un contenu non fiable reste le lot 0.4 (F5). Les tours d'équipe et les consignes de run que dépose le chat sont consommés par le runner lui-même : une signature n'y protège rien.
+## Signature des commandes — F2
 
-## Mise en service sur le NAS
+Le cockpit signe en HMAC-SHA256 `github.merge`, `github.project.attach`, `livraison.start`, `github.ci.rerun` et `chat.respond`. La signature couvre l'id, le kind, la charge, l'auteur, le canal et la date.
 
-Les deux protections restent en mode transition tant que ces étapes ne sont pas faites. Rien ne casse à la livraison, mais rien n'est encore fermé.
+Le publieur et le livreur refusent une signature absente, invalide ou vieille de plus de 30 minutes. L'id sert de nonce et ne peut être rejoué. Les commandes antérieures au démarrage du consommateur sont refusées. La clé reste montée seulement dans les services d'autorité, jamais dans le runner.
 
-1. Livrer les trois dépôts : le moteur avec la colonne `sig`, puis ce cockpit.
-2. Créer la clé. Elle ne doit jamais passer par un fichier versionné :
-   ```sh
-   cd /volume1/docker/business-pipelines
-   mkdir -p specs/cles && chmod 700 specs/cles
-   head -c 48 /dev/urandom | base64 > specs/cles/commandes.key
-   chmod 600 specs/cles/commandes.key
-   docker restart business_cockpit business_publieur business_livreur
-   ```
-   Vérifier dans les journaux du publieur que l'avertissement « COMMANDES_CLE_FICHIER absent » a disparu. Ensuite, faire une fusion de test depuis le cockpit.
-3. Faire pointer `tailscale serve` sur le socket. Cela demande une version de Tailscale qui accepte une cible `unix:`, à vérifier sur le paquet DSM :
-   ```sh
-   tailscale serve --bg unix:/volume1/docker/business-pipelines/run-cockpit/cockpit.sock
-   ```
-   Ouvrir le cockpit depuis le téléphone et vérifier que l'identité affichée est bien la tienne.
-4. Fermer le port TCP à l'identité. Écrire `COCKPIT_IDENTITE_SOCKET_SEULE=1` dans `specs/compose.env`, que `deploy.sh` relit à chaque livraison. Un `.env` à la racine serait effacé. Recréer le cockpit une première fois à la main :
-   ```sh
-   cd /volume1/docker/business-pipelines
-   echo COCKPIT_IDENTITE_SOCKET_SEULE=1 > specs/compose.env
-   COCKPIT_IDENTITE_SOCKET_SEULE=1 docker compose up -d --no-build cockpit
-   ```
-   Vérifier que `curl -H "Tailscale-User-Login: x" http://127.0.0.1:4600/api/approbations` répond 403.
+Les actions du chat citent leur question signée d'origine ; le publieur exige une question fraîche du même auteur et du même canal et limite ses actions à cinq. La protection du modèle après lecture de contenu non fiable relève aussi du lot 0.4.
 
-## Retour arrière
+## Activation et recette
 
-- Étape 4 : remettre `COCKPIT_IDENTITE_SOCKET_SEULE=0`.
-- Étape 3 : `tailscale serve --bg http://127.0.0.1:4600`.
-- Étape 2 : retirer `specs/cles/commandes.key`. Le publieur et le livreur repassent en transition.
+1. Faire passer les tests, puis fusionner explicitement la PR : elle modifie Docker et le modèle de déploiement.
+2. Examiner l'empreinte et approuver le nouveau modèle selon `docs/SPEC-modele-livraison-approuve.md`. Une ancienne approbation n'autorise pas ce changement.
+3. Livrer par la procédure habituelle. Les nouvelles images incluent les services `maitre` et `cockpit-relais` ; la bascule attend leur santé, y compris la réponse du maître vue depuis le runner.
+4. Vérifier le réseau réellement exécuté, le refus d'une fausse identité par TCP, l'identité du navigateur à travers Tailscale et la reconnexion du worker. Aucun changement de jeton ni appel de modèle n'est nécessaire à cette recette.
 
-## Ce qui reste ouvert
+Le script sauvegarde les images des nouveaux services lorsqu'ils existent. Son retour arrière remet aussi une ancienne installation à quatre services lors de la première migration, sans laisser un nouveau relais occuper le port du cockpit restauré. Les configurations durables ne sont pas réécrites.
 
-Avec ces protections, un agent du runner ne peut plus signer une fusion ou une livraison. Il peut toujours :
-- lire l'event store ;
-- déposer des `run.start`, ou des actions de chat rattachées à une question récente (lot 0.4) ;
-- lire les jetons d'abonnement du runner (lot 0.6).
+## Limites conservées
 
-La vraie séparation reste de sortir le runner du réseau hôte, en isolant le maître des workers dans un service sans agents.
+L'administrateur du NAS garde l'autorité sur les processus locaux. L'isolation réseau ne remplace pas l'uid des agents et les permissions du lot 0.6. Le jeton Claude dans l'environnement de la CLI reste le sujet F14 ; cette séparation ne le déclare pas résolu.

@@ -69,8 +69,9 @@ class MaitreRecette extends moteur.Maitre {
  constructor(options){
   super(options);
   if(process.argv[1].endsWith('/orch.js'))throw new Error('La CLI a ouvert un second maître');
+  if(process.env.ORCH_MAITRE_EXTERNE==='1'&&process.argv[1].endsWith('/commande-runner.js'))throw new Error('Le runner isolé a ouvert un second maître');
   this.store.majMachine({id:'pc',state:'online',heartbeat:true,meta:{capacites:{missions:1,backends:['codex'],noeuds:['agent','script']}}});
-  if(process.env.RECETTE_MODE==='parallele')this.connexions.set('pc',{capacites:{concurrence:1},socket:{close(){},terminate(){}}});
+  if(process.env.RECETTE_MODE==='parallele'||process.env.ORCH_MAITRE_EXTERNE==='1')this.connexions.set('pc',{capacites:{concurrence:1},socket:{close(){},terminate(){}}});
  }
  machineDisponible(machine){return machine==='pc'&&(process.env.RECETTE_MODE==='parallele'||fs.existsSync(process.env.RECETTE_PRET));}
  async executer(machine,etape){
@@ -86,15 +87,23 @@ moteur.Maitre=MaitreRecette;
     env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ""} --require=${precharge}`.trim();
   }
   const enfants=[];
-  function runner(){
-    const c=spawn(process.execPath,[path.join(RACINE,"bin/commande-runner.js")],{cwd:RACINE,env,detached:true,stdio:["ignore","pipe","pipe"]});
+  function processus(script){
+    const c=spawn(process.execPath,[path.join(RACINE,script)],{cwd:RACINE,env,detached:true,stdio:["ignore","pipe","pipe"]});
     c.sortie="";for(const flux of [c.stdout,c.stderr])flux.on("data",d=>c.sortie=(c.sortie+d).slice(-16000));
     c.termine=new Promise(r=>c.once("close",r));enfants.push(c);return c;
+  }
+  function runner(){return processus("bin/commande-runner.js");}
+  async function separerMaitre(){
+    const serveur=require("node:http").createServer();
+    await new Promise(r=>serveur.listen(0,"127.0.0.1",r));
+    const port=serveur.address().port;await new Promise(r=>serveur.close(r));
+    env.ORCH_MAITRE_PORT=String(port);env.ORCH_MAITRE_EXTERNE="1";
+    return processus("bin/maitre-permanent.js");
   }
   async function arreter(c,signal="SIGTERM") {if(c.exitCode!==null||c.signalCode!==null)return;c.kill(signal);await c.termine;}
   const lectures=()=>fs.existsSync(appels)?fs.readFileSync(appels,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse):[];
   async function fermer(){for(const c of enfants)await arreter(c);store.fermer();fs.rmSync(dir,{recursive:true,force:true});}
-  return {dir,store,commande,contrat,pret,runner,arreter,lectures,fermer,projets};
+  return {dir,store,commande,contrat,pret,runner,separerMaitre,arreter,lectures,fermer,projets};
 }
 
 test("quota connu, redémarrage : même run, mission, workspace et session, sans refaire une étape",async()=>{
@@ -227,9 +236,10 @@ test("acquittement de reprise atomique : une panne intermédiaire conserve comma
   } finally { await f.fermer(); }
 });
 
-test("retour machine après redémarrage : même run et contrat, sans refaire le script ni ouvrir un second maître", async () => {
+for (const separe of [false, true]) test(`retour machine après redémarrage : même run et contrat, maître séparé=${separe}`, async () => {
   const f = fixture("machine");
   try {
+    if (separe) await f.separerMaitre();
     const premier = f.runner();
     const runId = await jusqua(() => f.store.commande(f.commande.id).status === "done" && f.store.commande(f.commande.id).run_id, () => premier.sortie);
     assert.equal(f.store.run(runId).status, "waiting_machine");
