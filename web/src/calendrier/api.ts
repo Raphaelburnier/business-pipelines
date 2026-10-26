@@ -1,3 +1,4 @@
+import type { AgentTache } from "../donnees/agents-taches";
 // Les objectifs planifiés de l'atelier (src/api-atelier.js). Le cockpit crée la commande
 // run.start à l'heure dite ; le moteur ne la prend pas avant son scheduling.notBefore.
 export type Priorite = "haute" | "normale" | "basse";
@@ -37,6 +38,7 @@ export interface Objectif {
   brouillon: BrouillonPlanifie;
   criteres: string[];
   occurrences: Occurrence[];
+  agents?: AgentTache[];
   taskBoard?: { id: string; revision: number; groupeId: string } | null;
 }
 

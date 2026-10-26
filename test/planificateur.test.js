@@ -789,6 +789,11 @@ test('TaskBoard : plans multi-dépôts atomiques, idempotents et planifiés aujo
     assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,0,'aucun premier dépôt laissé planifié après un échec du second');
     f.store.db.exec('DROP TRIGGER echec_groupe');
     const objectifs=demande(corps);assert.equal(objectifs.length,2);
+    for (const o of objectifs) {
+      assert.ok(o.agents.some(a => a.id === 'sacha' && a.role === 'implement'));
+      assert.ok(o.agents.some(a => a.id === 'yanis' && a.role === 'review-security'));
+      assert.ok(o.agents.every(a => Object.keys(a).sort().join(',') === 'id,nom,role,via'), 'la projection des agents ne divulgue pas le contrat de mission');
+    }
     assert.ok(objectifs.every(o=>o.heure==='00:00'&&o.repetition==='none'&&o.taskBoard.id==='1.2'&&o.priority==='haute'));
     assert.deepEqual(demande(corps).map(o=>o.id),objectifs.map(o=>o.id));
     assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,2);

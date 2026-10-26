@@ -1,6 +1,7 @@
 // Lot 12.1 : les runs planifiés, par jour de la semaine. Le programmateur du cockpit crée la
 // commande à l'heure dite et le moteur la démarre dès qu'un worker et son quota le permettent.
 import "./calendrier.css";
+import { AgentsTache } from "../AgentsTache";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { LOTS } from "../avenir/feuille";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
@@ -143,7 +144,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
       const etat = etatEntree({ cle: o.id, objectif, date: quand.date, heure: quand.heure, genre: "lance", occurrence: o });
       return <li key={o.id}>
         <span>{jourLisible(quand.date)} {quand.heure}</span>
-        <span className={`cal-etat ${etat.ton}`}>{etat.mot}</span>
+        <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
         {o.runId ? <a href={`/runs/${encodeURIComponent(o.runId)}`}>Run {o.runId.slice(0, 8)}</a> : <span>Commande {o.commandId.slice(0, 8)}</span>}
         {o.raison && <span className="cal-raison">{o.raison}</span>}
         {o.attente?.prochaineReprise && <span className="cal-raison">reprise prévue {new Date(o.attente.prochaineReprise).toLocaleString("fr-CH", { timeZone: FUSEAU })}</span>}
@@ -159,8 +160,9 @@ function Carte({ entree, choisie, onChoisir }: { entree: Entree; choisie: boolea
     <button type="button" className={`cal-carte ${etat.ton} ${entree.genre}`} aria-pressed={choisie} onClick={onChoisir}>
       <span className="cal-heure">{entree.heure}</span>
       <strong>{entree.objectif.titre}</strong>
+      <AgentsTache agents={entree.objectif.agents} compact />
       <small>{entree.objectif.projectId}{entree.objectif.repetition !== "none" ? ` · ${MOT_REPETITION[entree.objectif.repetition]}` : ""}</small>
-      <span className={`cal-etat ${etat.ton}`}>{etat.mot}</span>
+      <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
       {entree.occurrence?.raison && <small className="cal-raison">{entree.occurrence.raison}</small>}
     </button>
   </li>;
@@ -177,7 +179,7 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
       <span className="cal-heure">{depart.heure}</span>
       <strong>{depart.objectifId} · {etape?.titre ?? "Objectif de la feuille de route"}</strong>
       <small>{depart.projetId} · À venir, lot {etape?.lot ?? "?"}</small>
-      <span className={`cal-etat ${etat.ton}`}>{etat.mot}</span>
+      <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
     </a>
   </li>;
 }
@@ -273,7 +275,7 @@ export function Calendrier({ integre = false, sourceCalendrier, revisionExterne 
           ...(feuilleParJour.get(jour) ?? []).map((d) => ({ cle: d.cle, heure: d.heure, carte: <CarteFeuille key={d.cle} depart={d} /> })),
         ].sort((a, b) => a.heure.localeCompare(b.heure));
         return <li key={jour} data-calendar-date={jour} className={`cal-jour ${jour === aujourdhui ? "aujourdhui" : ""} ${jour < aujourdhui ? "passe" : ""}`}>
-          <h3><span>{JOURS[i]}</span> {jourLisible(jour)}</h3>
+          <h3><span>{JOURS[i]}</span> {jourLisible(jour)}</h3><span className="cal-drop-indice">Déposer ici</span>
           {cartes.length ? <ul>{cartes.map((c) => c.carte)}</ul>
             : <p className="cal-vide">Rien de prévu</p>}
         </li>;
@@ -286,7 +288,7 @@ export function Calendrier({ integre = false, sourceCalendrier, revisionExterne 
           ? { cle: entree.cle, heure: entree.heure, carte: <CarteFeuille key={entree.cle} depart={entree} /> }
           : { cle: entree.cle, heure: entree.heure, carte: <Carte key={entree.cle} entree={entree} choisie={choisi === entree.objectif.id} onChoisir={() => setChoisi(choisi === entree.objectif.id ? null : entree.objectif.id)} /> });
         return <li key={jour} data-calendar-date={jour} className={`cal-mois-jour ${jour.slice(0, 7) !== moisAffiche ? "hors-mois" : ""} ${jour === aujourdhui ? "aujourdhui" : ""}`}>
-          <h3><b>{new Date(`${jour}T12:00:00Z`).getUTCDate()}</b></h3>
+          <h3><b>{new Date(`${jour}T12:00:00Z`).getUTCDate()}</b></h3><span className="cal-drop-indice">Déposer ici</span>
           {cartes.length > 0 && <ul>{cartes.slice(0, 3).map((c) => c.carte)}</ul>}
           {cartes.length > 3 && <span className="cal-plus">+{cartes.length - 3} autres</span>}
         </li>;

@@ -82,3 +82,86 @@
   .cal-mois-jour .cal-carte strong { font-size: 9px; }
   .cal-plus { font-size: 9px; }
 }
+
+/* Un plan de travail : calendrier stable à gauche, tâches et commandes à droite. */
+.taskboard-entete { padding: 12px 18px; }
+.taskboard-entete h2 { font-size: 22px; }
+.taskboard-entete p { margin: 4px 0; font-size: 13px; }
+.taskboard-grille { grid-template-columns: minmax(0, 1.1fr) minmax(440px, 1fr); }
+.taskboard-calendrier { position: sticky; top: 82px; }
+.taskboard-cal-titre { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 0 10px; }
+.taskboard-cal-titre h3 { margin: 0; font-size: 17px; }
+.taskboard-cal-titre p { margin: 0; font-size: 12px; color: var(--color-douce); }
+.taskboard-taches { max-height: none; overflow: visible; padding: 14px; }
+.taskboard-taches .av-filtres-bloc { position: sticky; top: 82px; z-index: 2; }
+.av-embarque .av-embarque-titre { grid-template-columns: 1fr auto; }
+.av-embarque .av-chiffres-compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.av-embarque .av-chiffres-compact div { min-width: 58px; }
+.av-page .av-filtres-dropdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 10px; }
+.av-page .av-filtres-dropdown label { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin: 0; min-width: 0; font-size: 11px; }
+.av-page .av-filtres-dropdown select, .av-page .av-filtres-dropdown input { width: 100%; min-height: 36px; flex: initial; }
+.av-page .av-filtres-dropdown .av-recherche { grid-column: 1 / 4; }
+.av-page .av-filtres-dropdown .av-action { grid-column: 4; justify-self: end; margin: 0; }
+.taskboard-taches .av-ligne { align-items: center; gap: 6px 9px; }
+.taskboard-taches .av-titre { flex-basis: 190px; font-weight: 600; }
+.task-poignee { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 3px 6px; border: 1px dashed var(--color-trait-fort); color: var(--color-douce); font: 400 10px/1 var(--font-mono); cursor: grab; user-select: none; }
+.task-poignee:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.task-poignee:active { cursor: grabbing; }
+.taskboard-glissement [data-calendar-date] { outline: 1px dashed var(--color-accent); outline-offset: -2px; }
+.cal-drop-indice { display: none; }
+.taskboard-glissement .cal-drop-indice { display: block; margin-bottom: 6px; color: var(--color-accent); font: 400 10px/1.4 var(--font-mono); }
+.taskboard-glissement [data-calendar-date].taskboard-drop-cible { outline-width: 3px; background: var(--color-carte); }
+.taskboard-taches .av-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.av-fichiers-details { margin-top: 8px; font-size: 11px; color: var(--color-douce); }
+.av-fichiers-details > summary { cursor: pointer; }
+.av-attribution:has(> .av-action:only-child) { padding: 0; border: 0; background: transparent; }
+.av-form { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.av-form > label, .av-form > fieldset { width: 100%; box-sizing: border-box; }
+.av-form .av-case, .taskboard-system-plan .taskboard-case { display: flex; flex-direction: row; align-items: center; gap: 9px; color: var(--color-encre); }
+.av-case input[type="checkbox"], .taskboard-case input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--color-accent); }
+.av-form .av-choix-agents { margin: 0; border-radius: 0; }
+.av-choix-agents label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 12px; }
+.av-choix-agents p { font-size: 11px; line-height: 1.5; }
+.av-choix-agents select { min-height: 36px; }
+.taskboard-equipes { width: 100%; }
+.taskboard-equipes fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 0 8px; }
+.taskboard-equipes fieldset legend, .taskboard-equipes fieldset > p { grid-column: 1 / -1; }
+.taskboard-page label.run-prioritaire { display: flex; flex-direction: row; align-items: center; gap: 10px; color: var(--color-encre); }
+.task-agents { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 100%; }
+.task-agent { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 2px; background: var(--color-carte); border: 1px solid var(--color-trait); border-radius: 20px; color: var(--color-encre); font-size: 11px; }
+.task-agent-portrait { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-surface); color: var(--color-accent); font: 600 9px/1 var(--font-mono); overflow: hidden; }
+.task-agent-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.task-agent-vide { display: inline-block; font-size: 11px; color: var(--color-douce); }
+.task-agents.compact { gap: 2px; }
+.task-agents.compact .task-agent { padding: 0; border: 0; }
+.task-agents.compact .task-agent-nom { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.cal-carte .task-agent-vide { font-size: 9px; }
+@media (max-width: 1100px) {
+  .taskboard-grille { grid-template-columns: minmax(0, 1fr); }
+  .taskboard-calendrier { position: static; }
+  .taskboard-taches { max-height: none; }
+}
+@media (max-width: 640px) {
+  .taskboard-entete { padding: 12px; }
+  .taskboard-cal-titre { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .av-embarque .av-embarque-titre { grid-template-columns: 1fr; }
+  .taskboard-equipes fieldset { grid-template-columns: 1fr; }
+  .taskboard-taches .av-titre { flex-basis: calc(100% - 80px); }
+}
+
+@media (max-width: 640px) {
+  .av-page .av-filtres-dropdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .av-page .av-filtres-dropdown .av-recherche, .av-page .av-filtres-dropdown .av-action { grid-column: 1 / -1; }
+  .taskboard-taches .av-filtres-bloc { position: static; }
+}
+.taskboard-entete > div { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); column-gap: 24px; }
+.taskboard-entete .kicker, .taskboard-entete h2, .taskboard-entete > div > p:not(.taskboard-quota) { grid-column: 1; }
+.taskboard-entete .taskboard-quota { grid-column: 2; grid-row: 1 / 4; align-self: center; margin: 0 !important; padding-left: 18px; border-left: 1px solid var(--color-trait); }
+@media (max-width: 800px) {
+  .taskboard-entete > div { grid-template-columns: minmax(0, 1fr); }
+  .taskboard-entete .taskboard-quota { grid-column: 1; grid-row: auto; padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--color-trait); }
+}
+.cal-carte .cal-etat { max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.task-agents.compact { gap: 0; }
+.task-agents.compact .task-agent-portrait { flex-basis: 18px; width: 18px; height: 18px; font-size: 8px; }
+.task-agents.compact .task-agent + .task-agent { margin-left: -3px; }

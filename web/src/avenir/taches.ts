@@ -33,7 +33,7 @@ export function statutObjectif(o: Objectif): Statut {
 
 export function construireTaches(lots: Lot[], defauts: Defaut[], objectifs: Objectif[]): Tache[] {
   return [
-    ...objectifs.map((o): Tache => ({ cle: `projet:${o.id}`, type: "projet", projet: o.projectId, ref: o.brouillon.graph.title || o.brouillon.graph.name,
+    ...objectifs.filter(o => !o.taskBoard).map((o): Tache => ({ cle: `projet:${o.id}`, type: "projet", projet: o.projectId, ref: o.brouillon.graph.title || o.brouillon.graph.name,
       titre: o.titre, detail: o.criteres.join(" · "), statut: statutObjectif(o), objectif: o })),
     ...defauts.map((d): Tache => ({ cle: `fix:${d.id}`, type: "fix", projet: SYSTEME, ref: d.id, titre: d.titre, detail: `Correctif : ${d.correctif}`, statut: d.statut, severite: d.severite })),
     ...lots.flatMap((l) => l.etapes.map((e): Tache => ({ cle: `etape:${e.id}`, type: "fonctionnalite", projet: SYSTEME, ref: e.id, titre: e.titre, detail: e.detail, statut: e.statut, lot: l.id }))),

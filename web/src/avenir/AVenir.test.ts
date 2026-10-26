@@ -82,7 +82,10 @@ describe("attribution depuis À venir", () => {
     expect(html).toContain("chaque semaine");
     for (const libelle of ["Tâches projet", "Fonctionnalités système", "Fix", "Nouvelle tâche projet"]) expect(html).toContain(libelle);
     expect(html).toContain('aria-label="Filtrer par projet"');
-    expect(html).toContain(">Système <span>");
+    expect(html).toContain('option value="systeme"');
+    expect(html).toContain('value="croissant" selected=""');
+    const lots = [...html.matchAll(/id="av-lot-(\d+)"/g)].map(m => Number(m[1]));
+    expect(lots).toEqual([...lots].sort((a,b) => a-b));
   });
 
   it("explique un conflit de réservation concurrente", () => {

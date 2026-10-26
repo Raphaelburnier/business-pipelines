@@ -2,6 +2,9 @@
 // vivent dans feuille.ts (une PR qui avance un point met son statut à jour) ; les tâches des
 // projets sont les objectifs de l'atelier, ceux du calendrier.
 import "./avenir.css";
+import { nomRole } from "../donnees/agents-taches";
+import { AgentsTache } from "../AgentsTache";
+import { PoigneeTache } from "../PoigneeTache";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { dateCivile, FUSEAU, instantZurich } from "../calendrier/semaine";
 import { useCharge, useSource } from "../donnees/contexte";
@@ -10,7 +13,7 @@ import type { AttributionAvenir } from "../donnees/source";
 import { type Objectif, type SourceCalendrier, sourceCalendrierApi, sourceCalendrierMaquette } from "../calendrier/api";
 import { Planifier } from "../calendrier/Calendrier";
 import { MOT_REPETITION } from "../calendrier/semaine";
-import { DATE_AUDIT, DEFAUTS, LOTS_PRIORISES, PRIORITES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Statut } from "./feuille";
+import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Statut } from "./feuille";
 import { compter, construireTaches, filtrer, FILTRE_DEFAUT, parSeverite, projetsDisponibles, type Filtre, type Tache } from "./taches";
 import { sensibiliteEtape } from "./sensibilite";
 import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
@@ -49,8 +52,8 @@ export function construireSpecAttribution(etape: Etape, projectId: string, crite
 
 type ChoixAgents = NonNullable<SpecMission["agents"]>;
 
-export function AgentsAttribution({ projectId, index, choix, onChange, disabled }: {
-  projectId: string; index: number; choix: ChoixAgents; onChange: (choix: ChoixAgents) => void; disabled: boolean;
+export function AgentsAttribution({ projectId, index, choix, onChange, disabled, titre = "Agents du plan" }: {
+  titre?: string; projectId: string; index: number; choix: ChoixAgents; onChange: (choix: ChoixAgents) => void; disabled: boolean;
 }) {
   const { source } = useSource();
   const [options, setOptions] = useState<OptionsMission | null>(null);
@@ -63,12 +66,12 @@ export function AgentsAttribution({ projectId, index, choix, onChange, disabled 
     return () => { annule = true; };
   }, [source, projectId, index]);
   return <fieldset className="av-choix-agents" disabled={disabled}>
-    <legend>Agents du plan</legend>
+    <legend>{titre}</legend>
     <p>Le choix automatique tient compte des disponibilités. Un agent choisi explicitement doit être disponible pour lancer le run.</p>
     {erreur && <p role="status">Choix des agents indisponible : {erreur}</p>}
     {!options && !erreur && <p>Chargement des agents compatibles…</p>}
-    {options?.roles.map((r) => <label key={r.noeud}>{r.noeud}{r.type === "review" ? " · revue indépendante" : ""}
-      <select value={choix.find((c) => c.noeud === r.noeud)?.membre ?? ""} onChange={(e) => {
+    {options?.roles.map((r) => <label key={r.noeud}>{nomRole(r.noeud)}{r.type === "review" ? " · revue indépendante" : ""}
+      <select aria-label={`Agent pour ${nomRole(r.noeud)}`} value={choix.find((c) => c.noeud === r.noeud)?.membre ?? ""} onChange={(e) => {
         const autres = choix.filter((c) => c.noeud !== r.noeud);
         onChange(e.target.value ? [...autres, { noeud: r.noeud, membre: e.target.value }] : autres);
       }}>
@@ -101,7 +104,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const [sensibleManuel, setSensibleManuel] = useState(false);
   const [choixAgents, setChoixAgents] = useState<ChoixAgents>([]);
   const [choixModifies, setChoixModifies] = useState(false);
-  const [indexAgents, setIndexAgents] = useState<number | null>(null);
+  const [indexAgents, setIndexAgents] = useState<number>(0);
   const [accepteDegrade, setAccepteDegrade] = useState(false);
   const [priorite, setPriorite] = useState<"haute" | "normale">(attribution.priorite === "haute" ? "haute" : "normale");
   const [reclassement, setReclassement] = useState(false);
@@ -118,12 +121,12 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     const criteres = lignes(String(formulaire.get("criteres") || ""));
     if (!projectId) return;
     if (!criteres.length) { setErreur("Renseigne au moins un critère."); return; }
-    const spec = construireSpecAttribution(etape, projectId, criteres, sensibleManuel);
-    setChoixAgents([]); setChoixModifies(false); setIndexAgents(null);
+    const spec = { ...construireSpecAttribution(etape, projectId, criteres, sensibleManuel), agents: choixAgents };
+    setChoixModifies(false);
     setErreur(null); setAttente(true);
     try {
       const reponse = await source.proposerPlan(spec);
-      setProposition({ spec, reponse }); setIndexAgents(reponse.plan?.pipeline.index ?? null); setAccepteDegrade(false);
+      setProposition({ spec, reponse }); setIndexAgents(reponse.plan?.pipeline.index ?? indexAgents); setAccepteDegrade(false);
     }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
     finally { setAttente(false); }
@@ -178,14 +181,14 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   const plan = proposition?.reponse;
   const indisponible = ["queued", "running", "paused", "waiting_quota", "waiting_machine", "waiting_freshness", "waiting_approval", "waiting_auth", "review"].includes(attribution.statut);
   return <div className="av-attribution">
-    <div className="av-attribution-meta">
+    {attribution.commandeId && <div className="av-attribution-meta">
       <span>{agentNom}</span><span>{projetNom}</span>
       {attribution.runId ? <a href={`/runs/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
       <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
       {attribution.prevuLe && !attribution.runId && <a href="/calendrier">Prévu le {new Date(attribution.prevuLe).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</a>}
       {attribution.positionFile != null && <span>Objectifs #{attribution.positionFile}</span>}
       <span>{attribution.priorite === "haute" ? "Prioritaire" : "Non prioritaire"}</span>
-    </div>
+    </div>}
     {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise automatique en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
     {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "pending" && !attribution.attente.commandeAutomatique && <p className="av-file-attente">Reprise manuelle en file{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
     {attribution.statut === "waiting_quota" && attribution.attente?.commandeStatut === "taken" && <p className="av-file-attente">{attribution.attente.commandeAutomatique ? "Reprise automatique en cours" : "Reprise manuelle en cours"}{attribution.attente.runtime ? ` · ${attribution.attente.runtime}` : ""}</p>}
@@ -201,8 +204,8 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     {erreur && <p className="av-attribution-erreur" role="alert">{erreur}</p>}
     {ouvert && etape.statut === "a-faire" && !indisponible && !proposition && !commandeId && <form className="av-form" onSubmit={proposer}>
       <p className="av-form-depot">Dépôt : <code>{projectId}</code></p>
-      <p className="av-form-depot">Le plan propose les agents ; tu peux ensuite les choisir pour chaque rôle.</p>
-      <label><input type="checkbox" checked={sensibiliteEtape(etape).sensible || sensibleManuel} disabled={sensibiliteEtape(etape).sensible} onChange={(e) => setSensibleManuel(e.target.checked)} /> Sensible — revue de sécurité et vérifications renforcées</label>
+      <AgentsAttribution projectId={projectId!} index={indexAgents} titre="Choisir les agents" choix={choixAgents} disabled={attente} onChange={setChoixAgents} />
+      <label className="av-case"><input type="checkbox" aria-label={`Tâche sensible ${etape.id}`} checked={sensibiliteEtape(etape).sensible || sensibleManuel} disabled={sensibiliteEtape(etape).sensible} onChange={(e) => setSensibleManuel(e.target.checked)} /> Sensible — revue de sécurité et vérifications renforcées</label>
       {sensibiliteEtape(etape).sensible && <p className="av-form-depot">Imposé par les fichiers annoncés ou le risque du cadrage. Le serveur revérifie cette exigence.</p>}
       <InterrupteurPrioritaire checked={priorite === "haute"} onChange={(prioritaire) => setPriorite(prioritaire ? "haute" : "normale")} />
       <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
@@ -234,18 +237,22 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
 
 function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [] }: { reservations?: Objectif[]; e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void }) {
   const sensibilite = sensibiliteEtape(e);
-  return <li id={`av-etape-${e.id}`} draggable={e.statut === "a-faire" && !reservations.length} data-task-payload={JSON.stringify({ type: "fonctionnalite", titre: e.titre, detail: e.detail, ref: e.id, fichiers: e.fichiers })}>
+  const departDeplacable = attribution?.statut === "queued" && attribution.prevuLe && !attribution.runId;
+  const planifiable = e.statut === "a-faire" && !reservations.length && (!attribution || departDeplacable || ["failed", "cancelled", "non_attribue"].includes(attribution.statut));
+  return <li id={`av-etape-${e.id}`} draggable={Boolean(planifiable)} data-task-payload={JSON.stringify(departDeplacable ? {type:"depart",commandeId:attribution!.commandeId,prevuLe:attribution!.prevuLe} : { type: "fonctionnalite", titre: e.titre, detail: e.detail, ref: e.id, fichiers: e.fichiers })}>
     <div className="av-ligne">
       <b>{e.id}</b>
+      {planifiable && <PoigneeTache titre={e.titre} />}
       <span className="av-titre">{e.titre}</span>
       {sensibilite.sensible && <span className="av-sensible" title={`Revue de sécurité demandée. ${sensibilite.raisons.join(" ")} La fusion explicite dépend des fichiers réellement modifiés.`}>sensible</span>}
       <Pastille statut={e.statut} />
     </div>
-    <p>{e.detail}</p>
+    <p className="av-description">{e.detail}</p>
+    {(e.statut !== "fait" || attribution || reservations.length > 0) && <AgentsTache agents={reservations.flatMap(o => o.agents || []).concat(attribution?.agents || (attribution?.agent ? [{ id: attribution.agent.id, nom: attribution.agent.nom, role: "Responsable", via: attribution.agent.llm.via }] : []))} />}
     {!!reservations.length && <p>Planifiée pour {reservations.map(o=>`${o.projectId} (${o.date})`).join(", ")} · <a href="#taskboard-calendrier">Voir dans le calendrier</a></p>}
     {attribution && <Attribution etape={e} attribution={attribution} onRefresh={onRefresh} projetNom={projetNom} agentNom={attribution.agent?.nom ?? "Agent inconnu"} />}
     {estAttribuable(e) && !attribution && !reservations.length && <Attribution etape={e} onRefresh={onRefresh} attribution={{ objectif: { id: e.id, revision: revisionObjectif(e.id) ?? 1 }, commandeId: "", runId: null, projetId: "", agent: null, statut: "non_attribue", creeLe: "", raison: null, livraison: null }} projetNom="" agentNom="" />}
-    <div className="av-fichiers">{e.fichiers.map((f) => <code key={f}>{f}</code>)}</div>
+    <details className="av-fichiers-details"><summary>Fichiers concernés</summary><div className="av-fichiers">{e.fichiers.map((f) => <code key={f}>{f}</code>)}</div></details>
   </li>;
 }
 
@@ -256,10 +263,12 @@ function TacheProjet({ tache }: { tache: Tache }) {
   return <li draggable={tache.statut === "a-faire"} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: tache.detail, objectif: { id: o.id, revision: o.revision, heure: o.heure, nextAt: o.nextAt, active: o.active, aDeplacer: o.occurrences.some((occurrence) => occurrence.statut === "queued") } })}>
     <div className="av-ligne">
       <span className="av-type projet">{tache.ref}</span>
+      {tache.statut === "a-faire" && <PoigneeTache titre={o.titre} />}
       <span className="av-titre">{o.titre}</span>
       <Pastille statut={tache.statut} />
     </div>
-    <p>{tache.detail}</p>
+    <p className="av-description">{tache.detail}</p>
+    <AgentsTache agents={o.agents} />
     <div className="av-attribution-meta">
       {prochain && o.active ? <a href="/calendrier">Prochain départ le {prochain}</a> : <a href="/calendrier">{o.active ? "Aucun départ prévu" : "À planifier : en pause dans le calendrier"}</a>}
       {o.repetition !== "none" && <span>{MOT_REPETITION[o.repetition]}</span>}
@@ -274,12 +283,14 @@ function Fix({ tache, reservations = [] }: { tache: Tache; reservations?: Object
   return <li id={`av-etape-${d.id}`} draggable={d.statut === "a-faire" && !reservations.length} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
     <div className="av-ligne">
       <b>{d.id}</b>
+      {d.statut === "a-faire" && !reservations.length && <PoigneeTache titre={d.titre} />}
       <span className={`av-severite ${d.severite}`}>{d.severite}</span>
       <span className="av-titre">{d.titre}</span>
       <span className="av-correctif">{d.correctif}</span>
       {!!reservations.length && <a href="#taskboard-calendrier">Planifiée ({reservations.length} dépôt(s))</a>}
       <Pastille statut={d.statut} />
     </div>
+    <AgentsTache agents={reservations.flatMap(o => o.agents || [])} />
   </li>;
 }
 
@@ -299,13 +310,14 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
   const { donnees: objectifs, erreur: erreurObjectifs } = useCharge(() => calendrier.objectifs(), [calendrier, revision, revisionExterne]);
   const [filtre, setFiltre] = useState<Filtre>(FILTRE_DEFAUT);
   const [nouvelle, setNouvelle] = useState(false);
+  const [ordre, setOrdre] = useState("croissant");
   const rafraichir = () => { setRevision((n) => n + 1); onChangement?.(); };
   // Le calendrier renvoie vers une étape : la page arrive en chargement différé, on y défile ensuite.
   useEffect(() => {
     if (window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "center" });
   }, []);
 
-  const taches = useMemo(() => construireTaches(LOTS_PRIORISES, DEFAUTS, objectifs ?? []), [objectifs]);
+  const taches = useMemo(() => construireTaches(LOTS, DEFAUTS, objectifs ?? []), [objectifs]);
   const visibles = filtrer(taches, filtre);
   const projets = projetsDisponibles(taches, (topo?.projets ?? []).map((p) => ({ id: p.id, nom: p.nom })));
   const reservations = (id: string) => (objectifs ?? []).filter(o=>o.taskBoard?.id===id && (o.nextAt || ['queued','running','waiting_quota','waiting_machine','waiting_approval','waiting_auth','waiting_freshness'].includes(o.occurrences[0]?.statut || '')));
@@ -316,11 +328,11 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
   const projetsVisibles = [...new Set(visibles.filter((t) => t.type === "projet").map((t) => t.projet))];
   const fix = visibles.filter((t) => t.type === "fix").sort(parSeverite);
   const etapesVisibles = new Set(visibles.filter((t) => t.type === "fonctionnalite").map((t) => t.ref));
-  const lots = LOTS_PRIORISES.filter((l) => l.etapes.some((e) => etapesVisibles.has(e.id)));
+  const lots = (ordre === "conseille" ? LOTS_PRIORISES : [...LOTS].sort((a,b) => (Number(a.id) - Number(b.id)) * (ordre === "decroissant" ? -1 : 1))).filter((l) => l.etapes.some((e) => etapesVisibles.has(e.id)));
   const critiques = taches.filter((t) => t.type === "fix" && t.severite === "critique" && t.statut !== "fait").length;
   const aujourdhui = dateCivile(Date.now()).date;
   // En vue « Tout », les longues listes système restent repliées derrière leur résumé.
-  const deplier = (type: Filtre["type"]) => filtre.type === type || filtre.recherche.trim() !== "";
+  const deplier = (type: Filtre["type"]) => filtre.type === type || (integre && type === "fonctionnalite" && filtre.type === "tous") || filtre.recherche.trim() !== "";
   const ancre = typeof window === "undefined" ? "" : window.location.hash;
 
   return (
@@ -350,22 +362,21 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
       </header>}
 
       <section className="av-filtres-bloc" aria-label="Filtres">
-        <div className="av-filtres" role="group" aria-label="Filtrer par projet">
-          <span className="av-filtre-titre">Projet</span>
-          {[{ id: "tous", nom: "Tous" }, ...projets].map((p) => (
-            <button key={p.id} type="button" aria-pressed={filtre.projet === p.id} onClick={() => setFiltre({ ...filtre, projet: p.id })}>
-              {p.nom} <span>{p.id === "tous" ? taches.filter((t) => t.statut !== "fait").length : ouvertesDe(p.id)}</span>
-            </button>
-          ))}
-        </div>
-        <div className="av-filtres" role="group" aria-label="Filtrer par type">
-          <span className="av-filtre-titre">Type</span>
-          {TYPES.map((t) => <button key={t.id} type="button" aria-pressed={filtre.type === t.id} onClick={() => setFiltre({ ...filtre, type: t.id })}>{t.nom}</button>)}
-          <label>Statut<select value={filtre.statut} onChange={(e) => setFiltre({ ...filtre, statut: e.target.value as Filtre["statut"] })}>
+        <div className="av-filtres av-filtres-dropdown">
+          <label>Projet<select aria-label="Filtrer par projet" value={filtre.projet} onChange={e=>setFiltre({...filtre,projet:e.target.value})}>
+            <option value="tous">Tous les projets</option>{projets.map(p=><option key={p.id} value={p.id}>{p.nom} · {ouvertesDe(p.id)}</option>)}
+          </select></label>
+          <label>Type<select aria-label="Filtrer par type" value={filtre.type} onChange={e=>setFiltre({...filtre,type:e.target.value as Filtre["type"]})}>
+            {TYPES.map(t=><option key={t.id} value={t.id}>{t.nom}</option>)}
+          </select></label>
+          <label>Statut<select aria-label="Filtrer par statut" value={filtre.statut} onChange={e=>setFiltre({...filtre,statut:e.target.value as Filtre["statut"]})}>
             <option value="ouvertes">À faire et en cours</option><option value="toutes">Toutes</option><option value="faites">Faites</option>
           </select></label>
-          <input type="search" aria-label="Rechercher une tâche" placeholder="Rechercher…" value={filtre.recherche} onChange={(e) => setFiltre({ ...filtre, recherche: e.target.value })} />
-          <button type="button" className="av-action" onClick={() => setNouvelle((v) => !v)} aria-expanded={nouvelle}>Nouvelle tâche projet</button>
+          <label>Ordre<select aria-label="Ordre des lots" value={ordre} onChange={e=>setOrdre(e.target.value)}>
+            <option value="croissant">Lot croissant</option><option value="decroissant">Lot décroissant</option><option value="conseille">Ordre conseillé</option>
+          </select></label>
+          <label className="av-recherche">Rechercher<input type="search" aria-label="Rechercher une tâche" placeholder="Numéro, titre, mot-clé…" value={filtre.recherche} onChange={e=>setFiltre({...filtre,recherche:e.target.value})} /></label>
+          <button type="button" className="av-action" onClick={()=>setNouvelle(v=>!v)} aria-expanded={nouvelle}>Nouvelle tâche projet</button>
         </div>
       </section>
 
@@ -396,16 +407,6 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
       </details>}
 
       {!!lots.length && <>
-        <details className="av-lot av-ordre">
-          <summary><span className="kicker">Classement du 22 octobre 2026</span> Ordre de travail des fonctionnalités système</summary>
-          <ol className="av-suggestions">
-            {PRIORITES.map((priorite, index) => <li key={priorite.titre}>
-              <b>{index + 1}. {priorite.titre}</b>
-              <p>{priorite.detail}</p>
-              <p>{priorite.lots.map((id, i) => <span key={id}>{i > 0 && " · "}<a href={`#av-lot-${id}`}>Lot {id}</a></span>)}</p>
-            </li>)}
-          </ol>
-        </details>
         <ol className="av-lots">
           {lots.map((lot) => {
             const faits = lot.etapes.filter((e) => e.statut === "fait").length;
