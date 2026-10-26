@@ -162,6 +162,7 @@ function objectifsAvenirs(store, { limite = 100 } = {}) {
       runId: ligne.run_id,
       projetId: ligne.project_id || payload.projectId,
       agent: agent ? { id: agent.membre, nom: agent.nom, llm: agent.llm } : null,
+      agents: require("./agents-taches").agentsTaches(mission),
       statut: statutObjectif(ligne, mission),
       priorite,
       prevuLe: payload.scheduling?.notBefore || null,

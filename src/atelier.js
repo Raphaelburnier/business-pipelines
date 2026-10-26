@@ -196,7 +196,7 @@ function lire(store, id) {
   if (!g) throw new Error('Objectif inconnu.');
   return { id: g.id, revision: g.revision, projectId: g.project_id, titre: g.title, priority: g.priority, source: g.source,
     date: g.local_date, heure: g.local_hour, repetition: g.recurrence, active: Boolean(g.active), nextAt: g.next_at,
-    brouillon: JSON.parse(g.draft_json), criteres: JSON.parse(g.mission_json).criteres, taskBoard: JSON.parse(g.mission_json).resolution.spec._mission?.taskBoardObjective || null, occurrences: occurrences(store, id) };
+    brouillon: JSON.parse(g.draft_json), criteres: JSON.parse(g.mission_json).criteres, agents: require('./agents-taches').agentsTaches(JSON.parse(g.mission_json)), taskBoard: JSON.parse(g.mission_json).resolution.spec._mission?.taskBoardObjective || null, occurrences: occurrences(store, id) };
 }
 function lister(store) {
   initialiser(store);

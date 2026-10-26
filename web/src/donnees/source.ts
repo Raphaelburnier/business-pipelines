@@ -1,3 +1,4 @@
+import type { AgentTache } from "./agents-taches";
 // La seule frontière entre l'écran et les données.
 //
 // Annexe A : le front se construit d'abord sur une maquette alimentée par des fixtures, puis
@@ -36,6 +37,7 @@ export interface AttributionAvenir {
   commandeId: string;
   runId: string | null;
   projetId: string;
+  agents?: AgentTache[];
   agent: { id: string | null; nom: string; llm: import("../types").Llm } | null;
   statut: string;
   priorite?: "haute" | "normale" | "basse";
