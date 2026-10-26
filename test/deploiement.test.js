@@ -106,3 +106,43 @@ test("une interruption avant lecture de l'accusé setsid ne démarre pas la comm
     assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "ancienne version");
   } finally { f.nettoyer(); }
 });
+
+for (const dejaIsole of [false, true]) test(`la bascule et sa restauration couvrent les services séparés (déjà isolé=${dejaIsole})`, async () => {
+  const f = recette("apres-echec", { dejaIsole });
+  try {
+    const fin = await f.lancer();
+    assert.notEqual(fin.code, 0, fin.sortie);
+    assert.match(fin.sortie, /Restauration confirmée/);
+    const commandes = fs.readFileSync(path.join(f.racine, "docker.log"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l));
+    const lancements = commandes.filter(a => a[0] === "compose" && a[1] === "up");
+    assert.equal(lancements.length, 2);
+    assert.ok(lancements[0].includes("maitre")); assert.ok(lancements[0].includes("cockpit-relais"));
+    assert.equal(lancements[1].includes("maitre"), dejaIsole);
+    assert.equal(lancements[1].includes("cockpit-relais"), dejaIsole);
+    const tags = commandes.filter(a => a[0] === "tag");
+    assert.equal(tags.some(a => a[1] === "image-ancienne-business_maitre"), dejaIsole);
+    assert.equal(tags.some(a => a[1] === "image-ancienne-business_cockpit_relais"), dejaIsole);
+    assert.equal(fs.existsSync(path.join(f.business, "etat/incident-livraison")), false);
+  } finally { f.nettoyer(); }
+});
+
+test("un maître séparé malade déclenche la restauration même si le cockpit répond", async () => {
+  const f = recette("maitre-malade");
+  try {
+    const fin = await f.lancer({ env: { LIVRAISON_SWITCH_TIMEOUT_SEC: "4" } });
+    assert.notEqual(fin.code, 0, fin.sortie);
+    assert.match(fin.sortie, /Restauration confirmée/);
+    assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "ancienne version");
+  } finally { f.nettoyer(); }
+});
+
+test("une création partielle des nouveaux conteneurs permet encore le retour arrière", async () => {
+  const f = recette("creation-partielle");
+  try {
+    const fin = await f.lancer();
+    assert.notEqual(fin.code, 0, fin.sortie);
+    assert.match(fin.sortie, /Restauration confirmée/);
+    assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "ancienne version");
+    assert.equal(fs.existsSync(path.join(f.business, "etat/incident-livraison")), false);
+  } finally { f.nettoyer(); }
+});
