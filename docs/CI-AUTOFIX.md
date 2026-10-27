@@ -1,6 +1,8 @@
 # Correction automatique des échecs CI
 
-`.github/workflows/ci-autofix.yml` déclenche une correction cloud quand la CI d'une PR
+Résumé : le correcteur distingue les erreurs des PR de celles de leur base exacte. Une base rouge prouvée ne consomme aucune transmission PR ; une CI rouge de la branche principale prépare une PR sur `automation/ci-main-<sha>`. Les workflows préparés doivent être fusionnés explicitement puis recettés sur GitHub.
+
+`.github/workflows/ci-autofix.yml` déclenche une correction cloud quand la CI de la branche principale ou d'une PR
 sur une branche `codex/`, `claude/`, `agent/` ou `automation/` échoue. Claude propose un
 patch dans le job `corriger`, puis `publier` le contrôle et le pousse sur la branche.
 Il s'agit d'un agent distinct de la session qui a ouvert la PR. Aucune reprise de cette
@@ -44,12 +46,12 @@ Le workflow déclare `permissions: {}` ; chaque job ouvre les siennes.
 | Job | Jeton GitHub | Secret | Exécute le code de la PR | Rôle |
 |---|---|---|---|---|
 | `trier` | `actions: read`, `contents: read`, `pull-requests: read` | aucun | non | relit le run, la PR, les commits et les commentaires ; collecte et nettoie le log |
-| `signaler` | `pull-requests: write` | aucun | non | poste le marqueur de correction ou l'arrêt |
+| `signaler` | `contents: write`, `pull-requests: write` | aucun | non | réserve une branche de correction main ou poste le marqueur PR |
 | `corriger` | `contents: read` | `CLAUDE_CODE_OAUTH_TOKEN`, à la seule étape Claude | l'agent le lit, ne l'exécute pas | produit un patch |
 | `publier` | `contents: read`, `pull-requests: write`, `id-token: write` | jeton de l'app Claude, obtenu par OIDC dans ce job, puis révoqué | non | valide, commite, pousse, rend compte |
 
 Le push passe par le jeton de l'app Claude parce qu'un push fait avec `GITHUB_TOKEN` ne
-déclenche pas de nouvelle CI. Ce jeton est demandé avec `contents: write` seul. Si le service
+déclenche pas de nouvelle CI. Ce jeton est demandé avec `contents: write` seul pour une PR existante, et avec `pull_requests: write` en plus pour ouvrir la PR de correction de main. Si le service
 d'échange refuse la portée réduite, le job reprend la portée par défaut de l'app (contents,
 pull requests, issues en écriture) et l'écrit dans le résumé du run. Dans les deux cas, le
 jeton ne sert qu'à un `git push HEAD:refs/heads/<branche validée>` sans `--force`, dans un job
@@ -126,6 +128,45 @@ Si rien n'est poussé, le compte rendu porte `ci-autofix-echec:<sha>:<tentative>
 affiche l'escalade même si aucun commit de correction n'existe. Une nouvelle transmission
 sur la même tête remplace cet arrêt ; un arrêt portant sur une ancienne tête ne bloque pas
 la tête courante. L'arrêt pour merge périmé reste distinct et demande une mise à jour de branche.
+
+## Base rouge et branche principale (lots 1.3 et 5.3)
+
+Le tri extrait la base du triplet de merge réussi du run, avec la tête exacte de la PR.
+La dernière CI hors PR sur cette base doit être terminée en échec. Les couples job/étape
+échoués et les logs complets normalisés doivent coïncider : seuls l'en-tête horodaté de
+`gh`, les codes ANSI et les durées TAP sont retirés. Les valeurs `actual`/`expected`,
+les noms de tests et les diagnostics TypeScript sont conservés. Un simple code de sortie
+sans diagnostic reconnaissable ne prouve pas une erreur héritée.
+
+Si la preuve existe, `signaler` pose `ci-autofix-base:<tête>:<tentative>`, distinct des
+transmissions et arrêts. Aucune correction de cette PR n'est demandée, même si les trois
+transmissions précédentes sont déjà consommées. Ce commentaire n'affirme pas que la
+correction de la base a réussi : son workflow et sa branche restent à vérifier. Si la
+preuve est incomplète ou si un autre échec s'ajoute, le parcours PR habituel reste actif.
+Cette comparaison stricte privilégie l'absence de faux positifs : un log variable hors des
+durées TAP peut empêcher la reconnaissance d'un échec pourtant hérité.
+
+Les CI `push`, `schedule` et `workflow_dispatch` sur la tête courante de la branche par
+défaut sont admissibles. Le tri relit le run, sa tentative et la dernière CI pour ce SHA.
+`signaler` réserve atomiquement `automation/ci-main-<sha>` par l'API GitHub avant Claude,
+avec `GITHUB_TOKEN`. Une réservation existante empêche une seconde préparation, y compris
+après quota, refus du patch ou CI nocturne. Une relance des seuls jobs échoués ne rappelle
+pas Claude pour main (`github.run_attempt == 1`). Une reprise humaine doit donc examiner
+la réservation et les artefacts ; elle n'est pas réarmée automatiquement.
+
+`corriger` conserve son jeton en lecture, ses outils limités et son isolement. `publier`
+valide le patch avec les mêmes bornes et chemins sensibles, relit la base courante et le
+SHA de la réservation, pousse sans force sur cette seule branche, puis ouvre la PR avec
+le jeton d'application. La création par l'app déclenche la CI de PR normale. Aucune écriture
+sur la branche principale, fusion ni déploiement direct n'est ajouté. La PR créée reste
+soumise aux mêmes règles de CI, revue et fusion que les autres branches `automation/`.
+Un échec d'ouverture de PR conserve le correctif sur la branche et laisse un diagnostic
+dans le résumé du workflow.
+
+Les six copies du correcteur sont alignées. Leurs CI s'exécutent aussi après push sur leur
+vraie branche par défaut et chaque nuit. La preuve du merge et le contrôle d'immuabilité du
+registre restent réservés aux événements PR ; les commandes de test/build propres à chaque
+dépôt sont conservées.
 
 ## Tests
 

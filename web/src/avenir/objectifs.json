@@ -1,7 +1,6 @@
 [
   {"id": "1.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO .github/workflows/ci.yml"]},
   {"id": "1.2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"]},
-  {"id": "1.3", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml:36-50,155-161"]},
   {"id": "1.4", "revision": 1, "projet": null, "fichiers": ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"]},
   {"id": "3.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/rattachements.js"]},
   {"id": "3.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/stage-handlers.js", "BP Dockerfile:25-27"]},
@@ -12,7 +11,6 @@
   {"id": "4.5", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP deploy/nas/deploy.sh.modele", "AO scripts/nas/nettoyer-runs.sh:11"]},
   {"id": "5.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/event-store.js"]},
   {"id": "5.2", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/missions.js", "AO src/mission.js:18-90"]},
-  {"id": "5.3", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml:39"]},
   {"id": "5.4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/missions.js:77-89"]},
   {"id": "6.1", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP .github/workflows/claude-code-review.yml"]},
   {"id": "6.2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"]},
@@ -32,7 +30,6 @@
   {"id": "10.5", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"]},
   {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]},
   {"id": "R4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP deploy/nas/deploy.sh.modele:45-55"], "type": "fix"},
-  {"id": "C1", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml:39"], "type": "fix"},
   {"id": "C2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"], "type": "fix"},
   {"id": "C3", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"], "type": "fix"},
   {"id": "C4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP claude-code-review.yml"], "type": "fix"}
