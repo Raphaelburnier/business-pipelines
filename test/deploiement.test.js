@@ -24,6 +24,18 @@ function arrete(pid) {
   catch (err) { if (err.code === "ENOENT") return true; throw err; }
 }
 
+for (const modeSocket of [0o700, 0o777]) test(`le relais garde un dossier socket privé accessible après chown global (mode initial=${modeSocket.toString(8)})`, async () => {
+  const f = recette("socket-prive", { modeSocket });
+  try {
+    const fin = await f.lancer();
+    assert.equal(fin.code, 0, fin.sortie);
+    assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "nouvelle version");
+    assert.equal(fs.readFileSync(path.join(f.racine, "socket-owner"), "utf8"), "0:0");
+    assert.equal(fs.statSync(path.join(f.business, "run-cockpit")).mode & 0o777, 0o700);
+    assert.equal(fs.existsSync(path.join(f.business, "etat/incident-livraison")), false);
+  } finally { f.nettoyer(); }
+});
+
 for (const [scenario, nouveau, restaure] of [["succes", true, false], ["avant-echec", false, false], ["apres-echec", false, true]]) {
   test(`vrai script de déploiement : ${scenario}`, async () => {
     const f = recette(scenario);

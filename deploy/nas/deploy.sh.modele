@@ -324,6 +324,11 @@ mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/work
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
 # livreur, ces noms n'existent pas.
 borne "$COMMAND_TIMEOUT_SEC" 1800 chown -R 1026:100 "$BUSINESS"
+# Le relais tourne en root sans capacité DAC_OVERRIDE. Il doit pouvoir traverser le
+# parent du socket, même si un ancien déploiement l'a laissé en 1026:100 / 700.
+# Garder ce chemin d'identité privé, après le chown global et avant les services.
+borne "$COMMAND_TIMEOUT_SEC" 1800 chown 0:0 "$BUSINESS/run-cockpit"
+chmod 700 "$BUSINESS/run-cockpit"
 # La connexion Codex du conseiller (auth.json) : lisible du seul propriétaire.
 chmod 700 "$BUSINESS/codex"
 
