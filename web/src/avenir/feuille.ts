@@ -110,7 +110,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "Job qui clone BP origin/main, branche le moteur de la PR, lance tsc et les tests.", fichiers: ["AO .github/workflows/ci.yml"], statut: "a-faire" },
       { id: "1.2", titre: "Aligner les gates de fusion", detail: "Preuve par triplet dans Steam, tcg, Saas ; agent/* admis ; CHANGES_REQUESTED bloquant.", fichiers: ["agent-gated-merge.yml:203-214"], statut: "a-faire" },
-      { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Un échec hérité de main ne consomme pas de tentative de correction.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "a-faire" },
+      { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Préparé : preuve de la base testée et comparaison stricte des échecs avant le compteur de corrections. Fusion des workflows et recette GitHub à vérifier avec 5.3.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "en-cours" },
       { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "Dépôt GitHub, CI et gate de fusion.", fichiers: ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"], statut: "a-faire" },
     ],
   },
@@ -167,7 +167,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "5.1", titre: "Déclencheurs durables", detail: "Planification dans l'event store et webhooks, identité de service signée.", fichiers: ["AO src/event-store.js"], statut: "a-faire" },
       { id: "5.2", titre: "Superviseur côté cockpit", detail: "Missions de correction bornées après run échoué, CI rouge persistante ou findings P2/P3.", fichiers: ["BP src/missions.js", "AO src/mission.js:18-90"], statut: "a-faire" },
-      { id: "5.3", titre: "Correcteur des échecs de main", detail: "Mission sur branche automation/ quand la CI de main est rouge.", fichiers: ["ci-autofix.yml:39"], statut: "a-faire" },
+      { id: "5.3", titre: "Correcteur des échecs de main", detail: "Préparé avec 1.3 : correcteur isolé sur automation/ci-main-<sha>, réservation unique et PR soumise à la CI normale. Fusion explicite des workflows et recette GitHub attendues.", fichiers: ["ci-autofix.yml:39"], statut: "en-cours" },
       { id: "5.4", titre: "Escalade par changement de modèle", detail: "Utiliser le secours selon une politique écrite.", fichiers: ["BP src/missions.js:77-89"], statut: "a-faire" },
     ],
   },
@@ -292,7 +292,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "R5", severite: "moyenne", titre: "Arrêts machine routés comme un échec métier", fichiers: "AO src/graphe.js:353,468-472", correctif: "Lot 2.2", statut: "fait" },
   { id: "R6", severite: "moyenne", titre: "Cycle épuisé = Error générique", fichiers: "AO src/graphe.js:523-530", correctif: "Lot 2.3", statut: "fait" },
   { id: "R7", severite: "moyenne", titre: "Relais qui masque l'erreur réelle, sans test", fichiers: "AO src/relais.js:155-167", correctif: "Lot 2.4", statut: "fait" },
-  { id: "C1", severite: "moyenne", titre: "CI rouge sur main jamais transmise, base rouge imputée à la PR", fichiers: "ci-autofix.yml:39", correctif: "Lots 1.3 et 5.3", statut: "a-faire" },
+  { id: "C1", severite: "moyenne", titre: "CI rouge sur main jamais transmise, base rouge imputée à la PR", fichiers: "ci-autofix.yml:39", correctif: "Lots 1.3 et 5.3", statut: "en-cours" },
   { id: "C2", severite: "moyenne", titre: "Gate ancien dans Steam, tcg, Saas ; Steam refuse agent/*", fichiers: "agent-gated-merge.yml", correctif: "Lot 1.2", statut: "a-faire" },
   { id: "C3", severite: "moyenne", titre: "Gate aveugle à CHANGES_REQUESTED sans fil inline", fichiers: "agent-gated-merge.yml:203-214", correctif: "Lot 1.2", statut: "a-faire" },
   { id: "C4", severite: "moyenne", titre: "Revue GitHub muette, en échec sur les commits de claude[bot]", fichiers: "BP claude-code-review.yml", correctif: "Lot 6.1", statut: "a-faire" },

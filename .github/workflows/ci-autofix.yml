@@ -1,6 +1,6 @@
 name: CI autofix
 
-# Quand la CI d'une PR d'agent échoue, Claude cloud propose un correctif ici,
+# Quand la CI de la branche principale ou d'une PR d'agent échoue, Claude cloud propose un correctif ici,
 # publié après contrôle, pour les branches codex/, claude/, agent/ et automation/.
 # Un commentaire @codex ne garantit pas le démarrage d'une tâche : le connecteur
 # exige un environnement cloud associé. Le circuit corriger → publier est autonome.
@@ -36,9 +36,9 @@ jobs:
   trier:
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      (startsWith(github.event.workflow_run.head_branch, 'claude/') ||
+      (github.event.workflow_run.head_branch == github.event.repository.default_branch ||
+       startsWith(github.event.workflow_run.head_branch, 'claude/') ||
        startsWith(github.event.workflow_run.head_branch, 'codex/') ||
        startsWith(github.event.workflow_run.head_branch, 'agent/') ||
        startsWith(github.event.workflow_run.head_branch, 'automation/'))
@@ -56,6 +56,8 @@ jobs:
       branche: ${{ steps.trier.outputs.branche }}
       run_id: ${{ steps.trier.outputs.run_id }}
       tentative: ${{ steps.trier.outputs.tentative }}
+      mode: ${{ steps.trier.outputs.mode }}
+      base_sha: ${{ steps.trier.outputs.base_sha }}
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
@@ -66,11 +68,13 @@ jobs:
         run: |
           set -euo pipefail
           MAX_CORRECTIONS=3
-          decision=rien raison="" numero="" sha="" branche="" run_id="" tentative=""
+          decision=rien raison="" numero="" sha="" branche="" run_id="" tentative="" mode=pr base_sha=""
 
           conclure() {
             decision="$1" raison="$2"
             {
+              echo "mode=$mode"
+              echo "base_sha=$base_sha"
               echo "decision=$decision"
               echo "raison=$raison"
               echo "numero=$numero"
@@ -94,7 +98,12 @@ jobs:
           champ() { jq -r "$1 // empty" <<<"$event"; }
           [[ "$(champ .workflow_run.name)" == "CI" && "$(champ .workflow_run.path)" == ".github/workflows/ci.yml" ]] \
             || conclure rien "le run n'est pas le workflow CI"
-          [[ "$(champ .workflow_run.event)" == "pull_request" ]] || conclure rien "le run ne vient pas d'une PR"
+          evenement="$(champ .workflow_run.event)"
+          case "$evenement" in
+            pull_request) ;;
+            push|schedule|workflow_dispatch) mode=main ;;
+            *) conclure rien "le run ne vient pas d'une PR ni de la branche par défaut" ;;
+          esac
           [[ "$(champ .workflow_run.conclusion)" == "failure" ]] || conclure rien "le run n'est pas en échec"
           [[ "$(champ .workflow_run.head_repository.full_name)" == "$REPOSITORY" ]] \
             || conclure rien "la branche vient d'un autre dépôt"
@@ -105,20 +114,10 @@ jobs:
           v_branche="$(champ .workflow_run.head_branch)"
           [[ "$v_sha" =~ ^[0-9a-f]{40}$ ]] || conclure rien "SHA de tête invalide"
           [[ "$v_run" =~ ^[1-9][0-9]{0,19}$ && "$v_tentative" =~ ^[1-9][0-9]{0,3}$ ]] || conclure rien "identité du run invalide"
-          sha="$v_sha" run_id="$v_run" tentative="$v_tentative"
-          # Le nom de branche finit dans un prompt et dans des commandes git : jeu de caractères fermé.
-          if ! [[ "$v_branche" =~ ^(codex|claude|agent|automation)/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] \
-            || [[ "$v_branche" == *..* || "$v_branche" == */ || "$v_branche" == *.lock || "$v_branche" == *//* ]]; then
-            conclure rien "branche hors des préfixes d'agents ou nom non admis"
-          fi
-          branche="$v_branche"
-          # Même circuit de correction pour chaque agent d'origine. Le préfixe
-          # identifie une branche admissible, pas un service cloud à contacter.
-          agent=claude
-
+          sha="$v_sha" run_id="$v_run" tentative="$v_tentative" branche="$v_branche" agent=claude
           run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")" || conclure rien "run illisible"
-          jq -e --arg sha "$sha" --arg br "$branche" --arg repo "$REPOSITORY" '
-            .name == "CI" and .path == ".github/workflows/ci.yml" and .event == "pull_request" and
+          jq -e --arg sha "$sha" --arg br "$branche" --arg repo "$REPOSITORY" --arg event "$evenement" '
+            .name == "CI" and .path == ".github/workflows/ci.yml" and .event == $event and
             .head_sha == $sha and .head_branch == $br and .head_repository.full_name == $repo and
             .status == "completed" and .conclusion == "failure"
           ' <<<"$run" >/dev/null || conclure rien "le run relu ne correspond plus à l'événement"
@@ -126,52 +125,114 @@ jobs:
             || conclure rien "une tentative plus récente de ce run existe"
 
           defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')" || conclure rien "branche par défaut illisible"
-          prs="$(gh api "repos/$REPOSITORY/pulls?state=open&head=${REPOSITORY%%/*}:$branche&per_page=100")" \
-            || conclure rien "PR illisibles"
-          candidates="$(jq -c --arg sha "$sha" --arg br "$branche" --arg repo "$REPOSITORY" '
-            [.[] | select(.state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo)]
-          ' <<<"$prs")"
-          [[ "$(jq 'length' <<<"$candidates")" == "1" ]] \
-            || conclure rien "pas exactement une PR ouverte sur ce commit : la branche a avancé ou la PR est fermée"
-          v_numero="$(jq -r '.[0].number' <<<"$candidates")"
-          [[ "$v_numero" =~ ^[1-9][0-9]{0,9}$ ]] || conclure rien "numéro de PR invalide"
-          numero="$v_numero"
-          [[ "$(jq -r '.[0].base.ref' <<<"$candidates")" == "$defaut" ]] \
-            || conclure rien "la PR ne vise pas la branche par défaut"
-          associees="$(jq '[.workflow_run.pull_requests[]?.number] | unique' <<<"$event")"
-          if [[ "$(jq 'length' <<<"$associees")" != "0" ]]; then
-            jq -e --argjson n "$numero" 'index($n) != null' <<<"$associees" >/dev/null \
-              || conclure rien "le run n'est pas associé à cette PR"
-          fi
+          # Main : la réservation atomique est faite par signaler, avant tout appel modèle.
+          if [[ "$mode" == main ]]; then
+            [[ "$v_branche" == "$defaut" ]] || conclure rien "le run ne vise pas la branche par défaut"
+            courant="$(gh api "repos/$REPOSITORY/commits/$defaut" --jq '.sha')" || conclure rien "base illisible"
+            [[ "$courant" == "$sha" ]] || conclure rien "la branche par défaut a avancé"
+            derniers="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100")" \
+              || conclure rien "CI de base illisibles"
+            dernier="$(jq -c --arg br "$defaut" '[.workflow_runs[] | select(.head_branch == $br and (.event == "push" or .event == "schedule" or .event == "workflow_dispatch"))] | sort_by(.id) | last' <<<"$derniers")"
+            [[ "$(jq -r '.id' <<<"$dernier")" == "$run_id" ]] || conclure rien "une CI de base plus récente existe"
+            base_sha="$sha" numero=0 branche="automation/ci-main-$sha"
+          else
+            # Le nom de branche finit dans un prompt et dans des commandes git : jeu de caractères fermé.
+            if ! [[ "$v_branche" =~ ^(codex|claude|agent|automation)/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] \
+              || [[ "$v_branche" == *..* || "$v_branche" == */ || "$v_branche" == *.lock || "$v_branche" == *//* ]]; then
+              conclure rien "branche hors des préfixes d'agents ou nom non admis"
+            fi
+            branche="$v_branche"
+            # Même circuit de correction pour chaque agent d'origine. Le préfixe
+            # identifie une branche admissible, pas un service cloud à contacter.
+            agent=claude
 
-          # Une tentative de CI n'est transmise qu'une fois. Seuls les marqueurs posés par ce
-          # workflow comptent : un autre auteur ne peut pas en fabriquer un pour bloquer ou rejouer.
-          marqueurs="$(gh api --paginate "repos/$REPOSITORY/issues/$numero/comments?per_page=100" \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body')" || conclure rien "commentaires illisibles"
-          if grep -Fq -e "<!-- ci-autofix:$sha:$tentative -->" -e "<!-- ci-autofix-arret:$sha:$tentative -->" <<<"$marqueurs"; then
-            conclure rien "cette tentative de CI a déjà été traitée"
-          fi
+            prs="$(gh api "repos/$REPOSITORY/pulls?state=open&head=${REPOSITORY%%/*}:$branche&per_page=100")" \
+              || conclure rien "PR illisibles"
+            candidates="$(jq -c --arg sha "$sha" --arg br "$branche" --arg repo "$REPOSITORY" '
+              [.[] | select(.state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo)]
+            ' <<<"$prs")"
+            [[ "$(jq 'length' <<<"$candidates")" == "1" ]] \
+              || conclure rien "pas exactement une PR ouverte sur ce commit : la branche a avancé ou la PR est fermée"
+            v_numero="$(jq -r '.[0].number' <<<"$candidates")"
+            [[ "$v_numero" =~ ^[1-9][0-9]{0,9}$ ]] || conclure rien "numéro de PR invalide"
+            numero="$v_numero"
+            [[ "$(jq -r '.[0].base.ref' <<<"$candidates")" == "$defaut" ]] \
+              || conclure rien "la PR ne vise pas la branche par défaut"
+            associees="$(jq '[.workflow_run.pull_requests[]?.number] | unique' <<<"$event")"
+            if [[ "$(jq 'length' <<<"$associees")" != "0" ]]; then
+              jq -e --argjson n "$numero" 'index($n) != null' <<<"$associees" >/dev/null \
+                || conclure rien "le run n'est pas associé à cette PR"
+            fi
 
-          # Un échec limité à la preuve de merge vient d'une base périmée (main a avancé, ou les
-          # jobs ont été relancés sur l'ancien merge) : le code n'y est pour rien.
-          etapes="$(gh api --paginate "repos/$REPOSITORY/actions/runs/$run_id/attempts/$tentative/jobs?per_page=100" \
-            --jq '.jobs[] | .steps[]? | select(.conclusion == "failure") | .name')" || conclure rien "jobs du run illisibles"
-          if [[ -n "$etapes" ]] && ! grep -vq '^Verify tested merge' <<<"$etapes"; then
-            conclure perime "le merge testé est périmé : mettre la branche à jour avec la branche par défaut pour relancer la CI"
-          fi
+            # Une tentative de CI n'est transmise qu'une fois. Seuls les marqueurs posés par ce
+            # workflow comptent : un autre auteur ne peut pas en fabriquer un pour bloquer ou rejouer.
+            marqueurs="$(gh api --paginate "repos/$REPOSITORY/issues/$numero/comments?per_page=100" \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | .body')" || conclure rien "commentaires illisibles"
+            if grep -Fq -e "<!-- ci-autofix:$sha:$tentative -->" -e "<!-- ci-autofix-arret:$sha:$tentative -->" <<<"$marqueurs"; then
+              conclure rien "cette tentative de CI a déjà été traitée"
+            fi
 
-          # Compter les démarrages, même si l'agent échoue ou ne propose aucun patch.
-          # Les relances depuis le cockpit consomment le même budget : aucun contournement
-          # en réexécutant la CI, ni remise à zéro lors d'un nouveau commit humain.
-          transmissions="$(grep -Ec '^<!-- ci-autofix:[0-9a-f]{40}:[1-9][0-9]{0,3} -->$' <<<"$marqueurs" || true)"
-          if [[ "$transmissions" -ge "$MAX_CORRECTIONS" ]]; then
-            conclure boucle "la PR a déjà déclenché $transmissions appels du correcteur (limite $MAX_CORRECTIONS)"
-          fi
-          messages="$(gh api --paginate "repos/$REPOSITORY/pulls/$numero/commits?per_page=100" --jq '.[].commit.message')" \
-            || conclure rien "commits de la PR illisibles"
-          corrections="$(grep -Fc '[ci-autofix]' <<<"$messages" || true)"
-          if [[ "$corrections" -ge "$MAX_CORRECTIONS" ]]; then
-            conclure boucle "la PR a déjà reçu $corrections corrections automatiques (limite $MAX_CORRECTIONS)"
+            # Un échec limité à la preuve de merge vient d'une base périmée (main a avancé, ou les
+            # jobs ont été relancés sur l'ancien merge) : le code n'y est pour rien.
+            etapes="$(gh api --paginate "repos/$REPOSITORY/actions/runs/$run_id/attempts/$tentative/jobs?per_page=100" \
+              --jq '.jobs[] | .steps[]? | select(.conclusion == "failure") | .name')" || conclure rien "jobs du run illisibles"
+            if [[ -n "$etapes" ]] && ! grep -vq '^Verify tested merge' <<<"$etapes"; then
+              conclure perime "le merge testé est périmé : mettre la branche à jour avec la branche par défaut pour relancer la CI"
+            fi
+
+            # Preuve de base du merge réellement testé, jamais la base courante de la PR.
+            # Une étape homonyme ne prouve rien : il faut aussi les mêmes diagnostics.
+            jobs="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$run_id/attempts/$tentative/jobs?per_page=100")" \
+              || conclure rien "jobs du run illisibles"
+            bases="$(jq -r --arg sha "$sha" '[.[].jobs[].steps[]? | select(.conclusion == "success") | .name | capture("^Verify tested merge \\(merge=[0-9a-f]{40}, head=(?<head>[0-9a-f]{40}), base=(?<base>[0-9a-f]{40})\\)$")? | select(.head == $sha) | .base] | unique | .[]' <<<"$jobs")"
+            if [[ "$bases" =~ ^[0-9a-f]{40}$ ]]; then
+              base_sha="$bases"
+              runs_base="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$base_sha&per_page=100")" || runs_base='{"workflow_runs":[]}'
+              ci_base="$(jq -c --arg br "$defaut" --arg sha "$base_sha" --arg repo "$REPOSITORY" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == $br and .head_repository.full_name == $repo and .name == "CI" and .path == ".github/workflows/ci.yml" and (.event == "push" or .event == "schedule" or .event == "workflow_dispatch"))] | sort_by(.id) | last' <<<"$runs_base")"
+              base_run="$(jq -r '.id // empty' <<<"$ci_base")"
+              base_attempt="$(jq -r '.run_attempt // empty' <<<"$ci_base")"
+              if [[ "$(jq -r '.conclusion' <<<"$ci_base")" == failure && "$(jq -r '.status' <<<"$ci_base")" == completed && "$base_run" =~ ^[1-9][0-9]{0,19}$ && "$base_attempt" =~ ^[1-9][0-9]{0,3}$ ]]; then
+                jobs_base="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$base_run/attempts/$base_attempt/jobs?per_page=100")" || jobs_base='[]'
+                echecs() { jq -c '[.[].jobs[] | .name as $job | .steps[]? | select(.conclusion == "failure") | [$job, .name]] | sort | unique'; }
+                empreinte() {
+                  # En-tête gh : job, étape, horodatage ; puis diagnostics stables et complets.
+                  nettoye="$(LC_ALL=C sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //; s/\x1b\[[0-9;?]*[ -/]*[@-~]//g' \
+                    | LC_ALL=C tr -d '\000-\010\013-\037\177' \
+                    | LC_ALL=C sed -E '/^[[:space:]#]*(duration_ms:|duration_ms |duration )[[:space:]]*[0-9.]+/d')"
+                  # Comparer tout le log normalisé : deux AssertionError peuvent avoir des
+                  # valeurs actual/expected différentes. Un nom de test seul ne suffit pas.
+                  LC_ALL=C grep -Eq '(error TS[0-9]+:|^not ok [0-9]+ - |^[[:space:]]*error: |AssertionError|^[[:space:]]*FAIL[[:space:]])' <<<"$nettoye" || return 1
+                  printf '%s' "$nettoye" | sha256sum | cut -d ' ' -f1
+                }
+                if [[ "$(echecs <<<"$jobs")" != '[]' && "$(echecs <<<"$jobs")" == "$(echecs <<<"$jobs_base")" ]]; then
+                  log_pr="$(gh run view "$run_id" --repo "$REPOSITORY" --attempt "$tentative" --log-failed)" || log_pr=""
+                  log_base="$(gh run view "$base_run" --repo "$REPOSITORY" --attempt "$base_attempt" --log-failed)" || log_base=""
+                  diag_pr="$(empreinte <<<"$log_pr" || true)"
+                  diag_base="$(empreinte <<<"$log_base" || true)"
+                  if [[ -n "$diag_pr" && "$diag_pr" == "$diag_base" ]]; then
+                    # Marqueur séparé : aucune des trois transmissions PR n'est consommée.
+                    grep -Fq "<!-- ci-autofix-base:$sha:$tentative -->" <<<"$marqueurs" \
+                      && conclure rien "base rouge déjà signalée"
+                    conclure base-rouge "mêmes étapes et diagnostics sur la base exacte $base_sha (CI $base_run) ; aucune tentative PR consommée"
+                  fi
+                fi
+              fi
+            fi
+
+            # Compter les démarrages, même si l'agent échoue ou ne propose aucun patch.
+            # Les relances depuis le cockpit consomment le même budget : aucun contournement
+            # en réexécutant la CI, ni remise à zéro lors d'un nouveau commit humain.
+            transmissions="$(grep -Ec '^<!-- ci-autofix:[0-9a-f]{40}:[1-9][0-9]{0,3} -->$' <<<"$marqueurs" || true)"
+            if [[ "$transmissions" -ge "$MAX_CORRECTIONS" ]]; then
+              conclure boucle "la PR a déjà déclenché $transmissions appels du correcteur (limite $MAX_CORRECTIONS)"
+            fi
+            messages="$(gh api --paginate "repos/$REPOSITORY/pulls/$numero/commits?per_page=100" --jq '.[].commit.message')" \
+              || conclure rien "commits de la PR illisibles"
+            corrections="$(grep -Fc '[ci-autofix]' <<<"$messages" || true)"
+            if [[ "$corrections" -ge "$MAX_CORRECTIONS" ]]; then
+              conclure boucle "la PR a déjà reçu $corrections corrections automatiques (limite $MAX_CORRECTIONS)"
+            fi
+
           fi
 
           # Le log est la sortie du code de la PR : il est nettoyé avant d'être montré à un agent
@@ -203,15 +264,19 @@ jobs:
 
   signaler:
     needs: trier
-    if: contains(fromJSON('["boucle","perime","claude"]'), needs.trier.outputs.decision)
+    if: contains(fromJSON('["boucle","perime","base-rouge","claude"]'), needs.trier.outputs.decision)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: write
       pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       DECISION: ${{ needs.trier.outputs.decision }}
+      MODE: ${{ needs.trier.outputs.mode }}
+      BRANCHE: ${{ needs.trier.outputs.branche }}
+      BASE_SHA: ${{ needs.trier.outputs.base_sha }}
       RAISON: ${{ needs.trier.outputs.raison }}
       NUMERO: ${{ needs.trier.outputs.numero }}
       SHA: ${{ needs.trier.outputs.sha }}
@@ -222,6 +287,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${MODE:-pr}" == main ]]; then
+            [[ "$NUMERO" == 0 && "$SHA" =~ ^[0-9a-f]{40}$ && "$BRANCHE" == "automation/ci-main-$SHA" ]] || exit 1
+            defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')"
+            [[ "$(gh api "repos/$REPOSITORY/commits/$defaut" --jq '.sha')" == "$SHA" ]] || exit 1
+            # POST sans force : 422 si déjà réservée, même lors d'une relance nocturne/humaine.
+            gh api "repos/$REPOSITORY/git/refs" -f "ref=refs/heads/$BRANCHE" -f "sha=$SHA" --silent
+            echo "Branche $BRANCHE réservée : un seul démarrage pour ce SHA." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           [[ "$NUMERO" =~ ^[1-9][0-9]{0,9}$ && "$SHA" =~ ^[0-9a-f]{40}$ && "$RUN_ID" =~ ^[1-9][0-9]{0,19}$ && "$TENTATIVE" =~ ^[1-9][0-9]{0,3}$ ]] \
             || { echo "::error::sorties du tri invalides"; exit 1; }
           lien="$GITHUB_SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID"
@@ -241,6 +315,13 @@ jobs:
                 echo "La CI de $SHA ([run $RUN_ID]($lien)) n'a échoué qu'à la vérification du merge testé : la branche par défaut a avancé depuis. Aucune correction de code n'est demandée ; mettre la branche à jour (« Update branch ») relance la CI. Relancer les jobs échoués ne suffit pas, ils réutilisent l'ancien merge."
               } > "$corps"
               ;;
+            base-rouge)
+              [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+              {
+                echo "<!-- ci-autofix-base:$SHA:$TENTATIVE -->"
+                echo "Échec hérité de la base exacte $BASE_SHA : mêmes étapes et diagnostics. Aucune tentative de correction de cette PR consommée. Correction de la branche principale attendue sur automation/ci-main-$BASE_SHA ; consulter la CI de base et son workflow CI autofix pour son état réel."
+              } > "$corps"
+              ;;
             claude)
               {
                 echo "<!-- ci-autofix:$SHA:$TENTATIVE -->"
@@ -254,7 +335,7 @@ jobs:
 
   corriger:
     needs: [trier, signaler]
-    if: needs.trier.outputs.decision == 'claude' && needs.signaler.result == 'success'
+    if: needs.trier.outputs.decision == 'claude' && needs.signaler.result == 'success' && (needs.trier.outputs.mode != 'main' || github.run_attempt == 1)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Seul job qui voit un secret (le jeton OAuth Claude) ; son jeton GitHub ne fait que lire.
@@ -437,6 +518,7 @@ jobs:
       BRANCHE: ${{ needs.trier.outputs.branche }}
       RUN_ID: ${{ needs.trier.outputs.run_id }}
       TENTATIVE: ${{ needs.trier.outputs.tentative }}
+      MODE: ${{ needs.trier.outputs.mode }}
       RESULTAT_AGENT: ${{ needs.corriger.result }}
       DEPOT: depot
     steps:
@@ -483,7 +565,7 @@ jobs:
             exit 0
           }
 
-          [[ "$NUMERO" =~ ^[1-9][0-9]{0,9}$ && "$SHA" =~ ^[0-9a-f]{40}$ && "$RUN_ID" =~ ^[1-9][0-9]{0,19}$ && "$TENTATIVE" =~ ^[1-9][0-9]{0,3}$ ]] \
+          [[ ( "$NUMERO" =~ ^[1-9][0-9]{0,9}$ || ( "${MODE:-pr}" == main && "$NUMERO" == 0 ) ) && "$SHA" =~ ^[0-9a-f]{40}$ && "$RUN_ID" =~ ^[1-9][0-9]{0,19}$ && "$TENTATIVE" =~ ^[1-9][0-9]{0,3}$ ]] \
             || conclure refus "sorties du tri invalides"
           [[ "$BRANCHE" =~ ^(codex|claude|agent|automation)/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ && "$BRANCHE" != *..* ]] \
             || conclure refus "branche non admise"
@@ -493,11 +575,19 @@ jobs:
           done
           [[ "$(head -n1 "$PAQUET/base.txt")" == "$SHA" ]] || conclure refus "le patch ne part pas du commit en échec"
 
-          pr="$(gh api "repos/$REPOSITORY/pulls/$NUMERO")" || conclure refus "PR illisible"
-          defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')" || conclure refus "branche par défaut illisible"
-          jq -e --arg sha "$SHA" --arg br "$BRANCHE" --arg repo "$REPOSITORY" --arg base "$defaut" '
-            .state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo and .base.ref == $base
-          ' <<<"$pr" >/dev/null || conclure refus "la PR a été fermée ou sa tête a changé depuis l'échec"
+          if [[ "${MODE:-pr}" == main ]]; then
+            [[ "$BRANCHE" == "automation/ci-main-$SHA" ]] || conclure refus "branche de correction main invalide"
+            defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')" || conclure refus "base illisible"
+            [[ "$(gh api "repos/$REPOSITORY/commits/$defaut" --jq '.sha')" == "$SHA" ]] || conclure refus "la branche par défaut a avancé"
+            [[ "$(gh api "repos/$REPOSITORY/git/ref/heads/$BRANCHE" --jq '.object.sha')" == "$SHA" ]] || conclure refus "la réservation a changé"
+          else
+            pr="$(gh api "repos/$REPOSITORY/pulls/$NUMERO")" || conclure refus "PR illisible"
+            defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')" || conclure refus "branche par défaut illisible"
+            jq -e --arg sha "$SHA" --arg br "$BRANCHE" --arg repo "$REPOSITORY" --arg base "$defaut" '
+              .state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo and .base.ref == $base
+            ' <<<"$pr" >/dev/null || conclure refus "la PR a été fermée ou sa tête a changé depuis l'échec"
+
+          fi
 
           patch="$PAQUET/correctif.patch"
           [[ -s "$patch" ]] || conclure vide "Claude n'a proposé aucune modification"
@@ -576,11 +666,18 @@ jobs:
           set -euo pipefail
           resultat() { echo "pousse=$1" >> "$GITHUB_OUTPUT"; echo "$2" > "$RUNNER_TEMP/rapport.md"; exit 0; }
           cd "$DEPOT"
-          # Re-vérifié juste avant le push : PR ouverte, même branche, même tête.
-          jq -e --arg sha "$SHA" --arg br "$BRANCHE" --arg repo "$REPOSITORY" '
-            .state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo
-          ' <<<"$(gh api "repos/$REPOSITORY/pulls/$NUMERO")" >/dev/null \
-            || resultat non "la PR a bougé pendant la validation : rien n'est poussé"
+          if [[ "${MODE:-pr}" == main ]]; then
+            [[ "$BRANCHE" == "automation/ci-main-$SHA" ]] || resultat non "branche de correction main invalide"
+            defaut="$(gh api "repos/$REPOSITORY" --jq '.default_branch')"
+            [[ "$(gh api "repos/$REPOSITORY/commits/$defaut" --jq '.sha')" == "$SHA" ]] || resultat non "la branche par défaut a avancé"
+            [[ "$(gh api "repos/$REPOSITORY/git/ref/heads/$BRANCHE" --jq '.object.sha')" == "$SHA" ]] || resultat non "la réservation a changé"
+          else
+            # Re-vérifié juste avant le push : PR ouverte, même branche, même tête.
+            jq -e --arg sha "$SHA" --arg br "$BRANCHE" --arg repo "$REPOSITORY" '
+              .state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo
+            ' <<<"$(gh api "repos/$REPOSITORY/pulls/$NUMERO")" >/dev/null \
+              || resultat non "la PR a bougé pendant la validation : rien n'est poussé"
+          fi
           [[ "$(git rev-parse HEAD^)" == "$SHA" ]] || resultat non "commit local inattendu"
 
           # Jeton de l'app Claude : un push par GITHUB_TOKEN ne relancerait pas la CI. Demandé
@@ -592,8 +689,10 @@ jobs:
           [[ -n "$oidc" ]] || resultat non "jeton OIDC indisponible : correctif validé mais non poussé"
           echo "::add-mask::$oidc"
           echange="https://api.anthropic.com/api/github/github-app-token-exchange"
+          portee='{"permissions":{"contents":"write"}}'
+          [[ "${MODE:-pr}" != main ]] || portee='{"permissions":{"contents":"write","pull_requests":"write"}}'
           reponse="$(curl -fsS --max-time 30 -X POST -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
-            -d '{"permissions":{"contents":"write"}}' "$echange")" \
+            -d "$portee" "$echange")" \
             || { echo "Portée réduite refusée : droits par défaut de l'app." >> "$GITHUB_STEP_SUMMARY"
                  reponse="$(curl -fsS --max-time 30 -X POST -H "Authorization: Bearer $oidc" "$echange")" || reponse=""; }
           JETON_PUSH="$(jq -r '.token // .app_token // empty' <<<"$reponse" 2>/dev/null || true)"
@@ -613,6 +712,14 @@ jobs:
             -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$JETON_PUSH"; }; f' \
             push "$GITHUB_SERVER_URL/$REPOSITORY.git" "HEAD:refs/heads/$BRANCHE" \
             || resultat non "push refusé : la branche a sans doute avancé"
+          if [[ "${MODE:-pr}" == main ]]; then
+            # L'app ouvre la PR : sa création déclenche la CI contrairement à GITHUB_TOKEN.
+            corps="$RUNNER_TEMP/pr-main.json"
+            jq -n --arg head "$BRANCHE" --arg base "$defaut" --arg sha "$SHA" --arg run "$RUN_ID" \
+              '{title:"fix: repair default branch CI [ci-autofix]",head:$head,base:$base,body:("Correction bornée de la CI de la branche principale sur " + $sha + " (run " + $run + "). Patch validé par CI autofix ; CI et contrôles de fusion habituels requis.")}' > "$corps"
+            GH_TOKEN="$JETON_PUSH" gh api "repos/$REPOSITORY/pulls" --input "$corps" --silent \
+              || resultat non "correctif poussé sur $BRANCHE mais ouverture de PR impossible : reprendre à la main"
+          fi
           resultat oui "correctif $(git rev-parse --short HEAD) poussé sur $BRANCHE"
 
       - name: Report on the pull request
@@ -623,6 +730,10 @@ jobs:
           POUSSE: ${{ steps.pousser.outputs.pousse }}
         run: |
           set -euo pipefail
+          if [[ "${MODE:-pr}" == main ]]; then
+            cat "$RUNNER_TEMP/rapport.md" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            exit 0
+          fi
           [[ "$NUMERO" =~ ^[1-9][0-9]{0,9}$ ]] || exit 0
           PAQUET="$RUNNER_TEMP/paquet"
           raison="$(head -c 500 "$RUNNER_TEMP/rapport.md" 2>/dev/null || echo "étape de validation interrompue")"

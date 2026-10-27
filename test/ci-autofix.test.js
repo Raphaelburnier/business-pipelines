@@ -50,9 +50,20 @@ const repondre = (r) => {
   const jq = args.indexOf("--jq");
   process.stdout.write(jq >= 0 ? execFileSync("jq", ["-r", args[jq + 1]], {input: JSON.stringify(r), encoding: "utf8"}) : (typeof r === "string" ? r : JSON.stringify(r)));
 };
-if (args[0] === "run" && args[1] === "view") repondre(cfg.log);
+if (args[0] === "run" && args[1] === "view") repondre(args[2] === "200" ? cfg.baseLog : cfg.log);
 else if (args[0] === "api") {
   const route = args.find((a) => a.startsWith("repos/"));
+  if (route === "repos/r/p/git/refs") {
+    if (cfg.reserveExiste) { process.stderr.write("HTTP 422\\n"); process.exit(1); }
+    repondre({ref:"reserved"}); process.exit(0);
+  }
+  if (route === "repos/r/p/pulls" && args.includes("--input")) {
+    if (cfg.prImpossible) process.exit(1);
+    const payload = JSON.parse(fs.readFileSync(args[args.indexOf("--input") + 1], "utf8"));
+    const posts = JSON.parse(fs.readFileSync(process.env.FAKE_POSTS, "utf8"));
+    posts.push({route, payload}); fs.writeFileSync(process.env.FAKE_POSTS, JSON.stringify(posts));
+    repondre({number:61}); process.exit(0);
+  }
   const f = args.indexOf("-F");
   if (f >= 0) {
     const corps = fs.readFileSync(args[f + 1].replace(/^body=@/, ""), "utf8");
@@ -60,12 +71,17 @@ else if (args[0] === "api") {
     posts.push({route, corps});
     fs.writeFileSync(process.env.FAKE_POSTS, JSON.stringify(posts));
     repondre({id: 1});
-  } else if (route === "repos/r/p") repondre({default_branch: "main"});
-  else if (route.startsWith("repos/r/p/actions/runs/") && route.includes("/attempts/")) repondre(cfg.jobs);
+  } else if (route === "repos/r/p") repondre({default_branch: cfg.defaultBranch ?? "main"});
+  else if (route.startsWith("repos/r/p/actions/workflows/")) repondre(cfg.baseRuns);
+  else if (route.startsWith("repos/r/p/git/ref/")) repondre({object:{sha:cfg.reserveSha ?? cfg.pr?.head.sha}});
+  else if (route.startsWith("repos/r/p/actions/runs/") && route.includes("/attempts/")) {
+    const jobs = route.includes("/200/") ? cfg.baseJobs : cfg.jobs;
+    repondre(jobs === undefined ? undefined : (args.includes("--slurp") ? [jobs] : jobs));
+  }
   else if (route.startsWith("repos/r/p/actions/runs/")) repondre(cfg.run);
   else if (route.startsWith("repos/r/p/pulls?")) repondre(cfg.prs);
   else if (route.startsWith("repos/r/p/issues/60/comments")) repondre(cfg.commentaires);
-  else if (route.startsWith("repos/r/p/commits/")) repondre(cfg.commit);
+  else if (route.startsWith("repos/r/p/commits/")) repondre(cfg.commit ?? {sha:cfg.baseSha ?? cfg.pr?.head.sha});
   else if (route.startsWith("repos/r/p/pulls/60/commits")) repondre(cfg.commits);
   else if (route === "repos/r/p/pulls/60") {
     const n = appels.filter((a) => a.includes("repos/r/p/pulls/60")).length;
@@ -134,7 +150,7 @@ function executer(script, env, cwd, shell = ["-c"]) {
 test("aucune permission par défaut, et chaque job n'a que les siennes", () => {
   assert.deepEqual(workflow.permissions, {});
   assert.deepEqual(trier.permissions, { actions: "read", contents: "read", "pull-requests": "read" });
-  assert.deepEqual(signaler.permissions, { "pull-requests": "write" });
+  assert.deepEqual(signaler.permissions, { contents: "write", "pull-requests": "write" });
   assert.deepEqual(corriger.permissions, { contents: "read" });
   assert.deepEqual(publier.permissions, { contents: "read", "pull-requests": "write", "id-token": "write" });
   assert.deepEqual(Object.keys(workflow.jobs).sort(), ["corriger", "publier", "signaler", "trier"]);
@@ -306,7 +322,7 @@ for (const prefixe of ["codex", "claude", "agent", "automation"]) {
 for (const [nom, modif, raison] of [
   ["autre workflow", { modifier: (c) => { c.event.workflow_run.name = "Deploy"; } }, /pas le workflow CI/],
   ["fichier de workflow différent", { modifier: (c) => { c.event.workflow_run.path = ".github/workflows/other.yml"; } }, /pas le workflow CI/],
-  ["run qui ne vient pas d'une PR", { modifier: (c) => { c.event.workflow_run.event = "push"; } }, /PR/],
+  ["événement non admis", { modifier: (c) => { c.event.workflow_run.event = "release"; } }, /PR/],
   ["run réussi", { modifier: (c) => { c.event.workflow_run.conclusion = "success"; } }, /pas en échec/],
   ["branche d'un fork", { modifier: (c) => { c.event.workflow_run.head_repository.full_name = "x/p"; } }, /autre dépôt/],
   ["préfixe non admis", { branche: "feature/x" }, /préfixes/],
@@ -519,6 +535,9 @@ function publierAvec(modifier, options = {}) {
   fs.mkdirSync(path.join(distant, "r"));
   execFileSync("git", ["clone", "-q", "--bare", origine, path.join(distant, "r/p.git")]);
   const config = {
+    prImpossible: options.prImpossible,
+    baseSha: options.baseSha,
+    reserveSha: options.reserveSha,
     pr: { state: "open", head: { sha, ref: branche, repo: { full_name: "r/p" } }, base: { ref: "main" } },
     prBouge: options.prBouge,
     echangeImpossible: options.echangeImpossible,
@@ -538,13 +557,19 @@ function publierAvec(modifier, options = {}) {
   options.paquet?.(paquet);
   const env = {
     ...e.env,
-    NUMERO: "60", SHA: sha, BRANCHE: branche, RUN_ID: "100", TENTATIVE: "1",
+    MODE: options.mode ?? "pr", NUMERO: options.mode === "main" ? "0" : "60", SHA: sha, BRANCHE: branche, RUN_ID: "100", TENTATIVE: "1",
     RESULTAT_AGENT: options.resultatAgent ?? "success", DEPOT: "depot",
     GITHUB_SERVER_URL: `file://${distant}`,
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token?api-version=2.0",
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "requete-oidc",
     GIT_CONFIG_GLOBAL: "/dev/null",
   };
+  if (options.mode === "main") {
+    env.BRANCHE = `automation/ci-main-${sha}`;
+    config.pr.head.ref = env.BRANCHE;
+    git(path.join(distant, "r/p.git"), "update-ref", `refs/heads/${env.BRANCHE}`, sha);
+    fs.writeFileSync(e.env.FAKE_CONFIG, JSON.stringify(config));
+  }
   options.avantPush?.({ distant: path.join(distant, "r/p.git"), sha });
   const valider = executer(SCRIPT_VALIDER, env, travail);
   const v = e.lire();
@@ -557,8 +582,8 @@ function publierAvec(modifier, options = {}) {
   const rapportEnv = { ...env, VERDICT: v.sorties.verdict ?? "", POUSSE: p?.sorties.pousse ?? "" };
   const rapport = executer(SCRIPT_RAPPORT, rapportEnv, travail);
   const fin = e.lire();
-  const brancheDistante = git(path.join(distant, "r/p.git"), "rev-parse", `refs/heads/${branche}`);
-  return { valider, v, pousser, p, rapport, fin, sha, branche, brancheDistante, depot: path.join(travail, "depot"), distant: path.join(distant, "r/p.git") };
+  const brancheDistante = git(path.join(distant, "r/p.git"), "rev-parse", `refs/heads/${env.BRANCHE}`);
+  return { valider, v, pousser, p, rapport, fin, sha, branche: env.BRANCHE, brancheDistante, depot: path.join(travail, "depot"), distant: path.join(distant, "r/p.git") };
 }
 
 for (const prefixe of ["codex", "claude", "agent", "automation"]) {
@@ -711,4 +736,168 @@ test("publication : un titre hors convention est remplacé, un titre conforme es
   r = publierAvec(ecrire("src/app.js", "2;\n"), { message: "fix: " + "x".repeat(200) });
   const titre = git(r.distant, "log", "-1", "--format=%s", "refs/heads/claude/fix-tests");
   assert.equal(titre, `fix: ${"x".repeat(67)} [ci-autofix]`);
+});
+
+
+// ---------- 6. Lots 1.3 et 5.3 : base exacte et correction de main ----------
+
+const BASE = "b".repeat(40);
+function baseRouge(c) {
+  c.jobs.jobs[0].name = "test";
+  c.jobs.jobs[0].steps[0].name = `Verify tested merge (merge=${"c".repeat(40)}, head=${SHA}, base=${BASE})`;
+  c.baseRuns = { workflow_runs: [{ id: 200, name: "CI", path: ".github/workflows/ci.yml", event: "push", head_sha: BASE, head_branch: "main", head_repository: { full_name: "r/p" }, status: "completed", conclusion: "failure", run_attempt: 2 }] };
+  c.baseJobs = { jobs: [{ name: "test", steps: [{ name: "Run server tests", conclusion: "failure" }] }] };
+  c.baseLog = c.log;
+}
+
+test("base rouge prouvée : aucune transmission ni consommation même après trois corrections PR", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.commentaires = ["c", "d", "e"].map((x) => ({ user: { login: "github-actions[bot]" }, body: `<!-- ci-autofix:${x.repeat(40)}:1 -->` }));
+  } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+  assert.equal(r.sorties.base_sha, BASE);
+  assert.ok(!fs.existsSync(path.join(r.e.runnerTemp, "ci-autofix/ci-echec.log")));
+  assert.equal(r.posts.length, 0);
+  const signal = signalerAvec("base-rouge", { env: { BASE_SHA: BASE } });
+  assert.equal(signal.status, 0, signal.stderr);
+  assert.match(signal.posts[0].corps, /ci-autofix-base:/);
+  assert.doesNotMatch(signal.posts[0].corps, /<!-- ci-autofix:|ci-autofix-arret:|ci-autofix-echec:/);
+});
+
+for (const [nom, modifier] of [
+  ["base verte", (c) => { c.baseRuns.workflow_runs[0].conclusion = "success"; }],
+  ["autre SHA de base", (c) => { c.baseRuns.workflow_runs[0].head_sha = "d".repeat(40); }],
+  ["base sans CI", (c) => { c.baseRuns.workflow_runs = []; }],
+  ["API des CI indisponible", (c) => { delete c.baseRuns; }],
+  ["API des jobs indisponible", (c) => { delete c.baseJobs; }],
+  ["log de base illisible", (c) => { delete c.baseLog; }],
+  ["autre diagnostic dans la même étape", (c) => { c.baseLog = "not ok 1 - other test\n"; }],
+  ["même test mais valeurs différentes", (c) => { c.log += "  actual: 3\n"; c.baseLog += "  actual: 2\n"; }],
+  ["même diagnostic sans signature reconnaissable", (c) => { c.log = c.baseLog = "exit code 1\n"; }],
+  ["PR ajoute une autre étape rouge", (c) => { c.jobs.jobs[0].steps.push({ name: "Build web application", conclusion: "failure" }); }],
+  ["autre job homonyme", (c) => { c.baseJobs.jobs[0].name = "other"; }],
+  ["preuve de merge sur une autre tête", (c) => { c.jobs.jobs[0].steps[0].name = c.jobs.jobs[0].steps[0].name.replace(SHA, "d".repeat(40)); }],
+  ["preuve de merge échouée", (c) => { c.jobs.jobs[0].steps[0].conclusion = "failure"; }],
+  ["nouvelle CI de base en cours", (c) => { c.baseRuns.workflow_runs.push({ ...c.baseRuns.workflow_runs[0], id: 201, status: "in_progress", conclusion: null }); }],
+]) {
+  test(`base non prouvée (${nom}) : le correcteur reste celui de la PR`, () => {
+    const r = trierAvec({ modifier: (c) => { baseRouge(c); modifier(c); } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.sorties.decision, "claude", r.resume);
+  });
+}
+
+test("base rouge : normalisation limitée aux horodatages, ANSI et durées TAP", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.log = "test\tRun server tests\t2026-10-26T11:00:00Z \u001b[31mnot ok 1 - route\u001b[0m\n  duration_ms: 12.34\n";
+    c.baseLog = "test\tRun server tests\t2026-10-25T09:00:00Z not ok 1 - route\n  duration_ms: 56.78\n";
+  } });
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+});
+
+test("base rouge : le signalement est dédupliqué sans marqueur de transmission", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.commentaires = [{ user: { login: "github-actions[bot]" }, body: `<!-- ci-autofix-base:${SHA}:1 -->` }];
+  } });
+  assert.equal(r.sorties.decision, "rien", r.resume);
+  assert.match(r.sorties.raison, /déjà signalée/);
+});
+
+function configMain(event = "push") {
+  const c = configTri();
+  for (const run of [c.event.workflow_run, c.run]) { run.event = event; run.head_branch = "main"; }
+  c.baseSha = SHA;
+  delete c.commit;
+  c.baseRuns = { workflow_runs: [{ ...c.run, id: 100 }] };
+  return c;
+}
+for (const event of ["push", "schedule", "workflow_dispatch"]) {
+  test(`main (${event}) : propose la correction du SHA courant sur automation/`, () => {
+    const e = environnement(configMain(event));
+    const r = executer(SCRIPT_TRI, e.env, e.dir);
+    const out = e.lire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(out.sorties.decision, "claude", out.resume);
+    assert.equal(out.sorties.mode, "main");
+    assert.equal(out.sorties.numero, "0");
+    assert.equal(out.sorties.branche, `automation/ci-main-${SHA}`);
+    assert.ok(!out.appels.some((a) => a.some((x) => x.includes("/pulls") || x.includes("/comments"))));
+  });
+}
+for (const [nom, modifier] of [
+  ["base déplacée", (c) => { c.baseSha = BASE; }],
+  ["autre branche", (c) => { c.event.workflow_run.head_branch = c.run.head_branch = "release"; }],
+  ["nouvelle CI", (c) => { c.baseRuns.workflow_runs.push({ ...c.run, id: 101 }); }],
+  ["nouvelle tentative", (c) => { c.run.run_attempt = 2; }],
+  ["fork", (c) => { c.event.workflow_run.head_repository.full_name = "fork/p"; }],
+]) {
+  test(`main refusé : ${nom}`, () => {
+    const c = configMain(); modifier(c);
+    const e = environnement(c);
+    const r = executer(SCRIPT_TRI, e.env, e.dir);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(e.lire().sorties.decision, "rien", e.lire().resume);
+  });
+}
+
+test("main : réservation atomique avant Claude, doublon et base déplacée refusés", () => {
+  for (const [config, ok] of [[{}, true], [{ reserveExiste: true }, false], [{ baseSha: BASE }, false]]) {
+    const e = environnement({ baseSha: SHA, ...config });
+    const r = executer(SCRIPT_SIGNAL, { ...e.env, MODE: "main", NUMERO: "0", SHA, BRANCHE: `automation/ci-main-${SHA}` }, e.dir);
+    assert.equal(r.status === 0, ok, r.stderr);
+    assert.equal(e.lire().posts.length, 0);
+  }
+  assert.match(corriger.if, /github.run_attempt == 1/, "une relance des seuls jobs échoués ne réappelle pas Claude pour main");
+});
+
+test("main : vrai commit/push uniquement sur la réservation, puis ouverture de PR", () => {
+  const r = publierAvec(ecrire("src/app.js", "2;\n"), { mode: "main" });
+  assert.equal(r.v.sorties.verdict, "ok", r.v.resume);
+  assert.equal(r.p.sorties.pousse, "oui", r.p.resume);
+  assert.notEqual(r.brancheDistante, r.sha);
+  assert.equal(git(r.distant, "rev-parse", `refs/heads/claude/fix-tests`), r.sha);
+  assert.ok(r.fin.appels.some((a) => a.includes("repos/r/p/pulls") && a.includes("--input")));
+  assert.equal(r.fin.posts.length, 1);
+  assert.equal(r.fin.posts[0].payload.head, r.branche);
+  assert.equal(r.fin.posts[0].payload.base, "main");
+  assert.equal(r.fin.posts[0].payload.draft, undefined);
+  assert.ok(r.fin.curl.some((a) => a.includes('{"permissions":{"contents":"write","pull_requests":"write"}}')));
+});
+for (const [nom, options] of [
+  ["base déplacée", { baseSha: BASE }],
+  ["réservation déplacée", { reserveSha: BASE }],
+]) {
+  test(`main : publication refusée si ${nom}`, () => {
+    const r = publierAvec(ecrire("src/app.js", "2;\n"), { mode: "main", ...options });
+    assert.equal(r.v.sorties.verdict, "refus", r.v.resume);
+    assert.equal(r.pousser, null);
+    assert.equal(r.brancheDistante, r.sha);
+    assert.equal(r.fin.curl.length, 0);
+  });
+}
+
+test("main : un workflow sensible est refusé avant le jeton, une PR impossible reste visible", () => {
+  const refuse = publierAvec(ecrire(".github/workflows/intrus.yml", "name: x\n"), { mode: "main" });
+  assert.equal(refuse.v.sorties.verdict, "refus");
+  assert.equal(refuse.fin.curl.length, 0);
+  const r = publierAvec(ecrire("src/app.js", "2;\n"), { mode: "main", prImpossible: true });
+  assert.equal(r.p.sorties.pousse, "non");
+  assert.notEqual(r.brancheDistante, r.sha);
+  assert.match(r.p.resume + r.fin.resume, /ouverture de PR impossible/);
+});
+
+
+test("master : la branche par défaut réelle est utilisée sans supposer main", () => {
+  const c = configMain();
+  c.defaultBranch = "master";
+  for (const run of [c.event.workflow_run, c.run, c.baseRuns.workflow_runs[0]]) run.head_branch = "master";
+  const e = environnement(c);
+  const r = executer(SCRIPT_TRI, e.env, e.dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(e.lire().sorties.decision, "claude", e.lire().resume);
+  assert.equal(e.lire().sorties.mode, "main");
 });
