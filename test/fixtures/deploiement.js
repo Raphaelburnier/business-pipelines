@@ -4,7 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
 
-function recette(scenario, { dejaIsole = false } = {}) {
+function recette(scenario, { dejaIsole = false, modeSocket = 0o700 } = {}) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-recette-"));
   const volume = path.join(racine, "docker");
   const business = path.join(volume, "business-pipelines");
@@ -18,6 +18,8 @@ function recette(scenario, { dejaIsole = false } = {}) {
   fs.writeFileSync(path.join(business, "app.txt"), "ancienne version");
   fs.writeFileSync(path.join(business, "etat/preserve.txt"), "etat vivant");
   fs.mkdirSync(path.join(business, "codex"));
+  fs.mkdirSync(path.join(business, "run-cockpit"), { mode: modeSocket });
+  fs.chmodSync(path.join(business, "run-cockpit"), modeSocket);
   fs.writeFileSync(path.join(business, "codex/session-recette.json"), '{"session":"factice"}\n');
   fs.writeFileSync(path.join(business, "specs/deploiement.env"), "ANTHROPIC_API_KEY=recette-factice\n", { mode: 0o600 });
   fs.writeFileSync(path.join(business, "specs/workers.json"), "{}\n");
@@ -29,7 +31,12 @@ function recette(scenario, { dejaIsole = false } = {}) {
   const empreinte = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
   const executable = (nom, source) => fs.writeFileSync(path.join(bin, nom), source, { mode: 0o700 });
   executable("id", "#!/bin/sh\necho 0\n");
-  executable("chown", "#!/bin/sh\nexit 0\n");
+  // Simuler la propriété sans exiger root sur le poste ou modifier son uid.
+  executable("chown", `#!${process.execPath}
+const fs=require('node:fs'),a=process.argv.slice(2);
+if(a[0]==='-R') fs.writeFileSync(process.env.RECETTE_SOCKET_OWNER,a[1]);
+else if(a.at(-1)===process.env.RECETTE_SOCKET_DIR) fs.writeFileSync(process.env.RECETTE_SOCKET_OWNER,a[0]);
+`);
   executable("curl", '#!/bin/sh\n[ "$RECETTE_SCENARIO" != restauration-malade ]\n');
   // Évite l'attente finale de journaux ; les échéances utilisent toujours l'horloge réelle.
   executable("sleep", `#!/bin/sh
@@ -79,7 +86,12 @@ else if(a[0]==='rm') {
 else if(a[0]==='compose'&&a[1]==='up') {
   const f=process.env.RECETTE_UP;
   const n=(fs.existsSync(f)?Number(fs.readFileSync(f,'utf8')):0)+1;fs.writeFileSync(f,String(n));
-  if(!['succes','signal-sante','maitre-malade'].includes(s)&&n===1) process.exitCode=42;
+  if(!['succes','socket-prive','signal-sante','maitre-malade'].includes(s)&&n===1) process.exitCode=42;
+  if(s==='socket-prive'&&n===1) {
+    const owner=fs.readFileSync(process.env.RECETTE_SOCKET_OWNER,'utf8');
+    const mode=fs.statSync(process.env.RECETTE_SOCKET_DIR).mode&0o777;
+    if(owner!=='0:0'||mode!==0o700) { console.error('EACCES : relais sans capacités, dossier socket privé inaccessible'); process.exitCode=42; }
+  }
   if(s==='signal-apres'&&n===1) bloquer();
   if(s==='restauration-echec'&&n===2) process.exitCode=23;
   if(s==='restauration-bloquee'&&n===2) bloquer();
@@ -95,6 +107,7 @@ else if(a[0]==='compose'&&a[1]==='up') {
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, DOCKER: path.join(bin, "docker"),
     RECETTE_SCENARIO: scenario, RECETTE_DEJA_ISOLE: dejaIsole ? "1" : "0", RECETTE_LOG: path.join(racine, "docker.log"), RECETTE_UP: path.join(racine, "up"), RECETTE_PIDS: pids,
     RECETTE_HANDSHAKE: path.join(racine, "handshake"),
+    RECETTE_SOCKET_OWNER: path.join(racine, "socket-owner"), RECETTE_SOCKET_DIR: path.join(business, "run-cockpit"),
     LIVRAISON_BUILD_TIMEOUT_SEC: "20", LIVRAISON_SWITCH_TIMEOUT_SEC: "20", LIVRAISON_ROLLBACK_TIMEOUT_SEC: "20", LIVRAISON_STOP_GRACE_SEC: "1" };
   const lancer = (options = {}) => new Promise((resolve, reject) => {
     const enfant = spawn("sh", [deploy], { env: { ...env, ...options.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
