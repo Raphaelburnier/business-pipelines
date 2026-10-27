@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Le correctif sépare le runner qui exécute les agents du réseau hôte et du réseau du cockpit. Le maître des workers devient un service sans agents ; un relais local transmet l'identité Tailscale au socket Unix du cockpit. Les recettes du vrai runner, du vrai protocole worker, des flux SSE, de l'isolation Docker et de la restauration ont été ajoutées. La prochaine étape est la fusion explicite et l'approbation du modèle exact, puis la livraison et la recette finale ; F1 et 0.1 restent « en cours » jusque-là.
+Le lot 0.1 est livré et vérifié en production. Le runner est séparé du réseau hôte et du réseau du cockpit ; le maître des workers est un service sans agents et l’identité du cockpit passe par son socket Unix. La livraison conjointe avec le lot 0.6 a réussi le 26 octobre ; la recette en lecture a été répétée le 27 octobre. F1 et 0.1 sont clôturés. La suite de la feuille est le lot 4.1 : annulation d’un run et pause globale des démarrages.
 
 ## État vérifié avant correction
 
@@ -29,8 +29,10 @@ Le relais cockpit écoute seulement la boucle locale. Son seul montage est le so
 
 Les preuves détaillées restent dans le dossier local de recette. Aucun appel à un modèle ni run métier de production n'est nécessaire.
 
-## Activation restante
+## Livraison et clôture
 
-Cette PR modifie `docker-compose.yaml` et `deploy/nas/`. Elle exige une fusion explicite et une nouvelle approbation opérateur du modèle, conformément à la politique de livraison. L'ancienne empreinte ne couvre pas ce contenu.
+La PR #191 a été fusionnée explicitement. Le modèle a été approuvé par l’opérateur et livré conjointement avec le lot 0.6. La première tentative a été restaurée après un défaut de traversée du dossier parent du socket ; une correction opérationnelle de ses permissions a permis la relivraison réussie. La pérennisation de cette précondition reste suivie séparément dans la PR #194.
 
-Après autorisation : vérifier les SHA et l'empreinte exacts, livrer, confirmer les six services applicatifs, la reconnexion du worker, l'identité réelle du navigateur et le refus d'accès depuis le runner. Mettre ensuite F1 et 0.1 à « fait ». Le sujet F14 du jeton Claude reste distinct.
+La recette de production confirme les sept services actifs, les réseaux distincts, le socket absent du runner, le cockpit sans port publié et le relais en lecture seule sans capacités supplémentaires. Sous l’uid d’agent, la boucle locale de l’hôte, le réseau du cockpit et le relais whois sont inaccessibles. Une fausse identité par TCP reçoit 403 ; l’identité réelle via Tailscale reçoit 200. Les contrôles de permissions et de secrets du lot 0.6 restent actifs.
+
+La vérification a été répétée le 27 octobre sans recréer de livraison ni lancer de modèle. Les versions applicatives installées correspondent à la livraison conjointe validée. Les preuves détaillées restent dans les dossiers locaux de recette, sans publication de données d’infrastructure personnelles.

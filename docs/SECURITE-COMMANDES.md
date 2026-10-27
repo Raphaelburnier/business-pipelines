@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Le lot 0.1 sépare le runner et ses agents du réseau hôte. Un maître sans agents conserve les connexions des workers et un relais local transmet l'accès Tailscale au socket Unix du cockpit. Les commandes d'autorité restent signées. Le nouveau modèle doit être fusionné et approuvé explicitement, puis livré et vérifié avant de déclarer F1 terminé en production.
+Le lot 0.1 sépare le runner et ses agents du réseau hôte. Un maître sans agents conserve les connexions des workers et un relais local transmet l'accès Tailscale au socket Unix du cockpit. Les commandes d'autorité restent signées. Le modèle a été approuvé puis livré ; les contrôles de production des 26 et 27 octobre confirment F1 terminé.
 
 ## Frontière d'identité — F1
 
