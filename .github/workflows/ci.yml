@@ -85,6 +85,11 @@ jobs:
         working-directory: business-pipelines
         run: npm test
 
+      # Les outils de sauvegarde s’exécutent sur le PC Linux (Python/flock), pas dans l’image servie.
+      - name: Verify off-NAS backup and isolated restore
+        working-directory: business-pipelines
+        run: npm run test:sauvegardes
+
       - name: Run web tests and typecheck
         working-directory: business-pipelines
         run: npm run web:test
