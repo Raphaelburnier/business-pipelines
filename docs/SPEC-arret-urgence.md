@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Deux contrôles opérateur durables sont livrés et vérifiés le 28 octobre 2026 : annuler un run actif ou en attente, et suspendre puis reprendre globalement les nouveaux démarrages. La pause laisse les runs déjà actifs continuer ; les commandes d’administration et d’annulation restent traitées. L’annulation empêche les reprises et conserve les fichiers ; un arrêt distant non confirmé reste signalé. La recette de l’image installée et la lecture de l’interface réelle passent. La prochaine étape est la livraison du statut « fait » dans la feuille de route.
+Deux contrôles opérateur durables sont livrés et vérifiés le 28 octobre 2026 : annuler un run actif ou en attente, et suspendre puis reprendre globalement les nouveaux démarrages. La pause laisse les runs déjà actifs continuer ; les commandes d’administration et d’annulation restent traitées. L’annulation empêche les reprises et conserve les fichiers ; un arrêt distant non confirmé reste signalé. La recette de l’image installée et la lecture de l’interface réelle passent. Le lot est clos dans la feuille de route ; les opérateurs peuvent utiliser ces contrôles en exploitation.
 
 ## Décisions
 
