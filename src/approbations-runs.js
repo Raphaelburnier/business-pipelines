@@ -35,7 +35,7 @@ function decisionsEnvoyees(store) {
  */
 function dossiers(store) {
   const envoyees = decisionsEnvoyees(store);
-  return store.approbationsOuvertes().map((a) => {
+  return store.approbationsOuvertes().filter(a => !store.controle?.annulationDemandee(a.run_id)).map((a) => {
     const run = store.run(a.run_id) || {};
     return {
       dossier: `${PREFIXE}${a.id}`,

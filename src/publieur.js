@@ -261,6 +261,7 @@ async function publierProjet({ projet, git, api, urlDepot, etat, store = null, j
     const [branche, sha] = ligne.split(" ");
     const cle = `${projet.id}:${branche}`;
     const runId = extraireRunId(git, depot, sha);
+    if (runId && store?.controle?.annulationDemandee(runId)) { journal(`${projet.id} : publication du run annulé ignorée`); continue; }
     // Le suivi durable de l'event store prime sur `etat` : un fichier d'état perdu ne doit ni
     // rouvrir une PR fusionnée ou fermée, ni repousser en force une branche déjà publiée, ce
     // qui effacerait sur GitHub une correction poussée par ci-autofix.

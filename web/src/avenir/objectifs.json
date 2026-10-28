@@ -5,7 +5,6 @@
   {"id": "3.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/rattachements.js"]},
   {"id": "3.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/stage-handlers.js", "BP Dockerfile:25-27"]},
   {"id": "3.8", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/graphe.js"]},
-  {"id": "4.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"]},
   {"id": "4.2", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/maitre.js:483,549,556", "BP src/alerte.js"]},
   {"id": "4.3", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP bin/cockpit.js:590-592"]},
   {"id": "5.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/event-store.js"]},

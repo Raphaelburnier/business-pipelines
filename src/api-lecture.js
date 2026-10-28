@@ -97,6 +97,7 @@ function run(store, runId) {
   const mission = contratMission ? require("agent-orchestrator/src/mission").vue(contratMission) : null;
   return {
     ...ligneRun(store, brut),
+    ...(store.controle?.annulation(runId) ? { annulation: store.controle.annulation(runId) } : {}),
     ...(mission ? { mission } : {}),
     // Critères du plan reliés aux étapes qui les réalisent et les jugent (src/planificateur.js).
     ...(mission?.plan ? { criteres: require("./planificateur").resultatCriteres(mission.plan, etapes, derniers, arbreCourant(store, runId, derniers)) } : {}),
