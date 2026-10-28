@@ -675,6 +675,24 @@ async function traiter(req, res) {
   // La première action de phase 5 : lancer un pipeline attaché à un projet. Le cockpit
   // n'exécute rien et ne reçoit aucune clé de modèle ; il dépose une commande signée dans
   // l'event store, que le service runner consomme dans un autre conteneur.
+  if (req.method === "GET" && chemin === "/api/execution") {
+    const s = store();
+    if (!s?.controle) return json(res, 503, { erreur: "Contrôle d’exécution indisponible" });
+    return json(res, 200, { ...s.controle.etat(), autorise: apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES) });
+  }
+  const annulerRun = req.method === "POST" && chemin.match(/^\/api\/runs\/([0-9a-f-]{36})\/annuler$/);
+  if ((req.method === "POST" && chemin === "/api/execution/pause") || annulerRun) {
+    if (!apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES)) return json(res, 403, { erreur: "Contrôle réservé à l’opérateur" });
+    const demande = await corpsJson(req, res);
+    if (demande === null) return;
+    const s = store();
+    if (!s?.controle) return json(res, 503, { erreur: "Contrôle d’exécution indisponible" });
+    if (annulerRun && !s.run(annulerRun[1])) return json(res, 404, { erreur: "Run inconnu" });
+    try {
+      const c = s.creerCommande({ kind: annulerRun ? "run.cancel" : "execution.pause", payload: annulerRun ? { runId: annulerRun[1] } : demande, par: qui.par, canal: qui.canal });
+      return json(res, 202, { id: c.id, statut: c.status });
+    } catch (err) { return json(res, 400, { erreur: err.message }); }
+  }
   if (req.method === "POST" && chemin === "/api/runs") {
     if (!acces.origineAutorisee(req.headers, PORTEE)) {
       return json(res, 403, { erreur: "origine refusée : cette écriture ne vient pas du cockpit" });

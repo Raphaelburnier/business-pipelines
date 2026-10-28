@@ -13,6 +13,7 @@ import { naviguer } from "../navigation";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
 import { AttenteRun } from "./AttenteRun";
+import { ControleRun } from "./ControleExecution";
 import { PlanLisible } from "./PlanMission";
 import { Icone } from "../icones";
 
@@ -182,6 +183,8 @@ function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string 
           <span title="Sur abonnement, un équivalent API, pas une dépense">{usd(run.coutEquivalentUsd)} équivalent</span>
         </div>
       </div>
+
+      <ControleRun key={run.id} run={run} />
 
       {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
         <Titre>Mission</Titre>

@@ -42,6 +42,9 @@ async function ecrire<T>(chemin: string, corps: unknown): Promise<T> {
 export function sourceApi(): Source {
   return {
     nom: "api",
+    etatExecution: () => lire("/api/execution"),
+    pauseExecution: pause => ecrire("/api/execution/pause", { pause }),
+    annulerRun: runId => ecrire(`/api/runs/${encodeURIComponent(runId)}/annuler`, {}),
     planifierGroupe: (demande) => ecrire('/api/missions/planifier-groupe', demande),
     async deplacerPlan(demande) { await ecrire('/api/missions/deplacer', demande); },
     topologie: () => lire<Topologie>("/api/topology"),

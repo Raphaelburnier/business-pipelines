@@ -36,6 +36,7 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   }
   assert.throws(() => objectifsAvenirs.validerReference({ id: "inconnu", revision: 1 }), /objectif.*inconnu/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: "0.1", revision: 1 }), /non attribuable/i, "une ligne déjà en cours doit être refusée");
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "4.1", revision: 1 }), /non attribuable/i, "l'arrêt d'urgence en cours ne doit pas être attribué une seconde fois");
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: 2 }), /révision/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: "1" }), /référence/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: "3.7", revision: 1 }, "steam-tierlist"), /se traite dans business-pipelines/);
@@ -825,8 +826,8 @@ test('TaskBoard : déplacement d’un ancien départ conserve heure et contrat, 
 
 test('TaskBoard : les dépôts annoncés sont autorisés, l’attribution historique reste mono-dépôt',()=>{
   const {validerReference}=require('../src/objectifs-avenirs');
-  assert.equal(validerReference({id:'4.1',revision:1},'business-pipelines',{taskBoard:true}).id,'4.1');
-  assert.equal(validerReference({id:'4.1',revision:1},'agent-orchestrator',{taskBoard:true}).id,'4.1');
-  assert.throws(()=>validerReference({id:'4.1',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
-  assert.throws(()=>validerReference({id:'4.1',revision:1},'business-pipelines'),/pas dans business-pipelines/);
+  assert.equal(validerReference({id:'4.2',revision:1},'business-pipelines',{taskBoard:true}).id,'4.2');
+  assert.equal(validerReference({id:'4.2',revision:1},'agent-orchestrator',{taskBoard:true}).id,'4.2');
+  assert.throws(()=>validerReference({id:'4.2',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
+  assert.throws(()=>validerReference({id:'4.2',revision:1},'business-pipelines'),/pas dans business-pipelines/);
 });

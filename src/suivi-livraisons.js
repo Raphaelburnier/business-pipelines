@@ -175,6 +175,7 @@ async function suivreLivraisons({ api, store, projets, journal = () => {}, rever
   const depotDe = new Map(projets.map((p) => [p.id, p.github]));
   const suivies = [];
   for (const livraison of store.livraisons({ enCours: true })) {
+    if (store.controle?.annulationDemandee(livraison.runId)) continue;
     const depot = livraison.repo || depotDe.get(livraison.projectId);
     if (!depot) continue;
     try {
