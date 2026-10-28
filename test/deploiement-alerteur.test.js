@@ -14,7 +14,11 @@ test("l'alerteur n'a que la source et sa configuration en lecture, son journal e
   assert.equal(JSON.stringify(a).includes("docker.sock"), false); assert.equal(JSON.stringify(a).includes("/git"), false);
   assert.equal(a.environment.some(x => /ANTHROPIC|CLAUDE|CODEX|GITHUB|SMTP_MOTDEPASSE/.test(x)), false);
   assert.ok(fs.readFileSync(path.join(__dirname, "../.dockerignore"), "utf8").includes("specs/alerteur.json"));
-  assert.ok(fs.readFileSync(path.join(__dirname, "../.gitignore"), "utf8").includes("specs/alerteur.json"));
+});
+
+test("la configuration SMTP privée est exclue de Git", { skip: !fs.existsSync(path.join(__dirname, "../.git")) ? "contrôle Git exécuté dans le checkout CI, hors image" : false }, () => {
+  const r = require("node:child_process").spawnSync("git", ["check-ignore", "--quiet", "specs/alerteur.json"], { cwd: path.join(__dirname, "..") });
+  assert.equal(r.status, 0, "le fichier réel ne doit pas être suivi par Git");
 });
 
 test("première activation : service démarré et journal durable conservé", async () => {
@@ -41,7 +45,9 @@ test("une configuration manquante refuse avant toute construction ou bascule", a
 test("alerteur malade : retour au compose précédent sans alerteur, journal conservé", async () => {
   const f = recette("alerteur-malade", { alerteur: true });
   try {
-    const r = await f.lancer(); assert.notEqual(r.code, 0, r.sortie); assert.match(r.sortie, /Restauration confirmée/);
+    const r = await f.lancer({ env: { LIVRAISON_SWITCH_TIMEOUT_SEC: "4" } }); assert.notEqual(r.code, 0, r.sortie); assert.match(r.sortie, /Restauration confirmée/);
+    const commandes = fs.readFileSync(path.join(f.racine, "docker.log"), "utf8").trim().split("\n").map(JSON.parse);
+    assert.ok(commandes.some(a => a[0] === "exec" && a[1] === "business_alerteur" && a.includes("--sante")), "la panne du contrôle local doit être atteinte");
     assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "ancienne version");
     assert.equal(fs.readFileSync(path.join(f.business, "docker-compose.yaml"), "utf8").includes("alerteur:"), false);
     assert.equal(fs.readFileSync(path.join(f.business, "etat/alertes/preserve.txt"), "utf8"), "journal vivant");
