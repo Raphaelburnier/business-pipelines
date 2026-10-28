@@ -826,8 +826,8 @@ test('TaskBoard : déplacement d’un ancien départ conserve heure et contrat, 
 
 test('TaskBoard : les dépôts annoncés sont autorisés, l’attribution historique reste mono-dépôt',()=>{
   const {validerReference}=require('../src/objectifs-avenirs');
-  assert.equal(validerReference({id:'4.2',revision:1},'business-pipelines',{taskBoard:true}).id,'4.2');
-  assert.equal(validerReference({id:'4.2',revision:1},'agent-orchestrator',{taskBoard:true}).id,'4.2');
-  assert.throws(()=>validerReference({id:'4.2',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
-  assert.throws(()=>validerReference({id:'4.2',revision:1},'business-pipelines'),/pas dans business-pipelines/);
+  assert.equal(validerReference({id:'5.2',revision:1},'business-pipelines',{taskBoard:true}).id,'5.2');
+  assert.equal(validerReference({id:'5.2',revision:1},'agent-orchestrator',{taskBoard:true}).id,'5.2');
+  assert.throws(()=>validerReference({id:'5.2',revision:1},'finance',{taskBoard:true}),/pas dans finance/);
+  assert.throws(()=>validerReference({id:'5.2',revision:1},'agent-orchestrator'),/pas dans agent-orchestrator/);
 });
