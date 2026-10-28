@@ -177,7 +177,7 @@ export const LOTS: Lot[] = [
     but: "Une revue qui rend un verdict sur le SHA exact et déclenche une correction bornée.",
     prerequis: "Lot 0.8",
     etapes: [
-      { id: "6.1", titre: "Revue avec verdict", detail: "Diagnostiquer la revue muette, allowed_bots: claude.", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "a-faire" },
+      { id: "6.1", titre: "Revue avec verdict", detail: "Verdict structuré sur la tête exacte ; quota et revue incomplète explicites. Recette GitHub en cours.", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "en-cours" },
       { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire" },
       { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Mêmes bornes et même isolement que ci-autofix.", fichiers: ["ci-autofix.yml"], statut: "a-faire" },
       { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
