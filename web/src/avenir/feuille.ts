@@ -156,7 +156,7 @@ export const LOTS: Lot[] = [
       { id: "4.2", titre: "Alertes hors du cockpit", detail: "Consommateur des événements alerte et run.failed.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "a-faire" },
       { id: "4.3", titre: "Santé de la plateforme", detail: "/api/sante, healthcheck Docker, rotation des logs.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "a-faire" },
       { id: "4.4", titre: "Budgets", detail: "Abandonné le 24 octobre 2026 : le coût d'un run n'est plus pris en compte et n'ouvre plus d'approbation, les agents tournant sur abonnement. Seuls les tours bornent un run (moteur 97). Pas de plafond quotidien ni mensuel à construire.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "fait" },
-      { id: "4.5", titre: "Sauvegardes", detail: "En cours : copie cohérente de SQLite, configuration chiffrée hors NAS et recette de restauration isolée.", fichiers: ["BP bin/sauvegarder-etat.js", "BP deploy/backup/exporter-etat.js"], statut: "en-cours" },
+      { id: "4.5", titre: "Sauvegardes", detail: "Sauvegarde quotidienne chiffrée sur le PC : SQLite cohérent avec WAL, specs/ dont workers.json, approbations et projets. Rétention de 14 archives. Premier passage automatique et restauration de deux bases et 42 fichiers vérifiés le 28 octobre 2026.", fichiers: ["BP bin/sauvegarder-etat.js", "BP deploy/backup/exporter-etat.js"], statut: "fait" },
     ],
   },
   {
@@ -288,7 +288,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "R1", severite: "haute", titre: "Attente sans borne dans MaitreDistant.executer", fichiers: "AO src/maitre-distant.js:62-81", correctif: "Lot 2.1", statut: "fait" },
   { id: "R2", severite: "haute", titre: "File unique sans délai (orch.js, scripts, git, fetch)", fichiers: "BP bin/commande-runner.js ; AO src/graphe.js ; BP deploy/nas/deploy.sh.modele", correctif: "Lot 2.6 livré : opérations bornées, diagnostic des runs longs sans interruption", statut: "fait" },
   { id: "R3", severite: "haute", titre: "Étape Codex sans borne d’actions ni durée", fichiers: "AO src/codex-runner.js:189-198, 244-245", correctif: "Lot 2.5", statut: "fait" },
-  { id: "R4", severite: "haute", titre: "Aucune sauvegarde de l'event store ni de specs/", fichiers: "BP deploy/nas/deploy.sh.modele:45-55", correctif: "Lot 4.5", statut: "en-cours" },
+  { id: "R4", severite: "haute", titre: "Aucune sauvegarde de l'event store ni de specs/", fichiers: "BP deploy/nas/deploy.sh.modele:45-55", correctif: "Lot 4.5 livré : copie quotidienne chiffrée hors NAS et restauration vérifiée", statut: "fait" },
   { id: "R5", severite: "moyenne", titre: "Arrêts machine routés comme un échec métier", fichiers: "AO src/graphe.js:353,468-472", correctif: "Lot 2.2", statut: "fait" },
   { id: "R6", severite: "moyenne", titre: "Cycle épuisé = Error générique", fichiers: "AO src/graphe.js:523-530", correctif: "Lot 2.3", statut: "fait" },
   { id: "R7", severite: "moyenne", titre: "Relais qui masque l'erreur réelle, sans test", fichiers: "AO src/relais.js:155-167", correctif: "Lot 2.4", statut: "fait" },

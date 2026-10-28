@@ -1,6 +1,6 @@
 # Lot 4.5 — sauvegardes de l’état
 
-Résumé : sauvegarder l’état vivant du cockpit hors NAS, sous forme chiffrée sur le PC. Une copie SQLite en ligne, une rétention de 14 sauvegardes réussies et une restauration isolée vérifiée précèdent la clôture du lot. Le rollback des livraisons reste réservé au code.
+Résumé : sauvegarder l’état vivant du cockpit hors NAS, sous forme chiffrée sur le PC. La copie SQLite en ligne, la rétention de 14 sauvegardes réussies et la restauration isolée ont été validées avant clôture du lot le 28 octobre 2026. Le rollback des livraisons reste réservé au code.
 
 - Source : `etat/events.sqlite` via l’API SQLite backup (WAL compris), `specs/` complet dont `workers.json`, `approvals/` et `projects/`. Aucun workspace, modèle ou identifiant externe à ces dossiers.
 - Export : programme Node exécuté dans le cockpit par le canal SSH existant. Répertoire temporaire privé, refus des liens et fichiers spéciaux, vérification que les fichiers de configuration n’ont pas changé pendant leur copie, manifeste SHA-256 et intégrité SQLite. Aucune donnée sensible dans les journaux.
@@ -11,3 +11,7 @@ Résumé : sauvegarder l’état vivant du cockpit hors NAS, sous forme chiffré
 - Preuves : tests export/WAL, chiffrement altéré ou mauvaise clé refusés, interruption sans publication, rétention, traversée de chemins et liens refusés ; sauvegarde réelle NAS→PC puis restauration isolée et contrôle de l’intégrité et des compteurs SQLite.
 - Limite : le PC doit fonctionner pour tirer la sauvegarde. Après indisponibilité, le timer persistant rattrape un passage ; l’âge du dernier succès est dans le statut. Un sinistre simultané NAS/PC n’est pas couvert. La clé doit être conservée séparément pour permettre une récupération après perte du PC.
 - Statut : 4.5 et R4 restent `en-cours` jusqu’à la recette et à la livraison du statut final. L’activation du timer et la réussite de la restauration doivent être confirmées, pas supposées.
+
+## Recette et clôture — 28 octobre 2026
+
+PR #197 intégrée et livrée, CI complète verte. Le premier déclenchement automatique du timer a produit une archive chiffrée ; sa restauration isolée a vérifié deux bases SQLite et 42 fichiers, leurs SHA-256, intégrité et compteurs. Le clair de recette a ensuite été supprimé. Les sources PC installées sont identiques à celles fusionnées. Le cockpit livré a été contrôlé par navigateur : 4.5/R4 en cours, non attribuables, aucune erreur JavaScript ni écriture pendant le contrôle. Les critères étant satisfaits, leur clôture peut être affichée.
