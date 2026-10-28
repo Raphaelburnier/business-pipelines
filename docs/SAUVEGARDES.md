@@ -41,3 +41,5 @@ Le déchiffrement complet et l’authentification précèdent l’extraction. Le
 5. Relire les commandes et runs non terminés avant reprise : une restauration revient à un état ancien ; des effets externes déjà produits depuis cet instant peuvent exister. Vérifier notamment les PR et livraisons pour éviter de rejouer une action.
 
 La procédure automatique ne bascule jamais les données de production. Cette recette couvre la récupération des fichiers et de SQLite ; elle ne simule pas la destruction du NAS ou la reprise des effets externes.
+
+Depuis le lot 4.2, la base `etat/alertes/notifications.sqlite` est également copiée lorsqu’elle existe. Elle est sauvegardée avant l’event store pour que son curseur ne dépasse pas les événements de l’archive. Restaurer ensemble ces deux bases ; une remise en place d’un ancien état peut répéter des courriels déjà acceptés par le SMTP.

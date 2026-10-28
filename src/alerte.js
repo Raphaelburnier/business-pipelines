@@ -21,38 +21,7 @@ const store = require("./store");
 // qui continue de marcher quand le téléphone est neuf, réinitialisé ou hors réseau. Même
 // quand le push existera, il restera le filet.
 const TRANSPORTS = {
-  courriel: async ({ titre, texte }, env) => {
-    const manquantes = ["SMTP_HOTE", "SMTP_UTILISATEUR", "SMTP_MOTDEPASSE", "ALERTE_DESTINATAIRE"].filter(
-      (k) => !env[k]
-    );
-    if (manquantes.length > 0) {
-      throw new Error(
-        `Transport courriel : variables manquantes : ${manquantes.join(", ")}. ` +
-          `Voir specs/alerte.env.example.`
-      );
-    }
-    const nodemailer = require("nodemailer");
-    const port = Number(env.SMTP_PORT || 587);
-    const transporteur = nodemailer.createTransport({
-      host: env.SMTP_HOTE,
-      port,
-      // 465 est le port du TLS implicite, 587 celui de STARTTLS. Déduire du port évite de
-      // demander un réglage de plus, et se tromper des deux côtés donne une erreur de
-      // connexion immédiate plutôt qu'un envoi en clair silencieux.
-      secure: port === 465,
-      auth: { user: env.SMTP_UTILISATEUR, pass: env.SMTP_MOTDEPASSE },
-    });
-    await transporteur.sendMail({
-      from: env.ALERTE_EXPEDITEUR || env.SMTP_UTILISATEUR,
-      to: env.ALERTE_DESTINATAIRE,
-      subject: titre,
-      // Texte brut, jamais de HTML. Le cockpit échappe ce qu'il affiche parce qu'il rend
-      // une page ; ici on ne demande aucune mise en forme, donc les justifications
-      // écrites par un modèle ne peuvent pas devenir de la structure. Un problème qu'on
-      // n'a pas à résoudre vaut mieux qu'un problème qu'on résout bien.
-      text: texte,
-    });
-  },
+  courriel: require("./courriel").envoyer,
 };
 
 // Le journal des alertes parties vit dans le store, à côté de la boîte qu'il commente.

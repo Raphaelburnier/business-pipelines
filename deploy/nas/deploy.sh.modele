@@ -138,18 +138,21 @@ fi
 # le code réellement en place couvre la première bascule et son retour arrière.
 services_installes() {
   SERVICES="cockpit runner tailscale-whois publieur"
-  for optionnel in maitre cockpit-relais; do
+  for optionnel in maitre cockpit-relais alerteur; do
     if grep -q "^  $optionnel:" "$BUSINESS/docker-compose.yaml"; then SERVICES="$SERVICES $optionnel"; fi
   done
 }
 services_sains() {
   en_marche business_runner && en_marche business_tailscale_whois && en_marche business_publieur || return 1
-  for optionnel in maitre cockpit-relais; do
+  for optionnel in maitre cockpit-relais alerteur; do
     if grep -q "^  $optionnel:" "$BUSINESS/docker-compose.yaml"; then
       conteneur=$(printf '%s' "$optionnel" | tr '-' '_')
       en_marche "business_$conteneur" || return 1
     fi
   done
+  if grep -q '^  alerteur:' "$BUSINESS/docker-compose.yaml"; then
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_alerteur node bin/alerteur.js --sante || return 1
+  fi
   if grep -q '^  maitre:' "$BUSINESS/docker-compose.yaml"; then
     borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_runner node -e 'fetch(`http://${process.env.ORCH_MAITRE_HOTE}:${process.env.ORCH_MAITRE_PORT || 650}/sante`,{signal:AbortSignal.timeout(2000)}).then(async r=>{if(!r.ok || (await r.json()).ok!==true)process.exit(1)}).catch(()=>process.exit(1))' || return 1
   fi
@@ -157,7 +160,7 @@ services_sains() {
 retirer_services() {
   CONTENEURS=
   # Un compose up peut échouer après n'avoir créé qu'une partie des conteneurs.
-  for conteneur in business_cockpit business_runner business_tailscale_whois business_publieur business_maitre business_cockpit_relais; do
+  for conteneur in business_cockpit business_runner business_tailscale_whois business_publieur business_maitre business_cockpit_relais business_alerteur; do
     if borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect "$conteneur" --format '{{.Image}}' > "$RELEASE/.image-optionnelle" 2>/dev/null; then CONTENEURS="$CONTENEURS $conteneur"; fi
   done
   [ -n "$CONTENEURS" ] || return 0
@@ -200,8 +203,8 @@ rollback() {
     borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_RUNNER" business-pipelines-runner || restauration_echec=1
     borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_WHOIS" business-pipelines-tailscale-whois || restauration_echec=1
     borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ANCIENNE_PUBLIEUR" business-pipelines-publieur || restauration_echec=1
-    for optionnel in maitre cockpit-relais; do
-      case "$optionnel" in maitre) ancienne=$ANCIENNE_MAITRE ;; *) ancienne=$ANCIENNE_RELAIS ;; esac
+    for optionnel in maitre cockpit-relais alerteur; do
+      case "$optionnel" in maitre) ancienne=$ANCIENNE_MAITRE ;; cockpit-relais) ancienne=$ANCIENNE_RELAIS ;; alerteur) ancienne=$ANCIENNE_ALERTEUR ;; esac
       if [ -n "$ancienne" ]; then borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag "$ancienne" "business-pipelines-$optionnel" || restauration_echec=1; fi
     done
     cd "$BUSINESS" || restauration_echec=1
@@ -254,6 +257,10 @@ borne "$COMMAND_TIMEOUT_SEC" 1800 rm -rf "$STAGE"
 mkdir -p "$BACKUPS" "$STAGE"
 borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$ARCHIVE" -C "$STAGE"
 mkdir -p "$STAGE/specs"
+if grep -q '^  alerteur:' "$STAGE/docker-compose.yaml"; then
+  [ -s "$BUSINESS/specs/alerteur.json" ] || { echo "Configuration privée de l'alerteur absente." >&2; exit 1; }
+  [ "$(stat -c %a "$BUSINESS/specs/alerteur.json")" = "600" ] || { echo "Configuration de l'alerteur : mode 600 requis." >&2; exit 1; }
+fi
 ln -sf "$ENV" "$STAGE/specs/deploiement.env"
 ln -sf "$BUSINESS/specs/workers.json" "$STAGE/specs/workers.json"
 ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
@@ -284,8 +291,10 @@ IFS= read -r ANCIENNE_PUBLIEUR < "$RELEASE/.image"
 # Les deux nouveaux services sont absents lors de la première migration.
 ANCIENNE_MAITRE=
 ANCIENNE_RELAIS=
+ANCIENNE_ALERTEUR=
 if borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_maitre --format '{{.Image}}' > "$RELEASE/.image" 2>/dev/null; then IFS= read -r ANCIENNE_MAITRE < "$RELEASE/.image"; fi
 if borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_cockpit_relais --format '{{.Image}}' > "$RELEASE/.image" 2>/dev/null; then IFS= read -r ANCIENNE_RELAIS < "$RELEASE/.image"; fi
+if borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" inspect business_alerteur --format '{{.Image}}' > "$RELEASE/.image" 2>/dev/null; then IFS= read -r ANCIENNE_ALERTEUR < "$RELEASE/.image"; fi
 # Le code seulement : mêmes noms que vider_code, à garder d'accord.
 borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -czf "$BACKUP" -C /volume1/docker \
   --exclude=business-pipelines/approvals --exclude=business-pipelines/specs \
@@ -305,7 +314,7 @@ cd "$STAGE"
 # construction, puis la même image sous le nom de chaque service, que la bascule et la
 # restauration utilisent.
 borne "$BUILD_TIMEOUT_SEC" 7200 "$DOCKER" compose build cockpit
-for service in runner tailscale-whois publieur maitre cockpit-relais; do
+for service in runner tailscale-whois publieur maitre cockpit-relais alerteur; do
   borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag business-pipelines-cockpit "business-pipelines-$service"
 done
 
@@ -318,7 +327,7 @@ vider_code
 borne "$ARCHIVE_TIMEOUT_SEC" 900 tar -xzf "$ARCHIVE" -C "$BUSINESS"
 # Tout dossier monté par docker-compose.yaml doit exister : Docker sur DSM ne crée pas la
 # source d'un bind mount, et la bascule échoue (./codex, 2026-10-15, version restaurée).
-mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/ai-studio-data" "$BUSINESS/codex" "$BUSINESS/run-cockpit" "$BUSINESS/specs/cles"
+mkdir -p "$BUSINESS/approvals" "$BUSINESS/logs" "$BUSINESS/runs" "$BUSINESS/workspaces" "$BUSINESS/etat" "$BUSINESS/etat/alertes" "$BUSINESS/ai-studio-data" "$BUSINESS/codex" "$BUSINESS/run-cockpit" "$BUSINESS/specs/cles"
 # deploiement.env n'est jamais réécrit ici : une réécriture en root l'a laissé lisible par
 # tous le 2026-09-26. Ses droits sont seulement vérifiés.
 # admindunas:users en numérique (1026:100, vérifié le 2026-09-29) : dans le conteneur du
@@ -330,14 +339,14 @@ borne "$COMMAND_TIMEOUT_SEC" 1800 chown -R 1026:100 "$BUSINESS"
 borne "$COMMAND_TIMEOUT_SEC" 1800 chown 0:0 "$BUSINESS/run-cockpit"
 chmod 700 "$BUSINESS/run-cockpit"
 # La connexion Codex du conseiller (auth.json) : lisible du seul propriétaire.
-chmod 700 "$BUSINESS/codex"
+chmod 700 "$BUSINESS/codex" "$BUSINESS/etat/alertes"
 
 cd "$BUSINESS"
 services_installes
 borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" compose up -d --no-build $SERVICES
 
 if ! sante; then
-  for service in cockpit runner tailscale_whois publieur maitre cockpit_relais; do borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" logs --tail 60 "business_$service" >&2 || true; done
+  for service in cockpit runner tailscale_whois publieur maitre cockpit_relais alerteur; do borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" logs --tail 60 "business_$service" >&2 || true; done
   exit 1
 fi
 # L'image doit porter les deux correctifs dont les runs dépendent.

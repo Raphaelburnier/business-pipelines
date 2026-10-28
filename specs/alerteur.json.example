@@ -1,0 +1,8 @@
+{
+  "SMTP_HOTE": "",
+  "SMTP_PORT": 587,
+  "SMTP_UTILISATEUR": "",
+  "SMTP_MOTDEPASSE": "",
+  "ALERTE_DESTINATAIRE": "",
+  "ALERTE_COCKPIT_URL": "https://cockpit.example.invalid"
+}

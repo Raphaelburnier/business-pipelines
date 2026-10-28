@@ -4,7 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
 
-function recette(scenario, { dejaIsole = false, modeSocket = 0o700 } = {}) {
+function recette(scenario, { dejaIsole = false, modeSocket = 0o700, alerteur = false, dejaAlerteur = false, configurationAlerteur = true } = {}) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-recette-"));
   const volume = path.join(racine, "docker");
   const business = path.join(volume, "business-pipelines");
@@ -12,9 +12,9 @@ function recette(scenario, { dejaIsole = false, modeSocket = 0o700 } = {}) {
   const bin = path.join(racine, "bin");
   const candidate = path.join(racine, "candidate");
   for (const dir of [bin, candidate, release, path.join(business, "specs"), path.join(business, "etat")]) fs.mkdirSync(dir, { recursive: true });
-  const compose = isole => `services:\n  cockpit: {}\n  runner: {}\n  tailscale-whois: {}\n  publieur: {}\n${isole ? "  maitre: {}\n  cockpit-relais: {}\n" : ""}`;
-  fs.writeFileSync(path.join(business, "docker-compose.yaml"), compose(dejaIsole));
-  fs.writeFileSync(path.join(candidate, "docker-compose.yaml"), compose(true));
+  const compose = (isole, alertes = false) => `services:\n  cockpit: {}\n  runner: {}\n  tailscale-whois: {}\n  publieur: {}\n${isole ? "  maitre: {}\n  cockpit-relais: {}\n" : ""}${alertes ? "  alerteur: {}\n" : ""}`;
+  fs.writeFileSync(path.join(business, "docker-compose.yaml"), compose(dejaIsole, dejaAlerteur));
+  fs.writeFileSync(path.join(candidate, "docker-compose.yaml"), compose(true, alerteur));
   fs.writeFileSync(path.join(business, "app.txt"), "ancienne version");
   fs.writeFileSync(path.join(business, "etat/preserve.txt"), "etat vivant");
   fs.mkdirSync(path.join(business, "codex"));
@@ -24,6 +24,11 @@ function recette(scenario, { dejaIsole = false, modeSocket = 0o700 } = {}) {
   fs.writeFileSync(path.join(business, "specs/deploiement.env"), "ANTHROPIC_API_KEY=recette-factice\n", { mode: 0o600 });
   fs.writeFileSync(path.join(business, "specs/workers.json"), "{}\n");
   fs.writeFileSync(path.join(business, "specs/publieur.env"), "\n", { mode: 0o600 });
+  if (alerteur || dejaAlerteur) {
+    fs.mkdirSync(path.join(business, "etat/alertes"), { mode: 0o700 });
+    fs.writeFileSync(path.join(business, "etat/alertes/preserve.txt"), "journal vivant");
+    if (configurationAlerteur) fs.writeFileSync(path.join(business, "specs/alerteur.json"), "{}", { mode: 0o600 });
+  }
   fs.writeFileSync(path.join(candidate, "app.txt"), "nouvelle version");
   fs.writeFileSync(path.join(candidate, ".release"), "cockpit=nouveau\n");
   const archive = path.join(release, "recette.tar.gz");
@@ -71,10 +76,12 @@ function bloquer(){
 if(a[0]==='inspect') {
   if(s==='creation-partielle' && ['business_runner','business_tailscale_whois'].includes(a[1]) && fs.existsSync(process.env.RECETTE_UP) && fs.readFileSync(process.env.RECETTE_UP,'utf8')==='1') process.exit(1);
   if(['business_maitre','business_cockpit_relais'].includes(a[1]) && process.env.RECETTE_DEJA_ISOLE!=='1' && !fs.existsSync(process.env.RECETTE_UP)) process.exit(1);
+  if(a[1]==='business_alerteur' && process.env.RECETTE_DEJA_ALERTEUR!=='1' && !fs.existsSync(process.env.RECETTE_UP)) process.exit(1);
   if(s==='maitre-malade' && a[1]==='business_maitre' && a.at(-1).includes('.State') && fs.readFileSync(process.env.RECETTE_UP,'utf8')==='1') { console.log('false'); process.exit(0); }
   if(s==='signal-sante'&&a.at(-1).includes('.State')&&fs.readFileSync(process.env.RECETTE_UP,'utf8')==='1') bloquer();
   else console.log(a.at(-1).includes('.Image')?'image-ancienne-'+a[1]:'true');
 }
+else if(a[0]==='exec' && a[1]==='business_alerteur' && s==='alerteur-malade' && fs.readFileSync(process.env.RECETTE_UP,'utf8')==='1') process.exit(1);
 else if(a[0]==='compose'&&a[1]==='build') {
   if(s==='avant-echec') process.exitCode=41;
   if(s==='avant-bloque'||s==='signal'||s==='signal-handshake') bloquer();
@@ -105,7 +112,7 @@ else if(a[0]==='compose'&&a[1]==='up') {
   fs.writeFileSync(deploy, script);
   const pids = path.join(racine, "pids.json");
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, DOCKER: path.join(bin, "docker"),
-    RECETTE_SCENARIO: scenario, RECETTE_DEJA_ISOLE: dejaIsole ? "1" : "0", RECETTE_LOG: path.join(racine, "docker.log"), RECETTE_UP: path.join(racine, "up"), RECETTE_PIDS: pids,
+    RECETTE_SCENARIO: scenario, RECETTE_DEJA_ISOLE: dejaIsole ? "1" : "0", RECETTE_DEJA_ALERTEUR: dejaAlerteur ? "1" : "0", RECETTE_LOG: path.join(racine, "docker.log"), RECETTE_UP: path.join(racine, "up"), RECETTE_PIDS: pids,
     RECETTE_HANDSHAKE: path.join(racine, "handshake"),
     RECETTE_SOCKET_OWNER: path.join(racine, "socket-owner"), RECETTE_SOCKET_DIR: path.join(business, "run-cockpit"),
     LIVRAISON_BUILD_TIMEOUT_SEC: "20", LIVRAISON_SWITCH_TIMEOUT_SEC: "20", LIVRAISON_ROLLBACK_TIMEOUT_SEC: "20", LIVRAISON_STOP_GRACE_SEC: "1" };

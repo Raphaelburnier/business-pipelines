@@ -211,6 +211,42 @@ services:
     networks:
       - business
 
+  # Consommateur sans agent : lecture seule des événements et seul journal d'envoi écrit.
+  alerteur:
+    build: .
+    container_name: business_alerteur
+    restart: always
+    user: "1026:100"
+    command: ["node", "bin/alerteur.js"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 30s
+    volumes:
+      - ./etat:/app/source:ro
+      - ./etat/alertes:/app/alertes
+      - ./specs/alerteur.json:/app/specs/alerteur.json:ro
+    environment:
+      - NODE_ENV=production
+      - ALERTE_SOURCE=/app/source/events.sqlite
+      - ALERTE_ETAT_DIR=/app/alertes
+      - ALERTE_CONFIG=/app/specs/alerteur.json
+    networks:
+      - alertes
+    depends_on:
+      - runner
+    healthcheck:
+      test: ["CMD", "node", "bin/alerteur.js", "--sante"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+
   # Met en production la version du cockpit que Raphaël valide dans le cockpit
   # (docs/SPEC-livraison.md). Seul service qui tient le socket Docker, donc root sur le NAS :
   # en échange, il n'écoute rien, ne reçoit ni jeton ni clé dans son environnement, ne fait
@@ -292,6 +328,8 @@ services:
       - business
 
 networks:
+  alertes:
+    driver: bridge
   business:
     driver: bridge
   execution:
