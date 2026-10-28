@@ -16,7 +16,7 @@ import { useCharge } from "../donnees/contexte";
 const toutesLesEtapes = LOTS.flatMap((lot) => lot.etapes);
 const topo = { projets: [{ id: "demo", nom: "Projet démo", aFiche: true, pipelines: ["dev@1"] }] } as unknown as Topologie;
 const attribution: AttributionAvenir = {
-  objectif: { id: "4.3", revision: 1 }, commandeId: "cmd-12345678", runId: "run-12345678", projetId: "demo",
+  objectif: { id: "5.2", revision: 1 }, commandeId: "cmd-12345678", runId: "run-12345678", projetId: "demo",
   agent: { id: "sacha", nom: "Sacha", llm: { via: "codex", model: "gpt-5.6" } }, statut: "running",
   creeLe: "2026-10-19T00:00:00.000Z", raison: null, livraison: null,
 };
