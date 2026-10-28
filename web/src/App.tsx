@@ -17,6 +17,7 @@ import { Panneau } from "./vues/Panneau";
 import { Missions } from "./vues/Missions";
 import { Branches } from "./vues/Branches";
 import { Pipelines } from "./vues/Pipelines";
+import { ControleFile } from "./vues/ControleExecution";
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 
 const Systeme = lazy(() => import("./systeme/Systeme").then((module) => ({ default: module.Systeme })));
@@ -273,6 +274,7 @@ function Coquille() {
             </span>
           </div>
         </header>
+        <ControleFile />
 
         <main className={`ao-contenu${route.type === "finance" ? " ao-contenu-finance" : ""}`}>
           {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => choix ? ouvrir(choix) : fermer()} />}

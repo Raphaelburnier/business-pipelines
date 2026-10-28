@@ -52,6 +52,9 @@ export interface AttributionAvenir {
 }
 
 export interface Source {
+  etatExecution?(): Promise<{ pause: boolean; par: string | null; depuis: string | null; autorise: boolean }>;
+  pauseExecution?(pause: boolean): Promise<{ id: string; statut: string }>;
+  annulerRun?(runId: string): Promise<{ id: string; statut: string }>;
   readonly nom: "maquette" | "api";
   topologie(): Promise<Topologie>;
   runs(filtre?: FiltreRuns): Promise<Run[]>;

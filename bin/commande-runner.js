@@ -62,7 +62,12 @@ function lancerParallele(lancement, options = {}) {
   const key = options.runId ? options.store?.commandeLancementRun(options.runId)?.id || options.runId : options.commandId;
   const avant = lancementsParRun.get(key) || Promise.resolve();
   const operation = avant.catch(()=>{}).then(async()=> {
-    while (!arret && (!maitre || (MAITRE_EXTERNE && !maitre.pret) || enfants.size >= capaciteRuns())) await attendre(Math.min(INTERVALLE,50));
+    const annule = () => options.store?.controle.annulationDemandee(options.runId || options.store?.commande(options.commandId)?.run_id);
+    while (!arret && (options.store?.controle.demarragesBloques() || !maitre || (MAITRE_EXTERNE && !maitre.pret) || enfants.size >= capaciteRuns())) {
+      if (annule()) return { code: 130, annule: true };
+      await attendre(Math.min(INTERVALLE,50));
+    }
+    if (annule()) return { code: 130, annule: true };
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
     return lancer(lancement, options);
   });
@@ -150,6 +155,7 @@ function lancer({ projectId, pipelineIndex = 0, llmOverrides = {}, mission = nul
     const debut = new Date().toISOString();
     const seuilMs = delaiDiagnosticRun();
     const processus = spawn(process.execPath, args, { cwd: RACINE, env, stdio: "inherit" });
+    processus.lancement = { runId, commandId };
     enfants.add(processus);
     let diagnostique = false;
     const surveillance = setInterval(() => {
@@ -231,6 +237,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
     let exclure = [];
     if (kinds.includes("run.resume")) {
       sonderQuotaCodex(store);
+      if (store.controle.demarragesBloques()) { await attendre(INTERVALLE); continue; }
       store.attentes.programmer({ machineDisponible });
       // Un objectif planifié illisible ne doit pas arrêter la file des runs : elle continue
       // sans exclusions, comme avant le calendrier.
@@ -301,6 +308,8 @@ async function traiterCommande(store, commande, executer) {
     ? terminerReprise({ store, commande, resultat }) : store.terminerCommande(commande.id, resultat);
   try {
     const resultat = await executer(commande);
+    // Le contrôle acquitte dans la même transaction que son état durable.
+    if (["execution.pause", "run.cancel"].includes(commande.kind) && store.commande(commande.id)?.status === "done") return;
     // Un arrêt du runner ne refuse pas la tâche interrompue : elle reste réservée,
     // sera remise en file, et retrouvera son run au redémarrage.
     if (!arret || commande.kind === "chat.respond") {
@@ -343,6 +352,7 @@ async function deciderEtReprendre(store, commande, lancerRun = lancerParallele) 
   const { approbationId, decision, note = null, actions = [] } = commande.payload;
   const a = store.approbation(approbationId);
   if (!a) throw new Error(`approbation inconnue : ${approbationId}`);
+  if (store.controle.annulationDemandee(a.run_id)) throw new Error("Run annulé : décision et reprise refusées");
   store.lierDecisionRun(commande.id, a.run_id);
   const dejaEcrite = a.status === decision && a.par === commande.par;
   if (!dejaEcrite) {
@@ -441,10 +451,11 @@ async function demarrer() {
   }, 1000);
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
-  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "run.resume", "approval.decide", "run.reverify", "chat.respond"] });
+  const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "run.resume", "approval.decide", "run.reverify", "chat.respond", "execution.pause", "run.cancel"] });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
+      boucle(store, ["execution.pause", "run.cancel"], commande => require("../src/controle-execution").traiterControle({ store, commande, enfants })),
       ouvrirMaitre(store),
       boucle(store, ["run.start", "run.resume", "run.reverify"], (commande) => executerRun(store, commande), { prioriserRuns: true }),
       // La décision est enregistrée hors de la file longue ; le maître borne les étapes
