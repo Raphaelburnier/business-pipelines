@@ -152,7 +152,7 @@ export const LOTS: Lot[] = [
     but: "Pouvoir arrêter, surveiller et restaurer la plateforme avant de la laisser décider seule.",
     prerequis: "À livrer avant le lot 5",
     etapes: [
-      { id: "4.1", titre: "Arrêt d'urgence", detail: "Annulation définitive d'un run et pause durable des démarrages. Implémentation en cours de validation avant livraison.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "en-cours" },
+      { id: "4.1", titre: "Arrêt d'urgence", detail: "Pause durable des démarrages, annulation définitive d'un run, confirmation de l'arrêt et conservation des fichiers. Livré et vérifié le 28 octobre 2026.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "fait" },
       { id: "4.2", titre: "Alertes hors du cockpit", detail: "Consommateur des événements alerte et run.failed.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "a-faire" },
       { id: "4.3", titre: "Santé de la plateforme", detail: "/api/sante, healthcheck Docker, rotation des logs.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "a-faire" },
       { id: "4.4", titre: "Budgets", detail: "Abandonné le 24 octobre 2026 : le coût d'un run n'est plus pris en compte et n'ouvre plus d'approbation, les agents tournant sur abonnement. Seuls les tours bornent un run (moteur 97). Pas de plafond quotidien ni mensuel à construire.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "fait" },
