@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Le cockpit dispose d’une pause durable des démarrages et d’une annulation explicite par run. Les runs actifs continuent pendant la pause ; une annulation empêche les reprises, conserve les fichiers et exige une confirmation du travail distant. Les recettes locales passent. L’intégration des deux dépôts et la vérification en production restent à effectuer ; la CI privée du moteur est bloquée avant exécution par la facturation GitHub Actions.
+Le lot 4.1 est livré et vérifié le 28 octobre 2026 : pause durable des démarrages, annulation explicite par run, conservation des fichiers et confirmation de l’arrêt distant. Les tests de l’image installée et l’interface réelle sur bureau et mobile passent. Les démarrages sont actifs à la fin de la recette. La prochaine étape est la livraison de la feuille de route qui marque le lot « fait ».
 
 ## Comportement livré dans le code
 
@@ -16,14 +16,20 @@ L’API utilise l’identité et le contrôle d’origine existants et réserve 
 ## Validation locale
 
 - Moteur : 380 tests dans 38 fichiers avec `vitest run --maxWorkers=2`, puis typecheck. Les six tests ciblés du contrôle et du vrai worker repassent après les derniers correctifs.
-- Cockpit : suite serveur, tests HTTP sur socket et vrais processus, tests web, typecheck et build.
+- Cockpit : suite serveur, tests HTTP sur socket et vrais processus, 81 tests web, typecheck et build. La CI complète inclut les sauvegardes, leur restauration isolée et la vérification Docker.
 - Recette navigateur avec API simulée : pause et reprise, annulation, refus distant visible, absence des boutons pour un utilisateur non autorisé, affichage mobile de 390 px sans débordement ni erreur JavaScript.
 - Recette combinée du contrôleur cockpit : commande SQLite, vrai maître, vrai worker, fin effective de l’étape avant acquittement et clôture du run. Aucun modèle réel ou run de production sollicité.
 
 Deux défauts trouvés par les recettes ont été corrigés : le dispatch d’une étape déjà annulée pendant son attente et une transaction imbriquée lors de la clôture d’une étape encore marquée active. Les tests reproduisent ces cas.
 
-## Intégration attendue
+## Intégration et production vérifiées
 
-Le cockpit dépend de la [PR moteur #105](https://github.com/Raphaelburnier/agent-orchestrator/pull/105). Sa CI utilise la branche principale du moteur : intégrer le moteur avant de valider la CI finale du cockpit. Les chemins sensibles imposent une fusion explicite ; aucun contrôle de fusion n’a été affaibli. La CI moteur n’est pas présentée comme réussie : elle n’a pas démarré à cause de la facturation.
+La [PR moteur #105](https://github.com/Raphaelburnier/agent-orchestrator/pull/105) est fusionnée en `8b5178a`, après validation locale du merge courant et accord explicite pour la fusion manuelle. Sa CI n’a pas démarré à cause de la facturation ; elle n’est pas présentée comme réussie. La [PR cockpit #198](https://github.com/Raphaelburnier/business-pipelines/pull/198) est fusionnée en `ffdceba8` après sa [CI complète verte](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40634975928), qui teste ce moteur intégré. Aucun contrôle de fusion n’a été affaibli.
 
-Après intégration, livrer la paire puis vérifier la présence des contrôles et l’état initial de la pause. Garder le lot 4.1 « en cours » tant que la vérification de production manque.
+La livraison `3a6a680c-bb75-47c1-abf3-a4703cbebf2e` a terminé avec succès à `2026-10-28T05:14:51.867Z`, release `cockpit-20261028-050456`. Versions : cockpit `ffdceba8`, moteur `8b5178a`, registre `c045d81`.
+
+- Douze sources vérifiées par SHA-256 dans chacun des conteneurs runner, cockpit et maître ; sept services actifs sur les versions attendues.
+- API du contrôle accessible à l’opérateur et pause désactivée ; racine et TaskBoard répondent HTTP 200.
+- Six tests de contrôle et d’autorisation réussis dans le digest réellement installé, en conteneur jetable sans réseau ni montage de données de production.
+- Bouton réel visible sur bureau et mobile de 390 px, sans débordement ni erreur JavaScript. La recette du navigateur ne fait aucune écriture en production.
+- Modèle de déploiement approuvé inchangé et conservé. Le lot peut être marqué « fait ».
