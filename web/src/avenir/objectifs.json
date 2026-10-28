@@ -9,7 +9,6 @@
   {"id": "5.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/event-store.js"]},
   {"id": "5.2", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/missions.js", "AO src/mission.js:18-90"]},
   {"id": "5.4", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/missions.js:77-89"]},
-  {"id": "6.1", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP .github/workflows/claude-code-review.yml"]},
   {"id": "6.2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"]},
   {"id": "6.3", "revision": 1, "projet": null, "fichiers": ["ci-autofix.yml"]},
   {"id": "6.5", "revision": 1, "projet": null, "fichiers": ["~/.claude/hooks/ci-pr/stop_ci.py"]},

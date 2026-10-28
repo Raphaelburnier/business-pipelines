@@ -247,11 +247,54 @@ variante ; ce correctif conserve son implémentation.
 
 ## Revue après un correctif publié automatiquement
 
-`claude-code-review.yml` autorise uniquement `claude` dans `allowed_bots`, comme le correcteur.
-La revue tourne sur les PR internes prêtes à relire ; les brouillons sont ignorés. Un nouveau
-commit annule la revue précédente de la même PR ; chaque job reste limité à 30 minutes et
-40 tours. L'action est épinglée sur la même version que le correcteur, et le checkout ne
-conserve aucun identifiant. La revue reste consultative et distincte du workflow `CI`.
+### Verdict explicite sur un instantané (lot 6.1)
+
+Le plugin de revue pouvait réussir avec un simple commentaire « aucun problème », ou
+ne rien publier ; les erreurs `is_error:true` ne donnaient pas de verdict exploitable.
+Le workflow conserve son nom `Claude Code Review`, mais sépare désormais lecture et
+publication. La revue reste consultative et distincte du workflow `CI` : exiger ce
+verdict avant fusion relève du lot 6.2, et déclencher une correction du lot 6.3.
+
+`pull_request_target` et la relance `workflow_dispatch` utilisent seulement le code de
+confiance de la branche par défaut. Aucun checkout, hook, test ou script de la PR n'est
+exécuté. Le préparateur télécharge le diff et les contenus textuels aux SHA immuables,
+avec la vraie base de comparaison Git. Il refuse forks, brouillons, acteurs sans droit
+d'écriture et bots autres que `claude[bot]`. Une PR trop volumineuse, un binaire ou un
+diff incomplet produit une indisponibilité explicite, sans appel modèle : au plus
+60 fichiers, 100 Ko par fichier et 500 Ko de contexte avant/après au total.
+
+Le relecteur utilise la base de l'action Claude épinglée, sans plugin ni jeton GitHub
+d'écriture/OIDC. Ses seuls outils sont Read, Glob et Grep en mode restreint ; hooks,
+MCP, shell, réseau, écriture et délégation sont désactivés. Les limites restent
+40 tours et 30 minutes pour le job (25 minutes pour l'étape modèle).
+
+Le résultat structuré distingue `approved`, `changes_requested` et une revue incomplète.
+Une approbation exige tous les fichiers déclarés relus et aucun constat. Une demande de
+correction exige au moins un constat ancré sur une ligne réellement changée, avec sa
+priorité et sa conséquence. Le validateur rejette les données incohérentes. Un quota,
+une erreur fournisseur, l'absence de résultat ou une couverture partielle ne devient
+jamais une approbation ; le job est alors en échec et la publication explique la cause.
+
+Le seul artefact conservé, `github-review-verdict-<tentative>/verdict.json`, contient
+`schema_version: 1`, dépôt, PR, tête, base, merge-base, run/tentative, statut, verdict,
+résumé, couverture et constats assainis. Le contexte source et le journal brut ne sont
+pas publiés. Le second job, seul détenteur du droit de commenter, vérifie la provenance
+et relit la PR juste avant publication. Un changement de tête ou de base donne
+« PÉRIMÉE », sans approbation de la PR courante. Un marqueur lié aux SHA et au run rend
+les reprises de publication idempotentes. Une revue terminée est publiée comme revue
+GitHub `COMMENT` liée au `commit_id` exact, avec ses constats inline. Ses conversations
+non résolues conservent leur rôle dans le gate existant. Les constats pointent le fichier
+de la tête ou celui de la merge-base pour une ligne supprimée. Une indisponibilité ou
+un résultat périmé produit seulement un commentaire de diagnostic, sans revue approuvée.
+
+La relance manuelle demande le numéro de la PR et doit viser la branche par défaut.
+Elle permet notamment de refaire une revue après retour du quota. Une nouvelle tête
+annule le travail précédent via la concurrence par PR. Les tests du contrat, des
+permissions et de publication sont dans `test/github-review.test.js`, intégrés à `npm test`.
+
+Références : [sorties de l'action épinglée](https://github.com/anthropics/claude-code-action/blob/1d6de8cb0c237e7c15e9e1bdf973826ebae490cc/base-action/action.yml),
+[outils et mode restreint](https://code.claude.com/docs/en/cli-reference),
+[séparation des privilèges GitHub](https://docs.github.com/en/actions/reference/security/secure-use).
 
 La recette PR120 prouvait deux corrections avec une relance humaine entre les deux. Elle
 ne prouve pas encore la nouvelle succession automatique : après fusion de ce lot sensible,
