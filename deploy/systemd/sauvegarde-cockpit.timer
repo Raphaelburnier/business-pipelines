@@ -1,0 +1,11 @@
+[Unit]
+Description=Sauvegarde quotidienne du cockpit sur le PC
+
+[Timer]
+OnCalendar=*-*-* 05:45:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=sauvegarde-cockpit.service
+
+[Install]
+WantedBy=timers.target

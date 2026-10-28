@@ -1,0 +1,14 @@
+[Unit]
+Description=Sauvegarde chiffrée du cockpit hors NAS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=%h/.local/lib/cockpit-backup/node %h/.local/lib/cockpit-backup/bin/sauvegarder-etat.js
+TimeoutStartSec=6min
+KillMode=control-group
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
