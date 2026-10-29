@@ -177,7 +177,7 @@ export const LOTS: Lot[] = [
     but: "Une revue qui rend un verdict sur le SHA exact et déclenche une correction bornée.",
     prerequis: "Lot 0.8",
     etapes: [
-      { id: "6.1", titre: "Revue avec verdict", detail: "Verdict structuré sur la tête exacte ; quota et revue incomplète explicites. Recette GitHub en cours.", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "en-cours" },
+      { id: "6.1", titre: "Revue avec verdict", detail: "Verdict structuré sur la tête et la base exactes ; erreurs et revue incomplète explicites. Recette GitHub validée : bug détecté puis nouveau commit approuvé (PR204).", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "fait" },
       { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire" },
       { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Mêmes bornes et même isolement que ci-autofix.", fichiers: ["ci-autofix.yml"], statut: "a-faire" },
       { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
@@ -295,7 +295,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "C1", severite: "moyenne", titre: "CI rouge sur main jamais transmise, base rouge imputée à la PR", fichiers: "ci-autofix.yml:39", correctif: "Lots 1.3 et 5.3", statut: "en-cours" },
   { id: "C2", severite: "moyenne", titre: "Gate ancien dans Steam, tcg, Saas ; Steam refuse agent/*", fichiers: "agent-gated-merge.yml", correctif: "Lot 1.2", statut: "a-faire" },
   { id: "C3", severite: "moyenne", titre: "Gate aveugle à CHANGES_REQUESTED sans fil inline", fichiers: "agent-gated-merge.yml:203-214", correctif: "Lot 1.2", statut: "a-faire" },
-  { id: "C4", severite: "moyenne", titre: "Revue GitHub muette, en échec sur les commits de claude[bot]", fichiers: "BP claude-code-review.yml", correctif: "Lot 6.1", statut: "a-faire" },
+  { id: "C4", severite: "moyenne", titre: "Revue GitHub muette, en échec sur les commits de claude[bot]", fichiers: "BP claude-code-review.yml", correctif: "Lot 6.1", statut: "fait" },
   { id: "F11", severite: "moyenne", titre: "Workflows Claude non épinglés, id-token: write, déclenchés par issue", fichiers: "BP claude.yml:3-37", correctif: "Lot 0.8 ; id-token: write gardé, requis par claude-code-action pour son jeton", statut: "fait" },
   { id: "F12", severite: "moyenne", titre: "passage-extractor cumule WebFetch, Bash et Write", fichiers: "REG agents/passage-extractor/v1/agent.md:8-14", correctif: "Lot 0.6 : passage-extractor v2 sans Bash (registre #25)", statut: "fait" },
   { id: "F9", severite: "moyenne", titre: "Vaultwarden en latest, inscriptions ouvertes au dernier constat", fichiers: "BP nas/vaultwarden/docker-compose.yaml:15", correctif: "Vaultwarden 1.37.4 épinglé par digest, inscriptions fermées dans le compose, durcissement d'agent-secrets (cockpit #189), en production le 2026-10-25 ; double authentification à garder active sur le compte", statut: "fait" },
