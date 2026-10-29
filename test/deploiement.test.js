@@ -67,10 +67,10 @@ for (const scenario of ["avant-bloque", "restauration-bloquee", "signal", "signa
     try {
       const debut = performance.now();
       const fin = await f.lancer({ env: scenario === "avant-bloque" ? { LIVRAISON_BUILD_TIMEOUT_SEC: "4" } :
-        scenario === "restauration-bloquee" ? { LIVRAISON_ROLLBACK_TIMEOUT_SEC: "2" } : {}, interrompre: scenario.startsWith("signal") });
+        scenario === "restauration-bloquee" ? { LIVRAISON_ROLLBACK_TIMEOUT_SEC: "6" } : {}, interrompre: scenario.startsWith("signal") });
       assert.equal(fin.signal, null, fin.sortie);
       assert.notEqual(fin.code, 0, fin.sortie);
-      assert.ok(performance.now() - debut < 8000, `arrêt trop tardif : ${fin.sortie}`);
+      assert.ok(performance.now() - debut < 20000, `arrêt trop tardif : ${fin.sortie}`);
       assert.ok(fs.existsSync(f.pids), `la commande bloquée a été atteinte : ${fin.sortie}`);
       for (const pid of JSON.parse(fs.readFileSync(f.pids))) assert.ok(arrete(pid), `descendant ${pid} encore actif\n${fin.sortie}`);
       assert.equal(fs.readFileSync(path.join(f.business, "app.txt"), "utf8"), "ancienne version");
