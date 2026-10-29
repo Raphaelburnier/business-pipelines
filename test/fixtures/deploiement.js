@@ -116,7 +116,7 @@ else if(a[0]==='compose'&&a[1]==='up') {
     const minuterie = setTimeout(() => {
       try { process.kill(-enfant.pid, "SIGKILL"); } catch {}
       if (fs.existsSync(pids)) for (const pid of JSON.parse(fs.readFileSync(pids))) try { process.kill(pid, "SIGKILL"); } catch {}
-    }, 15_000);
+    }, 30_000);
     enfant.once("error", reject);
     enfant.once("close", (code, signal) => { clearTimeout(minuterie); resolve({ code, signal, sortie }); });
     if (options.interrompre) {

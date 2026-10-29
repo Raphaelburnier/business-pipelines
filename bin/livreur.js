@@ -148,6 +148,8 @@ async function livrer(store, commande) {
 
 (async () => {
   const store = new EventStore(STORE);
+  const { surveillerServiceIsole } = require("../src/sante-plateforme");
+  const sante = surveillerServiceIsole("livreur", { fichier: STORE, docker: true });
   // Une livraison coupée en pleine bascule n'est jamais rejouée : relancer depuis le début
   // pourrait défaire une restauration. Elle passe en échec et Raphaël décide.
   const abandonnees = store.abandonnerCommandesInterrompues({
@@ -190,6 +192,7 @@ async function livrer(store, commande) {
       if (!commande) await attendre(INTERVALLE_FILE);
     }
   } finally {
+    await sante.arreter();
     store.fermer();
   }
 })().catch((err) => {
