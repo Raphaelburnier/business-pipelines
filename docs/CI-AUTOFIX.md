@@ -292,6 +292,16 @@ Elle permet notamment de refaire une revue après retour du quota. Une nouvelle 
 annule le travail précédent via la concurrence par PR. Les tests du contrat, des
 permissions et de publication sont dans `test/github-review.test.js`, intégrés à `npm test`.
 
+Recette native du 29 octobre : la [PR204](https://github.com/Raphaelburnier/business-pipelines/pull/204),
+fermée sans fusion, a ajouté un module témoin isolé. La revue du commit
+`5a34ce43f4bae6253d924be3c81b7efe0988a52d` a demandé une correction avec un constat
+P1 inline sur le signe erroné ([run40786912635](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40786912635)).
+Après correction, le commit `a9cf29a7574f7ab9f42cf7845ecb341852937de1` a reçu
+`approved`, sans constat ([run40787127326](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40787127326)).
+Les deux artefacts et revues publiées portent leur propre SHA et la base
+`ec7ba51494c7cbce1eb465b22c2d7ee207d58a46`. Les cas quota/erreur et références périmées
+sont couverts par les tests de contrat ; cette recette ne simule pas un épuisement réel du fournisseur.
+
 Références : [sorties de l'action épinglée](https://github.com/anthropics/claude-code-action/blob/1d6de8cb0c237e7c15e9e1bdf973826ebae490cc/base-action/action.yml),
 [outils et mode restreint](https://code.claude.com/docs/en/cli-reference),
 [séparation des privilèges GitHub](https://docs.github.com/en/actions/reference/security/secure-use).
