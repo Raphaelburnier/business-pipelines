@@ -310,3 +310,45 @@ La recette PR120 prouvait deux corrections avec une relance humaine entre les de
 ne prouve pas encore la nouvelle succession automatique : après fusion de ce lot sensible,
 recetter deux erreurs successives sans relance et vérifier la revue sur le commit du bot.
 Un quota Claude épuisé reste un arrêt explicite : ce lot n'ajoute aucun basculement Codex.
+
+
+### Correction déclenchée par la revue (lot 6.3)
+
+Dans business-pipelines, `CI autofix` écoute également la fin réussie de `Claude Code
+Review`. Il ne corrige que les revues automatiques `pull_request_target` sur une PR
+interne ouverte, non brouillon, visant la branche par défaut et issue d’une branche
+`codex/`, `claude/`, `agent/` ou `automation/`. Les cinq autres copies du correcteur
+conservent leur fonctionnement CI. Le `workflow_dispatch` de revue reste consultatif :
+pour relancer aussi le correcteur, relancer le run automatique de la PR. Ses métadonnées
+conservent la branche de la PR et donc le verrou commun avec le correcteur CI.
+
+Le tri relit le workflow source (nom, chemin, événement, dépôt, tête, conclusion,
+tentative), refuse une revue plus récente puis télécharge l’unique artefact
+`github-review-verdict-<tentative>` de ce run. L’archive et son seul fichier
+`verdict.json` sont bornés (300 Ko/100 Ko), lus sans extraction ni exécution. Liens,
+chemins traversants, fichiers supplémentaires et clés JSON répétées sont refusés.
+Le verdict doit être `reviewed` / `changes_requested`, porter dépôt, PR, tête, base,
+run et tentative exacts, et contenir des constats valides sur les fichiers relus.
+`approved`, indisponibilité, quota, revue incomplète, artefact absent ou références
+périmées donnent `rien`, sans appel modèle. Le diagnostic assaini remplace le log CI
+comme entrée du même correcteur isolé ; un constat reste une donnée à vérifier.
+
+Les deux déclencheurs utilisent la même concurrence par branche et le même plafond :
+**trois appels et trois commits de correction par PR au total**, sans remise à zéro
+après un nouveau commit ou une relance humaine. Le marqueur CI existant est conservé ;
+la revue utilise `review-autofix:<tête>:<run>:<tentative>` (et `-arret` / `-echec`).
+Seuls les marqueurs du bot GitHub Actions comptent. Le commit garde `[ci-autofix]`,
+pour que l’historique et le budget existants restent cohérents.
+
+Les quatre jobs et leurs permissions sont conservés. L’agent ne reçoit ni shell,
+réseau ni jeton d’écriture. Le job de publication garde les limites de patch, les
+refus de fichiers sensibles et de tests désactivés, la vérification du parent, le
+push sans force et la révocation du jeton. Pour une revue, il relit aussi la base
+exacte, la tentative et l’absence de revue plus récente ; tout déplacement annule
+la publication. Le push redéclenche CI et revue sur le nouveau commit. Le correcteur
+ne résout aucune conversation de revue et ne rend pas le verdict obligatoire pour
+la fusion : ce dernier point reste le lot 6.2.
+
+Les scénarios de `test/ci-autofix.test.js` exécutent le vrai Bash sur API factice,
+archives ZIP et dépôts Git temporaires : déclenchement, provenance, refus, partage
+de budget, déduplication et annulation avant push.

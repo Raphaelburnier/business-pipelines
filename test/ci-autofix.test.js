@@ -53,6 +53,14 @@ const repondre = (r) => {
 if (args[0] === "run" && args[1] === "view") repondre(args[2] === "200" ? cfg.baseLog : cfg.log);
 else if (args[0] === "api") {
   const route = args.find((a) => a.startsWith("repos/"));
+  if (route?.startsWith("repos/r/p/actions/artifacts/") && route.endsWith("/zip")) {
+    if (!cfg.archive) process.exit(1);
+    process.stdout.write(fs.readFileSync(cfg.archive)); process.exit(0);
+  }
+  if (route?.includes("/artifacts?")) { repondre(args.includes("--slurp") ? [cfg.artifacts] : cfg.artifacts); process.exit(0); }
+  if (route?.startsWith("repos/r/p/actions/workflows/claude-code-review.yml/")) {
+    repondre(args.includes("--slurp") ? [cfg.reviewRuns] : cfg.reviewRuns); process.exit(0);
+  }
   if (route === "repos/r/p/git/refs") {
     if (cfg.reserveExiste) { process.stderr.write("HTTP 422\\n"); process.exit(1); }
     repondre({ref:"reserved"}); process.exit(0);
@@ -85,7 +93,7 @@ else if (args[0] === "api") {
   else if (route.startsWith("repos/r/p/pulls/60/commits")) repondre(cfg.commits);
   else if (route === "repos/r/p/pulls/60") {
     const n = appels.filter((a) => a.includes("repos/r/p/pulls/60")).length;
-    repondre(cfg.prBouge && n > 1 ? {...cfg.pr, head: {...cfg.pr.head, sha: "d".repeat(40)}} : cfg.pr);
+    repondre(cfg.prBouge && n > (cfg.prBougeDesPremiere ? 0 : 1) ? {...cfg.pr, head: {...cfg.pr.head, sha: "d".repeat(40)}} : cfg.pr);
   } else repondre(undefined);
 } else { process.stderr.write("commande gh inattendue " + args.join(" ")); process.exit(2); }
 `;
@@ -320,10 +328,10 @@ for (const prefixe of ["codex", "claude", "agent", "automation"]) {
 }
 
 for (const [nom, modif, raison] of [
-  ["autre workflow", { modifier: (c) => { c.event.workflow_run.name = "Deploy"; } }, /pas le workflow CI/],
-  ["fichier de workflow différent", { modifier: (c) => { c.event.workflow_run.path = ".github/workflows/other.yml"; } }, /pas le workflow CI/],
+  ["autre workflow", { modifier: (c) => { c.event.workflow_run.name = "Deploy"; } }, /pas un workflow de confiance/],
+  ["fichier de workflow différent", { modifier: (c) => { c.event.workflow_run.path = ".github/workflows/other.yml"; } }, /pas un workflow de confiance/],
   ["événement non admis", { modifier: (c) => { c.event.workflow_run.event = "release"; } }, /PR/],
-  ["run réussi", { modifier: (c) => { c.event.workflow_run.conclusion = "success"; } }, /pas en échec/],
+  ["run réussi", { modifier: (c) => { c.event.workflow_run.conclusion = "success"; } }, /conclusion du run non admissible/],
   ["branche d'un fork", { modifier: (c) => { c.event.workflow_run.head_repository.full_name = "x/p"; } }, /autre dépôt/],
   ["préfixe non admis", { branche: "feature/x" }, /préfixes/],
   ["nom de branche injecté", { branche: "claude/x$(id)" }, /préfixes/],
@@ -399,7 +407,7 @@ test("tri : après 3 appels même sans aucun commit, plus de Claude ni de contou
 // ---------- 3. Signalement ----------
 
 function signalerAvec(decision, modif = {}) {
-  const e = environnement({ pr: { state: "open", head: { sha: modif.prBouge ? "d".repeat(40) : SHA } } });
+  const e = environnement({ pr: { state: "open", head: { sha: modif.prBouge ? "d".repeat(40) : SHA }, base: { sha: modif.baseSha ?? BASE } } });
   fs.mkdirSync(path.join(e.runnerTemp, "ci-autofix"));
   fs.writeFileSync(path.join(e.runnerTemp, "ci-autofix/ci-echec.log"), "not ok 1 - route\n");
   const env = { ...e.env, DECISION: decision, RAISON: "limite", NUMERO: "60", SHA, RUN_ID: "100", TENTATIVE: "1", ...modif.env };
@@ -558,6 +566,7 @@ function publierAvec(modifier, options = {}) {
   const env = {
     ...e.env,
     MODE: options.mode ?? "pr", NUMERO: options.mode === "main" ? "0" : "60", SHA: sha, BRANCHE: branche, RUN_ID: "100", TENTATIVE: "1",
+    SOURCE: options.source ?? "ci", BASE_SHA: options.baseSha ?? "",
     RESULTAT_AGENT: options.resultatAgent ?? "success", DEPOT: "depot",
     GITHUB_SERVER_URL: `file://${distant}`,
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token?api-version=2.0",
@@ -575,6 +584,8 @@ function publierAvec(modifier, options = {}) {
   const v = e.lire();
   let pousser = null, p = null;
   if (v.sorties.verdict === "ok") {
+    options.apresValidation?.(config);
+    fs.writeFileSync(e.env.FAKE_CONFIG, JSON.stringify(config));
     fs.writeFileSync(env.GITHUB_OUTPUT, "");
     pousser = executer(SCRIPT_POUSSER, env, travail);
     p = e.lire();
@@ -900,4 +911,138 @@ test("master : la branche par défaut réelle est utilisée sans supposer main",
   assert.equal(r.status, 0, r.stderr);
   assert.equal(e.lire().sorties.decision, "claude", e.lire().resume);
   assert.equal(e.lire().sorties.mode, "main");
+});
+
+// ---------- 7. Lot 6.3 : revue structurée, même correcteur et budget commun ----------
+function configRevue(modifier) {
+  const c = configTri();
+  for (const r of [c.event.workflow_run, c.run]) {
+    r.name = 'Claude Code Review'; r.path = '.github/workflows/claude-code-review.yml';
+    r.event = 'pull_request_target'; r.conclusion = 'success'; r.id = 100;
+  }
+  c.pr = structuredClone(c.prs[0]); c.pr.base.sha = BASE; c.prs = [c.pr];
+  c.reviewRuns = { workflow_runs: [structuredClone(c.run)] };
+  c.artifacts = { artifacts: [{ id: 300, name: 'github-review-verdict-1', expired: false, size_in_bytes: 1000, workflow_run: { id: 100, head_sha: SHA } }] };
+  c.verdict = { schema_version: 1, repository: 'r/p', pr: 60, head_sha: SHA, base_sha: BASE, merge_base_sha: BASE,
+    run_id: '100', run_attempt: '1', status: 'reviewed', verdict: 'changes_requested', summary: 'Signe inversé.', reviewed_files: ['src/app.js'],
+    findings: [{ path: 'src/app.js', side: 'RIGHT', line: 1, priority: 'P1', title: 'Signe inversé', body: 'Le prix augmente au lieu de diminuer.' }] };
+  modifier?.(c); return c;
+}
+function archiveRevue(dir, c) {
+  const fichier = path.join(dir, 'verdict.zip');
+  execFileSync('python3', ['-c', `import sys,json,zipfile,stat
+c=json.loads(sys.stdin.read())
+with zipfile.ZipFile(sys.argv[1], 'w', compression=zipfile.ZIP_DEFLATED) as z:
+    f=zipfile.ZipInfo(c.get('archiveNom','verdict.json'))
+    if c.get('archiveLien'): f.external_attr=(stat.S_IFLNK | 0o777) << 16
+    z.writestr(f, c.get('archiveTexte', json.dumps(c['verdict'])))
+    if c.get('archiveExtra'): z.writestr('programme.py', 'raise Exception("ne jamais exécuter")')
+`, fichier], { input: JSON.stringify(c) });
+  return fichier;
+}
+function trierRevue(modifier) {
+  const c = configRevue(modifier), e = environnement(c);
+  c.archive = archiveRevue(e.dir, c);
+  fs.writeFileSync(e.env.FAKE_CONFIG, JSON.stringify(c));
+  const r = executer(SCRIPT_TRI, e.env, e.dir);
+  return { ...r, ...e.lire(), e };
+}
+test('revue : le workflow écoute les deux producteurs et garde la concurrence commune de branche', () => {
+  assert.deepEqual(workflow.on.workflow_run.workflows, ['CI', 'Claude Code Review']);
+  assert.equal(workflow.concurrency.group, 'ci-autofix-${{ github.event.workflow_run.head_branch }}');
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.match(trier.if, /Claude Code Review/);
+  assert.equal(signaler.env.SOURCE, '${{ needs.trier.outputs.source }}');
+  assert.equal(publier.env.BASE_SHA, '${{ needs.trier.outputs.base_sha }}');
+});
+test('revue : seul le verdict exact changes_requested fournit le diagnostic assaini au correcteur', () => {
+  const r = trierRevue(c => { c.verdict.findings[0].body += ' ghp_' + 'A'.repeat(30) + ' test@example.invalid 192.0.2.1 @operator'; });
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.sorties.decision, 'claude', r.resume);
+  assert.equal(r.sorties.source, 'review'); assert.equal(r.sorties.base_sha, BASE);
+  const diagnostic = fs.readFileSync(path.join(r.e.runnerTemp, 'ci-autofix/ci-echec.log'), 'utf8');
+  assert.match(diagnostic, /changes_requested/); assert.match(diagnostic, /Signe inversé/);
+  assert.doesNotMatch(diagnostic, /ghp_|test@example|192\.0\.2|@operator/);
+  assert.equal(r.posts.length, 0); assert.ok(!r.appels.some(a => a[0] === 'run'));
+});
+for (const [nom, modifier] of [
+  ['approuvée', c => { c.verdict.verdict = 'approved'; c.verdict.findings = []; }],
+  ['indisponible', c => { c.verdict.status = 'unavailable'; c.verdict.verdict = null; }],
+  ['incomplète', c => { c.verdict.verdict = 'incomplete'; }],
+  ['sans constat', c => { c.verdict.findings = []; }],
+  ['autre PR', c => { c.verdict.pr = 61; }], ['autre dépôt', c => { c.verdict.repository = 'fork/p'; }],
+  ['autre tête', c => { c.verdict.head_sha = 'c'.repeat(40); }], ['autre base', c => { c.verdict.base_sha = 'c'.repeat(40); }],
+  ['autre run', c => { c.verdict.run_id = '101'; }], ['autre tentative', c => { c.verdict.run_attempt = '2'; }],
+  ['constat hors fichiers relus', c => { c.verdict.findings[0].path = 'absent'; }],
+  ['ligne négative', c => { c.verdict.findings[0].line = -1; }], ['chemin traversant', c => { c.verdict.reviewed_files = ['../a']; }],
+  ['archive traversante', c => { c.archiveNom = '../verdict.json'; }], ['archive avec programme', c => { c.archiveExtra = true; }],
+  ['archive lien', c => { c.archiveLien = true; }], ['JSON en doublon', c => { c.archiveTexte = '{"verdict":"approved","verdict":"changes_requested"}'; }],
+  ['JSON trop grand', c => { c.archiveTexte = ' '.repeat(100001); }],
+  ['artefact absent', c => { c.artifacts.artifacts = []; }],
+  ['artefact ambigu', c => { c.artifacts.artifacts.push(c.artifacts.artifacts[0]); }],
+  ['artefact expiré', c => { c.artifacts.artifacts[0].expired = true; }],
+  ['artefact mauvais run', c => { c.artifacts.artifacts[0].workflow_run.id = 101; }],
+  ['artefact mauvaise tête', c => { c.artifacts.artifacts[0].workflow_run.head_sha = BASE; }],
+  ['artefact trop grand', c => { c.artifacts.artifacts[0].size_in_bytes = 300001; }],
+  ['nouvelle revue', c => { c.reviewRuns.workflow_runs.push({ ...c.run, id: 101 }); }],
+  ['nouvelle tentative', c => { c.run.run_attempt = 2; }],
+  ['quota ou échec du workflow', c => { c.event.workflow_run.conclusion = 'failure'; }],
+  ['faux workflow même nom', c => { c.event.workflow_run.path = '.github/workflows/autre.yml'; }],
+  ['fork', c => { c.event.workflow_run.head_repository.full_name = 'fork/p'; }],
+  ['brouillon', c => { c.pr.draft = true; }], ['mauvaise branche', c => { c.event.workflow_run.head_branch = 'feature/a'; }],
+  ['tête déplacée après téléchargement', c => { c.prBouge = true; c.prBougeDesPremiere = true; }],
+  ['workflow_dispatch consultatif', c => { c.event.workflow_run.event = 'workflow_dispatch'; }],
+]) test(`revue refusée : ${nom}`, () => {
+  const r = trierRevue(modifier);
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.sorties.decision, 'rien', r.resume);
+  assert.ok(!fs.existsSync(path.join(r.e.runnerTemp, 'ci-autofix/ci-echec.log')));
+  assert.equal(r.posts.length, 0);
+});
+test('revue : déduplication par run/tentative, sans collision avec la CI du même SHA', () => {
+  let r = trierRevue(c => { c.commentaires = [{ user: { login: 'github-actions[bot]' }, body: `<!-- ci-autofix:${SHA}:1 -->` }]; });
+  assert.equal(r.sorties.decision, 'claude', r.resume);
+  r = trierRevue(c => { c.commentaires = [{ user: { login: 'github-actions[bot]' }, body: `<!-- review-autofix:${SHA}:100:1 -->` }]; });
+  assert.equal(r.sorties.decision, 'rien', r.resume); assert.match(r.sorties.raison, /déjà/);
+});
+test('budget commun : trois transmissions CI/revue arrêtent les deux déclencheurs', () => {
+  const commentaires = [
+    { user: { login: 'github-actions[bot]' }, body: `<!-- ci-autofix:${BASE}:1 -->` },
+    { user: { login: 'github-actions[bot]' }, body: `<!-- review-autofix:${BASE}:90:1 -->` },
+    { user: { login: 'github-actions[bot]' }, body: `<!-- review-autofix:${BASE}:91:1 -->` },
+  ];
+  for (const revue of [true, false]) {
+    const modifier = c => { c.commentaires = commentaires; };
+    const r = revue ? trierRevue(modifier) : trierAvec({ modifier });
+    assert.equal(r.sorties.decision, 'boucle', r.resume);
+    assert.match(r.sorties.raison, /3 appels/); assert.equal(r.posts.length, 0);
+  }
+});
+test('revue : un marqueur utilisateur ne consomme aucun appel', () => {
+  const r = trierRevue(c => { c.commentaires = [1,2,3].map(n => ({ user: { login: 'operator' }, body: `<!-- review-autofix:${BASE}:${n}:1 -->` })); });
+  assert.equal(r.sorties.decision, 'claude', r.resume);
+});
+for (const [nom, changement] of [
+  ['valide', null], ['base déplacée', c => { c.pr.base.sha = 'c'.repeat(40); }],
+  ['nouvelle tentative', c => { c.run.run_attempt = 2; }],
+  ['nouvelle revue', c => { c.reviewRuns.workflow_runs.push({ ...c.reviewRuns.workflow_runs[0], id: 101 }); }],
+]) test(`publication revue : ${nom}`, () => {
+  const r = publierAvec(ecrire('src/app.js', '2;\n'), { source: 'review', baseSha: BASE,
+    config(c) { c.pr.base.sha = BASE; c.run = { run_attempt: 1, status: 'completed', conclusion: 'success' };
+      c.reviewRuns = { workflow_runs: [{ id: 100, name: 'Claude Code Review', path: '.github/workflows/claude-code-review.yml', event: 'pull_request_target', head_sha: c.pr.head.sha, head_branch: c.pr.head.ref, head_repository: { full_name: 'r/p' } }] }; },
+    apresValidation: changement,
+  });
+  assert.equal(r.v.sorties.verdict, 'ok', r.v.resume);
+  assert.equal(r.p.sorties.pousse, changement ? 'non' : 'oui', r.p.resume);
+  if (changement) { assert.equal(r.brancheDistante, r.sha); assert.equal(r.fin.curl.length, 0); }
+});
+
+for (const decision of ['claude', 'boucle']) test(`signalement revue : ${decision} a son propre marqueur`, () => {
+  const r = signalerAvec(decision, { env: { SOURCE: 'review', BASE_SHA: BASE } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.posts[0].corps, new RegExp(`^<!-- review-autofix${decision === 'boucle' ? '-arret' : ''}:${SHA}:100:1 -->`));
+  assert.match(r.posts[0].corps, /Revue demandant des corrections/);
+  assert.doesNotMatch(r.posts[0].corps, /<!-- ci-autofix:/);
+});
+test('signalement revue : une base déplacée ne consomme pas le budget', () => {
+  const r = signalerAvec('claude', { baseSha: 'c'.repeat(40), env: { SOURCE: 'review', BASE_SHA: BASE } });
+  assert.notEqual(r.status, 0); assert.equal(r.posts.length, 0);
 });
