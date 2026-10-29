@@ -68,3 +68,6 @@ web/dist/
 
 # Coffre Vaultwarden : il vit sur le NAS et se sauvegarde par Hyper Backup, jamais par git.
 nas/vaultwarden/data/
+
+# Configuration privée de l’alerteur (SMTP et destinataire).
+specs/alerteur.json

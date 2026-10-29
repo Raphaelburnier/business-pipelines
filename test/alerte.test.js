@@ -209,6 +209,26 @@ test("le transport courriel refuse de partir à moitié configuré", async () =>
   );
 });
 
+test("le transport historique conserve les listes et noms de destinataires", async () => {
+  const nodemailer = require("nodemailer");
+  const courriel = require("../src/courriel");
+  const original = nodemailer.createTransport;
+  const recus = [];
+  let fermes = 0;
+  nodemailer.createTransport = () => ({ sendMail: async m => { recus.push(m); }, close: () => { fermes++; } });
+  const base = { SMTP_HOTE: "smtp.example.invalid", SMTP_UTILISATEUR: "envoi@example.invalid", SMTP_MOTDEPASSE: "factice" };
+  try {
+    for (const to of ["a@example.invalid, b@example.invalid", "Équipe <a@example.invalid>"]) {
+      await alerte.TRANSPORTS.courriel({ titre: "t", texte: "x" }, { ...base, ALERTE_DESTINATAIRE: to });
+      assert.strictEqual(recus.at(-1).to, to);
+      assert.throws(() => courriel.config({ ...base, ALERTE_DESTINATAIRE: to }), { code: "CONFIG_INVALIDE" }, "le nouveau service reste limité à une adresse");
+    }
+    await assert.rejects(() => alerte.TRANSPORTS.courriel({ titre: "t", texte: "x" }, { ...base, ALERTE_DESTINATAIRE: "a@example.invalid\r\nBcc: b@example.invalid" }), { code: "CONFIG_INVALIDE" });
+    assert.strictEqual(recus.length, 2);
+    assert.strictEqual(fermes, 2);
+  } finally { nodemailer.createTransport = original; }
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {
