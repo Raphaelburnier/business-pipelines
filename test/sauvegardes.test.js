@@ -150,3 +150,27 @@ test('entrée standard native du conteneur lance bien un export non vide', () =>
   assert.equal(p.status, 1);
   assert.match(p.stderr.toString(), /Export de sauvegarde refusé/);
 });
+
+test('le journal des alertes est sauvegardé avant les événements, même si la source progresse entre les deux copies', async () => {
+  const f = fixture(); let journal;
+  try {
+    const dossier = path.join(f.source, 'etat/alertes'); fs.mkdirSync(dossier, { mode: 0o700 });
+    journal = new DatabaseSync(path.join(dossier, 'notifications.sqlite'));
+    journal.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE curseur(id INTEGER); INSERT INTO curseur VALUES(1)');
+    // Une vraie écriture survient juste après la copie d'events.sqlite : avec l'ordre
+    // inverse, le curseur copié ensuite désignerait l'événement2 absent de l'archive.
+    const code = `const s=require('node:sqlite'),b=s.backup;s.backup=async(...a)=>{const r=await b(...a);if(a[1].endsWith('etat/events.sqlite')){const d=new s.DatabaseSync(process.argv[1]+'/etat/events.sqlite');d.exec(\"INSERT INTO events VALUES(2,'apres')\");d.close();const j=new s.DatabaseSync(process.argv[1]+'/etat/alertes/notifications.sqlite');j.exec('UPDATE curseur SET id=2');j.close()}return r};require(${JSON.stringify(exporter)}).exporter(process.argv[1]).catch(e=>{console.error(e.message);process.exitCode=1});`;
+    const resultat = await sauvegarder(f.c, { ...f.options, args: ['--no-warnings', '-e', code, f.source] });
+    const destination = path.join(f.racine, 'restaure-alertes');
+    const recu = await restaurer(f.c, path.join(f.c.archives, resultat.archive), destination);
+    assert.equal(recu.bases, 3);
+    const sourceCopie = new DatabaseSync(path.join(destination, 'etat/events.sqlite'), { readOnly: true });
+    const journalCopie = new DatabaseSync(path.join(destination, 'etat/alertes/notifications.sqlite'), { readOnly: true });
+    try {
+      assert.equal(f.db.prepare('SELECT MAX(id) AS id FROM events').get().id, 2, 'la progression concurrente a bien eu lieu');
+      assert.equal(journal.prepare('SELECT id FROM curseur').get().id, 2);
+      assert.ok(journalCopie.prepare('SELECT id FROM curseur').get().id <= sourceCopie.prepare('SELECT MAX(id) AS id FROM events').get().id);
+      assert.equal(journalCopie.prepare('SELECT id FROM curseur').get().id, 1);
+    } finally { journalCopie.close(); sourceCopie.close(); }
+  } finally { journal?.close(); f.nettoyer(); }
+});
