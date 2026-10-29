@@ -154,7 +154,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "4.1", titre: "Arrêt d'urgence", detail: "Pause durable des démarrages, annulation définitive d'un run, confirmation de l'arrêt et conservation des fichiers. Livré et vérifié le 28 octobre 2026.", fichiers: ["AO packages/schemas/commandes.js", "BP bin/commande-runner.js"], statut: "fait" },
       { id: "4.2", titre: "Alertes hors du cockpit", detail: "En cours : notifications externes durables des événements alerte et run.failed, déduplication et reprise après échec du transport.", fichiers: ["AO src/maitre.js:483,549,556", "BP src/alerte.js"], statut: "en-cours" },
-      { id: "4.3", titre: "Santé de la plateforme", detail: "/api/sante, healthcheck Docker, rotation des logs.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "a-faire" },
+      { id: "4.3", titre: "Santé de la plateforme", detail: "En cours : API de santé, sondes Docker et rotation des journaux de services.", fichiers: ["BP bin/cockpit.js:590-592"], statut: "en-cours" },
       { id: "4.4", titre: "Budgets", detail: "Abandonné le 24 octobre 2026 : le coût d'un run n'est plus pris en compte et n'ouvre plus d'approbation, les agents tournant sur abonnement. Seuls les tours bornent un run (moteur 97). Pas de plafond quotidien ni mensuel à construire.", fichiers: ["BP bin/cockpit.js:633-698"], statut: "fait" },
       { id: "4.5", titre: "Sauvegardes", detail: "Sauvegarde quotidienne chiffrée sur le PC : SQLite cohérent avec WAL, specs/ dont workers.json, approbations et projets. Rétention de 14 archives. Premier passage automatique et restauration de deux bases et 42 fichiers vérifiés le 28 octobre 2026.", fichiers: ["BP bin/sauvegarder-etat.js", "BP deploy/backup/exporter-etat.js"], statut: "fait" },
     ],
