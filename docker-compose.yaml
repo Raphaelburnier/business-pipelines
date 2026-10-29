@@ -4,10 +4,23 @@
 # C'est la même contrainte que sur le poste, et pour la même raison : les en-têtes
 # d'identité que Tailscale injecte ne sont fiables que si le service reste local.
 
+x-journaux: &journaux
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   cockpit:
     build: .
     container_name: business_cockpit
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "cockpit"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     # `always`, pas `unless-stopped` : DSM arrête les conteneurs par `docker stop` quand le
     # NAS s'éteint, ce qui compte comme un arrêt manuel. Après le redémarrage du 2026-09-23,
     # aucun n'est revenu seul.
@@ -52,6 +65,7 @@ services:
       # Une identité reçue par TCP interne est toujours refusée. Le relais local est le
       # seul chemin réseau vers le socket, absent des montages du runner.
       - COCKPIT_IDENTITE_SOCKET_SEULE=1
+      - COCKPIT_SANTE_PLATEFORME=1
       # La clé qui signe fusions, rattachements et livraisons ; absente du runner.
       - COMMANDES_CLE_FICHIER=/app/specs/cles/commandes.key
       # Écoute interne au réseau Docker, sans publication ; le relais utilise le socket.
@@ -73,6 +87,13 @@ services:
   runner:
     build: .
     container_name: business_runner
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "runner"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     # `always`, pas `unless-stopped` : DSM arrête les conteneurs par `docker stop` quand le
     # NAS s'éteint, ce qui compte comme un arrêt manuel. Après le redémarrage du 2026-09-23,
     # aucun n'est revenu seul.
@@ -146,6 +167,13 @@ services:
   maitre:
     build: .
     container_name: business_maitre
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "maitre"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     restart: always
     command: ["node", "bin/maitre-permanent.js"]
     volumes:
@@ -168,6 +196,13 @@ services:
   cockpit-relais:
     build: .
     container_name: business_cockpit_relais
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "relais"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     restart: always
     command: ["node", "deploy/nas/cockpit-relais.js"]
     volumes:
@@ -186,6 +221,13 @@ services:
   publieur:
     build: .
     container_name: business_publieur
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "publieur"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     restart: always
     command: ["node", "bin/publieur.js"]
     volumes:
@@ -224,6 +266,13 @@ services:
       context: .
       target: livreur
     container_name: business_livreur
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "livreur"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -247,6 +296,13 @@ services:
   tailscale-whois:
     build: .
     container_name: business_tailscale_whois
+    logging: *journaux
+    healthcheck:
+      test: ["CMD", "node", "--no-warnings", "bin/verifier-sante.js", "whois"]
+      interval: 20s
+      timeout: 4s
+      start_period: 45s
+      retries: 3
     restart: always
     command: ["node", "/agent-orchestrator/bin/orch-whois-proxy.js"]
     volumes:
@@ -269,6 +325,7 @@ services:
   # exactement la panne qu'avait le conteneur du cycle avant qu'une boucle porte l'attente.
   marketing:
     build: .
+    logging: *journaux
     profiles: ["manuel"]
     command: ["node", "orchestrator.js", "marketing", "./specs/marketing.json"]
     volumes:
