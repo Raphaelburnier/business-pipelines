@@ -83,7 +83,10 @@ test("l'appel au client Docker est borné par une échéance", async () => {
     fs.writeFileSync(cli, '#!/bin/sh\n[ "$1" = inspect ] || exit 2\nprintf \'/business_runner {"Running":true,"Health":{"Status":"healthy"}}\\n\'\n', { mode: 0o700 });
     process.env.DOCKER = cli;
     assert.equal((await inspecterDocker()).runner.ok, true);
-    fs.writeFileSync(cli, "#!/bin/sh\nexec sleep 30\n");
+    fs.appendFileSync(cli, "exit 1\n");
+    const partiel = await inspecterDocker();
+    assert.equal(partiel.runner.ok, true); assert.equal(partiel.maitre.code, "CONTENEUR_ABSENT");
+    fs.writeFileSync(cli, '#!/bin/sh\nprintf \'/business_runner {"Running":true,"Health":{"Status":"healthy"}}\\n\'\nexec sleep 30\n');
     const debut = performance.now(); await assert.rejects(inspecterDocker());
     assert.ok(performance.now() - debut < 4000);
   } finally { if (avant === undefined) delete process.env.DOCKER; else process.env.DOCKER = avant; f.fermer(); }

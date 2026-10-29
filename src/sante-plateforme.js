@@ -81,9 +81,17 @@ function projeterDocker(texte) {
 }
 async function inspecterDocker() {
   const format = '{{.Name}} {"Running":{{.State.Running}},"Health":{"Status":"{{if .State.Health}}{{.State.Health.Status}}{{end}}"}}';
-  const { stdout } = await executer(process.env.DOCKER || "docker", ["inspect", "--format", format, ...Object.values(CONTENEURS)], {
-    timeout: 2000, killSignal: "SIGKILL", maxBuffer: 65536, encoding: "utf8",
-  });
+  let stdout;
+  try {
+    ({ stdout } = await executer(process.env.DOCKER || "docker", ["inspect", "--format", format, ...Object.values(CONTENEURS)], {
+      timeout: 2000, killSignal: "SIGKILL", maxBuffer: 65536, encoding: "utf8",
+    }));
+  } catch (err) {
+    // Inspect conserve les états disponibles quand un autre conteneur est absent.
+    // Une commande interrompue, expirée ou dont la sortie déborde n'est jamais une preuve.
+    if (err.killed || err.signal || !Number.isInteger(err.code) || !err.stdout?.trim()) throw err;
+    stdout = err.stdout;
+  }
   return projeterDocker(stdout);
 }
 
