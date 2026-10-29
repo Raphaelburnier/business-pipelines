@@ -80,12 +80,12 @@ function projeterDocker(texte) {
   }
   return resultat;
 }
-async function inspecterDocker() {
+async function inspecterDocker({ signal } = {}) {
   const format = '{{.Name}} {"Running":{{.State.Running}},"Health":{"Status":"{{if .State.Health}}{{.State.Health.Status}}{{end}}"}}';
   let stdout;
   try {
     ({ stdout } = await executer(process.env.DOCKER || "docker", ["inspect", "--format", format, ...Object.values(CONTENEURS)], {
-      timeout: 2000, killSignal: "SIGKILL", maxBuffer: 65536, encoding: "utf8",
+      timeout: 2000, killSignal: "SIGKILL", maxBuffer: 65536, encoding: "utf8", signal,
     }));
   } catch (err) {
     // Inspect conserve les états disponibles quand un autre conteneur est absent.
@@ -151,8 +151,15 @@ function surveillerService(service, { fichier, intervalleMs = 10000, maintenant 
 function surveillerServiceIsole(service, { fichier, intervalleMs = 10000, docker = false, journal = console.log } = {}) {
   if (!COEUR.includes(service)) throw new Error("service de santé inconnu");
   if (!fichier) return { async arreter() {} };
-  const identite = { instance: crypto.randomUUID(), pid: process.pid, debut: debutProcessus(process.pid) };
-  const worker = new Worker(path.join(__dirname, "sante-service-worker.js"), { workerData: { service, fichier, intervalleMs, docker, identite } });
+  const instance = crypto.randomUUID();
+  let identite, worker;
+  try {
+    identite = { instance, pid: process.pid, debut: debutProcessus(process.pid) };
+    worker = new Worker(path.join(__dirname, "sante-service-worker.js"), { workerData: { service, fichier, intervalleMs, docker, identite } });
+  } catch {
+    journal(JSON.stringify({ event: "service.sante", niveau: "warn", service, correlationId: instance, code: "SONDE_NON_DISPONIBLE" }));
+    return { async arreter() {} };
+  }
   let arret = null;
   function nettoyer() {
     const signal = path.join(dossierSante(fichier), service + ".json");
@@ -160,7 +167,11 @@ function surveillerServiceIsole(service, { fichier, intervalleMs = 10000, docker
     for (const s of ["SIGINT", "SIGTERM", "exit"]) process.removeListener(s, arreter);
   }
   function arreter() {
-    if (!arret) arret = worker.terminate().then(nettoyer);
+    if (!arret) arret = worker.threadId === -1 ? Promise.resolve().then(nettoyer) : new Promise(resolve => {
+      const timer = setTimeout(() => { void worker.terminate(); }, 3000);
+      worker.once("exit", () => { clearTimeout(timer); nettoyer(); resolve(); });
+      worker.postMessage("arret");
+    });
     return arret;
   }
   worker.on("message", ligne => journal(ligne));

@@ -88,6 +88,36 @@ test("l'arrêt d'une ancienne instance ne supprime pas le signal de sa remplaça
   } finally { f.fermer(); }
 });
 
+test("l'absence de /proc désactive uniquement la sonde sans fuite de diagnostic", async t => {
+  const f = fixture(), logs = [], original = fs.readFileSync;
+  try {
+    t.mock.method(fs, "readFileSync", (file, ...args) => {
+      if (file === `/proc/${process.pid}/stat`) throw new Error("secret-transport/proc absent");
+      return original(file, ...args);
+    });
+    const s = surveillerServiceIsole("runner", { fichier: f.fichier, journal: l => logs.push(l) });
+    await s.arreter();
+    assert.equal(logs.length, 1); assert.equal(JSON.parse(logs[0]).code, "SONDE_NON_DISPONIBLE");
+    assert.equal(logs[0].includes("secret-transport"), false);
+    assert.equal(sonderBase(f.fichier).ok, true);
+  } finally { t.mock.restoreAll(); f.fermer(); }
+});
+
+test("l'arrêt du thread interrompt aussi le client Docker en cours", async () => {
+  const f = fixture(), avant = process.env.DOCKER, pids = path.join(f.dir, "docker.pid");
+  let s;
+  try {
+    const cli = path.join(f.dir, "docker");
+    fs.writeFileSync(cli, '#!/bin/sh\nprintf "%s" "$$" > "' + pids + '"\nexec sleep 30\n', { mode: 0o700 });
+    process.env.DOCKER = cli;
+    s = surveillerServiceIsole("livreur", { fichier: f.fichier, docker: true, journal() {} });
+    await jusqua(() => fs.existsSync(pids)); const pid = Number(fs.readFileSync(pids, "utf8"));
+    await s.arreter();
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    assert.equal(lireSignal(f.fichier, "livreur").ok, false);
+  } finally { await s?.arreter(); if (avant === undefined) delete process.env.DOCKER; else process.env.DOCKER = avant; f.fermer(); }
+});
+
 test("la projection Docker garde des états bornés, sans environnement ni diagnostic brut", () => {
   const lignes = Object.values(CONTENEURS).map(n => "/" + n + " " + JSON.stringify({ Running: true, Health: { Status: "healthy", Log: ["secret-transport"] }, Error: "private/path", Env: ["PASSWORD=secret-transport"] }));
   const s = projeterDocker(lignes.join("\n"));
