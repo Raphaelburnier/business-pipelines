@@ -279,6 +279,16 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     const avecQuery = await requete(PORT, "/?v=2");
     const attendu = fs.existsSync(path.join(RACINE, "web", "dist", "index.html")) ? 200 : 503;
     assert.strictEqual(avecQuery.code, attendu, "/?v=2 doit être traité comme /");
+    for (const route of ["/pipelines", "/pipelines/", "/pipelines?source=lien", "/pipelines/improve-app", "/pipelines/improve-app/", "/pipelines/metier%3Adev?source=lien"]) {
+      const page = await requete(PORT, route);
+      assert.strictEqual(page.code, attendu, `${route} doit servir le catalogue au rechargement`);
+      assert.strictEqual(page.corps, avecQuery.corps, `${route} doit servir la même entrée React que /`);
+      assert.strictEqual(page.entetes["cache-control"], "no-store");
+      if (attendu === 200) assert.match(page.entetes["content-type"], /text\/html/);
+    }
+    assert.strictEqual((await requete(PORT, "/pipelines-incorrect")).code, 404);
+    assert.strictEqual((await requete(PORT, "/pipelines/improve-app/inconnue")).code, 404);
+    assert.strictEqual((await poster(PORT, "/pipelines", {})).code, 404);
     for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi", "/ai-studio", "/ai-studio/profiles/luna", "/ai-studio/generations/gen_20260928_000000_aabbcc", "/systeme", "/systeme/", "/a-venir", "/a-venir/", "/calendrier", "/calendrier/"]) {
       assert.strictEqual((await requete(PORT, route)).code, attendu, `${route} doit servir le front`);
     }
@@ -366,7 +376,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/api/livraison", "/", "/app", "/ai-studio", "/systeme", "/systeme/", "/decisions", "/decisions/pipelines"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/api/livraison", "/", "/app", "/pipelines", "/pipelines/improve-app", "/ai-studio", "/systeme", "/systeme/", "/decisions", "/decisions/pipelines"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);
