@@ -17,10 +17,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { arret = t
     while (!arret && !service) {
       try {
         service = await ouvrirMaitrePermanent({ store, env: envLoader.load(racine, "", process.env.ENV_FILE) });
-        sante = require("../src/sante-plateforme").surveillerService("maitre", { fichier });
+        sante = require("../src/sante-plateforme").surveillerServiceIsole("maitre", { fichier });
       }
       catch (err) { console.error(`maître permanent indisponible : ${err.message}`); if (!arret) await pause(); }
     }
     while (!arret) await pause();
-  } finally { sante?.arreter(); if (service) await service.arreter(); store.fermer(); }
+  } finally { await sante?.arreter(); if (service) await service.arreter(); store.fermer(); }
 })().catch(err => { console.error(err.message); process.exitCode = 1; });

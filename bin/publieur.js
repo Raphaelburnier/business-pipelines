@@ -261,7 +261,7 @@ async function servirFusions(store) {
 }
 
 (async () => {
-  const sante = require("../src/sante-plateforme").surveillerService("publieur", { fichier: process.env.ORCH_EVENT_STORE });
+  const sante = require("../src/sante-plateforme").surveillerServiceIsole("publieur", { fichier: process.env.ORCH_EVENT_STORE });
   console.log(`Publieur : projets dans ${PROJETS}, un passage toutes les ${Math.round(INTERVALLE / 1000)} s`);
   console.log(`PR surveillées : ${PR_DEPOTS.join(", ") || "aucun dépôt"}`);
   // Les fusions tournent dans leur propre boucle : un clic n'attend pas la fin d'un passage.
@@ -272,7 +272,7 @@ async function servirFusions(store) {
       await attendre(INTERVALLE);
     }
     await fusions;
-  } finally { sante.arreter(); }
+  } finally { await sante.arreter(); }
 })().catch((err) => {
   console.error(err);
   process.exitCode = 1;

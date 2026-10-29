@@ -2,7 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const { EventStore } = require("agent-orchestrator");
-const { COEUR, CONTENEURS, DUREE_SIGNAL_MS, dossierSante, sonderBase, lireSignal, surveillerService, sonderPlateforme, projeterDocker, inspecterDocker } = require("../src/sante-plateforme");
+const { COEUR, CONTENEURS, DUREE_SIGNAL_MS, dossierSante, sonderBase, lireSignal, surveillerService, surveillerServiceIsole, sonderPlateforme, projeterDocker, inspecterDocker } = require("../src/sante-plateforme");
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const { spawn } = require("node:child_process");
 const { once } = require("node:events");
@@ -55,6 +55,28 @@ test("une exécution longue reste disponible tant que son signal est frais", asy
     await jusqua(() => lireSignal(f.fichier, "runner", { maintenant }).ok);
     assert.equal(lireSignal(f.fichier, "runner", { maintenant }).ageMs, 0);
   } finally { f.fermer(); }
+});
+
+test("le signal et le snapshot Docker survivent à un blocage réel de la boucle au-delà de 45 secondes", async () => {
+  const f = fixture(), avant = process.env.DOCKER;
+  let sante;
+  try {
+    const cli = path.join(f.dir, "docker");
+    const lignes = Object.values(CONTENEURS).map(n => "/" + n + ' {"Running":true,"Health":{"Status":"healthy"}}').join("\n");
+    fs.writeFileSync(cli, "#!/bin/sh\ncat <<'ETATS'\n" + lignes + "\nETATS\n", { mode: 0o700 });
+    process.env.DOCKER = cli;
+    sante = surveillerServiceIsole("livreur", { fichier: f.fichier, intervalleMs: 1000, docker: true, journal() {} });
+    const snapshot = path.join(dossierSante(f.fichier), "docker.json");
+    await jusqua(() => fs.existsSync(snapshot));
+    const debutBlocage = Date.now();
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, DUREE_SIGNAL_MS + 5000);
+    assert.ok(Date.now() - debutBlocage > DUREE_SIGNAL_MS, "le scénario doit dépasser l'expiration réelle");
+    assert.equal(lireSignal(f.fichier, "livreur", { verifierProcessus: true }).ok, true);
+    const d = JSON.parse(fs.readFileSync(snapshot));
+    assert.equal(d.instance, sante.instance); assert.ok(Date.now() - d.verifieMs < 3000);
+    assert.deepEqual(d.composants, dockerSain());
+    await sante.arreter(); assert.equal(lireSignal(f.fichier, "livreur").ok, false);
+  } finally { await sante?.arreter(); if (avant === undefined) delete process.env.DOCKER; else process.env.DOCKER = avant; f.fermer(); }
 });
 
 test("l'arrêt d'une ancienne instance ne supprime pas le signal de sa remplaçante", () => {

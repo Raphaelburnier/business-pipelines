@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { DatabaseSync } = require("node:sqlite");
+const { Worker } = require("node:worker_threads");
 const executer = promisify(execFile);
 
 const COEUR = ["runner", "maitre", "publieur", "livreur"];
@@ -95,10 +96,10 @@ async function inspecterDocker() {
   return projeterDocker(stdout);
 }
 
-function surveillerService(service, { fichier, intervalleMs = 10000, maintenant = Date.now, docker = null, journal = console.log } = {}) {
+function surveillerService(service, { fichier, intervalleMs = 10000, maintenant = Date.now, docker = null, journal = console.log, identite } = {}) {
   if (!COEUR.includes(service)) throw new Error("service de santé inconnu");
   if (!fichier) return { arreter() {} };
-  const instance = crypto.randomUUID(), pid = process.pid, debut = debutProcessus(pid);
+  const { instance, pid, debut } = identite || { instance: crypto.randomUUID(), pid: process.pid, debut: debutProcessus(process.pid) };
   const signalPath = path.join(dossierSante(fichier), service + ".json");
   let actif = true, enVol = false, dernierCode, dernierDocker;
   function transition(code) {
@@ -145,6 +146,31 @@ function surveillerService(service, { fichier, intervalleMs = 10000, maintenant 
   return { arreter, instance };
 }
 
+// Git et tar bloquent parfois la boucle principale pendant une opération bornée.
+// Le thread garde les signaux et la collecte Docker vivants, liés au PID du service.
+function surveillerServiceIsole(service, { fichier, intervalleMs = 10000, docker = false, journal = console.log } = {}) {
+  if (!COEUR.includes(service)) throw new Error("service de santé inconnu");
+  if (!fichier) return { async arreter() {} };
+  const identite = { instance: crypto.randomUUID(), pid: process.pid, debut: debutProcessus(process.pid) };
+  const worker = new Worker(path.join(__dirname, "sante-service-worker.js"), { workerData: { service, fichier, intervalleMs, docker, identite } });
+  let arret = null;
+  function nettoyer() {
+    const signal = path.join(dossierSante(fichier), service + ".json");
+    try { if (lireJson(signal).instance === identite.instance) fs.unlinkSync(signal); } catch {}
+    for (const s of ["SIGINT", "SIGTERM", "exit"]) process.removeListener(s, arreter);
+  }
+  function arreter() {
+    if (!arret) arret = worker.terminate().then(nettoyer);
+    return arret;
+  }
+  worker.on("message", ligne => journal(ligne));
+  worker.on("error", () => journal(JSON.stringify({ event: "service.sante", niveau: "warn", service, correlationId: identite.instance, code: "SONDE_ARRETEE" })));
+  worker.once("exit", nettoyer);
+  for (const s of ["SIGINT", "SIGTERM", "exit"]) process.once(s, arreter);
+  worker.unref();
+  return { arreter, instance: identite.instance };
+}
+
 function sonderPlateforme({ fichier, plateforme = false, maintenant = Date.now(), release } = {}) {
   const composants = { etat: sonderBase(fichier) };
   if (plateforme) {
@@ -174,4 +200,4 @@ function sonderPlateforme({ fichier, plateforme = false, maintenant = Date.now()
   }
   return resultat;
 }
-module.exports = { COEUR, CONTENEURS, DUREE_SIGNAL_MS, dossierSante, lireSignal, sonderBase, projeterDocker, inspecterDocker, surveillerService, sonderPlateforme };
+module.exports = { COEUR, CONTENEURS, DUREE_SIGNAL_MS, dossierSante, lireSignal, sonderBase, projeterDocker, inspecterDocker, surveillerService, surveillerServiceIsole, sonderPlateforme };
