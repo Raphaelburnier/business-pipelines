@@ -37,7 +37,8 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   assert.throws(() => objectifsAvenirs.validerReference({ id: "inconnu", revision: 1 }), /objectif.*inconnu/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: "0.1", revision: 1 }), /non attribuable/i, "une ligne déjà en cours doit être refusée");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "4.1", revision: 1 }), /non attribuable/i, "l'arrêt d'urgence en cours ne doit pas être attribué une seconde fois");
-  assert.throws(() => objectifsAvenirs.validerReference({ id: "6.1", revision: 1 }), /non attribuable/i, "la revue GitHub en cours ne doit pas être attribuée une seconde fois");
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "6.1", revision: 1 }), /non attribuable/i, "la revue GitHub terminée ne doit pas être attribuée une seconde fois");
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "C4", revision: 1 }), /non attribuable/i, "le défaut de revue corrigé ne doit plus être attribuable");
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: 2 }), /révision/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: catalogueObjectifs[0].id, revision: "1" }), /référence/i);
   assert.throws(() => objectifsAvenirs.validerReference({ id: "3.7", revision: 1 }, "steam-tierlist"), /se traite dans business-pipelines/);
