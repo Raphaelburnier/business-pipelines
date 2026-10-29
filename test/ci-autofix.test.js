@@ -1046,3 +1046,9 @@ test('signalement revue : une base déplacée ne consomme pas le budget', () => 
   const r = signalerAvec('claude', { baseSha: 'c'.repeat(40), env: { SOURCE: 'review', BASE_SHA: BASE } });
   assert.notEqual(r.status, 0); assert.equal(r.posts.length, 0);
 });
+
+test('CI sur brouillon : le circuit antérieur reste actif', () => {
+  const r = trierAvec({ modifier(c) { c.prs[0].draft = true; } });
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.sorties.decision, 'claude', r.resume);
+  assert.equal(r.sorties.source, 'ci');
+});

@@ -162,7 +162,7 @@ jobs:
             prs="$(gh api "repos/$REPOSITORY/pulls?state=open&head=${REPOSITORY%%/*}:$branche&per_page=100")" \
               || conclure rien "PR illisibles"
             candidates="$(jq -c --arg sha "$sha" --arg br "$branche" --arg repo "$REPOSITORY" '
-              [.[] | select(.state == "open" and (.draft != true) and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo)]
+              [.[] | select(.state == "open" and .head.sha == $sha and .head.ref == $br and .head.repo.full_name == $repo)]
             ' <<<"$prs")"
             [[ "$(jq 'length' <<<"$candidates")" == "1" ]] \
               || conclure rien "pas exactement une PR ouverte sur ce commit : la branche a avancé ou la PR est fermée"
@@ -178,6 +178,7 @@ jobs:
             fi
 
             if [[ "$source" == review ]]; then
+              [[ "$(jq -r '.[0].draft // false' <<<"$candidates")" == false ]] || conclure rien "revue d'une PR brouillon refusée"
               base_sha="$(jq -r '.[0].base.sha // empty' <<<"$candidates")"
               [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || conclure rien "base de revue invalide"
               # Une revue plus récente (même indisponible) rend cette demande obsolète.
