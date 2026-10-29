@@ -21,7 +21,8 @@ const store = require("./store");
 // qui continue de marcher quand le téléphone est neuf, réinitialisé ou hors réseau. Même
 // quand le push existera, il restera le filet.
 const TRANSPORTS = {
-  courriel: require("./courriel").envoyer,
+  // Le CLI historique accepte les listes et noms d'affichage de Nodemailer.
+  courriel: (message, env) => require("./courriel").envoyer(message, env, { destinataireUnique: false }),
 };
 
 // Le journal des alertes parties vit dans le store, à côté de la boîte qu'il commente.
