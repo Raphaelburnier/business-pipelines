@@ -179,7 +179,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "6.1", titre: "Revue avec verdict", detail: "Verdict structuré sur la tête et la base exactes ; erreurs et revue incomplète explicites. Recette GitHub validée : bug détecté puis nouveau commit approuvé (PR204).", fichiers: ["BP .github/workflows/claude-code-review.yml"], statut: "fait" },
       { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire" },
-      { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Mêmes bornes et même isolement que ci-autofix.", fichiers: ["ci-autofix.yml"], statut: "a-faire" },
+      { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Branchement en cours dans business-pipelines : verdict exact, budget partagé avec la CI et même correcteur isolé.", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
       { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
       { id: "6.5", titre: "Hook Stop local nettoyé", detail: "Log assaini, échec de revue dû au quota ignoré.", fichiers: ["~/.claude/hooks/ci-pr/stop_ci.py"], statut: "a-faire" },
     ],
