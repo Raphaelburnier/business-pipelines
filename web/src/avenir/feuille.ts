@@ -226,6 +226,8 @@ export const LOTS: Lot[] = [
       { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire" },
       { id: "10.5", titre: "Discuter avec l'équipe ou un agent", detail: "Fil de l'équipe du run, ou d'un agent précis.", fichiers: ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"], statut: "a-faire" },
       { id: "10.6", titre: "Le conseiller discute avec l'équipe", detail: "Même accès pour le conseiller du PC.", fichiers: ["BP src/conseiller.js", "BP src/api-conseiller.js"], statut: "a-faire" },
+      { id: "10.7", titre: "Contrat partagé de l'atelier", detail: "Aligner les schémas de travaux entre le cockpit et le moteur, afin que les modèles et les objectifs soient validés de la même façon.", fichiers: ["BP src/atelier.js", "AO packages/schemas/travaux.js"], statut: "a-faire", raisonSensibilite: "Assurer l'alignement des schémas de travaux entre le moteur et le cockpit." },
+      { id: "10.8", titre: "Éviter l'interruption des livraisons nocturnes", detail: "Désactiver ou déplacer la tâche DSM HMAC qui redémarre les conteneurs pendant les livraisons en cours.", fichiers: ["deploy/nas/deploy.sh.modele", "bin/cockpit.js"], statut: "a-faire", raisonSensibilite: "Éviter l'interruption des livraisons nocturnes par la tâche DSM HMAC du NAS." },
     ],
   },
   {

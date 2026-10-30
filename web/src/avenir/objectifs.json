@@ -31,5 +31,7 @@
   {"id": "10.3", "revision": 1, "projet": null, "fichiers": ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"]},
   {"id": "10.4", "revision": 1, "projet": null, "fichiers": ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"]},
   {"id": "10.5", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"]},
-  {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]}
+  {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]},
+  {"id": "10.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/atelier.js", "AO packages/schemas/travaux.js"], "raisonSensibilite": "Assurer l'alignement des schémas de travaux entre le moteur et le cockpit."},
+  {"id": "10.8", "revision": 1, "projet": "business-pipelines", "fichiers": ["deploy/nas/deploy.sh.modele", "bin/cockpit.js"], "raisonSensibilite": "Éviter l'interruption des livraisons nocturnes par la tâche DSM HMAC du NAS."}
 ]
