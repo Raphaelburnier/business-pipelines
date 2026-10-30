@@ -352,3 +352,21 @@ la fusion : ce dernier point reste le lot 6.2.
 Les scénarios de `test/ci-autofix.test.js` exécutent le vrai Bash sur API factice,
 archives ZIP et dépôts Git temporaires : déclenchement, provenance, refus, partage
 de budget, déduplication et annulation avant push.
+
+
+Recette native du 29 octobre : la [PR210](https://github.com/Raphaelburnier/business-pipelines/pull/210),
+fermée sans fusion le 30 octobre, a ajouté un module témoin non importé et une sentinelle
+sensible empêchant son auto-fusion. La [revue40947497130](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40947497130)
+a détecté le bug de signe sur `929e443fbf4cba190d2f59bdd4850b199b9f2119` (P1).
+Le [correcteur40947668065](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40947668065)
+a automatiquement publié `00a88fa65772f1e1ed629896648adfd2fb77b850`, dont le parent est exactement le
+SHA relu : signe corrigé et deux tests ajoutés, inspectés puis exécutés localement (2/2).
+La [revue40947879322](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40947879322)
+a approuvé ce nouveau SHA. Le [contrôle40948044768](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40948044768)
+a terminé son tri et ignoré les trois jobs suivants : une seule transmission au correcteur
+et un seul commit de correction. La [CI40947882228](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40947882228)
+a réussi sur le correctif. Après les mises à jour automatiques depuis main,
+la tête finale `1e26b655f73a5a347a87d90655db4316e8ec6010` a également reçu une
+[revue approuvée](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40950571300)
+et une [CI verte](https://github.com/Raphaelburnier/business-pipelines/actions/runs/40950575163).
+Aucun module de recette n’est entré dans main.
