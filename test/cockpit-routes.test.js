@@ -318,6 +318,16 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual((await requete(PORT, "/decisions/pipelines")).code, app.code);
     assert.strictEqual((await requete(PORT, "/systeme")).code, app.code);
     assert.strictEqual((await requete(PORT, "/systeme/")).code, app.code);
+    for (const chemin of ["/systeme/fonctionnement", "/systeme/fonctionnement/", "/systeme/fonctionnement?source=lien"]) {
+      const page = await requete(PORT, chemin);
+      assert.strictEqual(page.code, app.code, `${chemin} doit supporter le rechargement`);
+      assert.strictEqual(page.corps, app.corps);
+      assert.strictEqual(page.entetes["cache-control"], "no-store");
+    }
+    for (const chemin of ["/systeme/inconnue", "/systeme/fonctionnement/inconnue"]) {
+      assert.strictEqual((await requete(PORT, chemin)).code, 404);
+    }
+    assert.strictEqual((await poster(PORT, "/systeme/fonctionnement", {})).code, 404);
   } finally {
     cockpit.kill();
   }
@@ -376,7 +386,7 @@ test("un hôte que le cockpit ne connaît pas n'obtient aucune donnée de run", 
   try {
     // La défense contre le rebinding DNS s'applique aussi aux routes de lecture : un nom
     // qui résout vers 127.0.0.1 ne suffit pas à parler au cockpit.
-    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/api/livraison", "/", "/app", "/pipelines", "/pipelines/improve-app", "/ai-studio", "/systeme", "/systeme/", "/decisions", "/decisions/pipelines"]) {
+    for (const chemin of ["/api/topology", "/api/usage", "/api/modeles", "/api/chat", "/api/runs", "/api/machines", "/api/stream", "/api/ai-studio/profiles", "/api/livraison", "/", "/app", "/pipelines", "/pipelines/improve-app", "/ai-studio", "/systeme", "/systeme/", "/systeme/fonctionnement", "/systeme/fonctionnement/", "/decisions", "/decisions/pipelines"]) {
       const refus = await requete(PORT + 1, chemin, { host: "cockpit.exemple.test" });
       assert.strictEqual(refus.code, 403, `${chemin} doit refuser un hôte inconnu`);
       assert.match(refus.corps, /hôte refusé/);

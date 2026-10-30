@@ -20,6 +20,7 @@ import {
   type ZoneCarte,
 } from "./carte";
 import { GrapheArchitecture } from "./GrapheArchitecture";
+import { Fonctionnement } from "./Fonctionnement";
 
 type Onglet = "architecture" | "boucle" | "garde-fous" | "chronologie";
 
@@ -330,10 +331,20 @@ const CHIFFRES: Array<{ valeur: string; libelle: string }> = [
   { valeur: String(JALONS.length), libelle: "jalons depuis juillet" },
 ];
 
-export function Systeme() {
+export function Systeme({ page, aller }: { page: "carte" | "fonctionnement"; aller: (href: string) => void }) {
   const [onglet, setOnglet] = useState<Onglet>("architecture");
   return (
     <section className="sy-page">
+      <nav className="sy-navigation" aria-label="Pages du système">
+        {([{ id: "carte", href: "/systeme", nom: "Carte du système" }, { id: "fonctionnement", href: "/systeme/fonctionnement", nom: "Fonctionnement" }] as const).map((lien) => (
+          <a key={lien.id} href={lien.href} aria-current={page === lien.id ? "page" : undefined} onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            aller(lien.href);
+          }}>{lien.nom}</a>
+        ))}
+      </nav>
+      {page === "fonctionnement" ? <Fonctionnement /> : <>
       <header className="sy-hero">
         <div>
           <span className="kicker">SYS//MAP · relevé du 2026-09-30</span>
@@ -367,6 +378,7 @@ export function Systeme() {
         {onglet === "garde-fous" && <GardeFous />}
         {onglet === "chronologie" && <Chronologie />}
       </div>
+      </>}
     </section>
   );
 }
