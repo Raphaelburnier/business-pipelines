@@ -34,7 +34,7 @@ const FENETRES_CLAUDE=new Set(['five_hour','seven_day','seven_day_opus','seven_d
 // relu par etatQuota. Une mesure future, trop ancienne ou une fenêtre déjà réinitialisée est refusée.
 function snapshotClaude(corps, maintenant=Date.now()) {
   const observe=Date.parse(corps?.observeLe);
-  if(!Number.isFinite(observe)||observe>maintenant+60_000||maintenant-observe>AGE_MAX_MS)throw new RefusQuota('observeLe absent, futur ou trop ancien');
+  if(!Number.isFinite(observe)||observe>maintenant||maintenant-observe>AGE_MAX_MS)throw new RefusQuota('observeLe absent, futur ou trop ancien');
   if(!Array.isArray(corps.fenetres)||!corps.fenetres.length||corps.fenetres.length>FENETRES_CLAUDE.size)throw new RefusQuota('fenetres absentes ou trop nombreuses');
   const fenetres=corps.fenetres.map(f=>{
     const utilisation=Number(f?.utilisation),reset=Date.parse(f?.reinitialisation);
