@@ -39,7 +39,8 @@ function snapshotClaude(corps, maintenant=Date.now()) {
   if(!Number.isFinite(observe)||observe>maintenant||maintenant-observe>AGE_MAX_MS)throw new RefusQuota('observeLe absent, futur ou trop ancien');
   if(!Array.isArray(corps.fenetres)||!corps.fenetres.length||corps.fenetres.length>FENETRES_CLAUDE.size)throw new RefusQuota('fenetres absentes ou trop nombreuses');
   const fenetres=corps.fenetres.map(f=>{
-    const utilisation=Number(f?.utilisation),reset=Date.parse(f?.reinitialisation);
+    const brut=f?.utilisation;
+    const utilisation=typeof brut==='number'||(typeof brut==='string'&&brut.trim()!=='')?Number(brut):NaN,reset=Date.parse(f?.reinitialisation);
     if(!FENETRES_CLAUDE.has(f?.id)||!Number.isFinite(utilisation)||utilisation<0||utilisation>100||!Number.isFinite(reset)||reset<=maintenant){
       throw new RefusQuota(`fenêtre invalide : ${String(f?.id).slice(0,40)}`);
     }
