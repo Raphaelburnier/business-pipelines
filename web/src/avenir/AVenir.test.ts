@@ -70,7 +70,10 @@ describe("attribution depuis À venir", () => {
 
   it("affiche la provenance du badge et le contrôle séparé de la fusion", () => {
     const html = renderToStaticMarkup(createElement(AVenir));
-    expect(html).toContain("Fichier protégé annoncé : BP bin/cockpit.js:590-592.");
+    const fichierProtegeVisible = toutesLesEtapes.filter(e => e.statut !== "fait")
+      .flatMap(e => e.fichiers).find(f => f.includes("Dockerfile") || f.includes(".github/"));
+    expect(fichierProtegeVisible).toBeDefined();
+    expect(html).toContain(`Fichier protégé annoncé : ${fichierProtegeVisible}.`);
     expect(html).toContain("Risque signalé dans le cadrage : Publier un pipeline modifie les actions que le moteur peut exécuter.");
     expect(html).toContain("La fusion explicite dépend des fichiers réellement modifiés.");
   });
