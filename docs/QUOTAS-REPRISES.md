@@ -88,4 +88,4 @@ par défaut celui de l'agent PC (`CONSEILLER_JETON_SHA256`) ; `QUOTA_JETON_SHA25
 `/api/usage` remplit `quota.cinqHeures` et `quota.septJours` avec la fenêtre la plus haute
 des deux sources. La barre du haut affiche l'utilisation, le delta (part de la fenêtre écoulée
 moins part consommée) et, si le rythme actuel épuise la fenêtre avant son reset, l'heure
-d'épuisement. Sans mesure de moins de 15 min, elle affiche « — ».
+d'épuisement. Sans mesure de moins de 15 min, la case affiche le marqueur vide.
