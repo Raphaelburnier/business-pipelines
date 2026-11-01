@@ -452,6 +452,7 @@ async function demarrer() {
   // Seulement les commandes de ce runner : une livraison réservée par le livreur ne doit pas
   // retourner en file quand la bascule redémarre le runner (docs/SPEC-livraison.md, §4.3).
   const reprises = store.reprendreCommandesInterrompues({ kinds: ["run.start", "run.resume", "approval.decide", "run.reverify", "chat.respond", "execution.pause", "run.cancel"] });
+  const sante = require("../src/sante-plateforme").surveillerServiceIsole("runner", { fichier: STORE });
   console.log(`Runner de commandes sur ${STORE}${reprises ? ` — ${reprises} commande(s) reprise(s)` : ""}`);
   try {
     await Promise.all([
@@ -465,6 +466,7 @@ async function demarrer() {
     ]);
   } finally {
     controleQuotaCodex.abort();
+    await sante.arreter();
     clearInterval(renouvellement);
     if (serviceMaitre) await serviceMaitre.arreter();
     if (maitre) await maitre.arreter();

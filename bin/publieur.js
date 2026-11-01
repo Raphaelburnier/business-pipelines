@@ -261,15 +261,18 @@ async function servirFusions(store) {
 }
 
 (async () => {
+  const sante = require("../src/sante-plateforme").surveillerServiceIsole("publieur", { fichier: process.env.ORCH_EVENT_STORE });
   console.log(`Publieur : projets dans ${PROJETS}, un passage toutes les ${Math.round(INTERVALLE / 1000)} s`);
   console.log(`PR surveillées : ${PR_DEPOTS.join(", ") || "aucun dépôt"}`);
   // Les fusions tournent dans leur propre boucle : un clic n'attend pas la fin d'un passage.
   const fusions = store ? servirFusions(store) : Promise.resolve();
-  while (!arret) {
-    await passage();
-    await attendre(INTERVALLE);
-  }
-  await fusions;
+  try {
+    while (!arret) {
+      await passage();
+      await attendre(INTERVALLE);
+    }
+    await fusions;
+  } finally { await sante.arreter(); }
 })().catch((err) => {
   console.error(err);
   process.exitCode = 1;
