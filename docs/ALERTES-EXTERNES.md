@@ -42,4 +42,6 @@ Le modèle protège l’activation et le retour arrière du nouveau service. Il 
 
 La sauvegarde 4.5 inclut la base d’envoi lorsqu’elle existe. Elle la copie avant `events.sqlite`, afin que le curseur sauvegardé ne dépasse pas les événements de la copie source. Restaurer les deux avec les services arrêtés et suivre le guide de reprise. Aucun test ne remplace la base de production.
 
-Le [guide de réaction](runbooks/alertes.md) précise les vérifications à faire en cas d’alerte ou d’absence de courriel. Le lot reste en cours jusqu’à la recette SMTP, à l’approbation du modèle exact et à la vérification du service livré.
+Le [guide de réaction](runbooks/alertes.md) précise les vérifications à faire en cas d’alerte ou d’absence de courriel.
+
+Recette de clôture : courriel de test reçu, modèle exact approuvé et service livré sain, sans retard ni erreur d’envoi. La sauvegarde hors NAS a été restaurée dans un dossier isolé : trois bases SQLite intègres, dont le journal d’alertes, avec un curseur compatible avec les événements restaurés. Aucun incident métier n’a été provoqué pour cette vérification.
