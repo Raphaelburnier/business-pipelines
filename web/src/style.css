@@ -240,6 +240,10 @@ button.bg-accent, a.bg-accent, .ao-coupe {
 .ao-kpi .barre i { display: block; height: 100%; background: var(--color-accent); }
 .ao-kpi .barre.alerte i { background: var(--color-alerte); }
 .ao-kpi .barre.danger i { background: var(--color-danger); }
+.ao-kpi .delta { font: 400 11px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-douce); }
+.ao-kpi .delta.marge { color: var(--color-ok); }
+.ao-kpi .delta.alerte { color: var(--color-alerte); }
+.ao-kpi .delta.danger, .ao-kpi .k.epuise { color: var(--color-danger); }
 
 /* ---------- En cours : une ligne par run, le détail au clic ---------- */
 .ao-encours { position: relative; display: flex; min-height: 0; flex-direction: column; border-left: 1px solid var(--color-trait); background: var(--color-surface); }

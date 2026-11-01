@@ -73,3 +73,18 @@ snapshots de revue sur des volumes persistants. La recette simulée ne valide au
 Les boutons cockpit arrêt/pause et les alertes externes ne font pas partie de ce lot.
 Les identifiants de compte sont configurés par l'opérateur ; le cockpit ne lit ni ne
 transporte les credentials et ne découvre pas les comptes connectés.
+
+## Quota Claude poussé par le PC
+
+Hors run, le moteur ne voit pas l'abonnement Claude. Le mod `quota-barre` de Claude Code,
+installé sur le PC, envoie à chaque mesure de session `POST /api/quota/claude` avec
+`Authorization: Bearer` : `{ machine, observeLe, fenetres: [{ id, utilisation, reinitialisation }] }`.
+Le cockpit valide (mesure de moins de 15 min, pas dans le futur, fenêtre `five_hour`,
+`seven_day`, `seven_day_opus` ou `seven_day_sonnet`, reset à venir) et enregistre le même
+`runtime.quota_snapshot` que le moteur, avec `source: claude_code.mod_quota`. Le jeton est
+par défaut celui de l'agent PC (`CONSEILLER_JETON_SHA256`) ; `QUOTA_JETON_SHA256` le remplace.
+
+`/api/usage` remplit `quota.cinqHeures` et `quota.septJours` avec la fenêtre la plus haute
+des deux sources. La barre du haut affiche l'utilisation, le delta (part de la fenêtre écoulée
+moins part consommée) et, si le rythme actuel épuise la fenêtre avant son reset, l'heure
+d'épuisement. Sans mesure de moins de 15 min, elle affiche « — ».
