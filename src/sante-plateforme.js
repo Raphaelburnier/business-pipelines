@@ -11,6 +11,7 @@ const COEUR = ["runner", "maitre", "publieur", "livreur"];
 const CONTENEURS = {
   cockpit: "business_cockpit", runner: "business_runner", maitre: "business_maitre",
   relais: "business_cockpit_relais", publieur: "business_publieur", livreur: "business_livreur", whois: "business_tailscale_whois",
+  alerteur: "business_alerteur",
 };
 const DUREE_SIGNAL_MS = 45000;
 const UUID = /^[0-9a-f-]{36}$/i;

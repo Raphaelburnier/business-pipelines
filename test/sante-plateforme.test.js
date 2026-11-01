@@ -151,6 +151,13 @@ test("la santé globale exige des signaux et un snapshot de la même instance, p
     await jusqua(() => sonderPlateforme({ fichier: f.fichier, plateforme: true }).ok);
     assert.equal(sonderPlateforme({ fichier: f.fichier, plateforme: true }).portee, "plateforme");
     assert.equal(sonderPlateforme({ fichier: f.fichier, plateforme: true, maintenant: Date.now() + DUREE_SIGNAL_MS + 100 }).ok, false);
+    const snapshotPath = path.join(dossierSante(f.fichier), "docker.json");
+    const snapshot = JSON.parse(fs.readFileSync(snapshotPath));
+    snapshot.composants.alerteur = { ok: false, code: "SONDE_ECHOUEE" };
+    fs.writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    const alerteurMalade = sonderPlateforme({ fichier: f.fichier, plateforme: true });
+    assert.equal(alerteurMalade.ok, false);
+    assert.equal(alerteurMalade.composants.docker_alerteur.code, "SONDE_ECHOUEE");
     // Le snapshot de l'ancienne instance ne prouve pas la santé après redémarrage.
     f.lancer("livreur");
     const s = sonderPlateforme({ fichier: f.fichier, plateforme: true });
@@ -176,8 +183,9 @@ test("le compose borne les journaux sans ouvrir de montage Docker aux agents", (
   const { parse } = createRequire(require.resolve("agent-orchestrator"))("yaml");
   const s = parse(fs.readFileSync(path.join(__dirname, "../docker-compose.yaml"), "utf8")).services;
   for (const [id, c] of Object.entries(s)) {
-    assert.equal(c.logging.driver, "json-file", id); assert.deepEqual(c.logging.options, { "max-size": "10m", "max-file": "3" });
-    if (id !== "marketing") { assert.ok(c.healthcheck.test.includes("bin/verifier-sante.js"), id); assert.equal(c.healthcheck.timeout, "4s"); }
+    assert.equal(c.logging.driver, "json-file", id); assert.deepEqual(c.logging.options, { "max-size": id === "alerteur" ? "1m" : "10m", "max-file": "3" });
+    if (id === "alerteur") { assert.deepEqual(c.healthcheck.test, ["CMD", "node", "bin/alerteur.js", "--sante"]); assert.equal(c.healthcheck.timeout, "5s"); }
+    else if (id !== "marketing") { assert.ok(c.healthcheck.test.includes("bin/verifier-sante.js"), id); assert.equal(c.healthcheck.timeout, "4s"); }
   }
   assert.equal(s.runner.volumes.some(v => v.includes("docker.sock")), false);
   assert.equal(s.cockpit.volumes.some(v => v.includes("docker.sock")), false);
