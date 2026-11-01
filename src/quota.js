@@ -1,7 +1,9 @@
 const AGE_MAX_MS=15*60_000;
 // Une fenêtre Claude peut arriver seule : conserver les autres fenêtres encore fraîches.
 function etatQuota(store, maintenant=Date.now()) {
-  const lignes=store.db.prepare("SELECT ts,payload_json FROM events WHERE type='runtime.quota_snapshot' ORDER BY id DESC LIMIT 2000").all();
+  // Une fenêtre de lecture par runtime : les pushes fréquents du PC ne doivent pas évincer les mesures Codex.
+  const requete=store.db.prepare("SELECT id,ts,payload_json FROM events WHERE type='runtime.quota_snapshot' AND json_extract(payload_json,'$.runtime')=? ORDER BY id DESC LIMIT 1000");
+  const lignes=['claude','codex'].flatMap(runtime=>requete.all(runtime)).sort((a,b)=>b.id-a.id);
   const sources=new Map();
   for(const ligne of lignes){
     let p;try{p=JSON.parse(ligne.payload_json);}catch{continue;}
