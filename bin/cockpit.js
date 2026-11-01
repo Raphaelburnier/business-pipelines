@@ -402,11 +402,30 @@ function approbationsAvecConseil() {
   }
 }
 
+const etatsSanteJournalises = new Map();
+function journaliserSante(sante, correlationId) {
+  const codes = Object.fromEntries(Object.entries(sante.composants).map(([k, v]) => [k, v.code]));
+  const signature = JSON.stringify(codes);
+  if (etatsSanteJournalises.get(sante.portee) === signature) return;
+  etatsSanteJournalises.set(sante.portee, signature);
+  console.log(JSON.stringify({ event: "plateforme.sante", niveau: sante.ok ? "info" : "warn", correlationId, portee: sante.portee, codes }));
+}
+
 async function traiter(req, res) {
   // Défense contre le rebinding DNS : un nom d'hôte que je n'ai pas prévu ne parle pas au
   // serveur, même s'il résout vers 127.0.0.1.
   if (!acces.hoteAutorise(req.headers, PORTEE)) {
     return json(res, 403, { erreur: "hôte refusé : ce cockpit ne répond qu'en local ou par son tailnet" });
+  }
+
+  // Seule information anonyme : disponibilité locale, sans identité ni détail d'état.
+  // Une identité envoyée par TCP reste refusée sur toutes les routes /api/.
+  if (req.method === "GET" && req.url.split("?")[0] === "/sante" &&
+      (req.viaSocketTailscale === true || ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress))) {
+    const id = require("node:crypto").randomUUID(); res.setHeader("X-Request-Id", id);
+    const etat = require("../src/sante-plateforme").sonderBase(ENV.ORCH_EVENT_STORE);
+    journaliserSante({ ok: etat.ok, portee: "locale", composants: { etat } }, id);
+    return json(res, etat.ok ? 200 : 503, { ok: etat.ok });
   }
 
   let qui;
@@ -437,6 +456,14 @@ async function traiter(req, res) {
   // Le cockpit React est l'entrée principale. Les objets ont une vraie route afin qu'un
   // clic dans le graphe ouvre une page partageable ; l'ancien /app reste un alias.
   const chemin = req.url.split("?")[0];
+  if (req.method === "GET" && chemin === "/api/sante") {
+    const sante = require("../src/sante-plateforme").sonderPlateforme({ fichier: ENV.ORCH_EVENT_STORE,
+      plateforme: ENV.COCKPIT_SANTE_PLATEFORME === "1", release: path.join(RACINE, ".release") });
+    const id = require("node:crypto").randomUUID(); res.setHeader("X-Request-Id", id);
+    journaliserSante(sante, id);
+    res.setHeader("Cache-Control", "no-store");
+    return json(res, sante.ok ? 200 : 503, sante);
+  }
   // `/decisions` est une page du front depuis la livraison (carte Livraison + lien vers les
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
