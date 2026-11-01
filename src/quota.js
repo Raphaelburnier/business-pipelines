@@ -33,10 +33,14 @@ function etatQuota(store, maintenant=Date.now()) {
 class RefusQuota extends Error {}
 const FENETRES_CLAUDE=new Set(['five_hour','seven_day','seven_day_opus','seven_day_sonnet']);
 // Snapshot poussé par le PC (mod quota-barre de Claude Code) : même forme que celui du moteur,
-// relu par etatQuota. Une mesure future, trop ancienne ou une fenêtre déjà réinitialisée est refusée.
+// relu par etatQuota. Une mesure trop ancienne ou une fenêtre déjà réinitialisée est refusée.
+// L'horloge du WSL dérive après une veille : une avance de moins d'une minute est ramenée à la
+// réception, car etatQuota invalide toute la source sur une date future.
+const AVANCE_TOLEREE_MS=60_000;
 function snapshotClaude(corps, maintenant=Date.now()) {
-  const observe=Date.parse(corps?.observeLe);
-  if(!Number.isFinite(observe)||observe>maintenant||maintenant-observe>AGE_MAX_MS)throw new RefusQuota('observeLe absent, futur ou trop ancien');
+  const recue=Date.parse(corps?.observeLe);
+  if(!Number.isFinite(recue)||recue>maintenant+AVANCE_TOLEREE_MS||maintenant-recue>AGE_MAX_MS)throw new RefusQuota('observeLe absent, futur ou trop ancien');
+  const observe=Math.min(recue,maintenant);
   if(!Array.isArray(corps.fenetres)||!corps.fenetres.length||corps.fenetres.length>FENETRES_CLAUDE.size)throw new RefusQuota('fenetres absentes ou trop nombreuses');
   const fenetres=corps.fenetres.map(f=>{
     const brut=f?.utilisation;
