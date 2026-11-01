@@ -64,6 +64,9 @@ async function exporter(racine = '/app', sortie = process.stdout) {
       } else throw Error('type de fichier refusé');
     };
     // Les bases des approbations sont aussi vivantes : même API que pour events.sqlite.
+    // Le curseur doit être copié avant le journal source : après restauration, il ne
+    // doit jamais désigner des événements plus récents que la copie d'events.sqlite.
+    if (fs.existsSync(path.join(racine, 'etat/alertes/notifications.sqlite'))) await copier('etat/alertes/notifications.sqlite');
     for (const source of ['etat/events.sqlite', 'specs', 'approvals', 'projects']) await copier(source);
     const tables = bases['etat/events.sqlite'];
     if (!tables) throw Error('event store absent');
