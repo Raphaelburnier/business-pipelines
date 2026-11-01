@@ -1,6 +1,6 @@
 # Lot 4.2 — alertes hors du cockpit
 
-Résumé : consommer les événements durables `alerte`, `run.failed` et le format réellement émis `run.finished` avec `status: failed`, puis notifier Raphaël par le SMTP déjà configuré. Le lot et O1 restent en cours jusqu’à la recette et à la livraison. Le destinataire doit être précisé ; l’ajout du service Docker et sa prise en charge par le modèle de déploiement exigent une approbation opérateur de l’empreinte finale.
+Résumé : consommer les événements durables `alerte`, `run.failed` et le format réellement émis `run.finished` avec `status: failed`, puis notifier par le SMTP configuré. Le destinataire choisi est le compte SMTP existant. Le lot et O1 sont clos après confirmation de réception, approbation du modèle exact, livraison du service et restauration vérifiée de son journal.
 
 ## Contrat
 
@@ -17,7 +17,7 @@ Résumé : consommer les événements durables `alerte`, `run.failed` et le form
 
 Tester avec des bases SQLite réelles et transports contrôlés : première initialisation sans historique, événement ultérieur livré, reprise après panne SMTP et redémarrage, absence de répétition, deux processus concurrents, regroupement des alertes machine, pagination d’un gros journal, changement de source refusé, interruption après envoi, données sensibles non reproduites, et transport qui refuse l’authentification en clair. Tester le vrai modèle de déploiement avec ancien/nouveau service, panne avant/après bascule et restauration ; ne pas altérer les tests de sécurité ou les délais existants pour obtenir du vert.
 
-Une recette native isolée précède l’activation : vrais processus, fichiers temporaires privés, serveur de test contrôlé, aucune panne métier provoquée en production. Vérifier ensuite le destinataire configuré, la remise effective d’une notification de test, l’état du service installé et un second passage sans doublon. La validation externe dépend de la destination précisée par Raphaël.
+Une recette native isolée précède l’activation : vrais processus, fichiers temporaires privés, serveur de test contrôlé, aucune panne métier provoquée en production. Vérifier ensuite le destinataire configuré, la remise effective d’une notification de test, l’état du service installé et un second passage sans doublon. La réception dans la boîte choisie a été confirmée lors de cette recette.
 
 ## Exploitation et limites
 
