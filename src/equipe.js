@@ -325,4 +325,31 @@ function rosterAvecSecours(rosterFichier, profilsFichier) {
   return roster.map((m) => ({ ...m, secours: profils[m.id]?.secours && ids.has(profils[m.id].secours) ? profils[m.id].secours : null }));
 }
 
-module.exports = { rosterAvecSecours, lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe };
+// Les deux abonnements dont le moteur relève le quota. Le repli automatique ne vise qu'eux : les
+// modèles libres (omniroute) n'ont pas de quota mesuré ni le niveau d'un agent de développement.
+const ABONNEMENTS = ["claude", "codex"];
+
+/**
+ * Le LLM qui prend le relais quand `via` n'a plus de quota, ou `null`. Le remplaçant choisi sur
+ * la page Agents passe d'abord ; sinon, le modèle le plus courant de l'équipe chez l'autre
+ * abonnement (à égalité, le premier dans l'ordre du roster). Le choix ne dépend que du roster :
+ * le plan présenté et la mission lancée posent le même relais.
+ * @param {Array<{ id: string, nom: string, llm: { via: string, model: string }, secours?: string|null }>} roster
+ * @param {{ membre?: { nom: string, secours?: string|null }|null, via: string }} demande
+ * @returns {{ llm: { via: string, model: string }, origine: string }|null}
+ */
+function repli(roster, { membre = null, via }) {
+  const remplacant = membre?.secours ? roster.find((m) => m.id === membre.secours) : null;
+  if (remplacant && remplacant.llm.via !== via) return { llm: { ...remplacant.llm }, origine: `remplaçant de ${membre.nom}` };
+  if (!ABONNEMENTS.includes(via)) return null;
+  for (const autre of ABONNEMENTS.filter((a) => a !== via)) {
+    const comptes = new Map();
+    for (const m of roster) if (m.llm.via === autre) comptes.set(m.llm.model, (comptes.get(m.llm.model) || 0) + 1);
+    if (!comptes.size) continue;
+    const [model] = [...comptes].reduce((meilleur, c) => (c[1] > meilleur[1] ? c : meilleur));
+    return { llm: { via: autre, model }, origine: "modèle le plus courant de l'équipe chez ce fournisseur" };
+  }
+  return null;
+}
+
+module.exports = { rosterAvecSecours, lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe, repli, ABONNEMENTS };
