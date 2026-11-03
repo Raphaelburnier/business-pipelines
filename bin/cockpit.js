@@ -57,6 +57,7 @@ const apiChat = require("../src/api-chat");
 const fluxChat = require("../src/flux-chat");
 const conseiller = require("../src/conseiller");
 const { creerRouteurConseiller } = require("../src/api-conseiller");
+const quota = require("../src/quota");
 const approbationsRuns = require("../src/approbations-runs");
 const equipe = require("../src/equipe");
 const pipelinesNoms = require("../src/pipelines-noms");
@@ -176,6 +177,9 @@ const ERREUR_CONFIGURATION_CONSEILLER = conseiller.erreurConfiguration({
   jetonSha256: CONSEILLER_JETON_SHA256,
 });
 if (ERREUR_CONFIGURATION_CONSEILLER) console.error(`conseiller désactivé : ${ERREUR_CONFIGURATION_CONSEILLER}`);
+// Le quota Claude poussé par le PC (mod quota-barre de Claude Code). Le PC n'a qu'une identité :
+// par défaut la même empreinte que l'agent conseiller, un jeton dédié reste possible.
+const QUOTA_JETON_SHA256 = (ENV.QUOTA_JETON_SHA256 || "").trim() || CONSEILLER_JETON_SHA256;
 
 // Le corps JSON d'une écriture du front, avec les contrôles de POST /api/runs : origine du
 // cockpit, JSON seul, 20 ko au plus. Rend `null` après avoir répondu en cas de refus.
@@ -545,6 +549,26 @@ async function traiter(req, res) {
   // Le conseiller : l'agent du PC (jeton) et le fil de chaque dossier (identité tailnet).
   if (chemin.startsWith("/api/conseiller/")) {
     if (await traiterConseiller(req, res, chemin, qui)) return undefined;
+  }
+
+  // Le quota Claude du PC : un snapshot par mesure, le même événement que celui du moteur.
+  if (chemin === "/api/quota/claude") {
+    if (!conseiller.jetonValide(req.headers, QUOTA_JETON_SHA256)) {
+      return json(res, 401, { erreur: "jeton du PC absent ou faux" });
+    }
+    if (req.method !== "POST") return json(res, 405, { erreur: "méthode non prise en charge" });
+    const corps = await corpsAgent(req, res, 10_000);
+    if (corps === null) return undefined;
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    try {
+      const snapshot = quota.snapshotClaude(corps);
+      magasinOuvert.emettre({ type: "runtime.quota_snapshot", payload: snapshot });
+      return json(res, 202, { observeLe: snapshot.observeLe });
+    } catch (err) {
+      if (err instanceof quota.RefusQuota) return json(res, 400, { erreur: err.message });
+      throw err;
+    }
   }
 
   // ---- PR GitHub : relevé du publieur, fusion par commande signée ----

@@ -419,7 +419,8 @@ function topologie(store, { projetsDir = null, maintenant = Date.now(), limiteRu
  * @param {{ maintenant?: number, limiteRuns?: number }} [options]
  */
 function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
-  const quotas = require("./quota").etatQuota(store, maintenant);
+  const { etatQuota, fenetreClaude } = require("./quota");
+  const quotas = etatQuota(store, maintenant);
   const liste = store.runs({ limite: limiteRuns });
   const debutJour = maintenant - 24 * 3600 * 1000;
   const date = new Date(maintenant);
@@ -436,8 +437,8 @@ function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
     coutEquivalentJourUsd: somme(debutJour),
     coutEquivalentMoisUsd: somme(debutMois),
     quota: {
-      cinqHeures: null,
-      septJours: null,
+      cinqHeures: fenetreClaude(quotas, "five_hour"),
+      septJours: fenetreClaude(quotas, "seven_day"),
       statut: quotas.statut,
       restantLePlusBas: quotas.restantLePlusBas,
       fournisseurs: Object.fromEntries(["claude", "codex"].map((runtime) => {
