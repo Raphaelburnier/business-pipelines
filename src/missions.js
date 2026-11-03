@@ -96,7 +96,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     const c = parNoeud.get(n.id);
     const m = c.membre ? params.roster.find((x) => x.id === c.membre) : null;
     const relais = equipe.repli(params.roster, { membre: m, via: c.llm.via });
-    if (!relais) return {};
+    if (!relais || (d.demande.spec.runtimesExclus ?? []).includes(relais.llm.via)) return {};
     try {
       verifierBackend(relais.llm, n, { pipeline: resolution.pipeline, agent: resolution.agents[n.agent] });
     } catch {

@@ -202,7 +202,7 @@ function evaluer({ spec, index, params, etat }) {
     }
     // Le relais que la mission posera (missions.construire) si le quota tombe pendant l'étape.
     const relais = equipe.repli(params.roster, { membre: choix.membre, via: choix.llm.via });
-    const relaisUtilisable = relais && etat.disponibilite(relais.llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable;
+    const relaisUtilisable = relais && !etat.runtimesExclus.includes(relais.llm.via) && etat.disponibilite(relais.llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable;
     const raisons = [...choix.raisons,
       ...(relaisUtilisable ? [`Relais si le quota ${choix.llm.via} tombe pendant l'étape : ${relais.llm.via}:${relais.llm.model} (${relais.origine}).`] : []),
       ...ecartes.map((e) => `Écarté : ${e}.`)];
