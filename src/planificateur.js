@@ -350,8 +350,9 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const plan = schemas.plan.parse(elu.plan);
   // Gel à blanc : le contrat refuse un plan qui ne décrit pas exactement la résolution, et
   // `construire` revérifie la configuration, les rôles et les tranches de spec.
-  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan });
-  return { lancement: elu.lancement, proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
+  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan, runtimesExclus: spec.runtimesExclus });
+  // Le contrat de lancement ne porte pas les exclusions : elles suivent à côté, pour le relais.
+  return { lancement: elu.lancement, runtimesExclus: spec.runtimesExclus, proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
     blocages: illisibles, empreinte: contrat.empreinte({ plan, lancement: elu.lancement }), projet: { id: spec.projectId, nom: elu.nom } }) };
 }
 
@@ -382,11 +383,11 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
     }
     return c;
   }
-  const { proposition, lancement } = planifier({ spec: d.spec, params, etat });
+  const { proposition, lancement, runtimesExclus } = planifier({ spec: d.spec, params, etat });
   if (proposition.statut === "bloque") throw new RefusPlan(`Plan non lançable : ${proposition.blocages.map((b) => b.message).join(" ")}`);
   if (proposition.empreinte !== d.empreinte) throw new RefusPlan("Le plan a changé depuis sa présentation (équipe, registre, machines ou quotas) : relire le plan.");
   if (proposition.statut === "degrade" && !d.accepterDegrade) throw new RefusPlan("Plan dégradé : confirmer explicitement ses avertissements avant le lancement.");
-  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash });
+  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash, runtimesExclus });
 }
 
 class RefusPlan extends Error {}

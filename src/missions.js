@@ -46,7 +46,7 @@ function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, 
     ...(finance.estFinance(resolution.pipeline) ? { blocages } : {}) }) };
 }
 
-function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan } = {}) {
+function construire(params, brut, { verifierBackend = () => {}, verifierBrouillon, plan, runtimesExclus = [] } = {}) {
   const d = lancement.parse(brut);
   const objectifTaskBoard = d.demande.spec._taskBoardObjective
     ? validerReference(d.demande.spec._taskBoardObjective, d.projectId, { taskBoard: true }) : null;
@@ -90,13 +90,14 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
   }
   // Le relais suit le nœud : le moteur lui passe l'étape si le quota du titulaire tombe. C'est le
   // remplaçant du membre (page Agents), sinon l'autre abonnement (`equipe.repli`), celui que le
-  // plan annonce. Un relais qu'aucune machine ne peut servir n'aiderait pas : il n'est pas
-  // posé, et la mission attend comme avant.
+  // plan annonce. Un relais exclu par la spec du planificateur (`runtimesExclus`, absent du
+  // contrat de lancement) ou qu'aucune machine ne peut servir n'est pas posé : la mission
+  // attend comme avant.
   const secoursDe = (n) => {
     const c = parNoeud.get(n.id);
     const m = c.membre ? params.roster.find((x) => x.id === c.membre) : null;
     const relais = equipe.repli(params.roster, { membre: m, via: c.llm.via });
-    if (!relais || (d.demande.spec.runtimesExclus ?? []).includes(relais.llm.via)) return {};
+    if (!relais || runtimesExclus.includes(relais.llm.via)) return {};
     try {
       verifierBackend(relais.llm, n, { pipeline: resolution.pipeline, agent: resolution.agents[n.agent] });
     } catch {
@@ -125,7 +126,7 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     llmOverrides: Object.fromEntries(participants.map((p) => [p.noeud, p.llm])), demande: d };
 }
 
-function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan, scheduling = { priority: "normale" }, planSpecHash }) {
+function demander({ store, qui, params, demande, verifierBackend, verifierBrouillon, plan, scheduling = { priority: "normale" }, planSpecHash, runtimesExclus = [] }) {
   const d = lancement.parse(demande);
   const requestHash = contrat.empreinte(d);
   const objectifFeuille = Object.hasOwn(d.demande.spec, "_roadmapObjective")
@@ -148,7 +149,7 @@ function demander({ store, qui, params, demande, verifierBackend, verifierBrouil
         occupe.code = "OBJECTIF_OCCUPE";
         throw occupe;
       }
-      const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan });
+      const { mission, llmOverrides } = construire(params, d, { verifierBackend, verifierBrouillon, plan, runtimesExclus });
       commande = store.creerCommande({ kind: "run.start", payload: { projectId: d.projectId,
         pipelineIndex: d.pipelineIndex, llmOverrides, mission, requestId: d.requestId, requestHash, scheduling,
         ...(planSpecHash ? { planSpecHash } : {}) }, par: qui.par, canal: qui.canal });

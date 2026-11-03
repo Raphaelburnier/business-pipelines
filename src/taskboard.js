@@ -34,7 +34,7 @@ function planifier({ store, qui, params, corps, etat, verifierBackend, maintenan
       if (p.proposition.statut === 'degrade' && !m.accepterDegrade) throw new Error('Confirmer les plans dégradés avant de planifier.');
       const lancement = { ...p.lancement, requestId: m.requestId };
       lancement.demande.spec._taskBoardObjective = { ...m.spec.contexte._taskBoardObjective, groupeId: d.groupeId };
-      const { mission } = missions.construire(params, lancement, { plan: p.proposition.plan, verifierBackend });
+      const { mission } = missions.construire(params, lancement, { plan: p.proposition.plan, verifierBackend, runtimesExclus: p.runtimesExclus });
       return { id: m.requestId, hash, mission, date, priority: m.scheduling.priority, qui, maintenant };
     });
     const retour = prepares.map(p => atelier.enregistrerPlan(store,p));
