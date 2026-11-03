@@ -24,6 +24,9 @@ const nomAgent = (ref) => String(ref || "").split("@")[0];
 const incarne = (membre, noeud) => membre.registre.includes(nomAgent(noeud.agent));
 const estRelecteur = (n) => n.type === "review" || finance.roleFinance(n) === "revue";
 const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.model);
+// Un relais ne vise ni un runtime exclu par la spec ni un abonnement sans quota. Le plan qui
+// l'annonce et la mission qui le pose (missions.construire) lisent cette même liste.
+const relaisExclus = (etat) => [...new Set([...etat.runtimesExclus, ...Object.keys(etat.runtimesBloques)])];
 
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
 function natureDe(pipeline, natures) {
@@ -202,7 +205,7 @@ function evaluer({ spec, index, params, etat }) {
     }
     // Le relais que la mission posera (missions.construire) si le quota tombe pendant l'étape.
     const relais = equipe.repli(params.roster, { membre: choix.membre, via: choix.llm.via });
-    const relaisUtilisable = relais && !etat.runtimesExclus.includes(relais.llm.via) && !etat.runtimesBloques[relais.llm.via] && etat.disponibilite(relais.llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable;
+    const relaisUtilisable = relais && !relaisExclus(etat).includes(relais.llm.via) && etat.disponibilite(relais.llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable;
     const raisons = [...choix.raisons,
       ...(relaisUtilisable ? [`Relais si le quota ${choix.llm.via} tombe pendant l'étape : ${relais.llm.via}:${relais.llm.model} (${relais.origine}).`] : []),
       ...ecartes.map((e) => `Écarté : ${e}.`)];
@@ -350,9 +353,9 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const plan = schemas.plan.parse(elu.plan);
   // Gel à blanc : le contrat refuse un plan qui ne décrit pas exactement la résolution, et
   // `construire` revérifie la configuration, les rôles et les tranches de spec.
-  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan, runtimesExclus: spec.runtimesExclus });
-  // Le contrat de lancement ne porte pas les exclusions : elles suivent à côté, pour le relais.
-  return { lancement: elu.lancement, runtimesExclus: spec.runtimesExclus, proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
+  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan, relaisExclus: relaisExclus(etat) });
+  // Le contrat de lancement ne porte ni les exclusions ni les quotas : ils suivent à côté, pour le relais.
+  return { lancement: elu.lancement, relaisExclus: relaisExclus(etat), proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
     blocages: illisibles, empreinte: contrat.empreinte({ plan, lancement: elu.lancement }), projet: { id: spec.projectId, nom: elu.nom } }) };
 }
 
@@ -383,11 +386,11 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
     }
     return c;
   }
-  const { proposition, lancement, runtimesExclus } = planifier({ spec: d.spec, params, etat });
+  const { proposition, lancement, relaisExclus: exclus } = planifier({ spec: d.spec, params, etat });
   if (proposition.statut === "bloque") throw new RefusPlan(`Plan non lançable : ${proposition.blocages.map((b) => b.message).join(" ")}`);
   if (proposition.empreinte !== d.empreinte) throw new RefusPlan("Le plan a changé depuis sa présentation (équipe, registre, machines ou quotas) : relire le plan.");
   if (proposition.statut === "degrade" && !d.accepterDegrade) throw new RefusPlan("Plan dégradé : confirmer explicitement ses avertissements avant le lancement.");
-  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash, runtimesExclus });
+  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash, relaisExclus: exclus });
 }
 
 class RefusPlan extends Error {}
