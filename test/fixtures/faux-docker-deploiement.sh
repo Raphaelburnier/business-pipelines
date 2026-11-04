@@ -28,7 +28,17 @@ case "${1:-}" in
     if [[ "$format" == *'.Image'* ]]; then printf 'image-ancienne-%s\n' "$nom"; else echo true; fi
     ;;
   exec)
-    if [[ "$2" == business_alerteur && "$scenario" == alerteur-malade && "$phase" == 1 ]]; then exit 1; fi
+    shift
+    if [[ "$1" == -e ]]; then export "$2"; shift 2; fi
+    conteneur=$1; shift
+    if [[ "$conteneur" == business_livreur && "$*" == 'node /app/bin/verifier-livraison.js' ]]; then
+      exec "$RECETTE_NODE" "$RECETTE_VERIFIER_LIVRAISON"
+    fi
+    if [[ "$*" == *'VERSION_MAINTENANCE'* ]]; then
+      if [[ "$conteneur" == business_runner && "$scenario" == ancien-runner ]]; then exit 1; fi
+      exec "$RECETTE_NODE" -e 'if(require(process.env.RECETTE_MODULE_MOTEUR).EventStore.VERSION_MAINTENANCE!==1)process.exit(1)'
+    fi
+    if [[ "$conteneur" == business_alerteur && "$scenario" == alerteur-malade && "$phase" == 1 ]]; then exit 1; fi
     ;;
   tag)
     if [[ "$scenario" == phase-epuisee ]]; then /bin/sleep 1; fi
@@ -42,6 +52,9 @@ case "${1:-}" in
   compose)
     case "$2" in
       build)
+        if [[ "$scenario" == travail-pendant-build ]]; then
+          "$RECETTE_NODE" -e 'const {DatabaseSync}=require("node:sqlite"),db=new DatabaseSync(process.env.ORCH_EVENT_STORE);db.prepare("INSERT INTO runs(id,pipeline_ref,status,started_at) VALUES(?, ?, ?, ?)").run("legacy", "recette@1", "running", new Date().toISOString());db.close()'
+        fi
         case "$scenario" in avant-echec) exit 41 ;; avant-bloque|signal|signal-handshake) bloquer ;; esac
         ;;
       up)

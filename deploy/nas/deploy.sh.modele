@@ -157,6 +157,17 @@ services_sains() {
     borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_runner node -e 'fetch(`http://${process.env.ORCH_MAITRE_HOTE}:${process.env.ORCH_MAITRE_PORT || 650}/sante`,{signal:AbortSignal.timeout(2000)}).then(async r=>{if(!r.ok || (await r.json()).ok!==true)process.exit(1)}).catch(()=>process.exit(1))' || return 1
   fi
 }
+verifier_runs() {
+  # Le livreur préparatoire doit posséder le verrou avant toute construction/bascule.
+  # Ces sondes ne créent ni base ni run. Un composant ancien refuse la migration.
+  borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec -e "LIVRAISON_COMMANDE_ID=$LIVRAISON_COMMANDE_ID" business_livreur node /app/bin/verifier-livraison.js || return 1
+  for conteneur in business_cockpit business_runner; do
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec "$conteneur" node -e 'if(require("agent-orchestrator").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
+  done
+  if grep -q '^  maitre:' "$BUSINESS/docker-compose.yaml"; then
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_maitre node -e 'if(require("agent-orchestrator").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
+  fi
+}
 retirer_services() {
   CONTENEURS=
   # Un compose up peut échouer après n'avoir créé qu'une partie des conteneurs.
@@ -244,6 +255,7 @@ valider_budget "$COMMAND_TIMEOUT_SEC" 1800
 valider_budget "$ARCHIVE_TIMEOUT_SEC" 900
 valider_budget "$STOP_GRACE_SEC" 30
 [ ! -e "$INCIDENT" ] || { echo "Livraison suspendue : incident à résoudre dans $INCIDENT" >&2; exit 1; }
+[ -n "${LIVRAISON_COMMANDE_ID:-}" ] || { echo "Commande de livraison identifiée requise : demander la livraison depuis le cockpit." >&2; exit 1; }
 phase preparer "$BUILD_TIMEOUT_SEC"
 # Ne pas vérifier ici les volumes du cockpit : le livreur exécute aussi ce script
 # dans son propre conteneur, où le partage des modèles n'est pas monté.
@@ -264,6 +276,7 @@ fi
 ln -sf "$ENV" "$STAGE/specs/deploiement.env"
 ln -sf "$BUSINESS/specs/workers.json" "$STAGE/specs/workers.json"
 ln -sf "$BUSINESS/specs/publieur.env" "$STAGE/specs/publieur.env"
+verifier_runs || { echo "Maintenance ou repos non confirmé : aucun service n'a été arrêté." >&2; exit 1; }
 
 # L'état vit dans ces dossiers, et un déploiement n'y touche jamais : ni la sauvegarde ni la
 # restauration ne les incluent. Archiver l'event store pendant qu'un service y écrit faisait
@@ -318,6 +331,8 @@ for service in runner tailscale-whois publieur maitre cockpit-relais alerteur; d
   borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" tag business-pipelines-cockpit "business-pipelines-$service"
 done
 
+# Le verrou reste durable pendant le build ; relire aussi le travail juste avant l'arrêt.
+verifier_runs || { echo "Maintenance ou repos non confirmé : aucun service n'a été arrêté." >&2; exit 1; }
 echo "Bascule..."
 phase basculer "$SWITCH_TIMEOUT_SEC"
 poser_incident "Bascule en cours vers @RELEASE@. Contrôle des services attendu."

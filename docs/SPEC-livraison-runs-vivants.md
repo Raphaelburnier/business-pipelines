@@ -220,3 +220,31 @@ production ; c'est l'invariant « Livraisons » du même AGENTS.md.
 
 La procédure est manuelle : ni un redémarrage ni un agent ne doit la déclencher
 spontanément. L'étape 3 n'est pas une commande de mise en production.
+
+## Ordre des deux PR de cockpit
+
+La PR de préparation conserve `deploy/nas/` et le compose actuels. Après sa fusion,
+Raphaël demande la livraison depuis le cockpit, avec la pause durable maintenue et
+aucun travail, conversation comprise. Pendant cette première migration, ne pas
+demander de nouvelle conversation au runner. Le livreur est ensuite mis à jour
+par l'opérateur selon sa procédure de maintenance existante, hors livraison active.
+Pourquoi : l'ancien runner ne bloque pas le chat pendant une pause, et le livreur
+ne se remplace pas dans une livraison applicative.
+
+La PR d'activation reste en brouillon jusqu'à cette recette préparatoire. Elle
+ajoute au modèle deux contrôles en lecture seule : avant la construction, puis
+avant le premier arrêt. Ils exigent l'identifiant de la commande propriétaire,
+une maintenance active, le repos, et le support v1 dans les images du cockpit,
+du runner et du maître s'il est installé. Le livreur transmet l'identifiant par
+`LIVRAISON_COMMANDE_ID` au script et à sa sonde interne.
+Pourquoi : une variable manquante, une base illisible ou une image ancienne doit
+refuser la bascule avant toute interruption.
+
+Ne pas fusionner l'activation en même temps que la préparation : le cockpit
+propose la tête des branches principales, ce qui empêcherait de sélectionner la
+release préparatoire par le parcours normal. Après sa recette seulement, recaler
+la PR d'activation sur main, valider la CI, puis demander la fusion sensible et
+l'approbation de l'empreinte exacte du nouveau modèle. La livraison reste au clic
+de Raphaël.
+Pourquoi : cet ordre évite de bloquer la première installation sur son propre
+prérequis ; une approbation de conception ne vaut pas accord de production.
