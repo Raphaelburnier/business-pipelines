@@ -28,7 +28,7 @@ const FIN = 19;
 
 export function livraisonMaquette(maintenant: () => number) {
   // Les tests du front tournent sous Node, sans `window`.
-  const recherche = typeof window === "undefined" ? "" : window.location.search;
+  const recherche = typeof window === "undefined" ? "" : window.location?.search ?? "";
   const restauree = new URLSearchParams(recherche).get("livraison") === "restauree";
   let clic: number | null = null;
   const historique: Livraison[] = [

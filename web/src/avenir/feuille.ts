@@ -222,7 +222,7 @@ export const LOTS: Lot[] = [
     titre: "Run : les pipelines en cours",
     but: "Suivre et piloter les pipelines qui tournent dans les projets.",
     etapes: [
-      { id: "10.1", titre: "Page Run", detail: "Les runs des projets (aujourd'hui sur la page Pipelines) : liste à gauche, graphe et inspecteur.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "a-faire" },
+      { id: "10.1", titre: "Page Run", detail: "Page Run sur /run et /run/<runId> : liste des runs à gauche, graphe au centre, inspecteur à droite.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/App.tsx", "BP bin/cockpit.js:442"], statut: "en-cours" },
       { id: "10.2", titre: "Changer l'agent d'une étape", detail: "Remplacer un agent sans quota ou occupé sur un run en cours.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js"], statut: "a-faire" },
       { id: "10.3", titre: "Agents de secours sur un run", detail: "Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.", fichiers: ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"], statut: "a-faire" },
       { id: "10.4", titre: "Interrompre un run", detail: "Pause et arrêt avec leur route serveur ; le panneau En cours n'en propose aucun aujourd'hui.", fichiers: ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"], statut: "a-faire" },

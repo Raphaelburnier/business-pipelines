@@ -28,6 +28,7 @@ const TRACES = {
       <path d="M12 7v10M7 12h5" />
     </>
   ),
+  run: (<><circle cx="12" cy="12" r="9" /><path d="M10 8.5l5.5 3.5L10 15.5z" /></>),
   marketing: <path d="M4 10v4h3l8 4V6l-8 4H4zM18.5 9a4 4 0 0 1 0 6M7 14l1 5h2.5l-1-4.5" />,
   demander: <path d="M4 5h16v11H9l-5 4z" />,
   finance: <path d="M4 20h16M6 16v-4M12 16V8M18 16V4M4 8l6-4 5 2 5-4" />,
