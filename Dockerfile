@@ -48,11 +48,11 @@ COPY .moteur/ /agent-orchestrator/
 # /agent-orchestrator/node_modules reste vide, `@anthropic-ai/claude-agent-sdk` est
 # introuvable, et le premier appel d'agent meurt en ERR_MODULE_NOT_FOUND. Une fois par
 # réveil, toutes les quinze minutes, sans que la boucle avance jamais.
-RUN cd /agent-orchestrator && npm install --omit=dev
+RUN cd /agent-orchestrator && npm ci --omit=dev --no-audit --no-fund
 
 # Les dépendances avant le code : une modification du code ne réinstalle alors rien.
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 
 # ---- Vérification : le front se construit et les tests passent, ou l'image n'existe pas ----
 #

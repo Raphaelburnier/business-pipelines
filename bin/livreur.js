@@ -12,6 +12,7 @@ const { EventStore } = require("agent-orchestrator");
 const livreur = require("../src/livreur");
 const signature = require("../src/signature-commandes");
 const delais = require("../src/delais-livraison");
+const { executerSousMaintenance, verifierBaseExistante } = require("../src/maintenance-livraison");
 
 const BUSINESS = process.env.LIVREUR_BUSINESS || "/volume1/docker/business-pipelines";
 const STORE = process.env.ORCH_EVENT_STORE || path.join(BUSINESS, "etat", "events.sqlite");
@@ -39,8 +40,9 @@ let arret = false;
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => (arret = true));
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function publierProposition() {
+function publierProposition(store) {
   try {
+    if (store.maintenance.etat().active) throw new Error("Maintenance conservée : vérifier l'issue de la livraison et suivre la procédure opérateur avant de libérer les départs");
     if (fs.existsSync(INCIDENT)) throw new Error(`livraison suspendue : ${fs.readFileSync(INCIDENT, "utf8").trim()}`);
     const release = livreur.lireRelease(path.join(BUSINESS, ".release"));
     livreur.ecrireJson(PROPOSITION, livreur.proposition({ git, miroirs, release }));
@@ -75,14 +77,16 @@ function basculer(store, commande, deploy, env) {
         }
       }
     };
+    let demarre = false;
     const enfant = spawn("sh", [deploy], { env, stdio: ["ignore", "pipe", "pipe"] });
+    enfant.once("spawn", () => { demarre = true; });
     enfant.stdout.on("data", lire);
     enfant.stderr.on("data", lire);
     enfant.on("error", (err) => lire(`deploy.sh n'a pas démarré : ${err.message}`));
-    enfant.on("close", (code) => {
+    enfant.on("close", (code, signal) => {
       clearInterval(minuterie);
       vider();
-      resolve({ code: code ?? 1, etape, dernieres });
+      resolve({ code: code ?? 1, signal, demarre, etape, dernieres });
     });
   });
 }
@@ -123,9 +127,10 @@ async function livrer(store, commande) {
 
     etape = "preparer";
     emettre("livraison.etape", { etape });
-    const prete = livreur.preparerRelease({ git, miroirs, payload, modeleDe, releasesDir: RELEASES, par: commande.par });
-
-    const fin = await basculer(store, commande, prete.deploy, environnement);
+    const { prete, fin } = await executerSousMaintenance({ store, commandeId: commande.id, incidentFichier: INCIDENT,
+      preparer: () => livreur.preparerRelease({ git, miroirs, payload, modeleDe, releasesDir: RELEASES, par: commande.par }),
+      basculer: prete => basculer(store, commande, prete.deploy, { ...environnement, LIVRAISON_COMMANDE_ID: commande.id }),
+    });
     etape = fin.etape;
     if (fin.code !== 0 || fs.existsSync(INCIDENT)) {
       const incident = fs.existsSync(INCIDENT) ? fs.readFileSync(INCIDENT, "utf8") : null;
@@ -147,6 +152,7 @@ async function livrer(store, commande) {
 }
 
 (async () => {
+  verifierBaseExistante(STORE);
   const store = new EventStore(STORE);
   const { surveillerServiceIsole } = require("../src/sante-plateforme");
   const sante = surveillerServiceIsole("livreur", { fichier: STORE, docker: true });
@@ -186,7 +192,7 @@ async function livrer(store, commande) {
         prochaineProposition = 0;
       }
       if (Date.now() >= prochaineProposition) {
-        publierProposition();
+        publierProposition(store);
         prochaineProposition = Date.now() + INTERVALLE_PROPOSITION;
       }
       if (!commande) await attendre(INTERVALLE_FILE);
