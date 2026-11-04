@@ -64,10 +64,11 @@ function basculer(store, commande, deploy, env) {
     const minuterie = setInterval(vider, 2000);
     const lire = (morceau) => {
       for (const ligne of String(morceau).split("\n").map((x) => x.trimEnd()).filter(Boolean)) {
-        tampon.push(ligne);
-        dernieres.push(ligne);
-        if (dernieres.length > 30) dernieres.shift();
         const suivante = livreur.etapeDeLigne(ligne, etape);
+        const journal = livreur.masquerJournal(ligne);
+        tampon.push(journal);
+        dernieres.push(journal);
+        if (dernieres.length > 30) dernieres.shift();
         if (suivante && suivante !== etape) {
           vider();
           etape = suivante;
@@ -95,7 +96,7 @@ async function livrer(store, commande) {
   const payload = commande.payload;
   const incident = INCIDENT;
   if (fs.existsSync(incident)) {
-    const raison = `livraison suspendue : ${fs.readFileSync(incident, "utf8").trim()}`;
+    const raison = livreur.masquerJournal(`livraison suspendue : ${fs.readFileSync(incident, "utf8").trim()}`);
     emettre("livraison.fin", { issue: "echec", etape: "restaurer", raison });
     return { ok: false, raison };
   }
@@ -129,15 +130,16 @@ async function livrer(store, commande) {
     etape = fin.etape;
     if (fin.code !== 0 || fs.existsSync(INCIDENT)) {
       const incident = fs.existsSync(INCIDENT) ? fs.readFileSync(INCIDENT, "utf8") : null;
-      const { issue, raison } = livreur.echecBascule(fin, incident);
-      if (etape === "restaurer" && issue === "echec" && !fs.existsSync(INCIDENT)) fs.writeFileSync(INCIDENT, `${raison}\n`, { mode: 0o600 });
-      emettre("livraison.fin", { issue, etape, raison, release: prete.release, journal: fin.dernieres });
+      const resultat = livreur.echecBascule(fin, incident);
+      const raison = livreur.masquerJournal(resultat.raison);
+      if (etape === "restaurer" && resultat.issue === "echec" && !fs.existsSync(INCIDENT)) fs.writeFileSync(INCIDENT, `${raison}\n`, { mode: 0o600 });
+      emettre("livraison.fin", { issue: resultat.issue, etape, raison, release: prete.release, journal: fin.dernieres });
       return { ok: false, raison };
     }
     emettre("livraison.fin", { issue: "livree", release: prete.release, version });
     return { ok: true, detail: { release: prete.release, version } };
   } catch (err) {
-    const raison = String(err.message).split("\n")[0];
+    const raison = livreur.masquerJournal(String(err.message).split("\n")[0]);
     emettre("livraison.fin", { issue: "echec", etape, raison });
     return { ok: false, raison };
   } finally {
