@@ -1,6 +1,5 @@
 [
   {"id": "1.1", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO .github/workflows/ci.yml"]},
-  {"id": "1.2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"]},
   {"id": "1.4", "revision": 1, "projet": null, "fichiers": ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"]},
   {"id": "3.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/rattachements.js"]},
   {"id": "3.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/stage-handlers.js", "BP Dockerfile:25-27"]},
