@@ -1,5 +1,4 @@
 [
-  {"id": "1.4", "revision": 1, "projet": null, "fichiers": ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"]},
   {"id": "3.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/rattachements.js"]},
   {"id": "3.7", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/stage-handlers.js", "BP Dockerfile:25-27"]},
   {"id": "3.8", "revision": 1, "projet": "agent-orchestrator", "fichiers": ["AO src/graphe.js"]},
@@ -18,7 +17,5 @@
   {"id": "10.3", "revision": 1, "projet": null, "fichiers": ["AO src/maitre.js", "BP web/src/vues/EnCours.tsx"]},
   {"id": "10.4", "revision": 1, "projet": null, "fichiers": ["AO src/maitre.js", "BP bin/cockpit.js", "BP web/src/vues/EnCours.tsx:4-6"]},
   {"id": "10.5", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/discussions-equipe.js", "BP web/src/vues/ActionsChat.tsx"]},
-  {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]},
-  {"id": "C2", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml"], "type": "fix"},
-  {"id": "C3", "revision": 1, "projet": null, "fichiers": ["agent-gated-merge.yml:203-214"], "type": "fix"}
+  {"id": "10.6", "revision": 1, "projet": "business-pipelines", "fichiers": ["BP src/conseiller.js", "BP src/api-conseiller.js"]}
 ]
