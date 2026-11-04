@@ -193,7 +193,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire" },
       { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "Unité systemd versionnée sur la copie figée.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "a-faire" },
-      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Conception en cours : refus si un travail est actif, verrou des nouveaux départs pendant la livraison et npm ci dans le Dockerfile. Contrat de maintenance proposé, à valider avant implémentation.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "en-cours" },
+      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Conception validée : refus si un travail est actif, verrou durable des nouveaux départs et npm ci. Moteur fusionné ; préparation du cockpit puis activation du modèle après recette. Installation en production encore à faire.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "en-cours" },
     ],
   },
   // Lots 8 à 13 : page Notion « Cockpit amelioration » de Raphaël, validée le 2026-10-22.
