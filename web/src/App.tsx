@@ -17,6 +17,7 @@ import { Panneau } from "./vues/Panneau";
 import { Missions } from "./vues/Missions";
 import { Branches } from "./vues/Branches";
 import { Pipelines } from "./vues/Pipelines";
+import { RunPipeline } from "./vues/RunPipeline";
 import { ControleFile } from "./vues/ControleExecution";
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 
@@ -30,6 +31,7 @@ type Route =
   | { type: "graph" }
   | { type: "agents" }
   | { type: "pipelines"; pipelineId: string | null }
+  | { type: "run"; runId: string | null }
   | { type: "missions"; projetId: string | null; brouillonId: string | null }
   | { type: "branches" }
   | { type: "marketing"; projetId: string | null; filId: string | null }
@@ -43,37 +45,46 @@ type Route =
   | { type: "detail"; selection: Selection }
   | { type: "inconnue" };
 
-function lireRoute(): Route {
+function segment(valeur: string): string {
+  try {
+    return decodeURIComponent(valeur);
+  } catch {
+    return valeur;
+  }
+}
+
+export function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
-  if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", pipelineId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
+  if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", pipelineId: morceaux[1] ? segment(morceaux[1]) : null };
+  if (morceaux[0] === "run" && morceaux.length <= 2) return { type: "run", runId: morceaux[1] ? segment(morceaux[1]) : null };
   if (morceaux[0] === "finance" && morceaux.length === 1) return { type: "finance" };
   if (morceaux[0] === "missions" && morceaux[1] === "branches" && morceaux.length === 2) return { type: "branches" };
-  if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
-  if (morceaux[0] === "marketing" && morceaux.length <= 3) return { type: "marketing", projetId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null, filId: morceaux[2] ? decodeURIComponent(morceaux[2]) : null };
+  if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? segment(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
+  if (morceaux[0] === "marketing" && morceaux.length <= 3) return { type: "marketing", projetId: morceaux[1] ? segment(morceaux[1]) : null, filId: morceaux[2] ? segment(morceaux[2]) : null };
   if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme", page: "carte" };
   if (morceaux[0] === "systeme" && morceaux[1] === "fonctionnement" && morceaux.length === 2) return { type: "systeme", page: "fonctionnement" };
   if (["taskboard", "a-venir", "calendrier"].includes(morceaux[0] ?? "") && morceaux.length === 1) return { type: "taskboard" };
-  if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? decodeURIComponent(morceaux[1]) : null };
+  if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? segment(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
     if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
     if (morceaux[1] === "profiles" && morceaux[2]) {
       const tab = morceaux[3] || "gallery";
       if (["gallery", "generate", "references", "settings"].includes(tab)) {
-        return { type: "ai-studio", studio: { page: "profile", id: decodeURIComponent(morceaux[2]), tab: tab as "gallery" | "generate" | "references" | "settings" } };
+        return { type: "ai-studio", studio: { page: "profile", id: segment(morceaux[2]), tab: tab as "gallery" | "generate" | "references" | "settings" } };
       }
     }
     if (morceaux[1] === "generations" && morceaux[2] && morceaux.length === 3) {
-      return { type: "ai-studio", studio: { page: "generation", id: decodeURIComponent(morceaux[2]) } };
+      return { type: "ai-studio", studio: { page: "generation", id: segment(morceaux[2]) } };
     }
     return { type: "inconnue" };
   }
   const correspondances: Record<string, Selection["type"]> = { projects: "projet", runs: "run", machines: "machine" };
   const type = correspondances[morceaux[0] ?? ""];
-  if (type && morceaux[1]) return { type: "detail", selection: { type, id: decodeURIComponent(morceaux[1]) } as Selection };
+  if (type && morceaux[1]) return { type: "detail", selection: { type, id: segment(morceaux[1]) } as Selection };
   return { type: "inconnue" };
 }
 
@@ -130,6 +141,7 @@ function titreDe(route: Route): string {
   if (route.type === "missions") return "Missions";
   if (route.type === "branches") return "Branches";
   if (route.type === "pipelines") return "Pipelines";
+  if (route.type === "run") return "Run";
   if (route.type === "marketing") return "Équipe marketing";
   if (route.type === "demander") return "Demander";
   if (route.type === "decisions" || route.type === "approbations") return "Decisions";
@@ -197,7 +209,7 @@ function Coquille() {
   }, [selection, fermer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "pipelines" || route.type === "ai-studio" || route.type === "systeme" || route.type === "taskboard" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
+    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "pipelines" || route.type === "run" || route.type === "ai-studio" || route.type === "systeme" || route.type === "taskboard" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
       <aside className="ao-rail" id="menu-principal">
         <div className="ao-marque">
           <button
@@ -223,6 +235,7 @@ function Coquille() {
           <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
           <Lien href="/missions/branches" actif={route.type === "branches"} aller={naviguer} icone="branche">Branches</Lien>
           <Lien href="/pipelines" actif={route.type === "pipelines"} aller={naviguer} icone="pipeline">Pipelines</Lien>
+          <Lien href="/run" actif={route.type === "run"} aller={naviguer} icone="run">Run</Lien>
           <Lien href="/taskboard" actif={route.type === "taskboard"} aller={naviguer} icone="calendrier">TaskBoard</Lien>
           <Lien href="/finance" actif={route.type === "finance"} aller={naviguer} icone="finance">Finance</Lien>
           <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
@@ -286,6 +299,7 @@ function Coquille() {
           )}
           {route.type === "agents" && <Agents onSelection={ouvrir} />}
           {route.type === "pipelines" && <Pipelines pipelineId={route.pipelineId} aller={naviguer} />}
+          {route.type === "run" && <RunPipeline runId={route.runId} aller={naviguer} />}
           {route.type === "missions" && <Missions key={`${route.projetId}:${route.brouillonId}`} projetInitial={route.projetId} brouillonId={route.brouillonId} aller={naviguer} />}
           {route.type === "branches" && <Branches aller={naviguer} />}
           {route.type === "finance" && <Suspense fallback={<section className="page-vide"><p>Chargement de Finance…</p></section>}><Finance /></Suspense>}
@@ -315,7 +329,7 @@ function Coquille() {
         <aside className="ao-inspection" aria-label="Détails de la cellule">
           <Panneau key={`${selection.type}:${selection.id}:${selection.type === "run" ? selection.etapeId ?? "" : ""}`} selection={selection} onSelection={ouvrir} onFermer={fermer} />
         </aside>
-      ) : route.type !== "pipelines" && route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "taskboard" && route.type !== "decisions" && route.type !== "approbations" && <EnCours onSelection={ouvrir} />}
+      ) : route.type !== "pipelines" && route.type !== "run" && route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "taskboard" && route.type !== "decisions" && route.type !== "approbations" && <EnCours onSelection={ouvrir} />}
     </div>
   );
 }
