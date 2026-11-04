@@ -42,8 +42,10 @@ function projet(params, id) {
 const dossier = (params) => params.registreDir || registre.dossierRegistre();
 function grapheDefinition(pipeline) {
   return schema.graph.parse({ ...pipeline, nodes: pipeline.nodes.map((n) => {
-    if (n.type !== 'review') return n;
-    const { disabled, params, ...definition } = n;
+    // Le relais de quota est posé au lancement (missions.construire), pas dans la définition.
+    const { secours, ...noeud } = n;
+    if (noeud.type !== 'review') return noeud;
+    const { disabled, params, ...definition } = noeud;
     return definition;
   }) });
 }
