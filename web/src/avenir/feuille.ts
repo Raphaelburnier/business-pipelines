@@ -111,7 +111,7 @@ export const LOTS: Lot[] = [
       { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "Actif depuis le 4 novembre 2026 : chaque CI moteur vérifie le front courant du cockpit avec le moteur testé, puis lance typecheck, tests et build. Les deux versions sont consignées ; une incompatibilité bloque la CI.", fichiers: ["AO .github/workflows/ci.yml"], statut: "fait" },
       { id: "1.2", titre: "Aligner les gates de fusion", detail: "Actif dans GitHub : Steam #23, tcg #10 et Saas #9 fusionnées après CI verte. Les gates vérifient le triplet merge/tête/base et ses parents, acceptent agent/ sous les mêmes contrôles et bloquent les demandes de changements actives. Quarante scénarios par dépôt, dont une base déplacée pendant la dernière relecture, sont intégrés aux CI.", fichiers: ["agent-gated-merge.yml:203-214"], statut: "fait" },
       { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Préparé : preuve de la base testée et comparaison stricte des échecs avant le compteur de corrections. Fusion des workflows et recette GitHub à vérifier avec 5.3.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "en-cours" },
-      { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "Dépôt GitHub, CI et gate de fusion.", fichiers: ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"], statut: "a-faire" },
+      { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "En cours : dépôt privé GitHub, installation Python reproductible, tests isolés, vérification des types et gate de fusion sur le merge réellement testé.", fichiers: ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"], statut: "en-cours" },
     ],
   },
   {
