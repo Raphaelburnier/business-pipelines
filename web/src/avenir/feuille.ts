@@ -108,7 +108,7 @@ export const LOTS: Lot[] = [
     but: "Qu'une PR du moteur ne puisse plus casser la compilation du cockpit (cas TS2322 de #58 sans #118).",
     prerequis: "Lot 0",
     etapes: [
-      { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "Job qui clone BP origin/main, branche le moteur de la PR, lance tsc et les tests.", fichiers: ["AO .github/workflows/ci.yml"], statut: "a-faire" },
+      { id: "1.1", titre: "La CI du moteur construit le front du cockpit", detail: "En cours : vérifier le front courant du cockpit avec le merge exact de la PR moteur, puis lancer typecheck, tests et build avant fusion.", fichiers: ["AO .github/workflows/ci.yml"], statut: "en-cours" },
       { id: "1.2", titre: "Aligner les gates de fusion", detail: "En cours : vérifier dans Steam, tcg et Saas le merge, la tête et la base réellement testés, admettre les branches agent/ sous les mêmes contrôles, et bloquer les demandes de changements non levées. Recettes des workflows et fusion explicite à terminer.", fichiers: ["agent-gated-merge.yml:203-214"], statut: "en-cours" },
       { id: "1.3", titre: "Détecter une base déjà rouge", detail: "Préparé : preuve de la base testée et comparaison stricte des échecs avant le compteur de corrections. Fusion des workflows et recette GitHub à vérifier avec 5.3.", fichiers: ["ci-autofix.yml:36-50,155-161"], statut: "en-cours" },
       { id: "1.4", titre: "Mettre agent-secrets à la norme", detail: "Dépôt GitHub, CI et gate de fusion.", fichiers: ["AS .github/workflows/ci.yml", "AS .github/workflows/agent-gated-merge.yml"], statut: "a-faire" },
