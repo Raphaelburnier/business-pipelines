@@ -109,7 +109,11 @@ puis l'activation du nouveau modèle. La livraison préparatoire est demandée p
 Raphaël depuis le cockpit, avec la pause durable activée et l'absence de travail
 vérifiée ; la pause reste activée jusqu'à sa recette. Le nouveau modèle refuse
 son activation si les composants installés ne supportent pas encore le contrat.
-La preuve de compatibilité sera définie et testée dans l'implémentation ; aucune
+Pendant la migration préparatoire, ne demander aucune nouvelle conversation au
+runner ; la pause de l’ancien runner ne bloque pas le chat. Mettre ensuite le
+livreur à jour par la procédure opérateur, hors livraison active : il ne se
+remplace pas lui-même.
+La preuve de compatibilité sera définie et testée dans l’implémentation ; aucune
 capacité n'est présumée à partir du seul nom d'un conteneur.
 
 Pourquoi : le changement doit couvrir aussi sa migration, pas seulement les
@@ -175,9 +179,9 @@ Les scénarios utilisent de vrais processus et une base temporaire, sans appel d
 modèle et sans données de production. Docker n'est pas disponible dans cette
 session locale ; son build devra être prouvé par la CI publique avant fusion.
 
-## Validation attendue
+## Validation de conception
 
-Valider le contrat et la sémantique du verrou ci-dessus avant de coder les échanges.
+Contrat et sémantique validés par Raphaël le 4 novembre 2026, avant le code des échanges.
 Pourquoi : la règle « Conception » du AGENTS.md commun impose de proposer un schéma
 entre composants puis d'attendre sa validation ; cette maintenance en crée un.
 
