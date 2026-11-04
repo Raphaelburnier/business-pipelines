@@ -1,5 +1,5 @@
-// L'écran Pipelines (design system AgenticOS, composant Pipelines) : les runs à gauche, le
-// graphe du run choisi au centre, l'inspecteur à droite. Un clic sur une étape, un lien ou
+// La page Run : les runs des projets à gauche, le graphe du run choisi au centre,
+// l'inspecteur à droite. Un clic sur une étape, un lien ou
 // son étiquette ouvre son détail ; « { } » montre le JSON du graphe.
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
@@ -682,13 +682,13 @@ export function RunPipeline({ runId, aller }: { runId: string | null; aller: (hr
         {tries.map((r) => (
           <a
             key={r.id}
-            href={`/pipelines/${encodeURIComponent(r.id)}`}
+            href={`/run/${encodeURIComponent(r.id)}`}
             aria-current={r.id === actif ? "page" : undefined}
             className={r.id === actif ? "on" : ""}
             onClick={(event) => {
               if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
-              aller(`/pipelines/${encodeURIComponent(r.id)}`);
+              aller(`/run/${encodeURIComponent(r.id)}`);
             }}
           >
             <Etat etat={r.statut} />

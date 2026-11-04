@@ -472,6 +472,8 @@ async function traiter(req, res) {
   // approbations) ; l'ancienne page d'approbations est servie sous `/decisions/pipelines`.
   const routeWeb = chemin === "/" || chemin === "/graph" || chemin === "/agents" ||
     /^\/pipelines(?:\/[^/]+)?\/?$/.test(chemin) ||
+    // La page Run et ses liens directs /run/<runId> sont servis par le front ; /runs/<id> reste ci-dessous.
+    /^\/run(?:\/[^/]+)?\/?$/.test(chemin) ||
     chemin === "/finance" || chemin === "/finance/" ||
     chemin === "/missions" || chemin.startsWith("/missions/") ||
     chemin === "/marketing" || chemin.startsWith("/marketing/") ||
