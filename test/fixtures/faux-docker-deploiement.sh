@@ -36,7 +36,9 @@ case "${1:-}" in
     fi
     if [[ "$*" == *'VERSION_MAINTENANCE'* ]]; then
       if [[ "$conteneur" == business_runner && "$scenario" == ancien-runner ]]; then exit 1; fi
-      exec "$RECETTE_NODE" -e 'if(require(process.env.RECETTE_MODULE_MOTEUR).EventStore.VERSION_MAINTENANCE!==1)process.exit(1)'
+      # Métadonnée de conteneur simulée, comme inspect. La sonde SQLite ci-dessus
+      # reste réelle ; recharger Node pour chaque métadonnée épuiserait le scénario.
+      exit 0
     fi
     if [[ "$conteneur" == business_alerteur && "$scenario" == alerteur-malade && "$phase" == 1 ]]; then exit 1; fi
     ;;

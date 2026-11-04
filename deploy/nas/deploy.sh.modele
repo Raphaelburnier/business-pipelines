@@ -162,10 +162,10 @@ verifier_runs() {
   # Ces sondes ne créent ni base ni run. Un composant ancien refuse la migration.
   borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec -e "LIVRAISON_COMMANDE_ID=$LIVRAISON_COMMANDE_ID" business_livreur node /app/bin/verifier-livraison.js || return 1
   for conteneur in business_cockpit business_runner; do
-    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec "$conteneur" node -e 'if(require("agent-orchestrator").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec "$conteneur" node -e 'if(require("agent-orchestrator/src/event-store").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
   done
   if grep -q '^  maitre:' "$BUSINESS/docker-compose.yaml"; then
-    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_maitre node -e 'if(require("agent-orchestrator").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
+    borne "$COMMAND_TIMEOUT_SEC" 1800 "$DOCKER" exec business_maitre node -e 'if(require("agent-orchestrator/src/event-store").EventStore.VERSION_MAINTENANCE!==1)process.exit(1)' || return 1
   fi
 }
 retirer_services() {

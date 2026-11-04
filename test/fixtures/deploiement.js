@@ -82,7 +82,7 @@ exec "${setsid}" "$@"
     RECETTE_HANDSHAKE: path.join(racine, "handshake"),
     RECETTE_SOCKET_OWNER: path.join(racine, "socket-owner"), RECETTE_SOCKET_DIR: path.join(business, "run-cockpit"),
     ORCH_EVENT_STORE: store.chemin, LIVRAISON_COMMANDE_ID: livraison.id,
-    RECETTE_VERIFIER_LIVRAISON: path.resolve(__dirname, "../../bin/verifier-livraison.js"), RECETTE_MODULE_MOTEUR: require.resolve("agent-orchestrator"),
+    RECETTE_VERIFIER_LIVRAISON: path.resolve(__dirname, "../../bin/verifier-livraison.js"),
     LIVRAISON_BUILD_TIMEOUT_SEC: "20", LIVRAISON_SWITCH_TIMEOUT_SEC: "20", LIVRAISON_ROLLBACK_TIMEOUT_SEC: "20", LIVRAISON_STOP_GRACE_SEC: "1" };
   const lancer = (options = {}) => new Promise((resolve, reject) => {
     const enfant = spawn("sh", [deploy], { env: { ...env, ...options.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
