@@ -1,10 +1,17 @@
 // Routes du planificateur de missions et état réel qu'il consulte : machines, runtimes en
-// attente de quota ou de connexion, dépenses du mois. Le planificateur ne lit rien d'autre.
+// attente de quota ou de connexion, derniers relevés de quota, dépenses du mois. Le
+// planificateur ne lit rien d'autre.
 const equipe = require("./equipe");
 const runtimeMission = require("./runtime-mission");
 const planificateur = require("./planificateur");
 const { branches } = require("./branches");
+const { etatQuota } = require("./quota");
 const { runtimeBloque } = require("agent-orchestrator/src/quota-reprise");
+const { seuilMs } = require("agent-orchestrator/src/relais");
+
+/** Sous ce pourcentage restant d'une fenêtre, l'abonnement n'est plus proposé aux nouveaux plans. */
+const SEUIL_RESTANT_PCT = 10;
+const NOMS_FENETRES = { primary: "de 5 h", five_hour: "de 5 h", secondary: "hebdomadaire", seven_day: "hebdomadaire" };
 
 /**
  * Le contrôle de lancement d'un nœud de mission : backend joignable, worker à jour pour les
@@ -26,6 +33,28 @@ function runtimesBloques(store, limite = 300, maintenant = Date.now()) {
       : `connexion ${attente.runtime} absente ou expirée (run ${run.id.slice(0, 8)})`;
   }
   return bloques;
+}
+
+/**
+ * Abonnements presque épuisés d'après les derniers relevés (`runtime.quota_snapshot`), avant
+ * qu'un run ne s'y heurte. Une fenêtre qui se réinitialise sous le seuil du relais ne compte
+ * pas : attendre coûte alors moins que changer de fournisseur. Le message ne cite pas le
+ * pourcentage, qui bouge à chaque relevé et ferait refuser le lancement d'un plan inchangé.
+ */
+function runtimesEpuises(store, maintenant = Date.now(), seuil = SEUIL_RESTANT_PCT) {
+  if (!store?.db) return {};
+  const quotas = etatQuota(store, maintenant);
+  const attenteMax = seuilMs({});
+  const epuises = {};
+  for (const runtime of equipe.ABONNEMENTS) {
+    const tombee = (quotas[runtime]?.fenetres || [])
+      .filter((f) => f.restant < seuil && !(f.reinitialisation && Date.parse(f.reinitialisation) - maintenant < attenteMax))
+      .sort((a, b) => a.restant - b.restant)[0];
+    if (!tombee) continue;
+    const fenetre = NOMS_FENETRES[tombee.id] || tombee.id;
+    epuises[runtime] = `quota ${runtime} ${fenetre} presque épuisé (moins de ${seuil} % restants)${tombee.reinitialisation ? ` jusqu'à ${tombee.reinitialisation}` : ""}`;
+  }
+  return epuises;
 }
 
 /** Coût équivalent API des runs de chaque projet depuis le début du mois (UTC). */
@@ -51,7 +80,8 @@ function etatPlanification({ store, machines, viaParMachine, roster, affectation
       try { runtimeMission.verifierMachine(machines, machine, noeud, contexte); return { utilisable: true, raison: null }; }
       catch (err) { return { utilisable: false, raison: err.message }; }
     },
-    runtimesBloques: runtimesBloques(store, 300, maintenant),
+    // Un run déjà en attente dit plus que le relevé : son message passe devant.
+    runtimesBloques: { ...runtimesEpuises(store, maintenant), ...runtimesBloques(store, 300, maintenant) },
     depensesMembres: Object.fromEntries(usage.map((a) => [a.id, a.usage.consommeMoisUsd])),
     depensesProjets: depensesProjets(store, maintenant),
   };
@@ -100,4 +130,4 @@ async function traiter({ req, res, chemin, json, corps, store, qui, params, mach
   return true;
 }
 
-module.exports = { traiter, verifierBackend, etatPlanification, runtimesBloques, depensesProjets };
+module.exports = { traiter, verifierBackend, etatPlanification, runtimesBloques, runtimesEpuises, depensesProjets };

@@ -319,13 +319,20 @@ test("natures du registre : une branche déclarée en données est planifiée sa
   } finally { f.fermer(); }
 });
 
-test("quota Codex atteint : un autre runtime est choisi s'il existe, sinon blocage avec la raison", () => {
+test("quota Codex atteint : repli sur l'autre abonnement, blocage si les deux sont épuisés", () => {
   const f = fixture();
   try {
     const etat = etatLibre({ runtimesBloques: { codex: "quota codex atteint jusqu'à 2026-10-12T18:00:00.000Z (run 1234abcd)" } });
     const p = planificateur.proposer({ spec: spec(), params: f.params, etat });
-    assert.equal(p.statut, "bloque");
-    const b = p.blocages.find((x) => x.noeud === "implement");
+    assert.equal(p.statut, "degrade", JSON.stringify(p.blocages));
+    const implement = p.plan.etapes.find((e) => e.noeud === "implement");
+    assert.equal(implement.membre, null);
+    assert.deepEqual(implement.llm, claudeSonnet, "le modèle Claude le plus courant de l'équipe");
+    assert.ok(implement.raisons.some((r) => /Sacha .*quota codex atteint/.test(r)));
+    assert.ok(p.plan.avertissements.some((a) => /^implement : quota codex indisponible/.test(a)));
+
+    const epuises = etatLibre({ runtimesBloques: { codex: "quota codex atteint", claude: "quota claude atteint" } });
+    const b = planificateur.proposer({ spec: spec(), params: f.params, etat: epuises }).blocages.find((x) => x.noeud === "implement");
     assert.equal(b.code, "aucun-agent");
     assert.match(b.message, /Sacha .*quota codex atteint/);
     assert.match(b.arbitrage, /quota/);
@@ -469,7 +476,7 @@ test("lancement refusé si le plan a changé depuis sa présentation ou s'il est
   try {
     const p = planificateur.proposer({ spec: spec(), params: f.params, etat: {} });
     const corps = { spec: spec(), empreinte: p.empreinte, requestId: crypto.randomUUID() };
-    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: { runtimesBloques: { codex: "quota codex atteint" } } }), /Plan non lançable/);
+    assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: { runtimesBloques: { codex: "quota codex atteint", claude: "quota claude atteint" } } }), /Plan non lançable/);
     f.params.affectations = { ines: { projet: "app", depuis: "2026-10-01T00:00:00.000Z" } };
     assert.throws(() => planificateur.lancer({ store: f.store, qui, params: f.params, corps, etat: {} }), /a changé depuis sa présentation/);
     assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands").get().n, 0);

@@ -16,6 +16,7 @@ const contrat = require("agent-orchestrator/src/mission");
 const { roleEffectif } = require("agent-orchestrator/src/dispatch");
 const schemas = require("agent-orchestrator/packages/schemas/plan");
 const missions = require("./missions");
+const equipe = require("./equipe");
 const detection = require("./natures");
 const finance = require("agent-orchestrator/packages/schemas/finance");
 
@@ -23,6 +24,9 @@ const nomAgent = (ref) => String(ref || "").split("@")[0];
 const incarne = (membre, noeud) => membre.registre.includes(nomAgent(noeud.agent));
 const estRelecteur = (n) => n.type === "review" || finance.roleFinance(n) === "revue";
 const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.model);
+// Un relais ne vise ni un runtime exclu par la spec ni un abonnement sans quota. Le plan qui
+// l'annonce et la mission qui le pose (missions.construire) lisent cette même liste.
+const relaisExclus = (etat) => [...new Set([...etat.runtimesExclus, ...Object.keys(etat.runtimesBloques)])];
 
 /** Nature d'un pipeline, ou null pour un gabarit que le planificateur ne lance pas. */
 function natureDe(pipeline, natures) {
@@ -77,6 +81,10 @@ function pipelinesDuRegistre(nature, dossier = registre.dossierRegistre()) {
  * pipeline. Un rejet est toujours expliqué ; parmi les options valides, le score préfère un
  * membre affecté au projet (100), puis un membre de l'équipe (30), puis pour une revue un
  * runtime différent du développement (20), puis le modèle recommandé par le pipeline (5).
+ *
+ * Quand une option tombe faute de quota, le même agent du registre est proposé en dernier chez
+ * l'autre abonnement (`equipe.repli`) : sans lui, une étape qu'un seul fournisseur incarne
+ * bloquait le plan, ou partait sur un quota vide. Un membre imposé n'a pas de repli.
  */
 function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contexte, impose }) {
   if (impose && !roster.some((m) => m.id === impose && incarne(m, noeud))) {
@@ -85,11 +93,19 @@ function choisir(noeud, { projectId, roster, affectations, etat, auteurs, contex
   const options = impose
     ? roster.filter((m) => m.id === impose).map((m) => ({ membre: m, llm: m.llm }))
     : [...roster.filter((m) => incarne(m, noeud)).map((m) => ({ membre: m, llm: m.llm })), { membre: null, llm: noeud.llm }];
+  if (!impose) {
+    for (const o of [...options]) {
+      if (!etat.runtimesBloques[o.llm.via]) continue;
+      const r = equipe.repli(roster, { membre: o.membre, via: o.llm.via });
+      if (r && !options.some((x) => !x.membre && memeLlm(x.llm, r.llm))) options.push({ membre: null, llm: r.llm, repli: { de: o.llm.via, origine: r.origine } });
+    }
+  }
   const viasAuteurs = new Set(auteurs.map((a) => a.llm?.via).filter(Boolean));
   const evaluees = options.map((o, rang) => {
-    const qui = o.membre ? o.membre.nom : `agent du workflow ${noeud.agent}`;
+    const qui = o.membre ? o.membre.nom : o.repli ? `repli ${o.llm.via} de ${nomAgent(noeud.agent)}` : `agent du workflow ${noeud.agent}`;
     const raisons = [];
     if (impose) raisons.push(`${impose} choisi explicitement pour ce rôle.`);
+    if (o.repli) raisons.push(`Repli : quota ${o.repli.de} indisponible, ${nomAgent(noeud.agent)} tourne sur ${o.llm.via}:${o.llm.model} (${o.repli.origine}).`);
     let score = 0;
     let rejet = null;
     if (etat.runtimesExclus.includes(o.llm.via)) rejet = `runtime ${o.llm.via} exclu par la spec`;
@@ -187,11 +203,18 @@ function evaluer({ spec, index, params, etat }) {
         "Réveiller ou mettre à jour le worker, attendre la fin du quota, ou affecter un membre disponible au projet.", n.id);
       continue;
     }
-    const raisons = [...choix.raisons, ...ecartes.map((e) => `Écarté : ${e}.`)];
+    // Le relais que la mission posera (missions.construire) si le quota tombe pendant l'étape.
+    const relais = equipe.repli(params.roster, { membre: choix.membre, via: choix.llm.via });
+    const relaisUtilisable = relais && !relaisExclus(etat).includes(relais.llm.via) && etat.disponibilite(relais.llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable;
+    const raisons = [...choix.raisons,
+      ...(relaisUtilisable ? [`Relais si le quota ${choix.llm.via} tombe pendant l'étape : ${relais.llm.via}:${relais.llm.model} (${relais.origine}).`] : []),
+      ...ecartes.map((e) => `Écarté : ${e}.`)];
     if (!choix.membre) {
       degrade = true;
       const aucun = !params.roster.some((m) => incarne(m, n));
-      avertissements.push(aucun
+      avertissements.push(choix.repli
+        ? `${n.id} : quota ${choix.repli.de} indisponible ; l'agent du registre tourne sur ${choix.llm.via}:${choix.llm.model} (${choix.repli.origine}).`
+        : aucun
         ? `${n.id} : aucun membre de l'équipe n'incarne ${nomAgent(n.agent)} ; l'agent du registre tourne avec le modèle du pipeline.`
         : `${n.id} : aucun membre disponible ; l'agent du registre tourne avec le modèle du pipeline.`);
     }
@@ -330,8 +353,9 @@ function planifier({ spec: brute, params, etat: etatBrut }) {
   const plan = schemas.plan.parse(elu.plan);
   // Gel à blanc : le contrat refuse un plan qui ne décrit pas exactement la résolution, et
   // `construire` revérifie la configuration, les rôles et les tranches de spec.
-  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan });
-  return { lancement: elu.lancement, proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
+  missions.construire(params, { ...elu.lancement, requestId: crypto.randomUUID() }, { plan, relaisExclus: relaisExclus(etat) });
+  // Le contrat de lancement ne porte ni les exclusions ni les quotas : ils suivent à côté, pour le relais.
+  return { lancement: elu.lancement, relaisExclus: relaisExclus(etat), proposition: schemas.proposition.parse({ statut: plan.degrade ? "degrade" : "lancable", plan,
     blocages: illisibles, empreinte: contrat.empreinte({ plan, lancement: elu.lancement }), projet: { id: spec.projectId, nom: elu.nom } }) };
 }
 
@@ -362,11 +386,11 @@ function lancer({ store, qui, params, corps, etat, verifierBackend, maintenant =
     }
     return c;
   }
-  const { proposition, lancement } = planifier({ spec: d.spec, params, etat });
+  const { proposition, lancement, relaisExclus: exclus } = planifier({ spec: d.spec, params, etat });
   if (proposition.statut === "bloque") throw new RefusPlan(`Plan non lançable : ${proposition.blocages.map((b) => b.message).join(" ")}`);
   if (proposition.empreinte !== d.empreinte) throw new RefusPlan("Le plan a changé depuis sa présentation (équipe, registre, machines ou quotas) : relire le plan.");
   if (proposition.statut === "degrade" && !d.accepterDegrade) throw new RefusPlan("Plan dégradé : confirmer explicitement ses avertissements avant le lancement.");
-  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash });
+  return missions.demander({ store, qui, params, demande: { ...lancement, requestId: d.requestId }, verifierBackend, plan: proposition.plan, scheduling: d.scheduling, planSpecHash, relaisExclus: exclus });
 }
 
 class RefusPlan extends Error {}
