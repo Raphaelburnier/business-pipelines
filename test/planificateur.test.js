@@ -787,7 +787,7 @@ test('TaskBoard : plans multi-dépôts atomiques, idempotents et planifiés aujo
     fs.mkdirSync(path.join(f.projets,'autre'));fs.writeFileSync(path.join(f.projets,'autre','project.json'),JSON.stringify({...app,id:'autre'}));
     const maintenant=Date.parse('2026-10-25T12:00:00Z'),date='2026-10-25';
     const missions=['app','autre'].map(projectId=>{
-      const s=spec({projectId,contexte:{_taskBoardObjective:{id:'1.2',revision:1}}});
+      const s=spec({projectId,contexte:{_taskBoardObjective:{id:'1.4',revision:1}}});
       const p=planificateur.proposer({spec:s,params:f.params,etat:{}});assert.equal(p.statut,'lancable',JSON.stringify(p));
       return{spec:s,empreinte:p.empreinte,requestId:crypto.randomUUID(),scheduling:{priority:'haute',source:'calendar',notBefore:dates.instantLocal(date)}};
     });
@@ -805,7 +805,7 @@ test('TaskBoard : plans multi-dépôts atomiques, idempotents et planifiés aujo
       assert.ok(o.agents.some(a => a.id === 'yanis' && a.role === 'review-security'));
       assert.ok(o.agents.every(a => Object.keys(a).sort().join(',') === 'id,nom,role,via'), 'la projection des agents ne divulgue pas le contrat de mission');
     }
-    assert.ok(objectifs.every(o=>o.heure==='00:00'&&o.repetition==='none'&&o.taskBoard.id==='1.2'&&o.priority==='haute'));
+    assert.ok(objectifs.every(o=>o.heure==='00:00'&&o.repetition==='none'&&o.taskBoard.id==='1.4'&&o.priority==='haute'));
     assert.deepEqual(demande(corps).map(o=>o.id),objectifs.map(o=>o.id));
     assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM atelier_goals').get().n,2);
     assert.throws(()=>demande({...corps,missions:missions.map(m=>({...m,requestId:crypto.randomUUID()}))}),/déjà attribuée ou planifiée/);
