@@ -223,6 +223,13 @@ spontanément. L'étape 3 n'est pas une commande de mise en production.
 
 ## Ordre des deux PR de cockpit
 
+Point vérifié du 5 novembre : la préparation #225 est fusionnée et livrée sur
+`3326f65`, avec le moteur `52724fe` ; le cockpit, le runner et le maître installés
+supportent v1 et la santé est verte. Le livreur installé est encore ancien.
+L'activation #227 reste donc en brouillon jusqu'à sa mise à jour opérateur.
+Pourquoi : un ancien livreur ne prend pas le verrou et n'a pas la sonde appelée
+par le nouveau modèle ; une fusion seule ne remplace pas son conteneur.
+
 La PR de préparation conserve `deploy/nas/` et le compose actuels. Après sa fusion,
 Raphaël demande la livraison depuis le cockpit, avec la pause durable maintenue et
 aucun travail, conversation comprise. Pendant cette première migration, ne pas
