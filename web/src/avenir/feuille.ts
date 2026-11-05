@@ -192,7 +192,7 @@ export const LOTS: Lot[] = [
     but: "Ne plus dépendre d'un seul PC et éviter la dérive entre NAS et worker.",
     etapes: [
       { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire" },
-      { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "Unité systemd versionnée sur la copie figée.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "a-faire" },
+      { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "En cours : aligner l’unité systemd sur la copie figée et comparer la release annoncée du worker au moteur du NAS, avec les API existantes.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "en-cours" },
       { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Conception validée : refus si un travail est actif, verrou durable des nouveaux départs et npm ci. Moteur fusionné ; préparation du cockpit puis activation du modèle après recette. Installation en production encore à faire.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "en-cours" },
     ],
   },
