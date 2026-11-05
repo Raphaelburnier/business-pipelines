@@ -489,7 +489,7 @@ test("lancement refusé si le plan a changé depuis sa présentation ou s'il est
 test("objectif À venir : référence signée, lancement idempotent, réservation exclusive et état projeté", () => {
   const f = fixture({ securite: true, roster: [...ROSTER, YANIS] });
   const missions = require("../src/missions");
-  const reference = { id: "7.2", revision: 1 };
+  const reference = { id: "3.8", revision: 1 };
   const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
   fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
   fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
@@ -508,6 +508,7 @@ test("objectif À venir : référence signée, lancement idempotent, réservatio
     assert.equal(lancerObjectif(demandeId, reference, { priority: "haute" }).id, premiere.id, "la priorité ne change ni l'idempotence ni le plan créé");
     assert.throws(() => lancerObjectif(), (err) => err.code === "OBJECTIF_OCCUPE");
     assert.throws(() => lancerObjectif(crypto.randomUUID(), { id: "0.1", revision: 1 }), /non attribuable/i);
+    assert.throws(() => lancerObjectif(crypto.randomUUID(), { id: "7.2", revision: 1 }), /non attribuable/i);
     assert.throws(() => lancerObjectif(crypto.randomUUID(), reference, { priority: "normale" }, "app"), /se traite dans agent-orchestrator/);
 
     let affectation = api.objectifsAvenirs(f.store).find((a) => a.objectif.id === reference.id);
@@ -633,7 +634,7 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     const app = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
     fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
     fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...app, id: "agent-orchestrator", name: "Moteur" }));
-    const specObjectif = spec({ projectId: "agent-orchestrator", contexte: { _roadmapObjective: { id: "7.2", revision: 1 } } });
+    const specObjectif = spec({ projectId: "agent-orchestrator", contexte: { _roadmapObjective: { id: "3.8", revision: 1 } } });
     const proposition = await poster("/api/missions/plan", { spec: specObjectif });
     assert.equal(proposition.code, 200, JSON.stringify(proposition.corps));
     assert.equal(proposition.corps.statut, "lancable");
@@ -648,13 +649,13 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     assert.equal(commande.par, "test");
     assert.equal(commande.payload.mission.plan.pipeline.ref, "improve-app@7");
     assert.equal(commande.payload.scheduling.priority, "haute", "une répétition avec une priorité changée garde la commande initiale");
-    const reclasser = await poster("/api/avenir/objectifs/7.2/priorite", { priorite: "basse" });
+    const reclasser = await poster("/api/avenir/objectifs/3.8/priorite", { priorite: "basse" });
     assert.equal(reclasser.code, 200, JSON.stringify(reclasser.corps));
     assert.equal(reclasser.corps.priorite, "basse");
     assert.equal(f.store.commande(commande.id).payload.scheduling.priority, "basse");
     f.store.prendreCommande({ kinds: ["run.start"] });
     f.store.ouvrirRunCommande(commande.id, { projectId: "agent-orchestrator", pipelineRef: "improve-app@7" });
-    const indisponible = await poster("/api/avenir/objectifs/7.2/priorite", { priorite: "haute" });
+    const indisponible = await poster("/api/avenir/objectifs/3.8/priorite", { priorite: "haute" });
     assert.equal(indisponible.code, 409, "un objectif déjà pris par le runner est immuable");
     assert.equal(f.store.db.prepare("SELECT COUNT(*) AS n FROM commands WHERE kind = 'run.start'").get().n, 1);
   } finally { enfant.kill(); f.fermer(); }
@@ -764,9 +765,9 @@ test("lot 11 : retirer l'exigence côté client ne retire pas la sécurité de l
   const f = fixture({ securite: true, roster: [...ROSTER, YANIS] });
   try {
     const fiche = JSON.parse(fs.readFileSync(path.join(f.projets, "app", "project.json")));
-    fs.mkdirSync(path.join(f.projets, "agent-orchestrator"));
-    fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify({ ...fiche, id: "agent-orchestrator" }));
-    const demande = spec({ projectId: "agent-orchestrator", exigences: [], contexte: { _roadmapObjective: { id: "7.2", revision: 1 } } });
+    fs.mkdirSync(path.join(f.projets, "business-pipelines"));
+    fs.writeFileSync(path.join(f.projets, "business-pipelines", "project.json"), JSON.stringify({ ...fiche, id: "business-pipelines" }));
+    const demande = spec({ projectId: "business-pipelines", exigences: [], contexte: { _roadmapObjective: { id: "3.7", revision: 1 } } });
     const p = planificateur.proposer({ spec: demande, params: f.params, etat: {} });
     assert.equal(p.statut, "lancable");
     const critere = require("../src/objectifs-avenirs").CRITERE_SECURITE;
@@ -774,10 +775,10 @@ test("lot 11 : retirer l'exigence côté client ne retire pas la sécurité de l
     const c = planificateur.lancer({ store: f.store, qui, params: f.params, corps: { spec: demande, empreinte: p.empreinte, requestId: crypto.randomUUID() }, etat: {} });
     assert.ok(c.payload.mission.criteres.includes(critere));
     assert.match(c.payload.mission.document, /Sensibilité vérifiée par l'orchestrateur/);
-    const modifiee = structuredClone(fiche); modifiee.id = "agent-orchestrator"; modifiee.pipelines[0].overrides.nodes = {};
-    fs.writeFileSync(path.join(f.projets, "agent-orchestrator", "project.json"), JSON.stringify(modifiee));
+    const modifiee = structuredClone(fiche); modifiee.id = "business-pipelines"; modifiee.pipelines[0].overrides.nodes = {};
+    fs.writeFileSync(path.join(f.projets, "business-pipelines", "project.json"), JSON.stringify(modifiee));
     assert.equal(planificateur.proposer({ spec: demande, params: f.params, etat: {} }).statut, "bloque");
-    const o = require("../src/missions").lire({ ...f.params, projectId: "agent-orchestrator" }).options;
+    const o = require("../src/missions").lire({ ...f.params, projectId: "business-pipelines" }).options;
     assert.throws(() => require("../src/missions").construire(f.params, { projectId: o.projectId, pipelineIndex: 0, configuration: o.configuration, requestId: crypto.randomUUID(), demande: { objectif: demande.objectif, criteres: demande.criteres, spec: demande.contexte, agents: o.roles.map((r) => ({ noeud: r.noeud, membre: null, llm: r.llm })) } }), /exige une revue de sécurité/);
   } finally { f.fermer(); }
 });
@@ -824,7 +825,7 @@ test('TaskBoard : déplacement d’un ancien départ conserve heure et contrat, 
   try{
     const fiche=JSON.parse(fs.readFileSync(path.join(f.projets,'app','project.json')));
     fs.mkdirSync(path.join(f.projets,'agent-orchestrator'));fs.writeFileSync(path.join(f.projets,'agent-orchestrator','project.json'),JSON.stringify({...fiche,id:'agent-orchestrator'}));
-    const s=spec({projectId:'agent-orchestrator',contexte:{_roadmapObjective:{id:'7.2',revision:1}}});
+    const s=spec({projectId:'agent-orchestrator',contexte:{_roadmapObjective:{id:'3.8',revision:1}}});
     const p=planificateur.proposer({spec:s,params:f.params,etat:{}}),maintenant=Date.parse('2026-10-24T10:00:00Z');
     const c=planificateur.lancer({store:f.store,qui,params:f.params,etat:{},maintenant,corps:{spec:s,empreinte:p.empreinte,requestId:crypto.randomUUID(),scheduling:{source:'calendar',notBefore:'2026-10-25T07:30:00.000Z'}}});
     const deplacer=require('../src/taskboard').deplacer;
