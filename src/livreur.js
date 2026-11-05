@@ -162,6 +162,17 @@ const horodatage = (date) => {
   return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}`;
 };
 
+/** Retire des sorties de livraison les données qui ne doivent pas rejoindre l'event store. */
+function masquerJournal(texte) {
+  return String(texte)
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "")
+    .replace(/(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{8,}|AKIA[0-9A-Z]{16}|xox[abpors]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g, "[secret masqué]")
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*/g, "[clé privée masquée]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[adresse masquée]")
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[adresse réseau masquée]")
+    .replace(/\b[\w.-]+\.ts\.net\b/gi, "[hôte masqué]");
+}
+
 /**
  * Construit la release comme bin/livrer.sh : export exact des trois SHA, `.release`, archive
  * et empreinte, deploy.sh tiré du modèle `modeleDe` contrôlé par verifierDemande
@@ -269,6 +280,7 @@ module.exports = {
   verifierDemande,
   preparerRelease,
   etapeDeLigne,
+  masquerJournal,
   retention,
   ecrireJson,
   echecBascule,
