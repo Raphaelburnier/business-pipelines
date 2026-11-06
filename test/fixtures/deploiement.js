@@ -3,6 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
+const { EventStore } = require("agent-orchestrator");
 
 function recette(scenario, { dejaIsole = false, modeSocket = 0o700, alerteur = false, dejaAlerteur = false, configurationAlerteur = true } = {}) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-recette-"));
@@ -31,6 +32,10 @@ function recette(scenario, { dejaIsole = false, modeSocket = 0o700, alerteur = f
   }
   fs.writeFileSync(path.join(candidate, "app.txt"), "nouvelle version");
   fs.writeFileSync(path.join(candidate, ".release"), "cockpit=nouveau\n");
+  const store = new EventStore(path.join(business, "etat/events.sqlite"));
+  const livraison = store.creerCommande({ kind: "livraison.start", payload: { cockpit: "a".repeat(40), moteur: "b".repeat(40), registre: "c".repeat(40) }, par: "operateur", canal: "tailnet" });
+  store.prendreCommande({ kinds: ["livraison.start"] });
+  store.maintenance.activer(livraison.id);
   const archive = path.join(release, "recette.tar.gz");
   execFileSync("tar", ["-czf", archive, "-C", candidate, "."]);
   const empreinte = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
@@ -76,6 +81,8 @@ exec "${setsid}" "$@"
     RECETTE_NODE: process.execPath, RECETTE_BLOQUEUR: bloqueur, RECETTE_SCENARIO: scenario, RECETTE_DEJA_ISOLE: dejaIsole ? "1" : "0", RECETTE_DEJA_ALERTEUR: dejaAlerteur ? "1" : "0", RECETTE_LOG: path.join(racine, "docker.log"), RECETTE_UP: path.join(racine, "up"), RECETTE_PIDS: pids,
     RECETTE_HANDSHAKE: path.join(racine, "handshake"),
     RECETTE_SOCKET_OWNER: path.join(racine, "socket-owner"), RECETTE_SOCKET_DIR: path.join(business, "run-cockpit"),
+    ORCH_EVENT_STORE: store.chemin, LIVRAISON_COMMANDE_ID: livraison.id,
+    RECETTE_VERIFIER_LIVRAISON: path.resolve(__dirname, "../../bin/verifier-livraison.js"),
     LIVRAISON_BUILD_TIMEOUT_SEC: "20", LIVRAISON_SWITCH_TIMEOUT_SEC: "20", LIVRAISON_ROLLBACK_TIMEOUT_SEC: "20", LIVRAISON_STOP_GRACE_SEC: "1" };
   const lancer = (options = {}) => new Promise((resolve, reject) => {
     const enfant = spawn("sh", [deploy], { env: { ...env, ...options.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
@@ -94,9 +101,10 @@ exec "${setsid}" "$@"
   });
   const nettoyer = () => {
     if (fs.existsSync(pids)) for (const pid of JSON.parse(fs.readFileSync(pids))) try { process.kill(pid, "SIGKILL"); } catch {}
+    store.fermer();
     fs.rmSync(racine, { recursive: true, force: true });
   };
-  return { business, racine, pids, lancer, nettoyer };
+  return { business, racine, pids, lancer, nettoyer, store, livraison };
 }
 
 module.exports = { recette };
