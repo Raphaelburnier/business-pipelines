@@ -13,6 +13,7 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   const connexion = attente.statut === "waiting_auth";
   const fraicheur = attente.statut === "waiting_freshness";
   const machine = attente.statut === "waiting_machine";
+  const reserve = attente.motif === 'reserve-interactive';
   const enFile = commande || attente.commande;
   async function reprendre() {
     if (!attente) return;
@@ -23,7 +24,12 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   }
   return <div className="rounded-lg border-l-4 border-alerte bg-alerte-fond p-3 text-sm">
     <p className="font-semibold">{attente.raison}</p>
-    {!fraicheur && !machine && <p className="mt-1 text-xs text-douce">{attente.runtime ?? "runtime inconnu"} · {attente.machine ?? "machine inconnue"} · {attente.compte}</p>}
+    {!fraicheur && !machine && !reserve && <p className="mt-1 text-xs text-douce">{attente.runtime ?? "runtime inconnu"} · {attente.machine ?? "machine inconnue"} · {attente.compte}</p>}
+    {reserve && <>
+      <p className="mt-2">Ton seuil : {attente.reserve?.seuilUtilise} % consommés. Le même run reprendra automatiquement quand une mesure récente l’autorise, ou après désactivation de la réserve.</p>
+      {attente.reserve?.reinitialisation && <p className="mt-1 text-xs text-douce">Fenêtre réévaluée à partir du {new Date(attente.reserve.reinitialisation).toLocaleString('fr-CH')}. Une nouvelle mesure sera nécessaire.</p>}
+      <p className="mt-1 text-xs text-douce">Progression et session conservées ; aucune tentative de reprise pour quota épuisé n’est consommée.</p>
+    </>}
     {machine && <>
       <p className="mt-2">{attente.prochaineReprise ? "Le même run reprendra quand le worker sera connecté et disponible." : attente.raisonManuelle}</p>
       <p className="mt-1 text-xs text-douce">{attente.tentatives}/{attente.maximum} reprises automatiques · limite : {new Date(attente.limiteLe).toLocaleString("fr-CH")}</p>
@@ -33,7 +39,7 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
       {!!attente.fraicheur?.fichiers && Array.isArray(attente.fraicheur.fichiers) && attente.fraicheur.fichiers.length > 0 && <ul className="mt-2 list-disc pl-5">{attente.fraicheur.fichiers.map((f) => <li key={String(f)}><code>{String(f)}</code></li>)}</ul>}
       <p className="mt-2">Vérifie la fraîcheur du contexte, puis demande explicitement la reprise si elle reste pertinente. Aucune reprise automatique n'est planifiée.</p>
     </>}
-    {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && !machine && <>
+    {connexion ? <p className="mt-2">Reconnecte le runtime sur sa machine : <code>{attente.reconnexion ?? "connexion du fournisseur"}</code>. La reprise attend ta confirmation.</p> : !fraicheur && !machine && !reserve && <>
       <p className="mt-2">{attente.resetAt ? `Échéance fournisseur : ${new Date(attente.resetAt).toLocaleString("fr-CH")}` : attente.prochaineReprise ? "Échéance fournisseur inconnue : nouvelle tentative après un délai de prudence, sans garantie de réinitialisation du quota." : "Échéance fournisseur inconnue : reprise manuelle disponible."}</p>
       <p>{attente.prochaineReprise ? `Prochaine reprise automatique : ${new Date(attente.prochaineReprise).toLocaleString("fr-CH")}` : attente.raisonManuelle}</p>
       <p className="mt-1 text-xs text-douce">{attente.maximum === 0

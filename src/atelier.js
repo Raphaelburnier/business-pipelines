@@ -258,7 +258,7 @@ function modifier(store, id, brut) {
     return lire(store, id);
   });
 }
-function exclus(store, verifierBackend, maintenant = Date.now()) {
+function exclus(store, verifierBackend, maintenant = Date.now(), params = {}) {
   initialiser(store);
   const bloques = new Map();
   for (const w of store.db.prepare("SELECT w.* FROM run_waits w JOIN runs r ON r.id=w.run_id WHERE r.status IN ('waiting_quota','waiting_auth')").all()) {
@@ -274,9 +274,11 @@ function exclus(store, verifierBackend, maintenant = Date.now()) {
       const occurrence = store.db.prepare('SELECT g.active FROM atelier_occurrences o JOIN atelier_goals g ON g.id=o.goal_id WHERE o.command_id=?').get(original?.id);
       if (occurrence?.active === 0 && !original?.run_id) throw new Error('Programmation en pause.');
       const r = original?.payload.mission?.resolution;
+      if (original) require('./reserve-quota').verifierLancement(store, original.payload, { ...params, maintenant });
       if (r) {
         for (const n of r.pipeline.nodes.filter((n) => !n.disabled && n.type !== 'approval')) {
           const llm = ['agent', 'review'].includes(n.type) ? n.llm || r.agents[n.agent]?.defaultLlm : null;
+          store.reserveQuota?.verifier(llm, maintenant);
           // Une reprise est demandée ou échue après confirmation : l'attente qu'elle lève
           // ne doit pas la bloquer elle-même.
           if (c.kind !== 'run.resume' && llm && bloques.has(llm.via === 'anthropic' ? 'claude' : llm.via)) throw new Error(bloques.get(llm.via === 'anthropic' ? 'claude' : llm.via));

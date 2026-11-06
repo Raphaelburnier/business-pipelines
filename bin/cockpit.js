@@ -735,6 +735,21 @@ async function traiter(req, res) {
     if (!s?.controle) return json(res, 503, { erreur: "Contrôle d’exécution indisponible" });
     return json(res, 200, { ...s.controle.etat(), autorise: apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES) });
   }
+  if (["GET", "POST"].includes(req.method) && chemin === "/api/quota/reserve-claude") {
+    const autorise = apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES);
+    if (req.method === "POST" && !autorise) return json(res, 403, { erreur: "Réglage réservé à l’opérateur" });
+    const s = store();
+    if (!s?.reserveQuota) return json(res, 503, { erreur: "Réserve de quota indisponible" });
+    if (req.method === "GET") return json(res, 200, s.reserveQuota.vue(autorise));
+    const demande = await corpsJson(req, res);
+    if (demande === null) return;
+    try {
+      const signature = require('../src/signature-commandes');
+      const c = s.creerCommande({ kind: "quota.reserve.set", payload: demande, par: qui.par, canal: qui.canal,
+        signer: signature.signataire(signature.cleEnv(), 'quota.reserve.set') });
+      return json(res, 202, { id: c.id, statut: c.status });
+    } catch (err) { return json(res, 400, { erreur: err.message }); }
+  }
   const annulerRun = req.method === "POST" && chemin.match(/^\/api\/runs\/([0-9a-f-]{36})\/annuler$/);
   if ((req.method === "POST" && chemin === "/api/execution/pause") || annulerRun) {
     if (!apiPullRequests.peutFusionner(qui, LIVRAISON_AUTORISES)) return json(res, 403, { erreur: "Contrôle réservé à l’opérateur" });

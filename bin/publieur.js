@@ -266,13 +266,14 @@ async function servirFusions(store) {
   console.log(`PR surveillées : ${PR_DEPOTS.join(", ") || "aucun dépôt"}`);
   // Les fusions tournent dans leur propre boucle : un clic n'attend pas la fin d'un passage.
   const fusions = store ? servirFusions(store) : Promise.resolve();
+  const reglages = store ? require('../src/reserve-quota').servirReglages({ store, cleSignature: CLE_COMMANDES, lireAutorises: () => lireAutorises(AUTORISES) }) : null;
   try {
     while (!arret) {
       await passage();
       await attendre(INTERVALLE);
     }
     await fusions;
-  } finally { await sante.arreter(); }
+  } finally { reglages?.arreter(); await sante.arreter(); }
 })().catch((err) => {
   console.error(err);
   process.exitCode = 1;

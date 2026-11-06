@@ -63,12 +63,17 @@ function lancerParallele(lancement, options = {}) {
   const avant = lancementsParRun.get(key) || Promise.resolve();
   const operation = avant.catch(()=>{}).then(async()=> {
     const annule = () => options.store?.controle.annulationDemandee(options.runId || options.store?.commande(options.commandId)?.run_id);
-    while (!arret && (options.store?.controle.demarragesBloques() || !maitre || (MAITRE_EXTERNE && !maitre.pret) || enfants.size >= capaciteRuns())) {
+    const reserveBloque = () => {
+      try { require('../src/reserve-quota').verifierLancement(options.store, lancement, { projetsDir: PROJETS }); return false; }
+      catch (err) { if (err.name === 'ReserveQuotaBloquee') return true; throw err; }
+    };
+    while (!arret && (options.store?.controle.demarragesBloques() || !maitre || (MAITRE_EXTERNE && !maitre.pret) || enfants.size >= capaciteRuns() || (options.attendreReserve && reserveBloque()))) {
       if (annule()) return { code: 130, annule: true };
       await attendre(Math.min(INTERVALLE,50));
     }
     if (annule()) return { code: 130, annule: true };
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
+    require('../src/reserve-quota').verifierLancement(options.store, lancement, { projetsDir: PROJETS });
     return lancer(lancement, options);
   });
   if (key) {
@@ -248,7 +253,7 @@ async function boucle(store, kinds, executer, { prioriserRuns = false } = {}) {
         const verifier = process.env.ORCH_ROLE === "pc" ? () => {} : require("../src/runtime-mission").verifier({
           viaParMachine: JSON.parse(process.env.COCKPIT_VIA_MACHINES || '{"pc":["claude","codex","omniroute","ollama"],"nas":["claude"]}'), machines: api.machines(store),
         });
-        exclure = atelier.exclus(store, verifier);
+        exclure = atelier.exclus(store, verifier, Date.now(), { projetsDir: PROJETS });
       } catch (err) {
         console.error(`Calendrier : programmation ignorée pour ce tour (${err.message})`);
       }
@@ -316,6 +321,12 @@ async function traiterCommande(store, commande, executer) {
       acquitter(resultat);
     }
   } catch (err) {
+    if (err.name === 'ReserveQuotaBloquee') {
+      // Le réglage a changé après la réservation : remettre la même commande en file,
+      // sans l'acquitter, ni libérer son lien d'attente, ni tenir un créneau de run.
+      store.db.prepare("UPDATE commands SET status='pending',taken_at=NULL WHERE id=? AND status='taken'").run(commande.id);
+      return;
+    }
     if (!arret || commande.kind === "chat.respond") {
       acquitter({ ok: false, raison: err.message });
     }
@@ -362,7 +373,7 @@ async function deciderEtReprendre(store, commande, lancerRun = lancerParallele) 
   const run = store.run(a.run_id);
   if (!run) throw new Error(`run inconnu : ${a.run_id}`);
   const lancement = lancementDe(store, run);
-  const repris = await lancerRun(lancement, { reprendre: true, runId: a.run_id, store });
+  const repris = await lancerRun(lancement, { reprendre: true, runId: a.run_id, store, attendreReserve: true });
   // « Renvoyer au pipeline » : une orientation que le pipeline ne route nulle part termine
   // simplement le run (marketing@1). Un nouveau tour repart alors, et son nœud `consigne` y
   // reprend la note. Ce nouveau tour est mis en file et lié à sa propre commande.

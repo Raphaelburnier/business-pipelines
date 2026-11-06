@@ -21,7 +21,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 
-const KINDS_SIGNES = new Set(["github.merge", "github.project.attach", "livraison.start", "github.ci.rerun", "github.pr.comment", "chat.respond"]);
+const KINDS_SIGNES = new Set(["github.merge", "github.project.attach", "livraison.start", "github.ci.rerun", "github.pr.comment", "chat.respond", "quota.reserve.set"]);
 const KINDS_DELEGUES = new Set(["github.ci.rerun", "github.pr.comment"]);
 const KIND_QUESTION = "chat.respond";
 const FRAICHEUR_MS = 30 * 60 * 1000;

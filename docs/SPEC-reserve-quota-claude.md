@@ -1,6 +1,6 @@
 # Lot 2.9 — Réserver du quota Claude pour l’usage interactif
 
-**Résumé — proposition à valider.** Réserver une partie de la fenêtre Claude de cinq heures en empêchant de nouveaux appels des runs au-delà d’un seuil. Proposition initiale : seuil de **75 % consommés**, réserve **désactivée par défaut**. Une étape déjà lancée termine son travail ; le même run reprend dès que la politique et une mesure récente l’autorisent. La réserve ne modifie pas les autres runtimes. Ce document propose les échanges entre cockpit et moteur ; aucune activation ni implémentation n’est incluse dans cette proposition.
+**Résumé — contrat validé le 5 novembre 2026.** Réserver une partie de la fenêtre Claude de cinq heures en empêchant de nouveaux appels des runs au-delà d’un seuil. Configuration initiale : **aucun seuil** (`null`), réserve **désactivée**. Le pourcentage est choisi explicitement par l’opérateur avant activation. Une étape déjà lancée termine son travail ; le même run reprend dès que la politique et une mesure récente l’autorisent. La réserve ne modifie pas les autres runtimes. Raphaël a validé le fonctionnement et demandé de supprimer toute valeur de seuil par défaut.
 
 ## Objectif et périmètre
 
@@ -10,10 +10,10 @@ Le contrôle se fait entre les étapes. Il ne garantit donc pas qu’il restera 
 
 Périmètre : planification, départs immédiats ou différés, reprises, étapes Claude locales et distantes, réglage opérateur et indication dans la barre de quota. Les sessions interactives restent libres d’utiliser l’abonnement. Les runs Codex et les autres runtimes continuent selon leurs règles existantes.
 
-Hypothèses proposées, à approuver :
+Décisions validées :
 
 - Un seul compte Claude partagé, comme dans l’agrégation actuelle des mesures PC/moteur.
-- Seuil entier de 1 à 100, valeur initiale 75 ; activation initiale désactivée.
+- Seuil entier de 1 à 100 choisi par l’opérateur, ou `null` sans seuil ; configuration initiale `{ active: false, seuilUtilise: null }`. Une activation sans seuil est refusée.
 - Réserve active + mesure de cinq heures absente, invalide ou vieille de plus de quinze minutes : aucun nouvel appel Claude, avec état « mesure inconnue » explicite.
 - Une réserve n’est pas une panne fournisseur : elle ne consomme pas les trois tentatives de reprise prévues pour les véritables quotas.
 - Désactiver la réserve ou relever son seuil permet une reprise au prochain contrôle si les autres conditions sont satisfaites.
@@ -61,19 +61,19 @@ Réutiliser le statut `waiting_quota`, le run, son contrat, son workspace et les
 
 Le reset connu est une échéance de réévaluation, pas une autorisation aveugle de démarrer. Reprendre avec une mesure fraîche sous le seuil. Sans nouvelle mesure, l’attente reste visible ; le contrôle ne crée pas de commandes de reprise en boucle et n’invente pas de reset à cinq heures.
 
-Une nouvelle mesure de la même fenêtre sous le seuil ne lève pas un dépassement déjà observé pour cette fenêtre : conserver le maximum valide jusqu’au reset, sauf modification du réglage opérateur. Après reset, une mesure fraîche de la nouvelle fenêtre est requise.
+Une nouvelle mesure de la même fenêtre sous le seuil ne lève pas un dépassement déjà observé pour cette fenêtre : conserver le maximum valide jusqu’au reset, sauf modification du réglage opérateur. Sans reset prouvé, une baisse seule ne prouve pas une nouvelle fenêtre : il faut un reset connu ou un réglage opérateur. Après reset, une mesure fraîche de la nouvelle fenêtre est requise.
 
 Les reprises pour réserve sont dédupliquées et acquittées atomiquement comme les reprises existantes. Elles n’incrémentent pas les tentatives de panne de quota par run/compte et ne réinitialisent jamais ces compteurs. Aucun run terminé ou annulé n’est réactivé. Désactivation ou relèvement du seuil réévaluent aussi les attentes de réserve sans attendre le reset.
 
-## Contrats proposés entre composants
+## Contrats entre composants validés
 
 ### Réglage opérateur
 
-Nouvelle route du cockpit : `GET /api/quota/reserve-claude`. Réponse proposée :
+Nouvelle route du cockpit : `GET /api/quota/reserve-claude`. Réponse :
 
 ```json
 {
-  "configuration": { "active": false, "seuilUtilise": 75 },
+  "configuration": { "active": false, "seuilUtilise": null },
   "etat": "desactive",
   "mesure": null,
   "attenteJusqua": null,
@@ -90,15 +90,15 @@ Nouvelle route du cockpit : `GET /api/quota/reserve-claude`. Réponse proposée 
 { "active": true, "seuilUtilise": 75 }
 ```
 
-Validation stricte : booléen réel, entier de 1 à 100, aucun champ supplémentaire. Même identité opérateur, contrôle d’origine et mécanisme de signature que les commandes de pause. Le droit d’envoyer des mesures depuis le PC ne donne pas celui de modifier la réserve. Identité et canal viennent du serveur, jamais du corps.
+Validation stricte : booléen réel ; seuil entier de 1 à 100, ou `null` seulement lorsque la réserve est désactivée ; aucun champ supplémentaire. Même identité opérateur et contrôle d’origine que les commandes de pause. La signature HMAC utilise le mécanisme existant des commandes d’autorité : le cockpit signe et le publieur vérifie. Le droit d’envoyer des mesures depuis le PC ne donne pas celui de modifier la réserve. Identité et canal viennent du serveur, jamais du corps.
 
-Le POST dépose la commande durable signée `quota.reserve.set`, de charge identique, et retourne `202` avec les champs existants `id` et `statut`. L’acceptation n’est pas une application : l’interface attend l’acquittement et relit le réglage effectif. La commande passe par une voie de contrôle qui reste disponible pendant les runs longs, les pauses et les réserves.
+Le POST dépose la commande durable signée `quota.reserve.set`, de charge identique, et retourne `202` avec les champs existants `id` et `statut`. L’acceptation n’est pas une application : l’interface attend l’acquittement et relit le réglage effectif. La commande passe par une voie courte du publieur, indépendante des actions GitHub et des runs. Elle reste disponible pendant les runs longs, les pauses et les réserves. Le runner ne reçoit aucune clé supplémentaire. La fraîcheur de signature garde la borne existante de trente minutes ; un réglage trop ancien est refusé explicitement. Le mode transition existant sans clé reste signalé dans les journaux, sans prétendre à une vérification HMAC.
 
-L’application émet `quota.reserve_changed` avec `active`, `seuilUtilise`, `par`, `canal`, `commandeId`, puis acquitte dans la même transaction. Le dernier événement est la source de vérité après redémarrage ; sans événement, utiliser les valeurs initiales proposées. Rejouer une même commande ne crée pas de second changement. Aucune nouvelle table ni fichier de configuration de production n’est nécessaire.
+L’application émet `quota.reserve_changed` avec `active`, `seuilUtilise`, `par`, `canal`, `commandeId`, puis acquitte dans la même transaction. Le dernier événement est la source de vérité après redémarrage ; sans événement, utiliser les valeurs initiales validées. Rejouer une même commande ne crée pas de second changement. Cette déduplication durable permet la reprise après redémarrage du publieur sans registre de nonces en mémoire. Aucune nouvelle table ni fichier de configuration de production n’est nécessaire.
 
 ### Blocage transmis entre maître et processus du run
 
-Erreur distincte proposée : `ReserveQuotaBloquee`. Dans l’enveloppe existante `detail.rejet` du maître distant, conserver `nom`, `message`, `definitive` et ajouter seulement pour cette erreur un objet optionnel `reserve` :
+Erreur distincte : `ReserveQuotaBloquee`. Dans l’enveloppe existante `detail.rejet` du maître distant, conserver `nom`, `message`, `definitive` et ajouter seulement pour cette erreur un objet optionnel `reserve` :
 
 ```json
 {
@@ -119,7 +119,7 @@ Pas de nouveau type WebSocket worker : le contrôle est central, avant l’appel
 
 ## Interface
 
-Dans la barre actuelle de quota : commande « Réserve Claude » accessible au clavier, ouvrant un réglage compact avec activation, seuil « Consommation maximale des runs » en pourcentage et bouton Enregistrer. Afficher la configuration effective et l’état en attente pendant une modification.
+Dans la barre actuelle de quota : commande « Réserve Claude » accessible au clavier, ouvrant un réglage compact avec activation, champ initialement vide (« Aucun seuil »), seuil « Consommation maximale des runs » en pourcentage et bouton Enregistrer. Afficher la configuration effective et l’état en attente pendant une modification.
 
 Indications attendues : « Réserve désactivée », « Réserve active · seuil 75 % », « Runs Claude en attente jusqu’au reset » ou « En attente d’une mesure récente ». L’heure affichée reste une échéance de réévaluation. Un lecteur sans droit opérateur voit le même état sans commande d’écriture.
 
@@ -150,7 +150,7 @@ npm --prefix web run build
 npm test
 ```
 
-Ajouter des recettes ciblées de réserve aux suites normales du dépôt concerné. La CI croisée moteur/cockpit doit rester verte sur les versions réellement proposées à la livraison. Aucune suite n’a été exécutée pour cette proposition documentaire seule.
+Les recettes ciblées de réserve font partie des suites normales du dépôt concerné. La CI croisée moteur/cockpit doit rester verte sur les versions réellement proposées à la livraison. Pour l’intégration initiale, fusionner le moteur avant le cockpit qui importe ses nouveaux exports. Les validations locales incluent les courses de capacité, l’autorité HMAC, les reprises et une recette Chromium du formulaire.
 
 ## Critères de réussite et scénarios
 
@@ -175,6 +175,6 @@ Les scénarios utilisent une horloge fixée, des mesures fictives et des bases t
 
 Toujours : préserver le contrat du run, les contrôles d’autorité et les travaux existants ; refuser un état illisible plutôt que prétendre connaître le quota ; vérifier les chemins de course et la compatibilité des schémas.
 
-À valider maintenant : valeurs initiales 75 %/désactivée, comportement prudent sans mesure, et les échanges définis ci-dessus. Source : `AGENTS.md` commun, « Ne jamais inventer en silence un format ou un protocole entre composants : proposer un schéma et attendre la validation. »
+Validé le 5 novembre : aucun seuil initial, réserve désactivée ; l’opérateur choisit son seuil. Le comportement prudent sans mesure et les échanges définis ci-dessus sont acceptés. Source : `AGENTS.md` commun, « Ne jamais inventer en silence un format ou un protocole entre composants : proposer un schéma et attendre la validation. »
 
 Toute nécessité nouvelle de migration, de dépendance ou de modification du modèle de déploiement doit être motivée avant élargissement. Les PR sensibles suivent leur circuit explicite et aucun refus d’un workflow n’est contourné. Aucun secret n’est consulté en clair. La livraison reste demandée par l’opérateur depuis le cockpit.

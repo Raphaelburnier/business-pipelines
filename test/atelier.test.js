@@ -25,6 +25,30 @@ function fixture(t) {
   const qui = { par: 'test', canal: 'cockpit' };
   return { store, params, brouillon, demande, qui, dir };
 }
+test('réserve commune : nouveaux départs et reprises Claude restent en file, Codex et scripts sont admis', t => {
+  const f=fixture(t),maintenant=Date.now();
+  atelier.creer(f.store,f.params,f.demande,f.qui,maintenant);
+  const [c]=atelier.programmer(f.store,maintenant);
+  const cfg=(active,seuilUtilise)=>f.store.reserveQuota.appliquer(f.store.creerCommande({kind:'quota.reserve.set',payload:{active,seuilUtilise},par:'operateur'}));
+  cfg(true,60);
+  const {runtimesBloques}=require('../src/api-plans-missions');
+  assert.match(runtimesBloques(f.store).claude,/Réserve/);
+  assert.deepEqual(atelier.exclus(f.store,()=>{}),[c.id]);
+  const runId=f.store.creerRun({pipelineRef:'demo@1',projectId:'demo'});
+  f.store.db.prepare('UPDATE commands SET run_id=?,status=\'done\' WHERE id=?').run(runId,c.id);
+  let err;try{f.store.reserveQuota.verifier({via:'claude'});}catch(e){err=e;}
+  f.store.attentes.enregistrer(runId,err);
+  cfg(false,null);
+  const [resume]=f.store.attentes.programmer();
+  cfg(true,60);
+  assert.deepEqual(atelier.exclus(f.store,()=>{}),[resume.id]);
+  cfg(false,null);
+  assert.deepEqual(atelier.exclus(f.store,()=>{}),[]);
+  cfg(true,60);
+  const {verifierLancement}=require('../src/reserve-quota');
+  assert.doesNotThrow(()=>verifierLancement(f.store,{mission:{resolution:{pipeline:{nodes:[{type:'agent',llm:{via:'codex',model:'x'}},{type:'script'}]},agents:{}}}}));
+  assert.throws(()=>verifierLancement(f.store,{projectId:'demo'},{projetsDir:f.params.projetsDir,registreDir:f.params.registreDir}),/Réserve/);
+});
 test('versions immuables, conflit optimiste et consigne par utilisation', t => {
   const f = fixture(t);
   const v1 = atelier.sauvegarder(f.store, f.params, f.brouillon);
