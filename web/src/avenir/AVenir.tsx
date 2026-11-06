@@ -235,10 +235,23 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   </div>;
 }
 
-function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [] }: { reservations?: Objectif[]; e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void }) {
+function SuiviPlans({ objectifs }: { objectifs: Objectif[] }) {
+  const derniers = objectifs.filter((o, i) => objectifs.findIndex(x => x.projectId === o.projectId) === i);
+  if (!derniers.length) return null;
+  return <ul className="av-suivi-plans" aria-label="Exécutions de cette tâche">{derniers.map(o => {
+    const occurrence = o.occurrences[0];
+    return <li key={o.id}><span>{o.projectId} · {occurrence ? STATUT_ATTRIBUTION[occurrence.statut] ?? occurrence.statut : o.active ? 'planifiée' : 'programmation en pause'}</span>
+      {occurrence?.runId && <> · <a href={`/runs/${encodeURIComponent(occurrence.runId)}`}>Ouvrir le run {occurrence.runId.slice(0, 8)}</a></>}
+      {occurrence?.raison && <p>{occurrence.raison}</p>}
+      {occurrence?.attente?.prochaineReprise && <p>Nouvelle tentative : {new Date(occurrence.attente.prochaineReprise).toLocaleString('fr-CH', { timeZone: FUSEAU })}</p>}
+    </li>;
+  })}</ul>;
+}
+
+function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [], suivis = [], onPlanifier }: { reservations?: Objectif[]; suivis?: Objectif[]; e: Etape; attribution: AttributionAvenir | undefined; projetNom: string; onRefresh: () => void; onPlanifier?: (id: string) => void }) {
   const sensibilite = sensibiliteEtape(e);
   const departDeplacable = attribution?.statut === "queued" && attribution.prevuLe && !attribution.runId;
-  const planifiable = e.statut === "a-faire" && !reservations.length && (!attribution || departDeplacable || ["failed", "cancelled", "non_attribue"].includes(attribution.statut));
+  const planifiable = estAttribuable(e) && !reservations.length && (!attribution || departDeplacable || ["failed", "cancelled", "non_attribue"].includes(attribution.statut));
   return <li id={`av-etape-${e.id}`} draggable={Boolean(planifiable)} data-task-payload={JSON.stringify(departDeplacable ? {type:"depart",commandeId:attribution!.commandeId,prevuLe:attribution!.prevuLe} : { type: "fonctionnalite", titre: e.titre, detail: e.detail, ref: e.id, fichiers: e.fichiers })}>
     <div className="av-ligne">
       <b>{e.id}</b>
@@ -248,8 +261,11 @@ function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [] }:
       <Pastille statut={e.statut} />
     </div>
     <p className="av-description">{e.detail}</p>
+    {planifiable && !departDeplacable && onPlanifier && <button type="button" className="av-action" onClick={() => onPlanifier(e.id)}>Planifier</button>}
+    {e.statut === "a-faire" && !estAttribuable(e) && <p className="av-plan-indisponible">Préparation requise : cette tâche n’a pas encore de plan exécutable dans le cockpit.</p>}
     {(e.statut !== "fait" || attribution || reservations.length > 0) && <AgentsTache agents={reservations.flatMap(o => o.agents || []).concat(attribution?.agents || (attribution?.agent ? [{ id: attribution.agent.id, nom: attribution.agent.nom, role: "Responsable", via: attribution.agent.llm.via }] : []))} />}
     {!!reservations.length && <p>Planifiée pour {reservations.map(o=>`${o.projectId} (${o.date})`).join(", ")} · <a href="#taskboard-calendrier">Voir dans le calendrier</a></p>}
+    <SuiviPlans objectifs={suivis} />
     {attribution && <Attribution etape={e} attribution={attribution} onRefresh={onRefresh} projetNom={projetNom} agentNom={attribution.agent?.nom ?? "Agent inconnu"} />}
     {estAttribuable(e) && !attribution && !reservations.length && <Attribution etape={e} onRefresh={onRefresh} attribution={{ objectif: { id: e.id, revision: revisionObjectif(e.id) ?? 1 }, commandeId: "", runId: null, projetId: "", agent: null, statut: "non_attribue", creeLe: "", raison: null, livraison: null }} projetNom="" agentNom="" />}
     <details className="av-fichiers-details"><summary>Fichiers concernés</summary><div className="av-fichiers">{e.fichiers.map((f) => <code key={f}>{f}</code>)}</div></details>
@@ -278,12 +294,13 @@ function TacheProjet({ tache }: { tache: Tache }) {
   </li>;
 }
 
-function Fix({ tache, reservations = [] }: { tache: Tache; reservations?: Objectif[] }) {
+function Fix({ tache, reservations = [], onPlanifier }: { tache: Tache; reservations?: Objectif[]; onPlanifier?: (id: string) => void }) {
   const d = DEFAUTS.find((x) => x.id === tache.ref)!;
-  return <li id={`av-etape-${d.id}`} draggable={d.statut === "a-faire" && !reservations.length} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
+  const planifiable = estAttribuable(d) && !reservations.length;
+  return <li id={`av-etape-${d.id}`} draggable={planifiable} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
     <div className="av-ligne">
       <b>{d.id}</b>
-      {d.statut === "a-faire" && !reservations.length && <PoigneeTache titre={d.titre} />}
+      {planifiable && <PoigneeTache titre={d.titre} />}
       <span className={`av-severite ${d.severite}`}>{d.severite}</span>
       <span className="av-titre">{d.titre}</span>
       <span className="av-correctif">{d.correctif}</span>
@@ -291,6 +308,8 @@ function Fix({ tache, reservations = [] }: { tache: Tache; reservations?: Object
       <Pastille statut={d.statut} />
     </div>
     <AgentsTache agents={reservations.flatMap(o => o.agents || [])} />
+    {planifiable && onPlanifier && <button type="button" className="av-action" onClick={() => onPlanifier(d.id)}>Planifier</button>}
+    {d.statut === "a-faire" && !estAttribuable(d) && <p className="av-plan-indisponible">Préparation requise : ce correctif n’a pas encore de plan exécutable dans le cockpit.</p>}
   </li>;
 }
 
@@ -301,7 +320,7 @@ const TYPES: Array<{ id: Filtre["type"]; nom: string }> = [
   { id: "fix", nom: "Fix" },
 ];
 
-export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0, onChangement }: { integre?: boolean; sourceCalendrier?: SourceCalendrier; revisionExterne?: number; onChangement?: () => void } = {}) {
+export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0, onChangement, onPlanifier }: { integre?: boolean; sourceCalendrier?: SourceCalendrier; revisionExterne?: number; onChangement?: () => void; onPlanifier?: (id: string) => void } = {}) {
   const { source } = useSource();
   const calendrier = useMemo(() => (sourceCalendrier ?? (source.nom === "maquette" ? sourceCalendrierMaquette() : sourceCalendrierApi)), [source.nom, sourceCalendrier]);
   const [revision, setRevision] = useState(0);
@@ -403,7 +422,7 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
           <span className="av-section-titre">Fix</span>
           <span className="av-section-compte">{fix.length}{fix.some((t) => t.severite === "critique") ? ` · ${fix.filter((t) => t.severite === "critique").length} critique(s)` : ""}</span>
         </summary>
-        <ul className="av-liste">{fix.map((t) => <Fix key={t.cle} tache={t} reservations={reservations(t.ref)} />)}</ul>
+        <ul className="av-liste">{fix.map((t) => <Fix key={t.cle} tache={t} reservations={reservations(t.ref)} onPlanifier={onPlanifier} />)}</ul>
       </details>}
 
       {!!lots.length && <>
@@ -418,7 +437,7 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
                 <span className="av-section-but">{lot.but}</span>
               </summary>
               <ul>
-                {lot.etapes.filter((e) => etapesVisibles.has(e.id)).map((e) => <EtapeLigne key={e.id} e={e} reservations={reservations(e.id)} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
+                {lot.etapes.filter((e) => etapesVisibles.has(e.id)).map((e) => <EtapeLigne key={e.id} e={e} onPlanifier={onPlanifier} reservations={reservations(e.id)} suivis={(objectifs ?? []).filter(o => o.taskBoard?.id === e.id)} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
                   projetNom={topo?.projets.find((p) => p.id === parObjectif.get(e.id)?.projetId)?.nom ?? parObjectif.get(e.id)?.projetId ?? ""} />)}
               </ul>
             </details></li>;
