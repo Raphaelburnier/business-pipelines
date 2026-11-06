@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Objectif, SourceCalendrier } from './calendrier/api';
 import { useCharge } from './donnees/contexte';
 import type { Run } from './types';
+import type { Source } from './donnees/source';
 import { AttenteRun } from './vues/AttenteRun';
 import { ControleRun } from './vues/ControleExecution';
 
@@ -10,6 +11,14 @@ const ETATS: Record<string, string> = {
   waiting_auth: 'Connexion requise', waiting_machine: 'Attente du worker', waiting_approval: 'Décision requise',
   waiting_freshness: 'Base à synchroniser', succeeded: 'Exécution réussie', failed: 'Échoué', cancelled: 'Annulé',
 };
+
+export async function chargerActivite(source: Source): Promise<Run[]> {
+  // Les attentes anciennes ne doivent pas disparaître derrière les derniers runs terminés.
+  const statuts = ['queued', 'running', 'paused', 'waiting_quota', 'waiting_auth', 'waiting_machine', 'waiting_approval', 'waiting_freshness'] as const;
+  const listes = await Promise.all([source.runs({ limite: 100 }), ...statuts.map(status => source.runs({ status, limite: 100 }))]);
+  return [...new Map(listes.flat().map(run => [run.id, run])).values()]
+    .sort((a, b) => Date.parse(b.debut || '') - Date.parse(a.debut || ''));
+}
 
 export function titreRun(run: Run, objectifs: Objectif[]): string {
   return objectifs.find(o => o.occurrences.some(occ => occ.runId === run.id))?.titre || run.pipeline;
@@ -30,7 +39,7 @@ function DetailRun({ id }: { id: string }) {
 
 /** Les runs restent la source de leur état ; les objectifs donnent le titre de chaque dépôt du groupe. */
 export function ActiviteTaskBoard({ calendrier, revision }: { calendrier: SourceCalendrier; revision: number }) {
-  const { donnees: runs, erreur } = useCharge(s => s.runs({ limite: 200 }), []);
+  const { donnees: runs, erreur } = useCharge(chargerActivite, []);
   const { donnees: objectifs, erreur: erreurObjectifs } = useCharge(() => calendrier.objectifs(), [calendrier, revision]);
   const [selection, setSelection] = useState<string | null>(null);
   const [historique, setHistorique] = useState(false);

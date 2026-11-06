@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ActiviteTaskBoard, titreRun } from './ActiviteTaskBoard';
+import { ActiviteTaskBoard, chargerActivite, titreRun } from './ActiviteTaskBoard';
+import type { Source } from './donnees/source';
 import { sourceCalendrierMaquette, type Objectif } from './calendrier/api';
 import type { Run } from './types';
 
@@ -16,6 +17,15 @@ const run: Run = { id: 'run-quota', projet: 'agent-orchestrator', pipeline: 'imp
 const objectifs = [{ titre: '5.2 · Mission multi-dépôts', occurrences: [{ runId: run.id }] }] as Objectif[];
 
 beforeEach(() => vi.mocked(useCharge).mockReset());
+
+it('retrouve une attente plus ancienne que cent runs terminés et déduplique les réponses', async () => {
+  const recents = Array.from({ length: 100 }, (_, i) => ({ ...run, id: `fini-${i}`, vivant: false, statut: 'succeeded' as const, attente: null }));
+  const runs = vi.fn(async (filtre: { status?: string } = {}) => filtre.status === 'waiting_quota' ? [run] : filtre.status ? [] : recents);
+  const resultat = await chargerActivite({ runs } as unknown as Source);
+  expect(resultat.some(r => r.id === run.id)).toBe(true);
+  expect(resultat).toHaveLength(101);
+  expect(runs).toHaveBeenCalledWith({ status: 'waiting_quota', limite: 100 });
+});
 
 it('retrouve le titre d’un run de groupe et conserve le pipeline pour les anciens runs', () => {
   expect(titreRun(run, objectifs)).toBe('5.2 · Mission multi-dépôts');

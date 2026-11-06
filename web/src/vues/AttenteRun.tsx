@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSource } from "../donnees/contexte";
 import type { RunDetaille } from "../types";
 import { useCommande } from './ControleExecution';
@@ -9,17 +9,24 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   const [envoi, setEnvoi] = useState(false);
   const [commande, setCommande] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [dernierRefus, setDernierRefus] = useState<string | null>(null);
   const attente = run.attente;
-  const suivi = useCommande(commande || attente?.commande || null);
+  const commandeActive = attente?.commande || commande;
+  const suivi = useCommande(commandeActive || null);
+  useEffect(() => {
+    if (!suivi || !['done', 'refused'].includes(suivi.statut)) return;
+    if (suivi.statut === 'refused') setDernierRefus(suivi.resultat?.raison || 'La reprise a été refusée.');
+    if (suivi.id === commande) setCommande(null);
+  }, [suivi, commande]);
   if (!attente) return null;
   const connexion = attente.statut === "waiting_auth";
   const fraicheur = attente.statut === "waiting_freshness";
   const machine = attente.statut === "waiting_machine";
-  const refus = suivi?.statut === 'refused' ? suivi.resultat?.raison || 'La reprise a été refusée.' : null;
-  const enFile = !refus && (commande || attente.commande);
+  const refus = suivi?.statut === 'refused' ? suivi.resultat?.raison || 'La reprise a été refusée.' : !commandeActive ? dernierRefus : null;
+  const enFile = commandeActive && !['done', 'refused'].includes(suivi?.statut || '');
   async function reprendre() {
     if (!attente) return;
-    setEnvoi(true); setErreur(null);
+    setEnvoi(true); setErreur(null); setDernierRefus(null);
     try { setCommande((await source.reprendreRun(run.id, attente.id, confirmation)).id); }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
     finally { setEnvoi(false); }

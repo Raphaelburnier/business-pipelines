@@ -13,7 +13,7 @@ export function useCommande(id: string | null) {
     lire(); const timer = setInterval(lire, 500);
     return () => { actif = false; clearInterval(timer); };
   }, [source, id]);
-  return commande;
+  return commande?.id === id ? commande : null;
 }
 
 export function ControleFile() {
