@@ -19,3 +19,27 @@ Les lots suivent les numéros croissants par défaut. L’ordre décroissant et 
 ## Preuves attendues
 
 Parcours sur API et base temporaires, sans lancer de fournisseur : choisir les agents avant le plan et vérifier la demande, modifier puis recalculer, déplacer depuis la poignée avec la souris et observer les repères de dépôt, valider la planification et retrouver ses agents, déplacer la carte au calendrier, contrôler les menus et l’ordre des lots, puis le mobile. Vérifier que la projection des participants n’expose ni contexte ni configuration de mission.
+
+## Correction du parcours complet — 6 novembre 2026
+
+Résumé : le catalogue exécutable existant décide de l’éligibilité de tous les gestes.
+La feuille de route reste visible et distincte de l’avancement des exécutions.
+Cette correction est autorisée par la demande de Raphaël de réaliser le chantier
+dans l’ordre présenté après l’audit du 6 novembre. Aucun nouveau protocole moteur.
+
+- Une tâche absente du catalogue ne propose ni poignée ni commande de planification ;
+  elle explique que son plan reste à préparer. Pourquoi : afficher un geste ensuite
+  refusé fait croire à une panne du calendrier.
+- Chaque tâche admissible propose aussi un bouton Planifier ouvrant le même formulaire
+  pour aujourd’hui, avec sa date modifiable. Pourquoi : le geste souris n’est pas
+  disponible sur tous les appareils et n’est pas une condition pour lancer du travail.
+- Les dépôts sélectionnés indisponibles sont nommés ; aucun n’est retiré silencieusement
+  avant la proposition. Pourquoi : un plan partiel ne réalise pas l’objectif annoncé.
+- Le suivi utilise les API existantes des objectifs, des runs et des reprises.
+  La date de reprise, sa raison et son éventuelle commande restent celles du moteur.
+- Un succès de run ne modifie jamais le badge éditorial de la feuille de route :
+  les contrôles, la fusion et la livraison sont des étapes distinctes à vérifier.
+
+Vérification : tests React des interactions admissibles et du suivi, tests serveur
+des quotas et parcours Chromium sur base temporaire, avec vrais gestes souris et
+formulaire sans glissement. Aucun fournisseur payant ni donnée de production modifiée.

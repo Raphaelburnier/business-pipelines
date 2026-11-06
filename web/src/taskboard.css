@@ -165,3 +165,12 @@
 .task-agents.compact { gap: 0; }
 .task-agents.compact .task-agent-portrait { flex-basis: 18px; width: 18px; height: 18px; font-size: 8px; }
 .task-agents.compact .task-agent + .task-agent { margin-left: -3px; }
+
+.av-plan-indisponible { color: var(--color-douce); font-size: 12px; margin: 8px 0; }
+.taskboard-activite { padding: 14px; border: 1px solid var(--color-trait); background: var(--color-surface); font-size: 13px; }
+.taskboard-activite h3 { margin: 0; }
+.taskboard-activite ul { list-style: none; padding: 0; margin: 12px 0 0; }
+.taskboard-activite li { border-top: 1px solid var(--color-trait); padding: 12px 0; }
+.taskboard-run-entete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.taskboard-run-entete strong { overflow-wrap: anywhere; }
+.taskboard-run-detail { padding-top: 10px; }

@@ -46,6 +46,24 @@ describe("attribution depuis À venir", () => {
     expect(html).toContain("en cours");
   });
 
+  it("ne propose le dépôt et le bouton Planifier que pour le catalogue exécutable", () => {
+    const html = renderToStaticMarkup(createElement<NonNullable<Parameters<typeof AVenir>[0]>>(AVenir, { onPlanifier: vi.fn() }));
+    const lignes = [...html.matchAll(/<li id="av-etape-([^"]+)" draggable="(true|false)"[\s\S]*?<\/li>/g)];
+    expect(lignes.length).toBeGreaterThan(0);
+    for (const [ligne, id, draggable] of lignes) {
+      const etape = toutesLesEtapes.find(e => e.id === id);
+      if (draggable === "true") expect(etape && estAttribuable(etape), id).toBeTruthy();
+      if (id === "14.7") {
+        expect(draggable).toBe("false");
+        expect(ligne).toContain("Préparation requise");
+        expect(ligne).not.toContain("task-poignee");
+        expect(ligne).not.toContain(">Planifier</button>");
+      }
+      if (id === "3.6") expect(ligne).toContain(">Planifier</button>");
+    }
+    expect(html).toContain('id="av-etape-14.7"');
+  });
+
   it("prépare la référence, le projet et les critères sans exclure Claude ni Codex", () => {
     const etape = toutesLesEtapes.find((e) => e.id === "4.3")!;
     const spec = construireSpecAttribution(etape, "business-pipelines", ["Revue faite"]);

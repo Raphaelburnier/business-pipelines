@@ -3,7 +3,7 @@ import { useSource } from "../donnees/contexte";
 import type { Commande } from "../donnees/source";
 import type { RunDetaille } from "../types";
 
-function useCommande(id: string | null) {
+export function useCommande(id: string | null) {
   const { source } = useSource();
   const [commande, setCommande] = useState<Commande | null>(null);
   useEffect(() => {
