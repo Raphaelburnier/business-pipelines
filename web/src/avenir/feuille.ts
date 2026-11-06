@@ -193,7 +193,7 @@ export const LOTS: Lot[] = [
     etapes: [
       { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire" },
       { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "En cours : aligner l’unité systemd sur la copie figée et comparer la release annoncée du worker au moteur du NAS, avec les API existantes.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "en-cours" },
-      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Conception validée : refus si un travail est actif, verrou durable des nouveaux départs et npm ci. Moteur fusionné ; préparation du cockpit puis activation du modèle après recette. Installation en production encore à faire.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "en-cours" },
+      { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Livré et vérifié : le livreur prend un verrou de maintenance avant la construction, refuse si un travail est actif, revérifie avant le premier arrêt et libère le verrou après la santé. Modèle de déploiement approuvé par empreinte, première livraison avec contrôles réussie le 6 novembre.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "fait" },
     ],
   },
   // Lots 8 à 13 : page Notion « Cockpit amelioration » de Raphaël, validée le 2026-10-22.
