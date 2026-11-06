@@ -10,6 +10,7 @@ import { useCharge, useSource } from './donnees/contexte';
 import type { PropositionPlan, SpecMission } from './donnees/missions';
 import { InterrupteurPrioritaire } from './InterrupteurPrioritaire';
 import { EquipeTaches } from './AgentsTache';
+import { ActiviteTaskBoard } from './ActiviteTaskBoard';
 import './taskboard.css';
 
 type Tache = { type?: string; ref?: string; titre?: string; detail?: string; fichiers?: string[]; commandeId?: string; prevuLe?: string;
@@ -39,15 +40,9 @@ export function TaskBoard() {
   const groupe = useRef('');
   const tentatives = useRef(new Map<string,string>());
   useEffect(() => { if(tache) panneau.current?.scrollIntoView({block:'nearest',behavior:'smooth'}); }, [tache?.ref, tache?.date]);
-  useEffect(() => {
-    if (!topo || !tache || propositions.length) return;
-    setProjets(ids => {
-      const disponibles = ids.filter(id => topo.projets.some(p => p.id === id && p.aFiche && p.pipelines.length));
-      return disponibles.length === ids.length ? ids : disponibles;
-    });
-  }, [topo, tache?.ref, propositions.length]);
   const objectifCatalogue = objectifsSysteme.find(o => o.id === tache?.ref);
   const depotsAnnonces = objectifCatalogue ? [...new Set([objectifCatalogue.projet, ...objectifCatalogue.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; })].filter((id): id is string => Boolean(id)))] : [];
+  const depotsIndisponibles = topo ? projets.filter(id => !topo.projets.some(p => p.id === id && p.aFiche && p.pipelines.length)) : [];
   const risque = sensibiliteEtape(objectifCatalogue ?? { fichiers: [] });
   const quota = usage?.quota;
   const quotaTexte = `Quota restant · Claude ${quota?.fournisseurs?.claude ? `${quota.fournisseurs.claude.restant}%` : 'inconnu'} · Codex ${quota?.fournisseurs?.codex ? `${quota.fournisseurs.codex.restant}%` : 'inconnu'} · ${quota?.statut === 'bas' ? 'reprises, prioritaires, puis FIFO (<25 %)' : quota?.statut === 'normal' ? 'ordre normal' : 'mesure incomplète, ordre normal'}.`;
@@ -83,7 +78,7 @@ export function TaskBoard() {
   function ouvrir(cible: Tache,date: string) {
     if (date<dateCivile(Date.now()).date) {setMessage('Choisis aujourd’hui ou un jour futur.');return;}
     const reference = objectifsSysteme.find(o => o.id === cible.ref);
-    if (!reference) { setMessage('Cette tâche est terminée, en cours ou périmée : recharge le tableau.'); return; }
+    if (!reference) { setMessage('Cette tâche ne dispose pas encore d’un plan exécutable dans le cockpit.'); return; }
     const ids = [...new Set([reference.projet, ...reference.fichiers.flatMap(f => { const a=/^([A-Z]{2,5})\s/.exec(f)?.[1]; return a && ALIAS[a] ? [ALIAS[a]!] : []; })].filter((id): id is string => Boolean(id)))];
     setTache({ ...cible, fichiers:reference.fichiers, date });
     setProjets(ids); setAgentsParProjet({});
@@ -92,6 +87,7 @@ export function TaskBoard() {
   }
   async function proposer() {
     if (!tache || !objectifCatalogue) return;
+    if (depotsIndisponibles.length) { setMessage(`Plan incomplet : les dépôts ${depotsIndisponibles.join(', ')} doivent être configurés dans le cockpit avant cette planification.`); return; }
     const retenus = projets.filter(id => topo?.projets.some(p => p.id === id && p.aFiche && p.pipelines.length));
     if (!retenus.length) { setMessage('Choisis au moins un dépôt disponible.'); return; }
     setEnvoi(true); setMessage('');
@@ -135,10 +131,13 @@ export function TaskBoard() {
     </fieldset></form></details>
     {message && <p className="taskboard-retour" role="status">{message}</p>}
     {tache && <section ref={panneau} className="taskboard-system-plan" aria-label="Planifier une tâche système"><header><h3>Planifier « {tache.titre} » le {tache.date}</h3><button type="button" disabled={envoi} onClick={()=>setTache(null)}>Annuler</button></header>
-      {!propositions.length ? <><p>Valide le périmètre proposé puis les plans. Tous seront enregistrés ensemble.</p><fieldset disabled={envoi}><legend>Dépôts concernés</legend>{topo?.projets.filter(p=>p.aFiche && p.pipelines.length && (!objectifCatalogue?.projet || depotsAnnonces.includes(p.id))).map(p=><label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={e=>setProjets(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/>{p.nom}</label>)}</fieldset>
+      <label>Journée de départ<input type="date" min={dateCivile(Date.now()).date} value={tache.date} disabled={envoi} onChange={e => setTache(t => t ? { ...t, date: e.target.value } : t)} required /></label>
+      {!propositions.length ? <><p>Valide le périmètre proposé puis les plans. Tous seront enregistrés ensemble.</p>
+        {!!depotsIndisponibles.length && <p role="alert">Plan incomplet : {depotsIndisponibles.join(', ')} non configuré(s) dans le cockpit. Prépare leurs projets et pipelines avant de planifier ce travail ; aucun dépôt ne sera omis.</p>}
+        <fieldset disabled={envoi}><legend>Dépôts concernés</legend>{topo?.projets.filter(p=>p.aFiche && p.pipelines.length && (!objectifCatalogue?.projet || depotsAnnonces.includes(p.id))).map(p=><label key={p.id}><input type="checkbox" checked={projets.includes(p.id)} onChange={e=>setProjets(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/>{p.nom}</label>)}</fieldset>
         {!!projets.length && <div className="taskboard-equipes">{projets.filter(id=>topo?.projets.some(p=>p.id===id&&p.aFiche)).map(id=><AgentsAttribution key={id} projectId={id} index={0} titre={`Agents · ${topo?.projets.find(p=>p.id===id)?.nom || id}`} choix={agentsParProjet[id] || []} disabled={envoi} onChange={agents=>setAgentsParProjet(choix=>({...choix,[id]:agents}))}/>)}</div>}
         <InterrupteurPrioritaire checked={prioritaire} disabled={envoi} onChange={setPrioritaire}/><label className="taskboard-case"><input aria-label="Tâche sensible" type="checkbox" checked={risque.sensible||sensible} disabled={risque.sensible||envoi} onChange={e=>setSensible(e.target.checked)}/> Sensible — revue et vérifications renforcées</label>
-        <button type="button" disabled={envoi||!topo||!projets.length} onClick={()=>void proposer()}>Proposer les plans</button></> : <>
+        <button type="button" disabled={envoi||!topo||!projets.length||!tache.date||Boolean(depotsIndisponibles.length)} onClick={()=>void proposer()}>Proposer les plans</button></> : <>
         {propositions.map(p=><article key={p.projectId}><h4>{p.reponse.projet?.nom||p.projectId} · {p.reponse.statut}</h4>{p.reponse.blocages.map((b,i)=><p key={i}>{b.message}</p>)}
           {p.reponse.plan && <><p>{p.reponse.plan.pipeline.titre} — {p.reponse.plan.pipeline.raison}</p>{p.reponse.plan.etapes.map(e=><p key={e.noeud}>{e.nom} · {e.llm?.via}:{e.llm?.model}</p>)}<details><summary>Critères et avertissements</summary>{p.reponse.plan.criteres.map(c=><p key={c.texte}>{c.texte}</p>)}{p.reponse.plan.avertissements.map((a,i)=><p key={i}>{a}</p>)}</details></>}
           {p.index!==null && <AgentsAttribution projectId={p.projectId} index={p.index} choix={p.spec.agents||[]} disabled={envoi} onChange={agents=>setPropositions(ps=>ps.map(x=>x.projectId===p.projectId?{...x,spec:{...x.spec,agents},modifie:true}:x))}/>}
@@ -146,6 +145,7 @@ export function TaskBoard() {
         {propositions.some(p=>p.reponse.statut==='degrade') && <label><input type="checkbox" checked={accepteDegrade} onChange={e=>setAccepteDegrade(e.target.checked)}/>Accepter tous les plans dégradés</label>}
         <button type="button" disabled={envoi||propositions.some(p=>p.modifie||!p.reponse.empreinte||p.reponse.statut==='bloque')||propositions.some(p=>p.reponse.statut==='degrade')&&!accepteDegrade} onClick={()=>void valider()}>Valider tous les plans et planifier</button><button type="button" disabled={envoi} onClick={()=>setPropositions([])}>Modifier le périmètre</button></>}
     </section>}
-    <div className="taskboard-grille"><section className="taskboard-calendrier" id="taskboard-calendrier" aria-label="Calendrier des runs"><div className="taskboard-cal-titre"><h3>Calendrier</h3><p>Glisser une tâche sur une journée</p></div><Calendrier integre sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></section><aside className="taskboard-taches" aria-label="Tâches à venir"><AVenir integre sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></aside></div>
+    <ActiviteTaskBoard calendrier={calendrier} revision={revision} />
+    <div className="taskboard-grille"><section className="taskboard-calendrier" id="taskboard-calendrier" aria-label="Calendrier des runs"><div className="taskboard-cal-titre"><h3>Calendrier</h3><p>Glisser une tâche sur une journée</p></div><Calendrier integre sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></section><aside className="taskboard-taches" aria-label="Tâches à venir"><AVenir integre onPlanifier={ref => { const cible = TACHES.get(ref); if (cible) ouvrir(cible, dateCivile(Date.now()).date); }} sourceCalendrier={calendrier} revisionExterne={revision} onChangement={()=>setRevision(r=>r+1)}/></aside></div>
   </div></EquipeTaches>;
 }

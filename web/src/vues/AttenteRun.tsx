@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSource } from "../donnees/contexte";
 import type { RunDetaille } from "../types";
+import { useCommande } from './ControleExecution';
 
 export function AttenteRun({ run }: { run: RunDetaille }) {
   const { source } = useSource();
@@ -8,16 +9,25 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
   const [envoi, setEnvoi] = useState(false);
   const [commande, setCommande] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [dernierRefus, setDernierRefus] = useState<string | null>(null);
   const attente = run.attente;
+  const commandeActive = attente?.commande || commande;
+  const suivi = useCommande(commandeActive || null);
+  useEffect(() => {
+    if (!suivi || !['done', 'refused'].includes(suivi.statut)) return;
+    if (suivi.statut === 'refused') setDernierRefus(suivi.resultat?.raison || 'La reprise a été refusée.');
+    if (suivi.id === commande) setCommande(null);
+  }, [suivi, commande]);
   if (!attente) return null;
   const connexion = attente.statut === "waiting_auth";
   const fraicheur = attente.statut === "waiting_freshness";
   const machine = attente.statut === "waiting_machine";
   const reserve = attente.motif === 'reserve-interactive';
-  const enFile = commande || attente.commande;
+  const refus = suivi?.statut === 'refused' ? suivi.resultat?.raison || 'La reprise a été refusée.' : !commandeActive ? dernierRefus : null;
+  const enFile = commandeActive && !['done', 'refused'].includes(suivi?.statut || '');
   async function reprendre() {
     if (!attente) return;
-    setEnvoi(true); setErreur(null);
+    setEnvoi(true); setErreur(null); setDernierRefus(null);
     try { setCommande((await source.reprendreRun(run.id, attente.id, confirmation)).id); }
     catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
     finally { setEnvoi(false); }
@@ -47,7 +57,8 @@ export function AttenteRun({ run }: { run: RunDetaille }) {
         : `${attente.tentatives}/${attente.maximum} reprises automatiques · limite : ${new Date(attente.limiteLe).toLocaleString("fr-CH")}`}</p>
     </>}
     {connexion && !enFile && <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={confirmation} onChange={e => setConfirmation(e.target.checked)} />J'ai reconnecté ce runtime sur cette machine</label>}
-    {enFile ? <p role="status" className="mt-3">Reprise mise en file pour ce run.</p> : attente.actions.length > 0 && <button type="button" className="mt-3 rounded border border-accent px-3 py-1.5 font-semibold text-accent disabled:opacity-50" disabled={envoi || (connexion && !confirmation)} onClick={() => void reprendre()}>{envoi ? "Mise en file…" : fraicheur ? "Revérifier et reprendre le run" : "Reprendre le même run"}</button>}
+    {refus && <p role="alert" className="mt-2 text-alerte">{refus}</p>}
+    {enFile ? <p role="status" className="mt-3">{suivi?.statut === 'taken' ? 'Reprise en cours pour ce run.' : suivi?.statut === 'done' ? 'Commande de reprise traitée ; actualisation du run en cours.' : 'Reprise mise en file pour ce run.'}</p> : attente.actions.length > 0 && <button type="button" className="mt-3 rounded border border-accent px-3 py-1.5 font-semibold text-accent disabled:opacity-50" disabled={envoi || (connexion && !confirmation)} onClick={() => void reprendre()}>{envoi ? "Mise en file…" : fraicheur ? "Revérifier et reprendre le run" : "Reprendre le même run"}</button>}
     {erreur && <p role="alert" className="mt-2 text-alerte">{erreur}</p>}
   </div>;
 }
