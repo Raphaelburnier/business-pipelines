@@ -88,6 +88,9 @@ les dépôts auxquels le runner peut accéder, indépendamment de l’interface.
    NAS existante : mêmes hôte, utilisateur et mécanisme de clé, sans désactiver la
    vérification d’hôte. Le tester par un `git ls-remote` sur un dépôt de travail déjà
    accessible, puis sur chacun des deux nouveaux dépôts après leur préparation.
+   Si `ORCH_WORKER_DEPOTS` restreint les dépôts du worker, ajouter explicitement ces
+   deux URL avec l’alias : le contrôle compare leur texte avant la résolution SSH.
+   Ne pas remplacer cette liste par une autorisation globale.
 1. Préparer sur le NAS les deux dépôts nus de travail, distincts de `/git/systeme`.
    Depuis un poste où les clones privés sont déjà disponibles, un `git bundle create`
    de leur branche `main` permet un transfert hors ligne. Sur le NAS, `git clone --bare`
