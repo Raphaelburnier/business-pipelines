@@ -340,7 +340,9 @@ function InspecteurNoeud({
   const outils = [...new Set(noeud.tentatives.flatMap((t) => t.outils))];
   // Un changement de fournisseur entre deux tentatives : le remplaçant a pris l'étape.
   const fournisseurs = [...new Set(noeud.tentatives.map((t) => t.llm && `${t.llm.via}:${t.llm.model}`).filter((x): x is string => Boolean(x)))];
-  const relais = new Set(noeud.tentatives.map((t) => t.llm?.via).filter(Boolean)).size > 1 ? fournisseurs.join(" → ") : null;
+  // Une escalade (moteur src/escalade.js) change aussi de modèle : elle n'est pas un relais.
+  const escalade = run.escalades?.filter((e) => e.noeud === noeud.id).at(-1);
+  const relais = !escalade && new Set(noeud.tentatives.map((t) => t.llm?.via).filter(Boolean)).size > 1 ? fournisseurs.join(" → ") : null;
   const decidable = noeud.approbation?.statut === "pending" && run.statut === "waiting_approval";
 
   async function decider(decision: "approved" | "rejected") {
@@ -401,6 +403,15 @@ function InspecteurNoeud({
               <>
                 <dt>Relais</dt>
                 <dd>{relais}</dd>
+              </>
+            )}
+            {escalade && (
+              <>
+                <dt>Escalade</dt>
+                <dd>
+                  {escalade.de.model} → {escalade.vers.model} · {escalade.raison} ·{" "}
+                  {{ "en-cours": "en cours", reussie: "réussie", echouee: "échouée" }[escalade.issue]}
+                </dd>
               </>
             )}
             <dt>Machine</dt>

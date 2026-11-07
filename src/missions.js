@@ -17,6 +17,29 @@ function fichier(projetsDir, id) {
 }
 const actifs = (r) => r.pipeline.nodes.filter((n) => ["agent", "review"].includes(n.type) && !n.disabled);
 const incarne = (m, n) => m.registre.includes(n.agent.split("@")[0]);
+const relit = (n) => n.type === "review" || finance.roleFinance(n) === "revue";
+const memeLlm = (a, b) => Boolean(a && b && a.via === b.via && a.model === b.model);
+
+/**
+ * Le modèle d'escalade d'un rôle (`equipe.escalade`, lot 5.4) : jamais celui, exact, d'un
+ * relecteur pour un auteur du travail relu, ni d'un de ces auteurs pour un relecteur. La
+ * planification, que personne ne relit, n'a pas de vis-à-vis. Les auteurs passent d'abord
+ * (`posees` reçoit leurs escalades) : un relecteur évite aussi le modèle d'escalade de ses
+ * auteurs, au cas où les deux bloqueraient. Le contrat (`construire`) et le plan
+ * (src/planificateur.js) suivent cet ordre avec les mêmes choix : ils annoncent la même escalade.
+ * @param {{ roster: any[], noeud: any, roles: any[], auteurs: string[], llmDe: (n: any) => any, posees: Map<string, any>, admis: (llm: any) => boolean }} options
+ */
+function escaladeDe({ roster, noeud, roles, auteurs, llmDe, posees, admis }) {
+  const visAVis = relit(noeud) ? roles.filter((r) => auteurs.includes(r.id))
+    : auteurs.includes(noeud.id) ? roles.filter(relit) : [];
+  const e = equipe.escalade(roster, llmDe(noeud),
+    (llm) => !visAVis.some((r) => memeLlm(llmDe(r), llm) || memeLlm(posees.get(r.id), llm)) && admis(llm));
+  if (e) posees.set(noeud.id, e.llm);
+  return e;
+}
+
+/** Les rôles dans l'ordre où leurs escalades se décident : auteurs d'abord, relecteurs ensuite. */
+const ordreEscalade = (roles) => [...roles.filter((r) => !relit(r)), ...roles.filter(relit)];
 function lire({ projetsDir, projectId, pipelineIndex = 0, roster, affectations, financeDisponible }) {
   const resolution = registre.resoudreProjet(fichier(projetsDir, projectId), { index: pipelineIndex });
   if (resolution.projet.id !== projectId) throw new Error("la fiche ne correspond pas au projet choisi");
@@ -105,7 +128,24 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     }
     return { secours: { ...relais.llm } };
   };
-  resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm, ...secoursDe(n) } : n);
+  // L'escalade suit aussi le nœud : le moteur passe l'étape à ce modèle plus fort si elle bloque
+  // (limite de tours, travail vide, cycle à sa limite). Mêmes exclusions que le relais.
+  // Chargé ici : le planificateur dépend lui-même de ce module.
+  const auteurs = require("./planificateur").auteurs(resolution.pipeline, options.nature);
+  const escalades = new Map();
+  for (const n of ordreEscalade(roles)) {
+    escaladeDe({ roster: params.roster, noeud: n, roles, auteurs, llmDe: (r) => parNoeud.get(r.id)?.llm, posees: escalades, admis: (llm) => {
+      if (relaisExclus.includes(llm.via)) return false;
+      try {
+        verifierBackend(llm, n, { pipeline: resolution.pipeline, agent: resolution.agents[n.agent] });
+        return true;
+      } catch {
+        return false;
+      }
+    } });
+  }
+  const escaladeNoeud = (n) => (escalades.has(n.id) ? { escalade: { ...escalades.get(n.id) } } : {});
+  resolution.pipeline.nodes = resolution.pipeline.nodes.map((n) => parNoeud.has(n.id) ? { ...n, llm: parNoeud.get(n.id).llm, ...secoursDe(n), ...escaladeNoeud(n) } : n);
   // La tranche métier reste structurée (questions marketing, etc.). L'objectif de cette
   // mission est aussi envoyé hors slicing à tous les développeurs et reviewers.
   const specContexte = { ...d.demande.spec };
@@ -183,4 +223,4 @@ function objectifActif(store, objectifId) {
     return false;
   }) || null;
 }
-module.exports = { lire, construire, demander, objectifActif };
+module.exports = { lire, construire, demander, objectifActif, escaladeDe, ordreEscalade };

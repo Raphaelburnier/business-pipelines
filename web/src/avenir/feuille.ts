@@ -170,7 +170,7 @@ export const LOTS: Lot[] = [
       { id: "5.1", titre: "Déclencheurs durables", detail: "Planification dans l'event store et webhooks, identité de service signée.", fichiers: ["AO src/event-store.js"], statut: "a-faire" },
       { id: "5.2", titre: "Superviseur côté cockpit", detail: "Missions de correction bornées après run échoué, CI rouge persistante ou findings P2/P3.", fichiers: ["BP src/missions.js", "AO src/mission.js:18-90"], statut: "a-faire" },
       { id: "5.3", titre: "Correcteur des échecs de main", detail: "Préparé avec 1.3 : correcteur isolé sur automation/ci-main-<sha>, réservation unique et PR soumise à la CI normale. Fusion explicite des workflows et recette GitHub attendues.", fichiers: ["ci-autofix.yml:39"], statut: "en-cours" },
-      { id: "5.4", titre: "Escalade par changement de modèle", detail: "Utiliser le secours selon une politique écrite.", fichiers: ["BP src/missions.js:77-89"], statut: "a-faire" },
+      { id: "5.4", titre: "Escalade par changement de modèle", detail: "Politique écrite et validée le 7 novembre 2026 (moteur docs/ESCALADE.md) : une étape arrêtée par sa limite de tours, sans fichier modifié ou dont le cycle atteint sa limite est reprise une fois par un modèle plus fort, choisi au lancement et annoncé dans le plan. Une escalade par étape, deux par run, jamais sur quota ou panne. Moteur et cockpit en revue ; livraison puis recette sur un run réel attendues.", fichiers: ["AO src/escalade.js", "BP src/missions.js", "BP src/equipe.js"], statut: "en-cours" },
     ],
   },
   {

@@ -60,6 +60,11 @@ function auteursDe(actifs, roleDe) {
   return actifs.filter((n) => n.type === "agent" && !["planification", "revue"].includes(roleDe.get(n.id))).map((n) => n.id);
 }
 
+/** Les mêmes auteurs, depuis le pipeline résolu : missions.construire en a besoin pour l'escalade. */
+function auteurs(pipeline, nature) {
+  return auteursDe(pipeline.nodes.filter((n) => !n.disabled), roles(pipeline, nature));
+}
+
 /** Pipelines du registre (dernière version de chacun) d'une nature, pour suggérer un rattachement. */
 function pipelinesDuRegistre(nature, dossier = registre.dossierRegistre()) {
   const racine = path.join(dossier, "pipelines");
@@ -220,6 +225,21 @@ function evaluer({ spec, index, params, etat }) {
     }
     choisis.set(n.id, { noeud: n.id, membre: choix.membre?.id ?? null, nom: choix.membre?.nom || resolution.agents[n.agent].name, llm: choix.llm,
       raisons: raisons.slice(0, 12).map((r) => r.slice(0, 600)) });
+  }
+  // L'escalade que la mission posera (missions.construire) si l'étape bloque. Calculée une fois
+  // tous les rôles choisis : un auteur ne prend jamais le modèle exact d'un de ses relecteurs.
+  const auteursRelus = auteursDe(actifs, roleDe);
+  const escalades = new Map();
+  for (const n of missions.ordreEscalade(ordre)) {
+    const c = choisis.get(n.id);
+    if (!c) continue;
+    const e = missions.escaladeDe({ roster: params.roster, noeud: n, roles: ordre, auteurs: auteursRelus, llmDe: (r) => choisis.get(r.id)?.llm, posees: escalades,
+      admis: (llm) => !relaisExclus(etat).includes(llm.via) && etat.disponibilite(llm, n, { pipeline: p, agent: resolution.agents[n.agent] }).utilisable });
+    if (!e) continue;
+    const ecart = c.raisons.findIndex((r) => r.startsWith("Écarté"));
+    c.raisons.splice(ecart < 0 ? c.raisons.length : ecart, 0,
+      `Escalade si l'étape bloque (limite de tours, travail vide, cycle à sa limite) : ${e.llm.via}:${e.llm.model} (${e.origine}).`);
+    c.raisons = c.raisons.slice(0, 12);
   }
 
   // Les scripts hors NAS tournent sur un worker : il doit être joignable.
@@ -454,4 +474,4 @@ function resultatCriteres(plan, etapes, evenements = [], arbre = null) {
   });
 }
 
-module.exports = { proposer, planifier, lancer, resultatCriteres, natureDe, roles, pipelinesDuRegistre, RefusPlan };
+module.exports = { proposer, planifier, lancer, resultatCriteres, natureDe, roles, auteurs, pipelinesDuRegistre, RefusPlan };

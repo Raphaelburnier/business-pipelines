@@ -352,4 +352,40 @@ function repli(roster, { membre = null, via }) {
   return null;
 }
 
-module.exports = { rosterAvecSecours, lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe, repli, ABONNEMENTS };
+// La force relative d'un modèle dans son abonnement : la gamme pour Claude, l'effort (suffixe
+// `:high`) pour Codex. Un modèle inconnu vaut 0 et ne passe donc jamais pour plus fort.
+const GAMME_CLAUDE = [["haiku", 1], ["sonnet", 2], ["opus", 3]];
+const EFFORTS_CODEX = { minimal: 0, low: 1, medium: 2, high: 3, xhigh: 4 };
+/** @param {{ via: string, model: string }} llm */
+function force(llm) {
+  const model = String(llm.model).toLowerCase();
+  if (llm.via === "claude") return GAMME_CLAUDE.find(([nom]) => model.includes(nom))?.[1] ?? 0;
+  if (llm.via === "codex") return EFFORTS_CODEX[/** @type {keyof typeof EFFORTS_CODEX} */ (model.split(":")[1] || "medium")] ?? 0;
+  return 0;
+}
+
+/**
+ * Le modèle d'escalade d'une étape qui bloque (lot 5.4, docs/ESCALADE.md du moteur), ou `null`.
+ * Le plus fort de l'équipe dans le même abonnement s'il dépasse celui de l'étape ; si l'étape
+ * est déjà au plus fort, le plus fort de l'autre abonnement. Un candidat refusé par `admis`
+ * (quota, machine, indépendance des revues) laisse l'étape sans escalade. Comme `repli`, le
+ * choix ne dépend que du roster : le plan et la mission posent la même escalade.
+ * @param {Array<{ llm: { via: string, model: string } }>} roster
+ * @param {{ via: string, model: string }|null|undefined} llm
+ * @param {(llm: { via: string, model: string }) => boolean} [admis]
+ * @returns {{ llm: { via: string, model: string }, origine: string }|null}
+ */
+function escalade(roster, llm, admis = () => true) {
+  if (!llm || !ABONNEMENTS.includes(llm.via)) return null;
+  /** @param {string} via */
+  const plusFort = (via) => roster.map((m) => m.llm).filter((l) => l.via === via)
+    .reduce((/** @type {{ via: string, model: string }|null} */ meilleur, l) => (!meilleur || force(l) > force(meilleur) ? l : meilleur), null);
+  const meme = plusFort(llm.via);
+  const candidats = meme && force(meme) > force(llm)
+    ? [{ llm: { ...meme }, origine: "modèle le plus fort de l'équipe chez ce fournisseur" }]
+    : ABONNEMENTS.filter((a) => a !== llm.via).map(plusFort).filter((l) => l !== null)
+      .map((l) => ({ llm: { ...l }, origine: "modèle le plus fort de l'équipe chez l'autre abonnement" }));
+  return candidats.find((c) => admis(c.llm)) || null;
+}
+
+module.exports = { rosterAvecSecours, lireRoster, lireAffectations, lireBenchmarks, lireProfils, ecrireProfil, lirePhoto, etat, affecter, lancementEquipe, repli, escalade, ABONNEMENTS };
