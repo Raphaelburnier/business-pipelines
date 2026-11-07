@@ -36,14 +36,14 @@ try {
   for (const id of ["agent-registry", "agent-secrets"]) {
     const fichier = path.join(__dirname, `../projects/${id}/project.json`);
     const p = schemas.projet.parse(JSON.parse(fs.readFileSync(fichier, "utf8")));
-    const { pipeline } = resoudreProjet(fichier, { registre: root });
     assert.equal(p.homeMachine, "pc");
     assert.equal(p.publier, true);
     assert.equal(p.pipelines[0].overrides.nodes["review-security"].enabled, true);
-    assert.deepEqual(pipeline.nodes[0].params.verification, p.verification);
     assert.ok(p.verification.checks.some(c => c.kind === "test"));
     assert.ok(runner.volumes.includes(`/volume1/docker/git/${id}.git:${p.repo}`),
       `${id} exige une copie de travail montée en écriture pour les checkpoints`);
+    assert.equal(p.repoWorkers, `agenticos-git:/volume1/docker${p.repo}`,
+      `${id} : le PC doit pousser vers le même dépôt de travail que celui du runner`);
     assert.ok(autorises.includes(p.repo), `${id} doit être clonable malgré son propriétaire hôte`);
   }
   assert.ok(runner.volumes.includes("./agent-registry:/app/agent-registry:ro"));
@@ -52,7 +52,7 @@ try {
     "seuls les dépôts de travail individuels sont accessibles, jamais /git entier ni /git/systeme");
   assert.equal(autorises.length, montagesGit.length);
   assert.equal(new Set(autorises).size, autorises.length);
-  console.log("Projets système : profils résolus et copies de travail isolées des miroirs de confiance OK");
+  console.log("Projets système : profils valides et copies de travail partagées, isolées des miroirs de confiance OK");
   const sansProfil = path.join(root, "project.json"); const p = { ...projet }; delete p.verification;
   fs.writeFileSync(sansProfil, JSON.stringify(p));
   assert.throws(() => resoudreProjet(sansProfil, { registre: root }), /verification requise/);

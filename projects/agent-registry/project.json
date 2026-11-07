@@ -4,7 +4,7 @@
   "business": "systeme",
   "homeMachine": "pc",
   "repo": "/git/agent-registry.git",
-  "repoWorkers": "git@github.com:Raphaelburnier/agent-registry.git",
+  "repoWorkers": "agenticos-git:/volume1/docker/git/agent-registry.git",
   "verification": {
     "prepareNetwork": true,
     "prepare": [

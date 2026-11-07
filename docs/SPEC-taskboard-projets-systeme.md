@@ -10,8 +10,8 @@ dans cette proposition, qui reste en brouillon.
 
 | Projet | Dépôt du runner | Dépôt du worker PC | Vérifications |
 | --- | --- | --- | --- |
-| agent-registry | `/git/agent-registry.git` | `git@github.com:Raphaelburnier/agent-registry.git` | `npm ci`, `npm run valider` |
-| agent-secrets | `/git/agent-secrets.git` | `git@github.com:Raphaelburnier/agent-secrets.git` | environnement Python verrouillé, pytest, mypy, recettes du gate, syntaxe des scripts, paquet |
+| agent-registry | `/git/agent-registry.git` | `agenticos-git:/volume1/docker/git/agent-registry.git` | `npm ci`, `npm run valider` |
+| agent-secrets | `/git/agent-secrets.git` | `agenticos-git:/volume1/docker/git/agent-secrets.git` | environnement Python verrouillé, pytest, mypy, recettes du gate, syntaxe des scripts, paquet |
 
 Les deux fiches utilisent `improve-app@8` avec revue de sécurité obligatoire.
 Le travail est réalisé sur le PC et produit une PR ; un run ne livre aucun service.
@@ -53,6 +53,14 @@ Le publieur conserve seul les accès GitHub de publication. Si ses permissions n
 couvrent pas ces dépôts privés, l’opérateur doit les accorder via les outils dédiés ;
 aucune valeur de jeton n’est lue ou inscrite dans cette proposition.
 
+`agenticos-git` est un alias SSH local du PC vers le même NAS et le même utilisateur
+que les projets existants. Sa configuration contient l’adresse privée et reste hors
+du dépôt public. Elle n’accorde aucun droit supplémentaire ; les clés et la vérification
+d’hôte restent celles de la connexion existante. Pourquoi : le PC doit pousser ses
+checkpoints dans le dépôt nu que le NAS lit, sans publier une adresse personnelle.
+Pointer `repoWorkers` sur GitHub casserait cet échange et exigerait un accès de
+publication sur le PC. L’alias doit donc être configuré et testé avant activation.
+
 Le changement des montages Docker modifiera l’empreinte du modèle de livraison.
 Il faut donc préparer et tester ce modèle, puis faire approuver son empreinte
 fusionnée par Raphaël avant le clic Livrer. Cette PR prépare les deux montages
@@ -76,6 +84,10 @@ les dépôts auxquels le runner peut accéder, indépendamment de l’interface.
 
 ## Ordre d’activation opérateur
 
+0. Configurer l’alias SSH `agenticos-git` sur le PC du worker à partir de la connexion
+   NAS existante : mêmes hôte, utilisateur et mécanisme de clé, sans désactiver la
+   vérification d’hôte. Le tester par un `git ls-remote` sur un dépôt de travail déjà
+   accessible, puis sur chacun des deux nouveaux dépôts après leur préparation.
 1. Préparer sur le NAS les deux dépôts nus de travail, distincts de `/git/systeme`.
    Depuis un poste où les clones privés sont déjà disponibles, un `git bundle create`
    de leur branche `main` permet un transfert hors ligne. Sur le NAS, `git clone --bare`

@@ -4,7 +4,7 @@
   "business": "systeme",
   "homeMachine": "pc",
   "repo": "/git/agent-secrets.git",
-  "repoWorkers": "git@github.com:Raphaelburnier/agent-secrets.git",
+  "repoWorkers": "agenticos-git:/volume1/docker/git/agent-secrets.git",
   "verification": {
     "prepareNetwork": true,
     "prepare": [
