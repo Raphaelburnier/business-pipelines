@@ -73,6 +73,30 @@ function ligneEtape(e) {
 }
 
 /**
+ * Les escalades par changement de modèle du run (moteur src/escalade.js), dans l'ordre. Sans
+ * événement de fin, l'issue suit le run : une escalade de cycle n'en émet que sur échec.
+ * @param {any[]} evenements
+ * @param {string} statutRun
+ */
+function escaladesDuRun(evenements, statutRun) {
+  /** @type {Array<{ noeud: string, de: any, vers: any, raison: string, issue: "en-cours"|"reussie"|"echouee", le: string }>} */
+  const escalades = [];
+  for (const e of evenements) {
+    const p = e.payload || {};
+    if (e.type === "escalation.start" && p.node && p.de?.model && p.vers?.model) {
+      escalades.push({ noeud: String(p.node), de: { via: p.de.via ?? null, model: String(p.de.model) },
+        vers: { via: p.vers.via ?? null, model: String(p.vers.model) }, raison: String(p.raison || ""), issue: "en-cours", le: e.ts });
+    } else if (e.type === "escalation.done" || e.type === "escalation.failed") {
+      const ouverte = escalades.findLast((x) => x.noeud === p.node && x.issue === "en-cours");
+      if (ouverte) ouverte.issue = e.type === "escalation.done" ? "reussie" : "echouee";
+    }
+  }
+  const fini = ["succeeded", "failed", "cancelled"].includes(statutRun);
+  for (const x of escalades) if (x.issue === "en-cours" && fini) x.issue = statutRun === "succeeded" ? "reussie" : "echouee";
+  return escalades;
+}
+
+/**
  * Un run et tout ce qu'on en sait : ses étapes, ses approbations, son dernier événement.
  * @param {any} store
  * @param {string} runId
@@ -95,6 +119,7 @@ function run(store, runId) {
     outils: [...(outilsParEtape.get(etape.id) || [])].sort(),
   }));
   const mission = contratMission ? require("agent-orchestrator/src/mission").vue(contratMission) : null;
+  const escalades = escaladesDuRun(derniers, brut.status);
   return {
     ...ligneRun(store, brut),
     ...(store.controle?.annulation(runId) ? { annulation: store.controle.annulation(runId) } : {}),
@@ -104,6 +129,7 @@ function run(store, runId) {
     etapes,
     approbations: store.approbationsEnAttente(runId).map(resumerApprobation),
     revues: revues.vueRevues(derniers, arbreCourant(store, runId, derniers)),
+    ...(escalades.length ? { escalades } : {}),
     dernierEvenementId: derniers.length ? derniers[derniers.length - 1].id : 0,
   };
 }
