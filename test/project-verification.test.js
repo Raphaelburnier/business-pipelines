@@ -23,6 +23,36 @@ try {
   const { pipeline } = resoudreProjet(fiche, { registre: root });
   assert.deepEqual(pipeline.nodes[0].params.verification, projet.verification);
   assert.ok(pipeline.nodes[0].params.exchangeFiles.includes("test-report.json"));
+  const yaml = require("node:module").createRequire(require.resolve("agent-orchestrator"))("yaml");
+  const compose = yaml.parse(fs.readFileSync(path.join(__dirname, "../docker-compose.yaml"), "utf8"));
+  const runner = compose.services.runner;
+  const env = Object.fromEntries(runner.environment.map(v => {
+    const i = v.indexOf("="); return [v.slice(0, i), v.slice(i + 1)];
+  }));
+  const autorises = Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => {
+    assert.equal(env[`GIT_CONFIG_KEY_${i}`], "safe.directory");
+    return env[`GIT_CONFIG_VALUE_${i}`];
+  });
+  for (const id of ["agent-registry", "agent-secrets"]) {
+    const fichier = path.join(__dirname, `../projects/${id}/project.json`);
+    const p = schemas.projet.parse(JSON.parse(fs.readFileSync(fichier, "utf8")));
+    const { pipeline } = resoudreProjet(fichier, { registre: root });
+    assert.equal(p.homeMachine, "pc");
+    assert.equal(p.publier, true);
+    assert.equal(p.pipelines[0].overrides.nodes["review-security"].enabled, true);
+    assert.deepEqual(pipeline.nodes[0].params.verification, p.verification);
+    assert.ok(p.verification.checks.some(c => c.kind === "test"));
+    assert.ok(runner.volumes.includes(`/volume1/docker/git/${id}.git:${p.repo}`),
+      `${id} exige une copie de travail montée en écriture pour les checkpoints`);
+    assert.ok(autorises.includes(p.repo), `${id} doit être clonable malgré son propriétaire hôte`);
+  }
+  assert.ok(runner.volumes.includes("./agent-registry:/app/agent-registry:ro"));
+  const montagesGit = runner.volumes.filter(v => v.split(":")[1]?.startsWith("/git"));
+  assert.ok(montagesGit.every(v => /^\/volume1\/docker\/git\/[^/:]+\.git:\/git\/[^/:]+\.git$/.test(v)),
+    "seuls les dépôts de travail individuels sont accessibles, jamais /git entier ni /git/systeme");
+  assert.equal(autorises.length, montagesGit.length);
+  assert.equal(new Set(autorises).size, autorises.length);
+  console.log("Projets système : profils résolus et copies de travail isolées des miroirs de confiance OK");
   const sansProfil = path.join(root, "project.json"); const p = { ...projet }; delete p.verification;
   fs.writeFileSync(sansProfil, JSON.stringify(p));
   assert.throws(() => resoudreProjet(sansProfil, { registre: root }), /verification requise/);

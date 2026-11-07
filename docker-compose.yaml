@@ -121,6 +121,10 @@ services:
       # un agent n'y pousse jamais.
       - /volume1/docker/git/business-pipelines.git:/git/business-pipelines.git
       - /volume1/docker/git/agent-orchestrator.git:/git/agent-orchestrator.git
+      # Copies de travail dédiées : le registre installé reste en lecture seule et les
+      # miroirs de confiance ne sont jamais montés dans ce conteneur.
+      - /volume1/docker/git/agent-registry.git:/git/agent-registry.git
+      - /volume1/docker/git/agent-secrets.git:/git/agent-secrets.git
       # La connexion Codex du conseiller de « Demander » (codex login --device-auth, une
       # fois). Hors de l'image et hors de specs/. Les agents de ce conteneur ont Bash et
       # sous l'uid dédié ne lisent pas /root ; le jeton Claude dans leur environnement
@@ -144,7 +148,7 @@ services:
       # exception, git refuse de le cloner (« dubious ownership »). Posé en variables
       # d'environnement, qui comptent comme configuration protégée pour git, pour survivre à
       # la recréation du conteneur. Le premier run du 2026-09-25 a échoué là.
-      - GIT_CONFIG_COUNT=4
+      - GIT_CONFIG_COUNT=6
       - GIT_CONFIG_KEY_0=safe.directory
       - GIT_CONFIG_VALUE_0=/git/steam-tierlist.git
       - GIT_CONFIG_KEY_1=safe.directory
@@ -153,6 +157,10 @@ services:
       - GIT_CONFIG_VALUE_2=/git/business-pipelines.git
       - GIT_CONFIG_KEY_3=safe.directory
       - GIT_CONFIG_VALUE_3=/git/agent-orchestrator.git
+      - GIT_CONFIG_KEY_4=safe.directory
+      - GIT_CONFIG_VALUE_4=/git/agent-registry.git
+      - GIT_CONFIG_KEY_5=safe.directory
+      - GIT_CONFIG_VALUE_5=/git/agent-secrets.git
     env_file:
       - ./specs/deploiement.env
     # Les agents n'ont ni la boucle locale du NAS, ni le réseau du cockpit.
