@@ -42,6 +42,8 @@ async function ecrire<T>(chemin: string, corps: unknown): Promise<T> {
 export function sourceApi(): Source {
   return {
     nom: "api",
+    reserveQuota: () => lire('/api/quota/reserve-claude'),
+    reglerReserveQuota: configuration => ecrire('/api/quota/reserve-claude', configuration),
     etatExecution: () => lire("/api/execution"),
     pauseExecution: pause => ecrire("/api/execution/pause", { pause }),
     annulerRun: runId => ecrire(`/api/runs/${encodeURIComponent(runId)}/annuler`, {}),

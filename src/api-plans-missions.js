@@ -23,6 +23,7 @@ const verifierBackend = runtimeMission.verifier;
 /** Runtimes qu'un run vivant attend : quota atteint ou connexion expirée. */
 function runtimesBloques(store, limite = 300, maintenant = Date.now()) {
   const bloques = {};
+  if (store.reserveQuota?.bloque(maintenant)) bloques.claude = "Réserve de quota Claude activée : nouveaux appels en attente";
   for (const run of store.runs({ limite })) {
     if (!["waiting_quota", "waiting_auth"].includes(run.status)) continue;
     const attente = store.attentes?.vue(run.id);

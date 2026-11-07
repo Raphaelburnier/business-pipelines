@@ -14,6 +14,25 @@ const SHA = (c) => c.repeat(40);
 const base = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "signature-")), "events.sqlite");
 const livraison = { cockpit: SHA("a"), moteur: SHA("b"), registre: SHA("c") };
 
+test('réserve : signature et opérateur obligatoires avec la clé, rejeu dédupliqué', t => {
+  const fichier=base(),store=new EventStore(fichier);
+  t.after(()=>{store.fermer();fs.rmSync(path.dirname(fichier),{recursive:true,force:true});});
+  const {traiterReglage}=require('../src/reserve-quota');
+  const creer=(par='operateur',cle=CLE)=>store.creerCommande({kind:'quota.reserve.set',payload:{active:true,seuilUtilise:65},par,
+    signer:signature.signataire(cle,'quota.reserve.set')});
+  const traiter=c=>traiterReglage({store,commande:c,cleSignature:CLE,autorises:new Set(['operateur']),journal(){}});
+  const nonSignee=creer('operateur',null);traiter(nonSignee);assert.equal(store.commande(nonSignee.id).status,'refused');
+  const autreCle=creer('operateur',AUTRE);traiter(autreCle);assert.equal(store.commande(autreCle.id).status,'refused');
+  const lecteur=creer('lecteur');traiter(lecteur);assert.equal(store.commande(lecteur.id).status,'refused');
+  const alteree=creer();store.db.prepare("UPDATE commands SET payload_json=? WHERE id=?").run(JSON.stringify({active:true,seuilUtilise:90}),alteree.id);
+  traiter(store.commande(alteree.id));assert.equal(store.commande(alteree.id).status,'refused');
+  assert.deepEqual(store.reserveQuota.reglage().configuration,{active:false,seuilUtilise:null});
+  const valide=creer();traiter(valide);traiter(valide);
+  assert.equal(store.commande(valide.id).status,'done');
+  assert.deepEqual(store.reserveQuota.reglage().configuration,{active:true,seuilUtilise:65});
+  assert.equal(store.evenements({}).filter(e=>e.type==='quota.reserve_changed').length,1);
+});
+
 test("une commande signée à la création se vérifie après relecture de la base", () => {
   const store = new EventStore(base());
   const c = store.creerCommande({ kind: "livraison.start", payload: livraison, par: "raphael@example.com", canal: "tailnet", signer: signature.signataire(CLE, "livraison.start") });

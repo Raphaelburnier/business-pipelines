@@ -28,6 +28,7 @@ export type EtatProjet = z.infer<typeof cockpit.etatProjet>;
 export type ProjetTopologie = z.infer<typeof cockpit.projetTopologie>;
 export type Topologie = z.infer<typeof cockpit.topologie>;
 export type Usage = z.infer<typeof cockpit.usage>;
+export type ReserveQuota = z.infer<typeof cockpit.reserveQuota>;
 
 export type EtatModele = z.infer<typeof modeles.etatModele>;
 export type Modele = z.infer<typeof modeles.modele>;

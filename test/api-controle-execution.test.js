@@ -6,11 +6,12 @@ test('les contrôles HTTP exigent socket, origine et opérateur puis ne déposen
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'api-controle-')),file=path.join(dir,'events.sqlite'),socket=path.join(dir,'cockpit.sock');
  const store=new EventStore(file),runId=store.creerRun({pipelineRef:'recette@1'});
  const droits=path.join(dir,'droits.json');fs.writeFileSync(droits,JSON.stringify({autorises:['operator@example.invalid']}));
+ const cleSignature=Buffer.from('k'.repeat(48)),fichierCle=path.join(dir,'signature.key');fs.writeFileSync(fichierCle,cleSignature);
  const reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
- const child=spawn(process.execPath,[path.resolve(__dirname,'../bin/cockpit.js')],{env:{...process.env,COCKPIT_PORT:String(port),COCKPIT_HOTE:'127.0.0.1',COCKPIT_CONTENEUR:'1',COCKPIT_SOCKET:socket,COCKPIT_IDENTITE_SOCKET_SEULE:'1',COCKPIT_TAILNET:'cockpit.example.invalid',ORCH_EVENT_STORE:file,LIVRAISON_AUTORISES_FICHIER:droits,APPROVALS_DIR:dir,CONSEILLER_BASE:path.join(dir,'conseiller.sqlite')},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[path.resolve(__dirname,'../bin/cockpit.js')],{env:{...process.env,COMMANDES_CLE_FICHIER:fichierCle,COCKPIT_PORT:String(port),COCKPIT_HOTE:'127.0.0.1',COCKPIT_CONTENEUR:'1',COCKPIT_SOCKET:socket,COCKPIT_IDENTITE_SOCKET_SEULE:'1',COCKPIT_TAILNET:'cockpit.example.invalid',ORCH_EVENT_STORE:file,LIVRAISON_AUTORISES_FICHIER:droits,APPROVALS_DIR:dir,CONSEILLER_BASE:path.join(dir,'conseiller.sqlite')},stdio:['ignore','pipe','pipe']});
  let logs='';child.stdout.on('data',b=>logs+=b);child.stderr.on('data',b=>logs+=b);
- const demander=(chemin,{methode='GET',qui='operator@example.invalid',origin,corps={},tcp=false}={})=>new Promise((resolve,reject)=>{
-  const headers={Host:'cockpit.example.invalid',...(qui?{'Tailscale-User-Login':qui}:{}),...(origin?{Origin:origin}:{}),'Content-Type':'application/json'};
+ const demander=(chemin,{methode='GET',qui='operator@example.invalid',origin,corps={},tcp=false,type='application/json',bearer}={})=>new Promise((resolve,reject)=>{
+  const headers={Host:'cockpit.example.invalid',...(qui?{'Tailscale-User-Login':qui}:{}),...(origin?{Origin:origin}:{}),'Content-Type':type,...(bearer?{Authorization:`Bearer ${bearer}`}:{})};
   const q=http.request({...(tcp?{host:'127.0.0.1',port}:{socketPath:socket}),path:chemin,method:methode,headers},r=>{let t='';r.on('data',b=>t+=b);r.on('end',()=>resolve({status:r.statusCode,body:JSON.parse(t)}));});q.on('error',reject);q.end(methode==='POST'?JSON.stringify(corps):undefined);
  });
  try{
@@ -27,6 +28,24 @@ test('les contrôles HTTP exigent socket, origine et opérateur puis ne déposen
   assert.equal(store.controle.etat().pause,false,'le serveur ne modifie pas directement le journal');
   const c=await demander(`/api/runs/${runId}/annuler`,{methode:'POST'});assert.equal(c.status,202);assert.equal(store.commande(c.body.id).payload.runId,runId);
   assert.equal((await demander('/api/runs/11111111-1111-4111-8111-111111111111/annuler',{methode:'POST'})).status,404);
+  const route='/api/quota/reserve-claude';
+  assert.deepEqual((await demander(route)).body,{configuration:{active:false,seuilUtilise:null},etat:'desactive',mesure:null,attenteJusqua:null,autorise:true,modificationEnCours:null});
+  assert.equal((await demander(route,{qui:'reader@example.invalid'})).body.autorise,false);
+  assert.equal((await demander(route,{methode:'POST',qui:'reader@example.invalid',corps:{active:true,seuilUtilise:70}})).status,403);
+  assert.equal((await demander(route,{methode:'POST',qui:null,tcp:true,bearer:'jeton-pc-factice',corps:{active:true,seuilUtilise:70}})).status,403);
+  assert.equal((await demander(route,{methode:'POST',origin:'https://evil.example.invalid',corps:{active:true,seuilUtilise:70}})).status,403);
+  assert.equal((await demander(route,{methode:'POST',type:'text/plain',corps:{active:true,seuilUtilise:70}})).status,415);
+  for(const corps of [{active:true,seuilUtilise:null},{active:true,seuilUtilise:0},{active:true,seuilUtilise:101},{active:true,seuilUtilise:'70'},{active:true,seuilUtilise:70,par:'usurpe'}]) {
+   assert.equal((await demander(route,{methode:'POST',corps})).status,400);
+  }
+  const reglage=await demander(route,{methode:'POST',corps:{active:true,seuilUtilise:70}});assert.equal(reglage.status,202);
+  const cReserve=store.commande(reglage.body.id);assert.equal(cReserve.par,'operator@example.invalid');
+  assert.deepEqual(require('../src/signature-commandes').verifier(cleSignature,cReserve),{ok:true});
+  assert.deepEqual((await demander(route)).body.configuration,{active:false,seuilUtilise:null},'202 ne signifie pas appliqué');
+  assert.equal((await demander(route)).body.modificationEnCours.id,cReserve.id);
+  require('../src/reserve-quota').traiterReglage({store,commande:cReserve,cleSignature,autorises:new Set(['operator@example.invalid']),journal(){}});
+  assert.deepEqual((await demander(route)).body.configuration,{active:true,seuilUtilise:70});
+  assert.equal(store.commande(cReserve.id).status,'done');
  }finally{
   if(child.exitCode===null){const fin=new Promise(r=>child.once('close',r));child.kill('SIGTERM');await fin;}store.fermer();fs.rmSync(dir,{recursive:true,force:true});
  }
