@@ -200,3 +200,23 @@ test('les liens et contrôles du modèle de départ restent obligatoires', t => 
   fs.writeFileSync(source, JSON.stringify(graph));
   assert.throws(() => atelier.resoudre(f.params, { ...f.brouillon, baseRef: 'demo@1' }), /requise valider/);
 });
+
+for (const runtime of ['claude', 'codex']) {
+ test(`le planificateur et la file retiennent seulement la réserve ${runtime}`, t => {
+  const f=fixture(t),maintenant=Date.now();
+  f.brouillon.graph.nodes[0].llm={via:runtime,model:'modele-test'};
+  f.params.roster[0].llm={via:runtime,model:'modele-test'};
+  atelier.creer(f.store,f.params,f.demande,f.qui,maintenant);
+  const [c]=atelier.programmer(f.store,maintenant);
+  assert.equal(c.payload.mission.resolution.pipeline.nodes[0].llm.via,runtime,'le contrat figé utilise le fournisseur testé');
+  const commande=f.store.creerCommande({kind:'quota.reserve.set',payload:{active:true,seuilUtilise:75,...(runtime==='codex'?{runtime}:{})},par:'operateur'});
+  f.store.reserveQuota.appliquer(commande);
+  const {runtimesBloques}=require('../src/api-plans-missions');
+  assert.deepEqual(Object.keys(runtimesBloques(f.store)),[runtime]);
+  assert.deepEqual(atelier.exclus(f.store,()=>{},maintenant),[c.id]);
+  const {verifierLancement}=require('../src/reserve-quota');
+  const autre=runtime==='codex'?'claude':'codex';
+  assert.doesNotThrow(()=>verifierLancement(f.store,{mission:{resolution:{pipeline:{nodes:[{type:'agent',llm:{via:autre,model:'modele-test'}}]},agents:{}}}}));
+  assert.throws(()=>verifierLancement(f.store,c.payload),new RegExp(runtime==='codex'?'Codex':'Claude'));
+ });
+}

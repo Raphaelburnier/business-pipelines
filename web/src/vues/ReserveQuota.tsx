@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useCharge, useSource } from '../donnees/contexte';
 
-export function ReserveClaude() {
+export function ReserveFournisseur({ runtime }: { runtime: 'claude' | 'codex' }) {
+  const fournisseur = runtime === 'codex' ? 'Codex' : 'Claude';
+  const fenetre = runtime === 'codex' ? 'courte' : 'de 5 h';
   const { source } = useSource();
   const [revision, recharger] = useState(0);
-  const { donnees: etat, erreur: erreurLecture } = useCharge(s => s.reserveQuota?.() ?? Promise.resolve(null), [revision]);
+  const { donnees: etat, erreur: erreurLecture } = useCharge(s => s.reserveQuota?.(runtime) ?? Promise.resolve(null), [revision, runtime]);
   const [active, activer] = useState(false);
   const [seuil, choisirSeuil] = useState('');
   const [envoi, envoyer] = useState(false);
@@ -54,7 +56,7 @@ export function ReserveClaude() {
       signaler('Choisis un seuil entier de 1 à 100 % avant d’activer la réserve.'); return;
     }
     envoyer(true); signaler(null);
-    try { suivre((await source.reglerReserveQuota({ active, seuilUtilise })).id); }
+    try { suivre((await source.reglerReserveQuota({ active, seuilUtilise }, runtime)).id); }
     catch (err) { signaler(err instanceof Error ? err.message : String(err)); }
     finally { envoyer(false); }
   }
@@ -62,19 +64,22 @@ export function ReserveClaude() {
     : etat.etat === 'mesure-inconnue' ? 'mesure inconnue · en attente'
     : etat.etat === 'seuil-atteint' ? 'seuil atteint · en attente' : `active · ${etat.configuration.seuilUtilise} %`;
   return <>
-    <button type="button" className="ao-kpi" onClick={ouvrir} aria-haspopup="dialog" title="Régler la réserve pour l’usage interactif de Claude">
-      <span className="k">réserve Claude</span><span className="v">{attente ? 'modification en attente' : libelle}</span>
+    <button type="button" className="ao-kpi" onClick={ouvrir} aria-haspopup="dialog" title={`Régler la réserve pour l’usage interactif de ${fournisseur}`}>
+      <span className="k">réserve {fournisseur}</span><span className="v">{attente ? 'modification en attente' : libelle}</span>
     </button>
     <dialog ref={dialogue} aria-labelledby={titre} className="ao-reserve-dialogue">
       <form onSubmit={e => void enregistrer(e)} noValidate>
-        <h2 id={titre} className="text-lg font-semibold">Réserve Claude pour ton usage interactif</h2>
-        <p className="mt-2 text-sm text-douce">Les runs attendent entre deux étapes quand la consommation de la fenêtre de 5 h atteint ton seuil. L’étape en cours finit normalement.</p>
+        <h2 id={titre} className="text-lg font-semibold">Réserve {fournisseur} pour ton usage interactif</h2>
+        <p className="mt-2 text-sm text-douce">Les runs attendent entre deux étapes quand la consommation de la fenêtre {fenetre} atteint ton seuil. L’étape en cours finit normalement.</p>
         <p className="mt-2 text-sm" role="status">État appliqué : {libelle}.</p>
+        {etat?.mesure && <p className="mt-2 text-sm text-douce">Consommation observée : {etat.mesure.utilisation.toLocaleString('fr-CH')} %.
+          {etat.mesure.reinitialisation && <> Réinitialisation : {new Date(etat.mesure.reinitialisation).toLocaleString('fr-CH')}.</>}
+        </p>}
         <fieldset disabled={verrouille} className="mt-4 grid gap-3">
           <label htmlFor={champ}>Consommation maximale des runs (%)</label>
           <input id={champ} type="number" min="1" max="100" step="1" value={seuil} placeholder="Aucun seuil" onChange={e => choisirSeuil(e.target.value)} className="rounded border border-trait bg-carte px-3 py-2" />
           <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={e => activer(e.target.checked)} />Activer la réserve</label>
-          <p className="text-sm text-douce">Aucun seuil n’est fixé au départ. Choisis-le avant d’activer. Une mesure absente ou de plus de 15 min met les nouveaux appels Claude en attente.</p>
+          <p className="text-sm text-douce">Aucun seuil n’est fixé au départ. Choisis-le avant d’activer. Une mesure absente ou de plus de 15 min met les nouveaux appels {fournisseur} en attente.</p>
         </fieldset>
         {!etat?.autorise && <p className="mt-3 text-sm">Réglage réservé à l’opérateur.</p>}
         {attente && <p role="status" className="mt-3 text-sm">Modification en attente d’application…</p>}

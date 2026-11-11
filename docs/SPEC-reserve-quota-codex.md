@@ -1,6 +1,6 @@
 # Réserve de quota Codex — extension du lot 2.9
 
-**Résumé — proposition du 11 novembre 2026, à valider avant implémentation.** Ajouter une réserve Codex indépendante de Claude, désactivée et sans seuil initial. L’opérateur choisit un pourcentage consommé de la fenêtre courte Codex. Au seuil ou sans mesure récente, les nouveaux appels Codex attendent ; les étapes en cours terminent, sans perte du run ni consommation d’une tentative de reprise pour quota réel. Prochaine étape : validation de ce périmètre et du contrat ci-dessous.
+**Résumé — contrat validé par Raphaël le 11 novembre 2026 (« oui »).** Ajouter une réserve Codex indépendante de Claude, désactivée et sans seuil initial. L’opérateur choisit un pourcentage consommé de la fenêtre courte Codex. Au seuil ou sans mesure récente, les nouveaux appels Codex attendent ; les étapes en cours terminent, sans perte du run ni consommation d’une tentative de reprise pour quota réel. Périmètre et contrat ci-dessous approuvés ; implémentation et vérifications en cours.
 
 ## Objectif et comportement proposé
 
@@ -97,6 +97,6 @@ npm test
 
 ## Périmètre de validation humaine
 
-Le point fonctionnel à confirmer est le choix de la fenêtre courte Codex, indépendamment de Claude, sans seuil hebdomadaire configurable dans cette extension. Les schémas de commande, d’événement et de rejet ci-dessus sont proposés pour cette extension, pas déjà validés.
+Raphaël a validé le choix de la fenêtre courte Codex, indépendamment de Claude, sans seuil hebdomadaire configurable dans cette extension, ainsi que le contrat décrit ci-dessus. Cette validation autorise l’implémentation et les vérifications ; elle ne vaut pas demande de livraison de production.
 
 Source : règle « Conception » du `AGENTS.md` commun, « proposer un schéma et attendre la validation ». Elle s’applique ici parce qu’un réglage auparavant exclusivement Claude reçoit désormais une cible fournisseur ; expliciter cette cible empêche qu’une commande Codex modifie Claude. Le skill `spec-driven-development` demande de terminer la phase de spécification par une validation avant planification ou code. Les règles de fusion et de livraison existantes restent distinctes de cette validation fonctionnelle.

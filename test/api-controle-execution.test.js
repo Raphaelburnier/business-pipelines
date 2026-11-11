@@ -28,24 +28,31 @@ test('les contrôles HTTP exigent socket, origine et opérateur puis ne déposen
   assert.equal(store.controle.etat().pause,false,'le serveur ne modifie pas directement le journal');
   const c=await demander(`/api/runs/${runId}/annuler`,{methode:'POST'});assert.equal(c.status,202);assert.equal(store.commande(c.body.id).payload.runId,runId);
   assert.equal((await demander('/api/runs/11111111-1111-4111-8111-111111111111/annuler',{methode:'POST'})).status,404);
-  const route='/api/quota/reserve-claude';
+  for (const runtime of ['claude','codex']) {
+  const route='/api/quota/reserve-'+runtime;
   assert.deepEqual((await demander(route)).body,{configuration:{active:false,seuilUtilise:null},etat:'desactive',mesure:null,attenteJusqua:null,autorise:true,modificationEnCours:null});
   assert.equal((await demander(route,{qui:'reader@example.invalid'})).body.autorise,false);
   assert.equal((await demander(route,{methode:'POST',qui:'reader@example.invalid',corps:{active:true,seuilUtilise:70}})).status,403);
   assert.equal((await demander(route,{methode:'POST',qui:null,tcp:true,bearer:'jeton-pc-factice',corps:{active:true,seuilUtilise:70}})).status,403);
   assert.equal((await demander(route,{methode:'POST',origin:'https://evil.example.invalid',corps:{active:true,seuilUtilise:70}})).status,403);
   assert.equal((await demander(route,{methode:'POST',type:'text/plain',corps:{active:true,seuilUtilise:70}})).status,415);
-  for(const corps of [{active:true,seuilUtilise:null},{active:true,seuilUtilise:0},{active:true,seuilUtilise:101},{active:true,seuilUtilise:'70'},{active:true,seuilUtilise:70,par:'usurpe'}]) {
+  for(const corps of [{active:true,seuilUtilise:null},{active:true,seuilUtilise:0},{active:true,seuilUtilise:101},{active:true,seuilUtilise:'70'},{active:true,seuilUtilise:70,par:'usurpe'},{active:true,seuilUtilise:70,runtime:'claude'},{active:true,seuilUtilise:70,runtime:'codex'}]) {
    assert.equal((await demander(route,{methode:'POST',corps})).status,400);
   }
   const reglage=await demander(route,{methode:'POST',corps:{active:true,seuilUtilise:70}});assert.equal(reglage.status,202);
   const cReserve=store.commande(reglage.body.id);assert.equal(cReserve.par,'operator@example.invalid');
   assert.deepEqual(require('../src/signature-commandes').verifier(cleSignature,cReserve),{ok:true});
+  assert.deepEqual(cReserve.payload,{active:true,seuilUtilise:70,...(runtime==='codex'?{runtime}:{})});
+  assert.equal(require('../src/signature-commandes').verifier(cleSignature,{...cReserve,payload:{...cReserve.payload,runtime:runtime==='codex'?'claude':'codex'}}).ok,false,'le fournisseur est couvert par la signature');
+  assert.equal((await demander('/api/quota/reserve-'+(runtime==='codex'?'claude':'codex'))).body.modificationEnCours,null);
   assert.deepEqual((await demander(route)).body.configuration,{active:false,seuilUtilise:null},'202 ne signifie pas appliqué');
   assert.equal((await demander(route)).body.modificationEnCours.id,cReserve.id);
   require('../src/reserve-quota').traiterReglage({store,commande:cReserve,cleSignature,autorises:new Set(['operator@example.invalid']),journal(){}});
   assert.deepEqual((await demander(route)).body.configuration,{active:true,seuilUtilise:70});
   assert.equal(store.commande(cReserve.id).status,'done');
+  }
+  assert.deepEqual(store.reserveQuota.reglage().configuration,{active:true,seuilUtilise:70});
+  assert.deepEqual(store.reserveQuota.reglage('codex').configuration,{active:true,seuilUtilise:70});
  }finally{
   if(child.exitCode===null){const fin=new Promise(r=>child.once('close',r));child.kill('SIGTERM');await fin;}store.fermer();fs.rmSync(dir,{recursive:true,force:true});
  }
