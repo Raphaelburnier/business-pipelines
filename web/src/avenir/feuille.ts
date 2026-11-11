@@ -192,7 +192,7 @@ export const LOTS: Lot[] = [
     but: "Ne plus dépendre d'un seul PC et éviter la dérive entre NAS et worker.",
     etapes: [
       { id: "7.1", titre: "Machine de remplacement par nœud", detail: "Wake-on-LAN réactivé si le PC reste seul.", fichiers: ["BP docker-compose.yaml:117-119"], statut: "a-faire" },
-      { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "En cours : aligner l’unité systemd sur la copie figée et comparer la release annoncée du worker au moteur du NAS, avec les API existantes.", fichiers: ["AO deploy/systemd/orch-worker.service"], statut: "en-cours" },
+      { id: "7.2", titre: "Contrôle de dérive worker/NAS", detail: "Livré et recetté : unité sur la copie figée, diagnostic installé comparant les SHA réellement annoncés. Un écart est signalé sans arrêter les runs ; une machine absente ou une release inconnue ne passe pas pour alignée. Les fichiers du worker et son protocole sont vérifiés avant de conclure à une mise à jour nécessaire.", fichiers: ["AO deploy/systemd/orch-worker.service", "AO bin/controler-worker.js", "AO docs/WORKER-RELEASE.md"], statut: "fait" },
       { id: "7.3", titre: "deploy.sh qui respecte les runs vivants", detail: "Livré et vérifié : le livreur prend un verrou de maintenance avant la construction, refuse si un travail est actif, revérifie avant le premier arrêt et libère le verrou après la santé. Modèle de déploiement approuvé par empreinte, première livraison avec contrôles réussie le 6 novembre.", fichiers: ["BP deploy/nas/deploy.sh.modele", "BP Dockerfile", "BP docs/SPEC-livraison-runs-vivants.md", "AO src/controle-execution.js"], statut: "fait" },
     ],
   },
@@ -391,7 +391,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "B5", severite: "basse", titre: "nettoyer-runs.sh vise /volume1/git", fichiers: "AO scripts/nas/nettoyer-runs.sh:11", correctif: "/volume1/docker/git", statut: "a-faire" },
   { id: "B6", severite: "basse", titre: "Code 130 absent des sorties attendues du runner", fichiers: "BP bin/commande-runner.js:26", correctif: "L'ajouter", statut: "a-faire" },
   { id: "B7", severite: "basse", titre: "workers.json figé au démarrage du maître", fichiers: "AO src/maitre.js:53,66", correctif: "Relecture à chaud", statut: "a-faire" },
-  { id: "B8", severite: "basse", titre: "Unité systemd du worker sur le checkout périmé", fichiers: "AO deploy/systemd/orch-worker.service:8,11", correctif: "Lot 7.2", statut: "a-faire" },
+  { id: "B8", severite: "basse", titre: "Unité systemd du worker sur le checkout périmé", fichiers: "AO deploy/systemd/orch-worker.service:8,11", correctif: "Lot 7.2 livré : unité installée sur la copie figée, provenance et dérive contrôlées", statut: "fait" },
   { id: "B9", severite: "basse", titre: "README annonçant 128 vérifications au lieu de 276", fichiers: "BP README.md", correctif: "Mettre à jour", statut: "a-faire" },
 ];
 
