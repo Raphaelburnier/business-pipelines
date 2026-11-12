@@ -183,7 +183,7 @@ export const LOTS: Lot[] = [
       { id: "6.2", titre: "Gate qui exige ce verdict", detail: "Fusion seulement avec une revue sur la tête courante.", fichiers: ["agent-gated-merge.yml"], statut: "a-faire" },
       { id: "6.3", titre: "Correcteur déclenché par la revue", detail: "Actif dans business-pipelines : revue sur SHA exact, correctif du bot puis nouvelle revue validés en PR210. Budget commun de trois appels avec la CI et correcteur isolé.", fichiers: ["ci-autofix.yml"], statut: "fait" },
       { id: "6.4", titre: "Relance bornée après arrêt", detail: "Une tentative de plus si l'échec porte sur une autre étape (cas #120).", fichiers: ["ci-autofix.yml"], statut: "en-cours" },
-      { id: "6.5", titre: "Hook Stop local nettoyé", detail: "Log assaini, échec de revue dû au quota ignoré.", fichiers: ["~/.claude/hooks/ci-pr/stop_ci.py"], statut: "a-faire" },
+      { id: "6.5", titre: "Hook Stop local nettoyé", detail: "Fait le 12 novembre. Le log renvoyé à l'agent est assaini : séquences de terminal et caractères invisibles retirés, secrets reconnus masqués, 80 lignes de 400 caractères et 12 000 caractères au plus, encadré comme donnée et jamais comme consigne. Une revue Claude qui n'a pas tourné ne bloque plus : le hook lit le verdict structuré du run (artefact github-review-verdict du même run, de la même tentative et du même commit) et laisse conclure sur quota ou provider_error, en donnant la commande de relance. Le workflow range un quota épuisé sous provider_error, parce que le CLI masque son message. Les autres indisponibilités (PR trop grosse, diff binaire) bloquent avec leur motif, sans log brut. 41 cas rejoués conformes, verdicts réels relus sur GitHub, hook complet lancé sur une PR ouverte dont la CI échoue.", fichiers: ["~/.claude/hooks/ci-pr/stop_ci.py"], statut: "fait" },
     ],
   },
   {
@@ -380,7 +380,7 @@ export const DEFAUTS: Defaut[] = [
   { id: "O2", severite: "moyenne", titre: "deploy.sh coupe le runner sans vérifier les runs", fichiers: "BP deploy/nas/deploy.sh.modele:106-110", correctif: "Lot 7.3", statut: "fait" },
   { id: "O3", severite: "moyenne", titre: "POST /api/runs sans contrôle du budget mensuel", fichiers: "BP bin/cockpit.js:633-698", correctif: "Sans objet : budget des runs abandonné le 24 octobre (4.4)", statut: "fait" },
   { id: "O4", severite: "moyenne", titre: "Tag de pipeline inconnu ignoré sans message", fichiers: "BP src/planificateur.js:26-33", correctif: "Lot 3.2", statut: "fait" },
-  { id: "O5", severite: "moyenne", titre: "Hook Stop qui injecte un log brut de PR", fichiers: "~/.claude/hooks/ci-pr/stop_ci.py:53-64", correctif: "Lot 6.5", statut: "a-faire" },
+  { id: "O5", severite: "moyenne", titre: "Hook Stop qui injecte un log brut de PR", fichiers: "~/.claude/hooks/ci-pr/stop_ci.py:53-64", correctif: "Lot 6.5 : extrait assaini, borné et encadré comme donnée", statut: "fait" },
   { id: "F13", severite: "basse", titre: "Actions GitHub épinglées par tag", fichiers: "ci.yml ; ci-autofix.yml", correctif: "Lot 0.8", statut: "fait" },
   { id: "F14", severite: "basse", titre: "Jetons Codex et Claude lisibles par les agents du runner", fichiers: "BP docker-compose.yaml:110,133", correctif: "Lot 0.6 : jeton Codex protégé dans le home root ; jeton Claude conservé côté maître par un relais local éphémère, environnement du CLI filtré avant le lancement", statut: "fait" },
   { id: "F15", severite: "basse", titre: "runId joint au chemin sans validation", fichiers: "AO src/worker-exec.js:59-60", correctif: "Lot 0.5", statut: "fait" },
