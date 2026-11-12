@@ -26,6 +26,7 @@ try {
   const yaml = require("node:module").createRequire(require.resolve("agent-orchestrator"))("yaml");
   const compose = yaml.parse(fs.readFileSync(path.join(__dirname, "../docker-compose.yaml"), "utf8"));
   const runner = compose.services.runner;
+  const dockerfile = fs.readFileSync(path.join(__dirname, "../Dockerfile"), "utf8");
   const env = Object.fromEntries(runner.environment.map(v => {
     const i = v.indexOf("="); return [v.slice(0, i), v.slice(i + 1)];
   }));
@@ -45,6 +46,8 @@ try {
     assert.equal(p.repoWorkers, `agenticos-git:/volume1/docker${p.repo}`,
       `${id} : le PC doit pousser vers le même dépôt de travail que celui du runner`);
     assert.ok(autorises.includes(p.repo), `${id} doit être clonable malgré son propriétaire hôte`);
+    assert.ok(dockerfile.includes(`git config --system --add safe.directory ${p.repo}`),
+      `${id} : la réception des checkpoints exige aussi la confiance système de l’image, hors de l’environnement du client Git`);
   }
   assert.ok(runner.volumes.includes("./agent-registry:/app/agent-registry:ro"));
   const montagesGit = runner.volumes.filter(v => v.split(":")[1]?.startsWith("/git"));

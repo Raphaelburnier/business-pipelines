@@ -2,9 +2,10 @@
 
 Résumé : ajouter deux projets au catalogue pour préparer des plans qui couvrent tous
 les dépôts annoncés. Les fiches réutilisent les contrats et le pipeline existants.
-Le raccordement des dépôts de travail sur le NAS exige un modèle de livraison
-distinct, à valider avant activation. Les fiches et les deux montages sont préparés
-dans cette proposition, qui reste en brouillon.
+Le raccordement a été validé le 12 novembre ; les fiches et les montages sont
+fusionnés par #238. Les copies Git NAS, l’alias SSH du PC et sa liste d’admission
+sont préparés. La confiance Git de l’image doit encore être complétée et les accès
+du publieur vérifiés avant l’approbation du modèle et la livraison opérateur.
 
 ## Fonctionnement proposé
 
@@ -45,6 +46,11 @@ identifiant de production ni accès Infisical supplémentaire n’est nécessair
 Le runner doit pouvoir cloner puis pousser ses branches `run/…` et `agent/…` vers
 deux dépôts de travail dédiés. Ils devront être montés individuellement en écriture,
 comme les dépôts de travail actuels, avec les entrées `safe.directory` correspondantes.
+Ces deux chemins doivent aussi figurer dans la configuration système Git de
+l’image, comme les quatre dépôts existants. Pourquoi : la réception locale d’une
+poussée vérifie elle-même le propriétaire du dépôt ; les exceptions transmises
+dans l’environnement du client ne suffisent pas à ce contrôle. Les deux ajouts
+du Dockerfile complètent les mêmes chemins de confiance que le montage autorisé.
 Le dossier Git entier ne doit pas être monté dans le runner. Pourquoi : ses agents
 ne doivent pas gagner l’accès aux dépôts des autres projets.
 
@@ -83,6 +89,20 @@ les dépôts auxquels le runner peut accéder, indépendamment de l’interface.
 - Recette TaskBoard : proposition groupée complète et aucun départ partiel.
 - Après activation opérateur seulement : préparation réelle d’un plan depuis le
   cockpit, puis run de recette explicitement lancé par Raphaël.
+
+## Recette avant livraison
+
+Les profils des deux projets passent dans le vrai vérificateur Bubblewrap.
+Le trajet PC vers dépôt NAS puis retour NAS vers PC a aussi été exercé avec
+le transport SSH et les fonctions de checkpoints de l’image installée : les
+deux projets passent après ajout temporaire des deux chemins à la configuration
+système Git du processus de test. Les branches principales restent inchangées,
+les branches de recette sont supprimées et aucun modèle n’est appelé.
+
+Le fichier système temporaire reproduit les deux ajouts du Dockerfile ; il ne
+modifie ni l’image installée ni les services permanents. Les nouveaux montages
+du runner doivent encore être vérifiés après la livraison opérateur. Le lot
+11.6 et le défaut O6 restent donc en cours dans le TaskBoard.
 
 ## Ordre d’activation opérateur
 
