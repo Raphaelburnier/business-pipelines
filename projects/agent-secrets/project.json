@@ -1,0 +1,85 @@
+{
+  "id": "agent-secrets",
+  "name": "Secrets (agent-secrets)",
+  "business": "systeme",
+  "homeMachine": "pc",
+  "repo": "/git/agent-secrets.git",
+  "repoWorkers": "agenticos-git:/volume1/docker/git/agent-secrets.git",
+  "verification": {
+    "prepareNetwork": true,
+    "prepare": [
+      {
+        "command": "sh",
+        "args": [
+          "-c",
+          "/usr/bin/python3.12 -m venv /tmp/verification-uv && /tmp/verification-uv/bin/python -m pip install uv==0.12.3 && /tmp/verification-uv/bin/python -m uv sync --locked --python /usr/bin/python3.12 --cache-dir /tmp/uv-cache"
+        ],
+        "timeoutMs": 600000
+      }
+    ],
+    "checks": [
+      {
+        "kind": "test",
+        "command": "sh",
+        "args": [
+          "-c",
+          ".venv/bin/python -m pytest -q"
+        ],
+        "timeoutMs": 300000
+      },
+      {
+        "kind": "typecheck",
+        "command": "sh",
+        "args": [
+          "-c",
+          ".venv/bin/python -m mypy src"
+        ],
+        "timeoutMs": 300000
+      },
+      {
+        "kind": "test",
+        "command": "node",
+        "args": [
+          "--test",
+          ".github/tests/agent-gated-merge.test.cjs"
+        ],
+        "timeoutMs": 300000
+      },
+      {
+        "kind": "test",
+        "command": "sh",
+        "args": [
+          "-c",
+          "find nas -name '*.sh' -exec bash -n {} +"
+        ],
+        "timeoutMs": 300000
+      },
+      {
+        "kind": "build",
+        "command": "sh",
+        "args": [
+          "-c",
+          ".venv/bin/python -m build --no-isolation"
+        ],
+        "timeoutMs": 300000
+      }
+    ]
+  },
+  "publier": true,
+  "github": "Raphaelburnier/agent-secrets",
+  "pipelines": [
+    {
+      "extends": "improve-app@9",
+      "overrides": {
+        "nodes": {
+          "plan": {
+            "maxTurns": 35
+          },
+          "review-security": {
+            "enabled": true
+          }
+        }
+      }
+    }
+  ]
+}

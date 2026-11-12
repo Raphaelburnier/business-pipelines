@@ -1,0 +1,48 @@
+{
+  "id": "agent-registry",
+  "name": "Registre (agent-registry)",
+  "business": "systeme",
+  "homeMachine": "pc",
+  "repo": "/git/agent-registry.git",
+  "repoWorkers": "agenticos-git:/volume1/docker/git/agent-registry.git",
+  "verification": {
+    "prepareNetwork": true,
+    "prepare": [
+      {
+        "command": "npm",
+        "args": [
+          "ci"
+        ],
+        "timeoutMs": 600000
+      }
+    ],
+    "checks": [
+      {
+        "kind": "test",
+        "command": "npm",
+        "args": [
+          "run",
+          "valider"
+        ],
+        "timeoutMs": 300000
+      }
+    ]
+  },
+  "publier": true,
+  "github": "Raphaelburnier/agent-registry",
+  "pipelines": [
+    {
+      "extends": "improve-app@9",
+      "overrides": {
+        "nodes": {
+          "plan": {
+            "maxTurns": 35
+          },
+          "review-security": {
+            "enabled": true
+          }
+        }
+      }
+    }
+  ]
+}
