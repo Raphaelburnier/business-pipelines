@@ -21,6 +21,29 @@ Résumé : réunir les tâches et leur calendrier dans TaskBoard. Une date suffi
 - Les reprises après quota des départs calendrier continuent les jours suivants sans plafond de trois tentatives ni expiration de 24 heures. Les attentes de connexion et les départs manuels conservent leurs règles.
 - Aucun changement du lot/run 2.6.
 
+## Suivi des statuts
+
+Le suivi demandé le 12 novembre utilise les attributions et les occurrences existantes,
+sans nouveau contrat ni écriture dans l'historique. Dès qu'une exécution est en file,
+active, en revue ou réussie, sa tâche système affiche « en cours » tant que la feuille
+ne la clôture pas. Une programmation future seule ne démarre pas le travail. Un run
+échoué ou annulé conserve le statut de la feuille ; un lot déjà fait ne se rouvre pas.
+Pourquoi : l'activité doit être visible pour tous les agents, sans confondre succès du
+run et validation complète du lot, notamment pour les tâches multi-dépôts.
+
+Un défaut dont le correctif est exactement `Lot N.N` suit automatiquement le statut de
+cette étape, y compris ses filtres, compteurs et badge. Les liens absents, multiples ou
+en prose gardent leur statut explicite. Un défaut fait quitte les Fix ouverts et reste
+consultable dans « Faites » ou « Toutes ». Pourquoi : conserver la trace du défaut sans
+faire réattribuer son correctif, ni clôturer un travail sur une référence ambiguë.
+
+Les sessions interactives maintiennent la feuille et les défauts associés dès la prise
+en charge, puis après les contrôles de fin. La règle commune est versionnée dans
+`agent-registry/shared/AGENTS.md` ; les revues et les agents sans droit d'écriture
+signalent les écarts au responsable. Pourquoi : leur activité hors du cockpit ne peut
+pas être déduite des occurrences natives. Les fusions sensibles et livraisons conservent
+leur approbation et leur circuit humains.
+
 ## Quotas et priorité
 
 - Claude : événements `rate_limit_event` du SDK, fraction `utilization`, fenêtres exposées seulement.
