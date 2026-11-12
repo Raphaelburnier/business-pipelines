@@ -295,7 +295,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
 }
 
 function Fix({ tache, reservations = [], onPlanifier }: { tache: Tache; reservations?: Objectif[]; onPlanifier?: (id: string) => void }) {
-  const d = DEFAUTS.find((x) => x.id === tache.ref)!;
+  const d = { ...DEFAUTS.find((x) => x.id === tache.ref)!, statut: tache.statut };
   const planifiable = estAttribuable(d) && !reservations.length;
   return <li id={`av-etape-${d.id}`} draggable={planifiable} data-task-payload={JSON.stringify({ type: tache.type, titre: tache.titre, detail: `${d.correctif} · ${d.fichiers}`, ref: d.id, fichiers: d.fichiers.split(/,\s*(?=(?:BP|AO|REG|AS)\s)/) })} className={`av-defaut av-compact ${d.severite}`} title={d.fichiers}>
     <div className="av-ligne">
@@ -336,7 +336,8 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
     if (window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "center" });
   }, []);
 
-  const taches = useMemo(() => construireTaches(LOTS, DEFAUTS, objectifs ?? []), [objectifs]);
+  const taches = useMemo(() => construireTaches(LOTS, DEFAUTS, objectifs ?? [], attributions ?? []), [objectifs, attributions]);
+  const statuts = new Map(taches.map(t => [t.cle, t.statut]));
   const visibles = filtrer(taches, filtre);
   const projets = projetsDisponibles(taches, (topo?.projets ?? []).map((p) => ({ id: p.id, nom: p.nom })));
   const reservations = (id: string) => (objectifs ?? []).filter(o=>o.taskBoard?.id===id && (o.nextAt || ['queued','running','waiting_quota','waiting_machine','waiting_approval','waiting_auth','waiting_freshness'].includes(o.occurrences[0]?.statut || '')));
@@ -347,7 +348,9 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
   const projetsVisibles = [...new Set(visibles.filter((t) => t.type === "projet").map((t) => t.projet))];
   const fix = visibles.filter((t) => t.type === "fix").sort(parSeverite);
   const etapesVisibles = new Set(visibles.filter((t) => t.type === "fonctionnalite").map((t) => t.ref));
-  const lots = (ordre === "conseille" ? LOTS_PRIORISES : [...LOTS].sort((a,b) => (Number(a.id) - Number(b.id)) * (ordre === "decroissant" ? -1 : 1))).filter((l) => l.etapes.some((e) => etapesVisibles.has(e.id)));
+  const lots = (ordre === "conseille" ? LOTS_PRIORISES : [...LOTS].sort((a,b) => (Number(a.id) - Number(b.id)) * (ordre === "decroissant" ? -1 : 1)))
+    .map(l => ({ ...l, etapes: l.etapes.map(e => ({ ...e, statut: statuts.get(`etape:${e.id}`) ?? e.statut })) }))
+    .filter((l) => l.etapes.some((e) => etapesVisibles.has(e.id)));
   const critiques = taches.filter((t) => t.type === "fix" && t.severite === "critique" && t.statut !== "fait").length;
   const aujourdhui = dateCivile(Date.now()).date;
   // En vue « Tout », les longues listes système restent repliées derrière leur résumé.
