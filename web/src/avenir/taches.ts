@@ -1,6 +1,7 @@
 // Toutes les tâches de la page À venir dans une seule liste : fonctionnalités système de la
 // feuille de route, défauts à corriger et tâches des projets (objectifs de l'atelier).
 import type { Objectif } from "../calendrier/api";
+import type { AttributionAvenir } from "../donnees/source";
 import type { Defaut, Lot, Severite, Statut } from "./feuille";
 
 export type TypeTache = "fonctionnalite" | "fix" | "projet";
@@ -31,12 +32,36 @@ export function statutObjectif(o: Objectif): Statut {
   return "a-faire";
 }
 
-export function construireTaches(lots: Lot[], defauts: Defaut[], objectifs: Objectif[]): Tache[] {
+export function construireTaches(lots: Lot[], defauts: Defaut[], objectifs: Objectif[], attributions: AttributionAvenir[] = []): Tache[] {
+  // Le suivi natif vaut pour tous les agents : une exécution commencée ou réussie reste
+  // en cours jusqu'à la clôture vérifiée dans la feuille (fusion et recette si requises).
+  // Une simple programmation future et un ancien run ne rouvrent pas un lot fait.
+  const maintenant = Date.now();
+  const estSuivi = (statut: string) => VIVANTS.has(statut) || statut === "review" || REUSSIS.has(statut);
+  const estProgramme = (statut: string, runId: string | null, prevuLe?: string | null) =>
+    statut === "queued" && !runId && Boolean(prevuLe && Date.parse(prevuLe) > maintenant);
+  const suivis = new Set([
+    ...attributions.filter(a => !estProgramme(a.statut, a.runId, a.prevuLe) && estSuivi(a.statut)).map(a => a.objectif.id),
+    ...objectifs.filter(o => {
+      const dernier = o.occurrences[0];
+      return o.taskBoard && dernier && !estProgramme(dernier.statut, dernier.runId, dernier.scheduledAt) && estSuivi(dernier.statut);
+    }).map(o => o.taskBoard!.id),
+  ]);
+  const etapes = lots.flatMap(l => l.etapes).map(e => ({ ...e,
+    statut: e.statut !== "fait" && suivis.has(e.id) ? "en-cours" as const : e.statut }));
+  const statuts = new Map(etapes.map(e => [e.id, e.statut]));
+  const statutDefaut = (d: Defaut): Statut => {
+    // Le lien exact « Lot N.N » existe déjà dans la feuille. Les correctifs multiples ou
+    // décrits en prose gardent leur statut explicite : une référence partielle ne clôt rien.
+    const lot = /^Lot (\d+\.\d+)$/.exec(d.correctif)?.[1];
+    const statut = (lot ? statuts.get(lot) : undefined) ?? d.statut;
+    return statut !== "fait" && suivis.has(d.id) ? "en-cours" : statut;
+  };
   return [
     ...objectifs.filter(o => !o.taskBoard).map((o): Tache => ({ cle: `projet:${o.id}`, type: "projet", projet: o.projectId, ref: o.brouillon.graph.title || o.brouillon.graph.name,
       titre: o.titre, detail: o.criteres.join(" · "), statut: statutObjectif(o), objectif: o })),
-    ...defauts.map((d): Tache => ({ cle: `fix:${d.id}`, type: "fix", projet: SYSTEME, ref: d.id, titre: d.titre, detail: `Correctif : ${d.correctif}`, statut: d.statut, severite: d.severite })),
-    ...lots.flatMap((l) => l.etapes.map((e): Tache => ({ cle: `etape:${e.id}`, type: "fonctionnalite", projet: SYSTEME, ref: e.id, titre: e.titre, detail: e.detail, statut: e.statut, lot: l.id }))),
+    ...defauts.map((d): Tache => ({ cle: `fix:${d.id}`, type: "fix", projet: SYSTEME, ref: d.id, titre: d.titre, detail: `Correctif : ${d.correctif}`, statut: statutDefaut(d), severite: d.severite })),
+    ...lots.flatMap((l) => l.etapes.map((e): Tache => ({ cle: `etape:${e.id}`, type: "fonctionnalite", projet: SYSTEME, ref: e.id, titre: e.titre, detail: e.detail, statut: statuts.get(e.id)!, lot: l.id }))),
   ];
 }
 

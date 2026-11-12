@@ -37,8 +37,11 @@ dans l’ordre présenté après l’audit du 6 novembre. Aucun nouveau protocol
   avant la proposition. Pourquoi : un plan partiel ne réalise pas l’objectif annoncé.
 - Le suivi utilise les API existantes des objectifs, des runs et des reprises.
   La date de reprise, sa raison et son éventuelle commande restent celles du moteur.
-- Un succès de run ne modifie jamais le badge éditorial de la feuille de route :
-  les contrôles, la fusion et la livraison sont des étapes distinctes à vérifier.
+- Un succès de run ne clôture jamais le lot dans la feuille de route : les contrôles,
+  la fusion et la livraison sont des étapes distinctes à vérifier. Le suivi d'activité
+  affiche « en cours » jusqu'à cette clôture (précision du 12 novembre dans
+  `SPEC-taskboard.md`). Pourquoi : le badge doit montrer le travail engagé sans
+  annoncer une validation qui n'a pas encore eu lieu.
 
 Vérification : tests React des interactions admissibles et du suivi, tests serveur
 des quotas et parcours Chromium sur base temporaire, avec vrais gestes souris et

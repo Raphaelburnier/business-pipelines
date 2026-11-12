@@ -109,6 +109,15 @@ describe("attribution depuis À venir", () => {
     expect(lots).toEqual([...lots].sort((a,b) => a-b));
   });
 
+  it("masque le fix livré de 7.3 et affiche le badge actif du lot", () => {
+    const html = renderToStaticMarkup(createElement(AVenir));
+    expect(html).not.toContain('id="av-etape-O2"');
+    const ligne = html.match(/<li id="av-etape-5\.2"[\s\S]*?<\/li>/)?.[0];
+    expect(ligne).toBeDefined();
+    expect(ligne).toContain('class="av-statut en-cours"');
+    expect(ligne).not.toContain('class="av-statut a-faire"');
+  });
+
   it("explique un conflit de réservation concurrente", () => {
     expect(expliquerConflitAttribution("OBJECTIF_OCCUPE")).toMatch(/pris par un autre run/);
     expect(expliquerConflitAttribution("réseau hors ligne")).toBe("réseau hors ligne");
