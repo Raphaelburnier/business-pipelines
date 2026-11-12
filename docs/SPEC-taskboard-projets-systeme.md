@@ -13,7 +13,9 @@ dans cette proposition, qui reste en brouillon.
 | agent-registry | `/git/agent-registry.git` | `agenticos-git:/volume1/docker/git/agent-registry.git` | `npm ci`, `npm run valider` |
 | agent-secrets | `/git/agent-secrets.git` | `agenticos-git:/volume1/docker/git/agent-secrets.git` | environnement Python verrouillé, pytest, mypy, recettes du gate, syntaxe des scripts, paquet |
 
-Les deux fiches utilisent `improve-app@8` avec revue de sécurité obligatoire.
+Les deux fiches utilisent `improve-app@9` avec revue de sécurité obligatoire.
+Cette version, déjà utilisée par le cockpit, apporte les procédures partagées
+versionnées ; les tests et les revues restent ceux du pipeline publié.
 Le travail est réalisé sur le PC et produit une PR ; un run ne livre aucun service.
 Le catalogue des tâches admissibles et les autorisations de fusion restent ceux
 déjà validés. Les tâches qui modifient la machine locale ne deviennent pas

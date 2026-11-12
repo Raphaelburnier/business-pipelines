@@ -32,7 +32,7 @@
   "github": "Raphaelburnier/agent-registry",
   "pipelines": [
     {
-      "extends": "improve-app@8",
+      "extends": "improve-app@9",
       "overrides": {
         "nodes": {
           "plan": {
