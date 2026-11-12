@@ -4,7 +4,7 @@
 import { useCharge } from "../donnees/contexte";
 import { VIDE, usd } from "../format";
 import type { Usage } from "../types";
-import { ReserveClaude } from './ReserveClaude';
+import { ReserveFournisseur } from './ReserveQuota';
 
 type Fenetre = NonNullable<NonNullable<Usage["quota"]>["cinqHeures"]>;
 
@@ -113,7 +113,8 @@ export function Kpis({ flottant = false }: { flottant?: boolean }) {
       </div>
       <Quota libelle="quota · 5 h" fenetre={usage?.quota?.cinqHeures} dureeMs={5 * HEURE_MS} observeLe={observeLe} />
       <Quota libelle="quota · 7 j" fenetre={usage?.quota?.septJours} dureeMs={7 * 24 * HEURE_MS} observeLe={observeLe} />
-      <ReserveClaude />
+      <ReserveFournisseur runtime="claude" />
+      <ReserveFournisseur runtime="codex" />
     </div>
   );
 }

@@ -9,26 +9,28 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function jusqua(fn,detail){for(let i=0;i<400;i++){const v=fn();if(v)return v;await pause(25);}assert.fail(typeof detail==='function'?detail():String(detail));}
 const cmd=(f,kind,payload)=>f.store.creerCommande({kind,payload,par:'operateur',canal:'tailnet'});
 
-test('le réglage de réserve traverse la voie de contrôle pendant une pause et un run long',async()=>{
+for (const runtime of ['claude','codex']) {
+test(`le réglage de réserve ${runtime} traverse la voie de contrôle pendant une pause et un run long`,async()=>{
  const f=fixture();
  const service=require('../src/reserve-quota').servirReglages({store:f.store,cleSignature:null,lireAutorises:()=>new Set(['operateur']),intervalleMs:5,journal(){}});
  try{
   const p=cmd(f,'execution.pause',{pause:true});const runner=f.runner();
   await jusqua(()=>f.store.commande(p.id).status==='done',()=>runner.sortie);
-  const reglage=cmd(f,'quota.reserve.set',{active:true,seuilUtilise:55});
+  const reglage=cmd(f,'quota.reserve.set',{active:true,seuilUtilise:55,...(runtime==='codex'?{runtime}:{})});
   await jusqua(()=>f.store.commande(reglage.id).status==='done',()=>runner.sortie);
-  assert.deepEqual(f.store.reserveQuota.reglage().configuration,{active:true,seuilUtilise:55});
+  assert.deepEqual(f.store.reserveQuota.reglage(runtime).configuration,{active:true,seuilUtilise:55});
   cmd(f,'execution.pause',{pause:false});
   const depart=cmd(f,'run.start',{projectId:'demo'});
   const runId=await jusqua(()=>f.store.commande(depart.id).run_id,()=>runner.sortie);
   await jusqua(()=>f.store.etapes(runId).some(e=>e.node_id==='terminer'&&e.status==='running'),()=>runner.sortie);
-  const desactiver=cmd(f,'quota.reserve.set',{active:false,seuilUtilise:null});
+  const desactiver=cmd(f,'quota.reserve.set',{active:false,seuilUtilise:null,...(runtime==='codex'?{runtime}:{})});
   await jusqua(()=>f.store.commande(desactiver.id).status==='done',()=>runner.sortie);
   assert.equal(f.store.run(runId).status,'running','un script en vol ne doit pas être interrompu');
   const annuler=cmd(f,'run.cancel',{runId});
   await jusqua(()=>f.store.commande(annuler.id).status==='done',()=>runner.sortie);
  }finally{service.arreter();await f.fermer();}
 });
+}
 
 test('la pause survit au redémarrage ; une annulation reste exécutée pendant la pause',async()=>{
  const f=fixture();

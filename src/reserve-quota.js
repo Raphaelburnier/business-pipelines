@@ -4,7 +4,7 @@ const registre = require('agent-orchestrator/src/registre');
 // Les missions portent déjà leur résolution figée. Les anciens lancements CLI
 // utilisent le même résolveur et les mêmes surcharges que leur exécution.
 function verifierLancement(store, lancement, { projetsDir = path.join(__dirname, '..', 'projects'), registreDir = registre.dossierRegistre(), maintenant = Date.now() } = {}) {
-  if (!store?.reserveQuota?.bloque(maintenant)) return;
+  if (!store?.reserveQuota || !['claude', 'codex'].some(runtime => store.reserveQuota.bloque(maintenant, runtime))) return;
   const r = lancement?.mission?.resolution || registre.resoudreProjet(path.join(projetsDir, lancement.projectId, 'project.json'), {
     index: lancement.pipelineIndex || 0, lancement: lancement.llmOverrides || {}, registre: registreDir,
   });
