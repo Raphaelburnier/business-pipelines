@@ -104,6 +104,32 @@ modifie ni l’image installée ni les services permanents. Les nouveaux montage
 du runner doivent encore être vérifiés après la livraison opérateur. Le lot
 11.6 et le défaut O6 restent donc en cours dans le TaskBoard.
 
+## Recette après livraison du 13 novembre 2026
+
+La livraison opérateur `645320b6` a installé le cockpit `81757910`, le moteur
+`ca1aaec2` et le registre `a9b1627` (release `cockpit-20261113-122306`). La santé
+de la plateforme est verte. Le contrôle depuis le publieur confirme les deux
+dépôts accessibles avec les droits de publication.
+
+Les deux projets apparaissent dans la topologie. Dans le runner installé, leurs
+montages individuels sont en écriture, le registre installé reste en lecture seule
+et la configuration Git système admet les deux chemins sans joker. Les checkpoints
+PC → runner → PC passent pour les deux projets, sans configuration temporaire de
+remplacement ; les branches principales sont conservées et les branches de test
+supprimées.
+
+La recette navigateur du cockpit réel prépare les deux plans du groupe 9.3
+(cockpit et registre) et une proposition pour agent-secrets, tous lançables sur
+`improve-app@9`. Aucun départ n’est envoyé ; aucune erreur JavaScript n’est relevée
+sur les vues desktop et mobile.
+
+Le worker connecté annonce encore `523e81e7` ; seul un test diffère de `ca1aaec2`.
+Sa copie `ca1aaec2` est préparée. La bascule a été refusée avant la pause car un
+run opérateur avait commencé : ne pas interrompre ce travail pour aligner le SHA.
+Le contrôle final du worker et le run de recette lancé explicitement par Raphaël
+sur un des projets nouvellement raccordés restent attendus. 11.6/O6 restent en
+cours ; aucun objectif 11.6 n’est proposé dans le catalogue attribuable.
+
 ## Ordre d’activation opérateur
 
 0. Configurer l’alias SSH `agenticos-git` sur le PC du worker à partir de la connexion
