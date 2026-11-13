@@ -38,6 +38,7 @@ test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec l
   assert.throws(() => objectifsAvenirs.validerReference({ id: "0.1", revision: 1 }), /non attribuable/i, "une ligne déjà en cours doit être refusée");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "1.1", revision: 1 }), /non attribuable/i, "la CI croisée en cours ne doit pas être attribuée une seconde fois");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "1.4", revision: 1 }), /non attribuable/i, "la normalisation agent-secrets en cours ne doit pas être attribuée une seconde fois");
+  assert.throws(() => objectifsAvenirs.validerReference({ id: "10.4", revision: 1 }), /non attribuable/i, "l'arrêt depuis En cours, en cours de run, ne doit pas être attribué une seconde fois");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "4.1", revision: 1 }), /non attribuable/i, "l'arrêt d'urgence en cours ne doit pas être attribué une seconde fois");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "6.1", revision: 1 }), /non attribuable/i, "la revue GitHub terminée ne doit pas être attribuée une seconde fois");
   assert.throws(() => objectifsAvenirs.validerReference({ id: "C4", revision: 1 }), /non attribuable/i, "le défaut de revue corrigé ne doit plus être attribuable");
