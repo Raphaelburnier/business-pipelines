@@ -26,6 +26,8 @@ RUN git config --system --add safe.directory /git/steam-tierlist.git \
  && git config --system --add safe.directory /git/marketing.git \
  && git config --system --add safe.directory /git/business-pipelines.git \
  && git config --system --add safe.directory /git/agent-orchestrator.git \
+ && git config --system --add safe.directory /git/agent-registry.git \
+ && git config --system --add safe.directory /git/agent-secrets.git \
  && git config --system --add safe.directory '/app/workspaces/*'
 ENV USE_BUILTIN_RIPGREP=0
 # L'utilisateur des agents du runner (lot 0.6, F7). Le runner reste root ; il lance le CLI
