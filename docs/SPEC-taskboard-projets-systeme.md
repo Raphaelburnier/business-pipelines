@@ -130,6 +130,29 @@ Le contrôle final du worker et le run de recette lancé explicitement par Rapha
 sur un des projets nouvellement raccordés restent attendus. 11.6/O6 restent en
 cours ; aucun objectif 11.6 n’est proposé dans le catalogue attribuable.
 
+## Reprise de la recette du 14 novembre 2026
+
+La livraison opérateur `d673164c` est terminée : cockpit `8c2d65b5`, moteur
+`58bd7d41`, registre `a9b1627`. Le worker PC annonce le même moteur et n'a
+aucune étape active. Cela remplace l'attente d'alignement du paragraphe précédent.
+
+Le run opérateur `2f76664b` a passé planification, implémentation,
+`npm run valider` et revue de code. R10 est corrigé et sa recette installée
+sans modèle passe. La reprise de la revue de sécurité refuse correctement
+l'ancien instantané absent. Le rejeu `--depuis review-security` échoue aussi,
+car il réutilise la session d'un ancien passage resté en attente de quota (R11).
+
+Le correctif prépare la sélection de session par le numéro de passage déjà
+enregistré dans le moteur. Pourquoi : un rejeu ou un retour de cycle ouvre un
+nouveau travail et une nouvelle session ; seul le même passage peut reprendre
+sa session interrompue. La lecture seule et le refus d'une reprise sur un
+instantané absent ou modifié restent imposés. Aucun nouveau message ou droit.
+
+La recette complète et la publication du README restent attendues. 11.6,
+O6, R10 et R11 restent en cours ; aucun objectif 11.6 n'est attribuable.
+La mission cockpit `a825a81d` attend encore sa synchronisation ; sa branche
+de travail contient la résolution du conflit de suivi, sans nouvelle reprise.
+
 ## Ordre d’activation opérateur
 
 0. Configurer l’alias SSH `agenticos-git` sur le PC du worker à partir de la connexion
