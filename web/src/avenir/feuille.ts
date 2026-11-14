@@ -76,8 +76,8 @@ export const PRIORITES = [
   },
   {
     titre: "Étendre les métiers et simplifier l'interface",
-    detail: "Compléter les branches métier pluggables après la fiabilisation, puis traiter les ajustements Finance et la lisibilité du graphe d'accueil.",
-    lots: ["3", "8", "13"],
+    detail: "Compléter les branches métier pluggables après la fiabilisation, puis traiter les ajustements Finance et la lisibilité du graphe d'accueil. La refonte UX du cockpit (17) avance lot par lot, une PR chacun.",
+    lots: ["3", "8", "13", "17"],
   },
   {
     titre: "Activer l'autonomie supplémentaire",
@@ -336,6 +336,23 @@ export const LOTS: Lot[] = [
       { id: "16.11", titre: "Trois cas d'évaluation par skill", detail: "Tirés de runs réels : entrée, sortie attendue, critères. Les 27 dossiers evals/ du registre ne contiennent qu'un .gitkeep. Une nouvelle version de skill passe ses cas avant publication, et 14.10 réutilise les mêmes cas pour comparer les providers.", fichiers: ["REG skills/", "REG agents/"], statut: "a-faire" },
       { id: "16.12", titre: "Corriger le playbook après un échec répété", detail: "Quand un finding P1 du même type revient deux fois ou qu'un cycle s'épuise, le superviseur (5.2) ouvre une PR : version suivante du skill et cas d'évaluation qui reproduit le défaut. Fusion humaine ; les projets restent sur l'ancienne version jusqu'à leur montée.", fichiers: ["BP src/missions.js", "REG skills/"], statut: "a-faire" },
       { id: "16.13", titre: "Premier métier par entretien", detail: "Pour le prochain domaine métier : Claude Code pose des questions jusqu'à pouvoir faire le travail et rédige le skill (but, étapes, règles, Fini quand), puis 3 à 5 runs à la main avec ce skill. Le pipeline n'arrive qu'une fois le résultat stable, découpé selon 16.1. Aucun agent ni membre d'équipe créé d'avance.", fichiers: ["REG skills/", "REG pipelines/"], statut: "a-faire" },
+    ],
+  },
+  {
+    // Audit UX du 14 novembre 2026, proposition validée le même jour : navigation groupée,
+    // design system sobre à deux thèmes, couleur réservée aux statuts. Une PR par étape.
+    id: "17",
+    titre: "Refonte UX du cockpit",
+    but: "Comprendre l'état du système en moins de trois secondes, sur PC comme sur téléphone, sans perdre une action ni un branchement API.",
+    prerequis: "Chaque étape garde les adresses, les appels API et les tests existants ; la livraison reste demandée par Raphaël depuis le cockpit.",
+    etapes: [
+      { id: "17.1", titre: "Fondations du design system", detail: "Palette sobre posée sur les jetons existants, deux thèmes dont les textes tiennent 4,5:1. Polices Inter et JetBrains Mono embarquées dans le bundle ; fin de la police Cyberpunk, des angles coupés et de l'effet glitch. Composants partagés : bouton avec état d'envoi, confirmation, statut, carte, squelette, vide, erreur avec relance, toast, tiroir, onglets, tableau. useCharge expose chargement et recharger().", fichiers: ["BP web/src/style.css", "BP web/src/composants/", "BP web/src/donnees/contexte.tsx", "BP web/src/ui.tsx"], statut: "en-cours" },
+      { id: "17.2", titre: "Coquille et navigation", detail: "Barre latérale groupée (Vue d'ensemble, Décisions, Pilotage, Configuration, Métiers), barre haute avec fil d'Ariane et pastille de santé, tiroir Activité à la place de la colonne « En cours », bandeau de pause des démarrages, onglets du bas sur téléphone. Les anciennes adresses restent valides.", fichiers: ["BP web/src/App.tsx", "BP web/src/vues/EnCours.tsx", "BP web/src/vues/ControleExecution.tsx"], statut: "a-faire" },
+      { id: "17.3", titre: "Vue d'ensemble en page d'accueil", detail: "Décisions en attente, runs actifs, échecs sur 24 h et quota en tête ; décisions priorisées, santé des machines et du flux, runs en cours. Le graphe devient l'onglet Topologie de Système et /graph y mène.", fichiers: ["BP web/src/App.tsx", "BP web/src/topologie/Topologie.tsx", "BP web/src/systeme/Systeme.tsx"], statut: "a-faire" },
+      { id: "17.4", titre: "Décisions : une file triée par urgence", detail: "Livraison, PR, plans et runs à valider dans une seule file ; confirmations uniformes et toasts. La revérification de la proposition avant envoi reste intacte.", fichiers: ["BP web/src/vues/Decisions.tsx", "BP web/src/vues/Approbations.tsx"], statut: "a-faire" },
+      { id: "17.5", titre: "Runs et Planning", detail: "Runs en tableau filtrable, détail en panneau, graphe conservé ; TaskBoard en onglets Calendrier, Tâches et Activité.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/TaskBoard.tsx"], statut: "a-faire" },
+      { id: "17.6", titre: "Missions, Pipelines et Agents", detail: "Branches devient un onglet de Missions ; formulaires et fiches reprennent les composants partagés.", fichiers: ["BP web/src/vues/Missions.tsx", "BP web/src/vues/Pipelines.tsx", "BP web/src/vues/Agents.tsx"], statut: "a-faire" },
+      { id: "17.7", titre: "Finance, Marketing, Demander, AI Studio et Système", detail: "Mêmes composants et mêmes états d'attente, de vide et d'erreur. Les appels directs de Finance, du calendrier et d'AI Studio passent par la gestion d'erreur commune.", fichiers: ["BP web/src/finance/api.ts", "BP web/src/calendrier/api.ts", "BP web/src/ai-studio/api.ts"], statut: "a-faire" },
     ],
   },
 ];
