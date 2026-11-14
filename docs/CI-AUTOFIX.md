@@ -339,13 +339,14 @@ continue de reconnaître un quota ou une panne (lot 6.5).
 **Gate.** Quand la base porte `.github/workflows/claude-code-review.yml`, `agent-gated-merge`
 exige, après les preuves de CI :
 
-- le dernier check `claude-review` de la tête, publié par `github-actions`, terminé en succès ;
-- un run `pull_request_target` de ce chemin exact, sur cette tête et ce dépôt ;
+- le dernier run `pull_request_target` du workflow de revue sur la tête, lu par l'API Actions
+  (la permission `actions: read` du gate suffit ; les check-runs demanderaient `checks: read`),
+  terminé en succès, de ce chemin exact et de ce dépôt ;
 - l'artefact `github-review-verdict-<tentative>` de ce run : même dépôt, PR, tête, run et
   tentative, `status: reviewed`, `verdict: approved`, aucun constat, relecteur connu.
 
 Le texte de la revue publiée n'est jamais cru : n'importe quel workflow d'une branche peut
-écrire sous `github-actions[bot]`. Juste avant la fusion, le gate relit les checks : une
+écrire sous `github-actions[bot]`. Juste avant la fusion, le gate relit les runs de revue : une
 revue relancée entre-temps refuse la fusion. La fin du workflow de revue relance aussi le
 gate, qui retrouve la PR par sa branche et sa tête exactes ; sinon une revue terminée après
 la CI laisserait la PR en attente. Sans workflow de revue sur la base (Steam, tcg, Saas),

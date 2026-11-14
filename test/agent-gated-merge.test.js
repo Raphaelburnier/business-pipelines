@@ -33,7 +33,7 @@ const echouer = (message) => { process.stderr.write(message + "\\n"); process.ex
 let r;
 if (route === "run download") {
   const verdict = (cfg.verdicts || {})[args[args.indexOf("-n") + 1]];
-  if (!verdict || args[args.indexOf("-R") + 1] !== "r/p" || args[2] !== String(cfg.revue.run.id)) echouer("no artifact matches any of the names or patterns provided");
+  if (!verdict || args[args.indexOf("-R") + 1] !== "r/p" || args[2] !== String(cfg.revue.runs.at(-1)?.id)) echouer("no artifact matches any of the names or patterns provided");
   fs.writeFileSync(require("node:path").join(args[args.indexOf("-D") + 1], "verdict.json"), JSON.stringify(verdict));
   process.exit(0);
 }
@@ -44,8 +44,10 @@ if (route.startsWith("repos/r/p/contents/.github/workflows/claude-code-review.ym
   r = {type:"file"};
 }
 else if (route === "repos/r/p") r = {default_branch:"main"};
-else if (route.startsWith("repos/r/p/commits/" + "${HEAD}" + "/check-runs?check_name=claude-review")) r = {total_count: cfg.revue.checks.length, check_runs: cfg.lateReview && nombre > 1 ? [...cfg.revue.checks, {...cfg.revue.checks.at(-1), id: 999}] : cfg.revue.checks};
-else if (route === "repos/r/p/actions/runs/" + cfg.revue?.run?.id) r = cfg.revue.run;
+else if (route === "repos/r/p/actions/workflows/claude-code-review.yml/runs?head_sha=" + "${HEAD}" + "&event=pull_request_target&per_page=100") {
+  const runs = cfg.lateReview && nombre > 1 ? [...cfg.revue.runs, {...cfg.revue.runs.at(-1), id: 999, run_number: 99}] : cfg.revue.runs;
+  r = {total_count: cfg.revue.total ?? runs.length, workflow_runs: runs};
+}
 else if (route === "repos/r/p/pulls") r = cfg.candidats || [];
 else if (route === "repos/r/p/commits/main") r = {sha: cfg.moveBase && nombre > 1 ? "d".repeat(40) : cfg.base};
 else if (route === "repos/r/p/pulls/60") r = {...cfg.pr, ...(cfg.moveHead && nombre > 1 ? {head:{...cfg.pr.head,sha:"d".repeat(40)}} : {})};
@@ -66,11 +68,10 @@ function lancer(options = {}) {
   const jobs = [{ head_sha: HEAD, status: "completed", conclusion: "success", steps: [{ name: `Verify tested merge (merge=${MERGE}, head=${HEAD}, base=${BASE})`, status: "completed", conclusion: "success" }] }];
   const files = [{ filename: "src/app.js" }];
   const pr = { state: "open", draft: false, head: { sha: HEAD, ref: "codex/test", repo: { full_name: "r/p" } }, base: { ref: "main" }, mergeable: true, mergeable_state: "clean", changed_files: 1 };
-  // Revue approuvée par défaut (lot 6.2) : check du job claude-review, run pull_request_target
-  // du workflow de la branche par défaut, et verdict de son artefact.
+  // Revue approuvée par défaut (lot 6.2) : run pull_request_target du workflow de revue de la
+  // branche par défaut sur la tête, et verdict de son artefact.
   const revue = {
-    checks: [{ id: 500, head_sha: HEAD, status: "completed", conclusion: "success", app: { slug: "github-actions" }, details_url: "https://github.com/r/p/actions/runs/700/job/800" }],
-    run: { id: 700, path: ".github/workflows/claude-code-review.yml", event: "pull_request_target", head_sha: HEAD, repository: { full_name: "r/p" }, head_repository: { full_name: "r/p" }, status: "completed", conclusion: "success", run_attempt: 1 },
+    runs: [{ id: 700, run_number: 7, run_attempt: 1, path: ".github/workflows/claude-code-review.yml", event: "pull_request_target", head_sha: HEAD, head_branch: "codex/test", repository: { full_name: "r/p" }, head_repository: { full_name: "r/p" }, status: "completed", conclusion: "success" }],
   };
   const verdict = { schema_version: 1, repository: "r/p", pr: 60, head_sha: HEAD, base_sha: BASE, run_id: "700", run_attempt: "1", relecteur: "claude", status: "reviewed", verdict: "approved", summary: "Revue complète.", reviewed_files: ["src/app.js"], findings: [] };
   const config = { ci, jobs, files, pr, base: BASE, merge: MERGE, parents: [BASE, HEAD], revue, verdicts: { "github-review-verdict-1": verdict }, ...options };
@@ -155,7 +156,7 @@ test("sans workflow de revue sur la base, l'exigence reste inactive", () => {
   const r = lancer({ revue: null });
   assert.match(r.resume, /decision: merged/);
   assert.match(r.resume, /\*\*Review:\*\* not configured/);
-  assert.ok(!r.appels.some((a) => a.route?.includes("check-runs")));
+  assert.ok(!r.appels.some((a) => a.route?.includes("claude-code-review.yml/runs")));
 });
 
 test("la fin de la revue relance le gate et retrouve la PR par sa branche et sa tête", () => {
@@ -165,14 +166,16 @@ test("la fin de la revue relance le gate et retrouve la PR par sa branche et sa 
 });
 
 for (const [nom, options, attendue] of [
-  ["aucune revue sur la tête", { modifier: (c) => { c.revue.checks = []; } }, "review"],
-  ["revue indisponible (quota ou panne)", { modifier: (c) => { c.revue.checks[0].conclusion = "failure"; } }, "review"],
-  ["revue encore en cours", { modifier: (c) => { Object.assign(c.revue.checks[0], { status: "in_progress", conclusion: null }); } }, "review"],
-  ["check publié par une autre application", { modifier: (c) => { c.revue.checks[0].app.slug = "autre-app"; } }, "review"],
+  ["aucune revue sur la tête", { modifier: (c) => { c.revue.runs = []; } }, "review"],
+  ["revue indisponible (quota ou panne)", { modifier: (c) => { c.revue.runs[0].conclusion = "failure"; } }, "review"],
+  ["revue encore en cours", { modifier: (c) => { Object.assign(c.revue.runs[0], { status: "in_progress", conclusion: null }); } }, "review"],
+  ["liste des runs de revue incomplète", { modifier: (c) => { c.revue.total = 101; } }, "review"],
   ["présence du workflow de revue illisible", { presenceIllisible: true }, "review"],
-  ["run de revue déclenché par une branche", { modifier: (c) => { c.revue.run.event = "pull_request"; } }, "review provenance"],
-  ["autre workflow sous le même nom de job", { modifier: (c) => { c.revue.run.path = ".github/workflows/faux.yml"; } }, "review provenance"],
-  ["run de revue sur une autre tête", { modifier: (c) => { c.revue.run.head_sha = "d".repeat(40); } }, "review provenance"],
+  ["seul run de revue déclenché par une branche", { modifier: (c) => { c.revue.runs[0].event = "pull_request"; } }, "review"],
+  ["run d'un autre workflow", { modifier: (c) => { c.revue.runs[0].path = ".github/workflows/faux.yml"; } }, "review provenance"],
+  ["run d'un autre dépôt de tête", { modifier: (c) => { c.revue.runs[0].head_repository.full_name = "fork/p"; } }, "review provenance"],
+  ["run de revue sur une autre tête", { modifier: (c) => { c.revue.runs[0].head_sha = "d".repeat(40); } }, "review"],
+  ["approbation ancienne mais dernier run en échec", { modifier: (c) => { c.revue.runs.push({ ...c.revue.runs[0], id: 701, run_number: 8, conclusion: "failure" }); } }, "review"],
   ["artefact de verdict absent", { verdicts: {} }, "review verdict"],
   ["corrections demandées", { modifier: verdictModifie({ verdict: "changes_requested", findings: [{ path: "src/app.js" }] }) }, "review verdict"],
   ["revue incomplète", { modifier: verdictModifie({ status: "unavailable", verdict: null, reason: "incomplete" }) }, "review verdict"],

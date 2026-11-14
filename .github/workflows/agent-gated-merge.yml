@@ -248,40 +248,33 @@ jobs:
           fi
           if [[ "$review_required" == "yes" ]]; then
             review_state="missing"
-            review_checks="$(gh api "repos/$REPOSITORY/commits/$sha/check-runs?check_name=claude-review&per_page=100")" || {
+            # Runs du workflow de revue lus par l'API Actions (permission actions: read déjà
+            # accordée) : un run pull_request_target porte la tête et la branche de la PR.
+            review_runs="$(gh api "repos/$REPOSITORY/actions/workflows/claude-code-review.yml/runs?head_sha=$sha&event=pull_request_target&per_page=100")" || {
               gate="review"
-              refuse "review check runs could not be read"
+              refuse "review workflow runs could not be read"
             }
-            [[ "$(jq -r '.total_count' <<<"$review_checks")" =~ ^[0-9]+$ ]] && [[ "$(jq -r '.total_count' <<<"$review_checks")" -le 100 ]] || {
+            [[ "$(jq -r '.total_count' <<<"$review_runs")" =~ ^[0-9]+$ ]] && [[ "$(jq -r '.total_count' <<<"$review_runs")" -le 100 ]] || {
               gate="review"
-              refuse "review check run list is incomplete"
+              refuse "review run list is incomplete"
             }
-            review_check="$(jq -c --arg sha "$sha" '
-              [.check_runs[] | select(.head_sha == $sha and .app.slug == "github-actions")] | sort_by(.id) | last // {}
-            ' <<<"$review_checks")"
-            review_check_id="$(jq -r '.id // empty' <<<"$review_check")"
-            [[ "$review_check_id" =~ ^[1-9][0-9]*$ ]] || {
+            review_run="$(jq -c --arg sha "$sha" '
+              [.workflow_runs[] | select(.head_sha == $sha and .event == "pull_request_target")]
+              | sort_by(.run_number, .run_attempt) | last // {}
+            ' <<<"$review_runs")"
+            review_run_id="$(jq -r '.id // empty' <<<"$review_run")"
+            [[ "$review_run_id" =~ ^[1-9][0-9]*$ ]] || {
               gate="review"
               refuse "no review has run on the current head"
             }
-            review_state="$(jq -r 'if .status == "completed" then (.conclusion // "unknown") else (.status // "missing") end' <<<"$review_check")"
+            review_state="$(jq -r 'if .status == "completed" then (.conclusion // "unknown") else (.status // "missing") end' <<<"$review_run")"
             [[ "$review_state" == "success" ]] || {
               gate="review"
               refuse "the latest review on the current head did not succeed (unavailable or still running)"
             }
-            review_run_id="$(jq -r '.details_url // empty' <<<"$review_check" | sed -nE 's#^https://github\.com/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$#\1#p')"
-            [[ "$review_run_id" =~ ^[1-9][0-9]*$ ]] || {
-              gate="review provenance"
-              refuse "the review check run does not link to an Actions run"
-            }
-            review_run="$(gh api "repos/$REPOSITORY/actions/runs/$review_run_id")" || {
-              gate="review provenance"
-              refuse "the review run could not be read"
-            }
             jq -e --arg sha "$sha" --arg repo "$REPOSITORY" '
               .path == ".github/workflows/claude-code-review.yml" and .event == "pull_request_target" and
-              .head_sha == $sha and .repository.full_name == $repo and .head_repository.full_name == $repo and
-              .status == "completed" and .conclusion == "success"
+              .head_sha == $sha and .repository.full_name == $repo and .head_repository.full_name == $repo
             ' <<<"$review_run" >/dev/null || {
               gate="review provenance"
               refuse "the review run is not the default-branch review workflow for this head"
@@ -401,14 +394,15 @@ jobs:
             refuse "latest CI changed after validation"
           }
           if [[ "$review_required" == "yes" ]]; then
-            review_again="$(gh api "repos/$REPOSITORY/commits/$sha/check-runs?check_name=claude-review&per_page=100")" || {
+            review_again="$(gh api "repos/$REPOSITORY/actions/workflows/claude-code-review.yml/runs?head_sha=$sha&event=pull_request_target&per_page=100")" || {
               gate="final review"
-              refuse "review check runs could not be re-read"
+              refuse "review workflow runs could not be re-read"
             }
-            jq -e --arg sha "$sha" --argjson id "$review_check_id" '
+            jq -e --arg sha "$sha" --argjson id "$review_run_id" --argjson attempt "$review_attempt" '
               (.total_count | type) == "number" and .total_count <= 100 and
-              ([.check_runs[] | select(.head_sha == $sha and .app.slug == "github-actions")] | sort_by(.id) | last
-                | .id == $id and .status == "completed" and .conclusion == "success")
+              ([.workflow_runs[] | select(.head_sha == $sha and .event == "pull_request_target")]
+                | sort_by(.run_number, .run_attempt) | last
+                | .id == $id and .run_attempt == $attempt and .status == "completed" and .conclusion == "success")
             ' <<<"$review_again" >/dev/null || {
               gate="final review"
               refuse "a newer review started or the approved review changed after validation"

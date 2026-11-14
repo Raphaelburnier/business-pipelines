@@ -252,4 +252,8 @@ test('schéma Codex sans bornes, mêmes champs obligatoires ; clés OpenAI masqu
   assert.deepEqual(s.properties.findings.items.required, SCHEMA.properties.findings.items.required);
   assert.deepEqual(s.properties.verdict.enum, SCHEMA.properties.verdict.enum);
   assert.doesNotMatch(masquer('clé sk-proj-' + 'Ab1'.repeat(10)), /sk-proj/);
+  assert.doesNotMatch(masquer('ancienne clé sk-' + 'Ab1'.repeat(16)), /sk-Ab1/);
+  for (const chemin of ['src/task-reviewer-planning-and-retries.js', 'web/src/desk-ant-compatibility-layer.ts', 'docs/risk-assessment-for-agents.md']) {
+    assert.equal(masquer(chemin), chemin, chemin);
+  }
 });

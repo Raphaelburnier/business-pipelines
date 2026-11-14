@@ -38,7 +38,7 @@ function lireJson(fichier, maximum = 6000000) {
 }
 function masquer(texte) {
   return String(texte).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
-    .replace(/(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abpors]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g, '[secret masqué]')
+    .replace(/(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-ant-[A-Za-z0-9_-]{8,}|\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|\bsk-[A-Za-z0-9]{40,}|AKIA[0-9A-Z]{16}|xox[abpors]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g, '[secret masqué]')
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*/g, '[clé privée masquée]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[adresse masquée]')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[adresse réseau masquée]')
