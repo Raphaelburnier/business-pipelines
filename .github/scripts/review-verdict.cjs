@@ -5,6 +5,9 @@ const { execFileSync } = require('node:child_process');
 const SHA = /^[0-9a-f]{40}$/;
 const ID = /^[1-9][0-9]{0,19}$/;
 const LIMITES = { fichiers: 60, fichier: 100000, total: 500000, resultat: 100000 };
+const MOTIFS_RELAIS = ['quota', 'provider_error'];
+const RELECTEURS = ['claude', 'codex'];
+const ETATS_RELAIS = ['non_configure', 'indisponible', 'invalide'];
 const SCHEMA = {
   type: 'object', additionalProperties: false, required: ['verdict', 'summary', 'reviewed_files', 'findings'],
   properties: {
@@ -19,6 +22,14 @@ const SCHEMA = {
     } }
   }
 };
+// Schéma remis à Codex : sa sortie structurée stricte n'accepte pas tous les mots-clés de
+// bornes. Les bornes retirées restent contrôlées par validerResultat, comme pour Claude.
+const BORNES = new Set(['minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum']);
+function schemaStrict(noeud) {
+  if (Array.isArray(noeud)) return noeud.map(schemaStrict);
+  if (!noeud || typeof noeud !== 'object') return noeud;
+  return Object.fromEntries(Object.entries(noeud).filter(([cle]) => !BORNES.has(cle)).map(([cle, v]) => [cle, schemaStrict(v)]));
+}
 const verifier = (condition, raison) => { if (!condition) throw new Error(raison); };
 function lireJson(fichier, maximum = 6000000) {
   const stat = fs.lstatSync(fichier);
@@ -27,7 +38,7 @@ function lireJson(fichier, maximum = 6000000) {
 }
 function masquer(texte) {
   return String(texte).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
-    .replace(/(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{8,}|AKIA[0-9A-Z]{16}|xox[abpors]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g, '[secret masqué]')
+    .replace(/(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-ant-[A-Za-z0-9_-]{8,}|\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|\bsk-[A-Za-z0-9]{40,}|AKIA[0-9A-Z]{16}|xox[abpors]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g, '[secret masqué]')
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*/g, '[clé privée masquée]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[adresse masquée]')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[adresse réseau masquée]')
@@ -157,10 +168,20 @@ function validerResultat(r, contexte) {
   });
   return { verdict: r.verdict, summary: masquer(r.summary), reviewed_files: [...r.reviewed_files], findings };
 }
-function finaliser({ contexte, sortie, execution, outcome, conclusion }) {
-  const r = { schema_version: 1, repository: contexte.repository, pr: contexte.pr, head_sha: contexte.head_sha,
+function enveloppe(contexte, relecteur) {
+  return { schema_version: 1, repository: contexte.repository, pr: contexte.pr, head_sha: contexte.head_sha,
     base_sha: contexte.base_sha, merge_base_sha: contexte.merge_base_sha, run_id: contexte.run_id, run_attempt: contexte.run_attempt,
-    status: 'unavailable', verdict: null, summary: '', findings: [], reviewed_files: [] };
+    relecteur, status: 'unavailable', verdict: null, summary: '', findings: [], reviewed_files: [] };
+}
+// Même barrière pour les deux relecteurs : schéma, couverture complète et constats ancrés.
+function appliquerResultat(r, sortie, contexte) {
+  verifier(typeof sortie === 'string' && Buffer.byteLength(sortie) <= LIMITES.resultat, 'résultat trop volumineux');
+  Object.assign(r, validerResultat(JSON.parse(sortie), contexte));
+  r.status = r.verdict === 'incomplete' ? 'unavailable' : 'reviewed';
+  if (r.status === 'unavailable') { r.reason = 'incomplete'; r.verdict = null; r.findings = []; }
+}
+function finaliser({ contexte, sortie, execution, outcome, conclusion }) {
+  const r = enveloppe(contexte, 'claude');
   if (!contexte.ready) { r.reason = masquer(contexte.reason || 'préparation incomplète'); return r; }
   const resultat = Array.isArray(execution) ? execution.findLast(m => m.type === 'result') : null;
   if (outcome !== 'success' || conclusion !== 'success' || !resultat || resultat.subtype !== 'success' || resultat.is_error !== false) {
@@ -168,12 +189,24 @@ function finaliser({ contexte, sortie, execution, outcome, conclusion }) {
     r.reason = /quota|usage limit|rate.limit|allowance|out of.*usage/i.test(erreur) ? 'quota' : 'provider_error';
     return r;
   }
-  try {
-    verifier(typeof sortie === 'string' && Buffer.byteLength(sortie) <= LIMITES.resultat, 'résultat trop volumineux');
-    Object.assign(r, validerResultat(JSON.parse(sortie), contexte));
-    r.status = r.verdict === 'incomplete' ? 'unavailable' : 'reviewed';
-    if (r.status === 'unavailable') { r.reason = 'incomplete'; r.verdict = null; r.findings = []; }
-  } catch (err) { r.reason = masquer(err.message); }
+  try { appliquerResultat(r, sortie, contexte); } catch (err) { r.reason = masquer(err.message); }
+  return r;
+}
+// Relais Codex (lot 6.2) : seulement quand Claude n'a pas pu relire un instantané prêt.
+// L'action masque le message d'erreur de Claude : un quota épuisé sort en provider_error.
+// Un verdict rendu, une revue incomplète ou un résultat invalide ne passent jamais à Codex.
+function relaisCodex({ verdict, contexte, forcer = false }) {
+  return contexte.ready === true && verdict.status === 'unavailable' && (forcer || MOTIFS_RELAIS.includes(verdict.reason));
+}
+function finaliserCodex({ contexte, precedent, sortie, outcome }) {
+  const r = { ...enveloppe(contexte, 'codex'), relais_de: masquer(String(precedent?.reason || 'motif absent')).slice(0, 200) };
+  verifier(contexte.ready === true, 'relais Codex sans instantané prêt');
+  // Sans résultat Codex, le motif reste celui de Claude : quota et panne restent reconnaissables.
+  r.reason = r.relais_de;
+  if (!outcome || outcome === 'skipped') { r.relais_codex = 'non_configure'; return r; }
+  if (outcome !== 'success' || typeof sortie !== 'string' || !sortie.trim()) { r.relais_codex = 'indisponible'; return r; }
+  delete r.reason;
+  try { appliquerResultat(r, sortie.trim(), contexte); } catch (err) { r.reason = masquer(err.message); r.relais_codex = 'invalide'; }
   return r;
 }
 function validerEnveloppe(r, env) {
@@ -182,6 +215,9 @@ function validerEnveloppe(r, env) {
   verifier(Number.isSafeInteger(r.pr) && r.pr > 0 && SHA.test(r.head_sha) && SHA.test(r.base_sha), 'cible du verdict invalide');
   verifier(!env.INPUT_PR || env.INPUT_PR === String(r.pr), 'numéro de PR inattendu');
   verifier(['reviewed', 'unavailable'].includes(r.status), 'statut invalide');
+  verifier(r.relecteur === undefined || RELECTEURS.includes(r.relecteur), 'relecteur invalide');
+  verifier(r.relais_codex === undefined || ETATS_RELAIS.includes(r.relais_codex), 'état du relais invalide');
+  verifier(r.relais_de === undefined || (typeof r.relais_de === 'string' && r.relais_de.length <= 200), 'motif de relais invalide');
   verifier(typeof r.summary === 'string' && r.summary.length <= 5000 && Array.isArray(r.findings) && r.findings.length <= 20, 'enveloppe trop volumineuse');
   verifier(r.status !== 'reviewed' || ['approved', 'changes_requested'].includes(r.verdict), 'verdict absent');
   verifier(r.status !== 'reviewed' || r.verdict !== 'approved' || r.findings.length === 0, 'approbation incohérente');
@@ -205,7 +241,8 @@ async function publier({ env, resultat, api = gh }) {
   verifier(actuel.head?.repo?.full_name === repo && actuel.base?.repo?.full_name === repo && actuel.base.ref === defaut, 'PR externe ou cible modifiée');
   if (actuel.head.sha !== r.head_sha || actuel.base.sha !== r.base_sha) { r.status = 'stale'; r.verdict = null; r.findings = []; }
   const titre = r.status === 'stale' ? 'PÉRIMÉE' : r.status !== 'reviewed' ? 'INDISPONIBLE' : r.verdict === 'approved' ? 'APPROUVÉ' : 'CORRECTIONS DEMANDÉES';
-  const lignes = [marqueur, '## Revue Claude', '', `**Verdict : ${titre}** — consultatif.`, '', `Commit relu : \`${r.head_sha}\` · base : \`${r.base_sha}\`.`,
+  const relecteur = r.relecteur === 'codex' ? 'Codex (relais de Claude)' : 'Claude';
+  const lignes = [marqueur, `## Revue ${relecteur}`, '', `**Verdict : ${titre}**. Une approbation sur la tête courante est requise pour la fusion automatique.`, '', `Commit relu : \`${r.head_sha}\` · base : \`${r.base_sha}\`.`,
     `Exécution : https://github.com/${repo}/actions/runs/${r.run_id}/attempts/${r.run_attempt}`, ''];
   if (r.status === 'reviewed') {
     lignes.push(masquer(r.summary));
@@ -216,10 +253,13 @@ async function publier({ env, resultat, api = gh }) {
       verifier(SHA.test(ref) && cheminValide(source), 'référence de constat invalide');
       lignes.push('', `- **${f.priority} · ${masquer(f.title)}** — [${f.path}:${f.line}](https://github.com/${repo}/blob/${ref}/${source.split('/').map(encodeURIComponent).join('/')}#L${f.line})`, `  ${masquer(f.body)}`);
     }
-  } else lignes.push(r.status === 'stale' ? 'La tête ou la base a changé. Ce résultat ne vaut pas pour la PR courante ; relancer la revue.' : `Aucune approbation. Motif : ${masquer(r.reason || 'résultat absent')}. Une absence de constat ne prouve pas une revue réussie.`);
+  } else {
+    const relais = { non_configure: ' Relais Codex non configuré : secret OPENAI_API_KEY absent.', indisponible: ' Relais Codex indisponible.', invalide: ' Résultat du relais Codex refusé.' }[r.relais_codex] || '';
+    lignes.push(r.status === 'stale' ? 'La tête ou la base a changé. Ce résultat ne vaut pas pour la PR courante ; relancer la revue.' : `Aucune approbation. Motif : ${masquer(r.reason || 'résultat absent')}.${relais} Une absence de constat ne prouve pas une revue réussie.`);
+  }
   if (r.status === 'reviewed') {
-    // Une revue COMMENT reste consultative ; les constats inline conservent les
-    // conversations non résolues qui bloquent déjà la fusion dans le gate existant.
+    // Une revue COMMENT n'est pas une approbation GitHub : le gate lit l'artefact de verdict
+    // (lot 6.2). Les constats inline ouvrent des conversations qui bloquent aussi la fusion.
     const revue = await api(`repos/${repo}/pulls/${r.pr}/reviews`, { corps: {
       commit_id: r.head_sha, event: 'COMMENT', body: lignes.join('\n'),
       comments: r.findings.map(f => ({ path: f.path, side: f.side, line: f.line,
@@ -237,12 +277,21 @@ async function main() {
   const env = process.env, dossier = path.resolve('.review-input');
   if (process.argv[2] === 'prepare') {
     const contexte = await preparer({ env, event: lireJson(env.GITHUB_EVENT_PATH), dossier });
-    sorties({ ready: String(contexte.ready), schema: JSON.stringify(SCHEMA) });
+    sorties({ ready: String(contexte.ready), schema: JSON.stringify(SCHEMA), schema_codex: JSON.stringify(schemaStrict(SCHEMA)) });
   } else if (process.argv[2] === 'finalize') {
     let execution;
     try { execution = lireJson(env.EXECUTION_FILE || path.join(env.RUNNER_TEMP, 'claude-execution-output.json')); } catch {}
-    const r = finaliser({ contexte: lireJson(path.join(dossier, 'context.json')), sortie: env.STRUCTURED_OUTPUT, execution, outcome: env.AGENT_OUTCOME, conclusion: env.AGENT_CONCLUSION });
+    const contexte = lireJson(path.join(dossier, 'context.json'));
+    const forcer = env.FORCER_CODEX === 'true';
+    const r = finaliser({ contexte, sortie: env.STRUCTURED_OUTPUT, execution, outcome: env.AGENT_OUTCOME, conclusion: env.AGENT_CONCLUSION });
+    if (forcer && contexte.ready === true) r.reason = 'codex_demande';
     fs.mkdirSync('.review-result', { recursive: true });
+    fs.writeFileSync('.review-result/verdict.json', JSON.stringify(r, null, 2));
+    sorties({ reviewed: String(r.status === 'reviewed'), relais: String(relaisCodex({ verdict: r, contexte, forcer })) });
+  } else if (process.argv[2] === 'finalize-codex') {
+    const contexte = lireJson(path.join(dossier, 'context.json'));
+    const precedent = lireJson('.review-result/verdict.json', LIMITES.resultat);
+    const r = finaliserCodex({ contexte, precedent, sortie: env.CODEX_OUTPUT, outcome: env.CODEX_OUTCOME });
     fs.writeFileSync('.review-result/verdict.json', JSON.stringify(r, null, 2));
     sorties({ reviewed: String(r.status === 'reviewed') });
   } else if (process.argv[2] === 'publish') {
@@ -250,5 +299,5 @@ async function main() {
     if (env.GITHUB_STEP_SUMMARY) fs.appendFileSync(env.GITHUB_STEP_SUMMARY, `Revue : ${r.status} · ${r.verdict || 'aucune approbation'}.\n`);
   } else throw new Error('commande inconnue');
 }
-module.exports = { SCHEMA, LIMITES, masquer, lignesModifiees, preparer, validerResultat, finaliser, publier, validerEnveloppe };
+module.exports = { SCHEMA, LIMITES, schemaStrict, masquer, lignesModifiees, preparer, validerResultat, finaliser, finaliserCodex, relaisCodex, publier, validerEnveloppe };
 if (require.main === module) main().catch(err => { console.error(masquer(err.message)); process.exitCode = 1; });

@@ -24,13 +24,31 @@ const fs = require("node:fs");
 const {execFileSync} = require("node:child_process");
 const cfg = JSON.parse(fs.readFileSync(process.env.FAKE_GH_CONFIG, "utf8"));
 const args = process.argv.slice(2);
-const route = args.find((a) => a === "graphql" || a.startsWith("repos/"));
+const route = args[0] === "run" ? "run " + args[1] : args.find((a) => a === "graphql" || a.startsWith("repos/"));
 const compte = JSON.parse(fs.readFileSync(process.env.FAKE_GH_CALLS, "utf8"));
 compte.push({route,args});
 fs.writeFileSync(process.env.FAKE_GH_CALLS, JSON.stringify(compte));
 const nombre = compte.filter((c) => c.route === route).length;
+const echouer = (message) => { process.stderr.write(message + "\\n"); process.exit(1); };
 let r;
-if (route === "repos/r/p") r = {default_branch:"main"};
+if (route === "run download") {
+  const verdict = (cfg.verdicts || {})[args[args.indexOf("-n") + 1]];
+  if (!verdict || args[args.indexOf("-R") + 1] !== "r/p" || args[2] !== String(cfg.revue.runs.at(-1)?.id)) echouer("no artifact matches any of the names or patterns provided");
+  fs.writeFileSync(require("node:path").join(args[args.indexOf("-D") + 1], "verdict.json"), JSON.stringify(verdict));
+  process.exit(0);
+}
+if (route.startsWith("repos/r/p/contents/.github/workflows/claude-code-review.yml?ref=")) {
+  if (cfg.revue === null) echouer("gh: Not Found (HTTP 404)");
+  if (cfg.presenceIllisible) echouer("gh: Server Error (HTTP 502)");
+  if (!route.endsWith("?ref=" + cfg.base)) echouer("unexpected review presence ref " + route);
+  r = {type:"file"};
+}
+else if (route === "repos/r/p") r = {default_branch:"main"};
+else if (route === "repos/r/p/actions/workflows/claude-code-review.yml/runs?head_sha=" + "${HEAD}" + "&event=pull_request_target&per_page=100") {
+  const runs = cfg.lateReview && nombre > 1 ? [...cfg.revue.runs, {...cfg.revue.runs.at(-1), id: 999, run_number: 99}] : cfg.revue.runs;
+  r = {total_count: cfg.revue.total ?? runs.length, workflow_runs: runs};
+}
+else if (route === "repos/r/p/pulls") r = cfg.candidats || [];
 else if (route === "repos/r/p/commits/main") r = {sha: cfg.moveBase && nombre > 1 ? "d".repeat(40) : cfg.base};
 else if (route === "repos/r/p/pulls/60") r = {...cfg.pr, ...(cfg.moveHead && nombre > 1 ? {head:{...cfg.pr.head,sha:"d".repeat(40)}} : {})};
 else if (route.includes("/actions/workflows/ci.yml/runs?")) r = {total_count:cfg.total ?? 1,workflow_runs: [{...cfg.ci,...(cfg.retry && nombre > 1 ? {run_attempt:2,status:"in_progress",conclusion:null} : {})}]};
@@ -50,15 +68,21 @@ function lancer(options = {}) {
   const jobs = [{ head_sha: HEAD, status: "completed", conclusion: "success", steps: [{ name: `Verify tested merge (merge=${MERGE}, head=${HEAD}, base=${BASE})`, status: "completed", conclusion: "success" }] }];
   const files = [{ filename: "src/app.js" }];
   const pr = { state: "open", draft: false, head: { sha: HEAD, ref: "codex/test", repo: { full_name: "r/p" } }, base: { ref: "main" }, mergeable: true, mergeable_state: "clean", changed_files: 1 };
-  const config = { ci, jobs, files, pr, base: BASE, merge: MERGE, parents: [BASE, HEAD], ...options };
+  // Revue approuvée par défaut (lot 6.2) : run pull_request_target du workflow de revue de la
+  // branche par défaut sur la tête, et verdict de son artefact.
+  const revue = {
+    runs: [{ id: 700, run_number: 7, run_attempt: 1, path: ".github/workflows/claude-code-review.yml", event: "pull_request_target", head_sha: HEAD, head_branch: "codex/test", repository: { full_name: "r/p" }, head_repository: { full_name: "r/p" }, status: "completed", conclusion: "success" }],
+  };
+  const verdict = { schema_version: 1, repository: "r/p", pr: 60, head_sha: HEAD, base_sha: BASE, run_id: "700", run_attempt: "1", relecteur: "claude", status: "reviewed", verdict: "approved", summary: "Revue complète.", reviewed_files: ["src/app.js"], findings: [] };
+  const config = { ci, jobs, files, pr, base: BASE, merge: MERGE, parents: [BASE, HEAD], revue, verdicts: { "github-review-verdict-1": verdict }, ...options };
   options.modifier?.(config);
   fs.writeFileSync(path.join(dir, "gh"), fauxGh, { mode: 0o755 });
   const cfg = path.join(dir, "config.json"), appels = path.join(dir, "calls.json"), resume = path.join(dir, "summary.md"), event = path.join(dir, "event.json");
   fs.writeFileSync(cfg, JSON.stringify(config));
   fs.writeFileSync(appels, "[]");
   fs.writeFileSync(resume, "");
-  fs.writeFileSync(event, "{}");
-  const resultat = spawnSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, REPOSITORY: "r/p", EVENT_NAME: "workflow_dispatch", DISPATCH_PR: "60", GH_TOKEN: "factice", GITHUB_STEP_SUMMARY: resume, GITHUB_EVENT_PATH: event, FAKE_GH_CONFIG: cfg, FAKE_GH_CALLS: appels } });
+  fs.writeFileSync(event, JSON.stringify(options.evenement || {}));
+  const resultat = spawnSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, REPOSITORY: "r/p", EVENT_NAME: options.evenement ? "workflow_run" : "workflow_dispatch", DISPATCH_PR: "60", GH_TOKEN: "factice", GITHUB_STEP_SUMMARY: resume, GITHUB_EVENT_PATH: event, FAKE_GH_CONFIG: cfg, FAKE_GH_CALLS: appels } });
   return { ...resultat, resume: fs.readFileSync(resume, "utf8"), appels: JSON.parse(fs.readFileSync(appels, "utf8")) };
 }
 
@@ -112,6 +136,63 @@ for (const [nom, options] of [
     }[nom];
     assert.ok(r.resume.includes(`**Gate:** ${attendue}\n`), r.resume);
     assert.ok(!r.appels.some((a) => a.route.endsWith("/merge")));
+  });
+}
+
+// Lot 6.2 : la fusion exige l'approbation de la revue (Claude ou son relais Codex) sur la tête.
+const finRevue = (changements = {}) => ({ workflow_run: { name: "Claude Code Review", path: ".github/workflows/claude-code-review.yml", event: "pull_request_target", head_branch: "codex/test", head_sha: HEAD, head_repository: { full_name: "r/p" }, pull_requests: [], ...changements } });
+const verdictModifie = (champs) => (c) => Object.assign(c.verdicts["github-review-verdict-1"], champs);
+
+test("le gate fusionne une approbation Claude ou du relais Codex et la consigne", () => {
+  assert.match(lancer().resume, /\*\*Review:\*\* approved by claude \(run 700 attempt 1\)/);
+  const r = lancer({ modifier: verdictModifie({ relecteur: "codex" }) });
+  assert.match(r.resume, /decision: merged/);
+  assert.match(r.resume, /\*\*Review:\*\* approved by codex \(run 700 attempt 1\)/);
+  const telechargement = r.appels.find((a) => a.route === "run download");
+  assert.deepEqual(telechargement.args.slice(0, 7), ["run", "download", "700", "-R", "r/p", "-n", "github-review-verdict-1"]);
+});
+
+test("sans workflow de revue sur la base, l'exigence reste inactive", () => {
+  const r = lancer({ revue: null });
+  assert.match(r.resume, /decision: merged/);
+  assert.match(r.resume, /\*\*Review:\*\* not configured/);
+  assert.ok(!r.appels.some((a) => a.route?.includes("claude-code-review.yml/runs")));
+});
+
+test("la fin de la revue relance le gate et retrouve la PR par sa branche et sa tête", () => {
+  const r = lancer({ evenement: finRevue(), candidats: [{ number: 60, head: { sha: HEAD } }, { number: 61, head: { sha: "d".repeat(40) } }] });
+  assert.match(r.resume, /decision: merged/);
+  assert.ok(r.appels.find((a) => a.route === "repos/r/p/pulls").args.includes("head=r:codex/test"));
+});
+
+for (const [nom, options, attendue] of [
+  ["aucune revue sur la tête", { modifier: (c) => { c.revue.runs = []; } }, "review"],
+  ["revue indisponible (quota ou panne)", { modifier: (c) => { c.revue.runs[0].conclusion = "failure"; } }, "review"],
+  ["revue encore en cours", { modifier: (c) => { Object.assign(c.revue.runs[0], { status: "in_progress", conclusion: null }); } }, "review"],
+  ["liste des runs de revue incomplète", { modifier: (c) => { c.revue.total = 101; } }, "review"],
+  ["présence du workflow de revue illisible", { presenceIllisible: true }, "review"],
+  ["seul run de revue déclenché par une branche", { modifier: (c) => { c.revue.runs[0].event = "pull_request"; } }, "review"],
+  ["run d'un autre workflow", { modifier: (c) => { c.revue.runs[0].path = ".github/workflows/faux.yml"; } }, "review provenance"],
+  ["run d'un autre dépôt de tête", { modifier: (c) => { c.revue.runs[0].head_repository.full_name = "fork/p"; } }, "review provenance"],
+  ["run de revue sur une autre tête", { modifier: (c) => { c.revue.runs[0].head_sha = "d".repeat(40); } }, "review"],
+  ["approbation ancienne mais dernier run en échec", { modifier: (c) => { c.revue.runs.push({ ...c.revue.runs[0], id: 701, run_number: 8, conclusion: "failure" }); } }, "review"],
+  ["artefact de verdict absent", { verdicts: {} }, "review verdict"],
+  ["corrections demandées", { modifier: verdictModifie({ verdict: "changes_requested", findings: [{ path: "src/app.js" }] }) }, "review verdict"],
+  ["revue incomplète", { modifier: verdictModifie({ status: "unavailable", verdict: null, reason: "incomplete" }) }, "review verdict"],
+  ["verdict d'un autre commit", { modifier: verdictModifie({ head_sha: "d".repeat(40) }) }, "review verdict"],
+  ["verdict d'une autre PR", { modifier: verdictModifie({ pr: 61 }) }, "review verdict"],
+  ["verdict d'une autre tentative", { modifier: verdictModifie({ run_attempt: "2" }) }, "review verdict"],
+  ["relecteur inconnu", { modifier: verdictModifie({ relecteur: "autre" }) }, "review verdict"],
+  ["nouvelle revue lancée après validation", { lateReview: true }, "final review"],
+  ["fin de revue d'un workflow de branche", { evenement: finRevue({ event: "pull_request" }), candidats: [{ number: 60, head: { sha: HEAD } }] }, "workflow identity"],
+  ["fin de revue sans PR ouverte sur cette tête", { evenement: finRevue(), candidats: [{ number: 61, head: { sha: "d".repeat(40) } }] }, "PR resolution"],
+]) {
+  test(`le gate refuse sans approbation valide : ${nom}`, () => {
+    const r = lancer(options);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.resume, /decision: refused/);
+    assert.ok(r.resume.includes(`**Gate:** ${attendue}\n`), r.resume);
+    assert.ok(!r.appels.some((a) => a.route?.endsWith("/merge")));
   });
 }
 
