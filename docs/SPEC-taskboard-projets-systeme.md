@@ -130,6 +130,23 @@ Le contrôle final du worker et le run de recette lancé explicitement par Rapha
 sur un des projets nouvellement raccordés restent attendus. 11.6/O6 restent en
 cours ; aucun objectif 11.6 n’est proposé dans le catalogue attribuable.
 
+## Reprise de la recette les 13 et 14 novembre 2026
+
+La recette opérateur du registre a passé le plan, l'implémentation, les tests et la
+revue de code. Le quota Claude de la revue de sécurité a déclenché un relais Codex,
+qui a attribué à tort le journal du superviseur au reviewer (R10). Le correctif
+moteur #122 a été livré en `58bd7d41`, sur le NAS puis le worker PC. La recette du
+runtime installé accepte ce journal et refuse toujours une écriture dans la revue.
+
+Le run conserve son contrat et ses étapes validées. Sa reprise exige un instantané
+de revue qui n'existe plus ; son rejeu avec `--depuis review-security` devrait
+ouvrir une session neuve, mais le dispatcher transmet encore la session de l'ancienne
+attente au worker (R11). Le correctif doit respecter le choix de reprise existant.
+Les tests avec maître et worker réels couvrent la reprise quota avec session conservée,
+le rejeu avec session neuve et le refus inchangé d'une vraie reprise sans instantané.
+11.6/O6/R10/R11 restent en cours jusqu'à la recette complète, sans nouvel objectif
+attribuable ajouté ni nouvelle forme de message entre composants.
+
 ## Ordre d’activation opérateur
 
 0. Configurer l’alias SSH `agenticos-git` sur le PC du worker à partir de la connexion
