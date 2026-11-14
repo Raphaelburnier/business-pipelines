@@ -130,7 +130,7 @@ export const BRIQUES: Brique[] = [
     statut: "actif",
     x: C[1],
     y: R[0],
-    resume: "L'API REST et SSE et le front Night City. Il lit l'event store, dépose des commandes signées et n'a aucune clé de modèle : exposé au tailnet, il ne peut rien payer.",
+    resume: "L'API REST et SSE et le front React. Il lit l'event store, dépose des commandes signées et n'a aucune clé de modèle : exposé au tailnet, il ne peut rien payer.",
     faits: [
       "Routes de lecture : /api/topology, /api/runs, /api/machines, /api/usage, /api/stream (SSE)",
       "POST /api/runs : contrôle d'origine, JSON seul, 20 ko max, réponse 202 et commande run.start",

@@ -104,7 +104,7 @@
 :root:not([data-theme="jour"]) .pl-paquet.ctx { filter: drop-shadow(0 0 3px var(--color-bleu)); }
 
 /* L'inspecteur */
-.pl-inspecteur { min-height: 0; overflow: auto; border: 1px solid var(--color-trait); border-top: 2px solid var(--color-accent); background: var(--color-surface); clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); }
+.pl-inspecteur { min-height: 0; overflow: auto; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
 .pl-insp { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .pl-insp h3 { margin: 0; font: 700 20px/1.1 var(--font-sans); overflow-wrap: anywhere; }
 .pl-label { font: 400 10px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-douce); }
@@ -139,7 +139,6 @@
   .pl-liste { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .pl-liste a { flex: none; width: 200px; }
   .pl-centre { min-height: 480px; }
-  .pl-inspecteur { clip-path: none; }
 }
 @media (max-width: 720px) {
   .pl-graphe.avec-contexte { min-width: 600px; }

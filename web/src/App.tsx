@@ -1,6 +1,7 @@
 // Les cellules s'inspectent sans quitter le graphe. Les URL de détail restent accessibles
 // directement, pour les liens partagés et les favoris existants.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { FournisseurToasts } from "./composants/Toasts";
 import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
 import { mot } from "./format";
 import { Icone, type NomIcone } from "./icones";
@@ -134,7 +135,6 @@ function Machines({ machines }: { machines: Machine[] }) {
   );
 }
 
-// Cyberpunk n'a que A–Z a–z : les titres de vue s'écrivent sans accents ni chiffres.
 function titreDe(route: Route): string {
   if (route.type === "graph") return "Accueil";
   if (route.type === "agents") return "Agents";
@@ -144,9 +144,9 @@ function titreDe(route: Route): string {
   if (route.type === "run") return "Run";
   if (route.type === "marketing") return "Équipe marketing";
   if (route.type === "demander") return "Demander";
-  if (route.type === "decisions" || route.type === "approbations") return "Decisions";
+  if (route.type === "decisions" || route.type === "approbations") return "Décisions";
   if (route.type === "ai-studio") return "AI Studio";
-  if (route.type === "systeme") return "Systeme";
+  if (route.type === "systeme") return "Système";
   if (route.type === "finance") return "Finance";
   if (route.type === "taskboard") return "TaskBoard";
   if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine", orchestrateur: "Orchestrateur" }[route.selection.type];
@@ -252,7 +252,6 @@ function Coquille() {
             Décisions
           </Lien>
         </nav>
-        <span className="ao-danger" aria-hidden="true" />
         <div className="ao-pied">
           <div className="ao-nav">
             <button
@@ -260,10 +259,10 @@ function Coquille() {
               className="ao-theme"
               aria-pressed={theme === "jour"}
               onClick={basculer}
-              title={theme === "jour" ? "Passer en Night City" : "Passer en Night City · Jour"}
+              title={theme === "jour" ? "Passer au thème sombre" : "Passer au thème clair"}
             >
               <Icone nom={theme === "jour" ? "lune" : "soleil"} />
-              <span className="ao-txt">{theme === "jour" ? "Nuit" : "Jour"}</span>
+              <span className="ao-txt">{theme === "jour" ? "Thème sombre" : "Thème clair"}</span>
             </button>
           </div>
           <span className="ao-legende ao-txt">NAS · tailnet</span>
@@ -276,11 +275,8 @@ function Coquille() {
             <Icone nom="menu" />
           </button>
           <h1>{titreDe(route)}</h1>
-          <span className="ao-code" aria-hidden="true">
-            SYS//AOS
-          </span>
           <div className="ao-sys">
-            {source.nom === "maquette" && <span className="bg-alerte-fond px-2 py-0.5 font-mono text-[11px] uppercase text-alerte">maquette</span>}
+            {source.nom === "maquette" && <span className="rounded-full bg-alerte-fond px-2 py-0.5 text-xs font-medium text-alerte">Maquette</span>}
             <Machines machines={topo?.machines ?? []} />
             <span className={`ao-machine ${connecte ? "ok" : "hs"}`} title={connecte ? "Flux d'événements connecté" : "Flux d'événements interrompu"}>
               <i className={connecte ? "pulse-douce" : ""} aria-hidden="true" />
@@ -317,8 +313,8 @@ function Coquille() {
               <div className="font-mono text-[11px] uppercase tracking-widest text-douce">404</div>
               <h2>Introuvable</h2>
               <p className="text-douce">Cette page n’existe pas.</p>
-              <button type="button" className="mt-2 bg-accent px-4 py-2 text-sm font-semibold text-sur-accent" onClick={() => naviguer("/")}>
-                Revenir au graphe
+              <button type="button" className="mt-2 cursor-pointer bg-accent px-4 py-2 text-sm font-semibold text-sur-accent" onClick={() => naviguer("/")}>
+                Revenir à l’accueil
               </button>
             </section>
           )}
@@ -335,5 +331,11 @@ function Coquille() {
 }
 
 export default function App() {
-  return <FournisseurSource><Coquille /></FournisseurSource>;
+  return (
+    <FournisseurSource>
+      <FournisseurToasts>
+        <Coquille />
+      </FournisseurToasts>
+    </FournisseurSource>
+  );
 }

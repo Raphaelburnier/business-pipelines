@@ -1,5 +1,6 @@
-// Night City (nuit) par défaut, Night City · Jour sur demande. Le choix vit dans le
-// navigateur ; un stockage indisponible (navigation privée) laisse simplement la nuit.
+// Thème sombre (« nuit ») par défaut, clair (« jour ») sur demande. Les deux valeurs gardent
+// leur nom d'origine pour respecter le choix déjà enregistré dans les navigateurs. Le choix
+// vit dans le navigateur ; un stockage indisponible (navigation privée) laisse le sombre.
 import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "nuit" | "jour";
@@ -20,7 +21,7 @@ export function useTheme(): { theme: Theme; basculer: () => void } {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "jour" ? "#fdf500" : "#272932");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "jour" ? "#f6f7f9" : "#0e1116");
   }, [theme]);
 
   const basculer = useCallback(() => {
