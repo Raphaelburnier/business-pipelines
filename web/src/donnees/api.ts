@@ -5,14 +5,7 @@ import type { ReponseEquipe } from "./equipe";
 import type { ReponsePipelines } from "./pipelines";
 import type { AttributionAvenir, Commande, FiltreRuns, Source } from "./source";
 import type { EtatPullRequests } from "./pullRequests";
-
-class ErreurApi extends Error {
-  readonly code: number;
-  constructor(message: string, code: number) {
-    super(message);
-    this.code = code;
-  }
-}
+import { ErreurApi } from "./erreurs";
 
 async function lire<T>(chemin: string): Promise<T> {
   const reponse = await fetch(chemin, { headers: { accept: "application/json" } });

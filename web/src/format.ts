@@ -61,9 +61,10 @@ const MOTS: Record<Etat, string> = {
 
 export const mot = (etat: Etat): string => MOTS[etat];
 
-// Une seule grammaire de couleurs pour toute l'interface : vert ce qui a abouti ou tourne
-// bien, accent ce qui travaille, ambre ce qui attend quelqu'un, rouge ce qui a échoué, bleu
-// ce qui dort. La couleur n'est jamais seule : le mot l'accompagne toujours.
+// Une seule grammaire de couleurs pour toute l'interface (audit UX du 2026-11-14) : vert ce
+// qui a abouti, bleu ce qui travaille (ton « accent », nom gardé pour les modules qui s'en
+// servent), ambre ce qui attend une action de Raphaël, rouge ce qui a échoué, gris l'attente
+// passive qui se débloque seule. La couleur n'est jamais seule : le mot l'accompagne toujours.
 export type Ton = "ok" | "accent" | "alerte" | "danger" | "bleu" | "doux";
 
 const TONS: Record<Etat, Ton> = {
@@ -71,17 +72,17 @@ const TONS: Record<Etat, Ton> = {
   running: "accent",
   paused: "doux",
   waiting_approval: "alerte",
-  waiting_quota: "alerte",
+  waiting_quota: "doux",
   waiting_auth: "alerte",
-  waiting_machine: "alerte",
+  waiting_machine: "doux",
   waiting_freshness: "alerte",
   succeeded: "ok",
   failed: "danger",
   cancelled: "doux",
   online: "ok",
   busy: "accent",
-  sleeping: "bleu",
-  waking: "alerte",
+  sleeping: "doux",
+  waking: "accent",
   offline: "danger",
   error: "danger",
   actif: "accent",
@@ -96,11 +97,11 @@ export const ton = (etat: Etat): Ton => TONS[etat];
 /** Les classes Tailwind d'un ton, pour une pastille ou une bordure. */
 export const CLASSES_TON: Record<Ton, { texte: string; fond: string; bordure: string; plein: string }> = {
   ok: { texte: "text-ok", fond: "bg-ok-fond", bordure: "border-ok", plein: "bg-ok" },
-  accent: { texte: "text-accent", fond: "bg-carte", bordure: "border-accent", plein: "bg-accent" },
+  accent: { texte: "text-encours", fond: "bg-encours-fond", bordure: "border-encours", plein: "bg-encours" },
   alerte: { texte: "text-alerte", fond: "bg-alerte-fond", bordure: "border-alerte", plein: "bg-alerte" },
   danger: { texte: "text-danger", fond: "bg-danger-fond", bordure: "border-danger", plein: "bg-danger" },
-  bleu: { texte: "text-bleu", fond: "bg-fond", bordure: "border-bleu", plein: "bg-bleu" },
-  doux: { texte: "text-douce", fond: "bg-fond", bordure: "border-trait", plein: "bg-douce" },
+  bleu: { texte: "text-encours", fond: "bg-encours-fond", bordure: "border-encours", plein: "bg-encours" },
+  doux: { texte: "text-douce", fond: "bg-neutre-fond", bordure: "border-trait", plein: "bg-douce" },
 };
 
 /** Ce qui bouge : une pastille qui respire, une arête animée. */

@@ -1,12 +1,12 @@
-/* Système : la carte des boucles agentiques, dans la grammaire AgenticOS.
-   Une couleur ET un motif par flux, pour que le graphe se lise sans la couleur. Jaune reste
-   le signal (commande), rose ce qui attend Raphaël, cyan le PC, violet le NAS. */
+/* Système : la carte des boucles agentiques.
+   Une couleur ET un motif par flux, pour que le graphe se lise sans la couleur. Indigo
+   pour la commande, ambre ce qui attend Raphaël, bleu ciel le PC, violet le NAS. */
 :root {
   --sy-commande: var(--color-accent);
   --sy-execution: var(--color-ok);
   --sy-lecture: var(--color-pc);
   --sy-livraison: #ff9f43;
-  --sy-modeles: var(--color-alerte);
+  --sy-modeles: #f07cc4;
   --sy-dev: var(--color-nas);
   --sy-issue-pass: var(--color-ok);
   --sy-issue-fail: var(--color-danger);
@@ -19,24 +19,22 @@
 }
 
 .sy-page { display: flex; width: min(100%, 1600px); min-height: 100%; flex-direction: column; gap: 16px; margin-inline: auto; padding-bottom: 32px; }
-.sy-page .kicker, .sy-fiche .kicker { font: 400 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-douce); }
+.sy-page .kicker, .sy-fiche .kicker { font: 600 12px/1.4 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--color-douce); }
 .sy-page code { font: 400 12px/1 var(--font-mono); color: var(--color-accent); }
 :root[data-theme="jour"] .sy-page code { padding: 0 3px; background: var(--color-accent-doux); color: var(--color-encre); }
 
-.sy-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 20px 24px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); clip-path: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%); }
-.sy-hero::after { content: ""; position: absolute; right: 0; bottom: 0; width: 120px; height: 6px; background: repeating-linear-gradient(-45deg, var(--color-citron) 0 5px, var(--color-raisin) 5px 10px); opacity: .8; }
+.sy-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 20px 24px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
 .sy-hero h2 { margin: 4px 0 8px; font: 700 clamp(24px, 3vw, 38px)/1 var(--font-sans); letter-spacing: -.01em; color: var(--color-encre); }
 .sy-hero p { max-width: 70ch; margin: 0; color: var(--color-douce); }
 .sy-chiffres { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
-.sy-chiffres div { min-width: 96px; padding: 8px 12px; border: 1px solid var(--color-trait); background: var(--color-carte); }
-.sy-chiffres dt { font: 400 10px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
-.sy-chiffres dd { margin: 2px 0 0; font: 400 26px/1 var(--font-mono); color: var(--color-accent); }
-:root[data-theme="jour"] .sy-chiffres dd { color: var(--color-encre); }
+.sy-chiffres div { min-width: 96px; padding: 8px 12px; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); background: var(--color-carte); }
+.sy-chiffres dt { font: 500 12px/1.3 var(--font-sans); color: var(--color-douce); }
+.sy-chiffres dd { margin: 2px 0 0; font: 600 24px/1.1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--color-encre); }
 
 .sy-onglets { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--color-trait); }
-.sy-onglets button { height: 40px; padding: 0 16px; border: 0; background: transparent; color: var(--color-douce); font: 600 14px/1 var(--font-sans); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.sy-onglets button { height: 40px; padding: 0 16px; border: 0; background: transparent; border-radius: var(--radius-md) var(--radius-md) 0 0; color: var(--color-douce); font: 500 14px/1 var(--font-sans); cursor: pointer; }
 .sy-onglets button:hover { background: var(--color-carte); color: var(--color-encre); }
-.sy-onglets button[aria-selected="true"] { background: var(--color-accent); color: var(--color-sur-accent); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%); }
+.sy-onglets button[aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--color-accent); color: var(--color-encre); }
 
 .sy-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; padding: 8px; border: 1px solid var(--color-trait); background: var(--color-surface); }
 .sy-filtre { --sy-filtre-couleur: var(--color-trait-fort); display: inline-flex; height: 34px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--color-trait); background: transparent; color: var(--color-douce); font: 600 13px/1 var(--font-sans); cursor: pointer; }
@@ -64,7 +62,7 @@
 
 /* Zones : des cadres de fond, sans clic. */
 .sy-zone { position: relative; width: 100%; height: 100%; border: 1px dashed var(--color-trait-fort); background: color-mix(in srgb, var(--color-surface) 70%, transparent); pointer-events: none; }
-.sy-zone .titre { position: absolute; top: 10px; left: 14px; font: 400 18px/1 var(--font-titre); letter-spacing: .04em; color: var(--color-douce); }
+.sy-zone .titre { position: absolute; top: 10px; left: 14px; font: 600 15px/1 var(--font-sans); color: var(--color-douce); }
 .sy-zone .sous { position: absolute; top: 14px; right: 14px; font: 400 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
 .sy-zone.nas { border: 1px solid var(--color-nas); border-left-width: 4px; border-radius: 6px; }
 .sy-zone.nas .titre { color: var(--color-nas); }
@@ -82,7 +80,7 @@
 .sy-brique.pc::before { background: var(--color-pc); }
 .sy-brique.interfaces::before, .sy-brique.humain::before { background: var(--color-givre); }
 .sy-brique.nas { border-radius: 4px; }
-.sy-brique.humain { border-color: var(--color-givre); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); }
+.sy-brique.humain { border-color: var(--color-givre); }
 .sy-brique.moteur { border: 2px solid var(--color-accent); }
 .sy-brique.donnee { border-style: dashed; background: var(--color-surface); }
 .sy-brique.externe { background: var(--color-surface); }
@@ -126,7 +124,7 @@
 .ao-legende-graphe i.sy-i-attente { border-top: 2px dotted var(--sy-issue-attente); }
 
 /* Fiche latérale. */
-.sy-fiche { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+.sy-fiche { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
 .sy-fiche.vide p { margin: 0; }
 .sy-fiche h3 { margin: 0; font: 700 22px/1.1 var(--font-sans); color: var(--color-accent); }
 :root[data-theme="jour"] .sy-fiche h3 { color: var(--color-encre); }
@@ -167,7 +165,7 @@
 .sy-etape.agent::before { background: var(--color-accent); }
 .sy-etape.deterministe::before, .sy-etape.script::before { background: var(--color-ok); }
 .sy-etape.script { border-style: dashed; }
-.sy-etape.humain { border-color: var(--color-givre); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); }
+.sy-etape.humain { border-color: var(--color-givre); }
 .sy-etape.humain::before { background: var(--color-givre); }
 .sy-etape.externe { background: var(--color-surface); }
 .sy-etape.selectionnee, .react-flow__node-etape:hover .sy-etape { box-shadow: 0 0 0 1px var(--color-accent), 0 0 18px color-mix(in srgb, var(--color-accent) 35%, transparent); }
@@ -188,9 +186,8 @@
 
 /* Garde-fous. */
 .sy-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.sy-regle { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--color-trait-fort); background: var(--color-surface); clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%); }
-.sy-regle .num { font: 400 28px/1 var(--font-mono); color: var(--color-accent); text-shadow: 2px 0 0 var(--color-sang); }
-:root[data-theme="jour"] .sy-regle .num { color: var(--color-encre); text-shadow: 2px 0 0 var(--color-givre); }
+.sy-regle { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
+.sy-regle .num { font: 500 24px/1 var(--font-mono); color: var(--color-accent); }
 .sy-regle h3 { margin: 0; font: 700 18px/1.15 var(--font-sans); }
 .sy-regle p { flex: 1; margin: 0; font-size: 14px; line-height: 1.4; color: var(--color-douce); }
 .sy-regle .origine { font: 400 10px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-alerte); }
@@ -245,7 +242,7 @@
 .sy-zone-bloc.pc { border-left-color: var(--color-pc); }
 .sy-zone-bloc.cloud { border-left-color: var(--color-trait-fort); }
 .sy-zone-bloc > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
-.sy-zone-bloc > header h3 { margin: 0; font: 400 20px/1 var(--font-titre); letter-spacing: .04em; color: var(--color-encre); }
+.sy-zone-bloc > header h3 { margin: 0; font: 600 17px/1.2 var(--font-sans); color: var(--color-encre); }
 .sy-zone-bloc.interfaces > header h3 { color: var(--color-givre); }
 .sy-zone-bloc.nas > header h3 { color: var(--color-nas); }
 .sy-zone-bloc.pc > header h3 { color: var(--color-pc); }
@@ -258,7 +255,7 @@
 .sy-carte.nas::before { background: var(--color-nas); }
 .sy-carte.pc::before { background: var(--color-pc); }
 .sy-carte.interfaces::before { background: var(--color-givre); }
-.sy-carte.humain { border-color: var(--color-givre); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); }
+.sy-carte.humain { border-color: var(--color-givre); }
 .sy-carte.moteur { border: 2px solid var(--color-accent); }
 .sy-carte.donnee { border-style: dashed; background: var(--color-surface); }
 .sy-carte.externe { background: var(--color-surface); }
