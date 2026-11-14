@@ -1,8 +1,9 @@
 name: Auto-merge for internal agent PRs
 
 on:
+  # La revue (lot 6.2) peut finir après la CI : sa fin relance aussi le gate.
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Claude Code Review"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -33,6 +34,7 @@ jobs:
           pr_number=""
           sha=""
           ci_state="not checked"
+          review_state="not checked"
           sensitive_files="none"
           gate="event"
 
@@ -46,6 +48,7 @@ jobs:
               echo "- **Gate:** $gate"
               echo "- **Reason:** $reason"
               echo "- **CI:** $ci_state"
+              echo "- **Review:** $review_state"
               echo "- **Sensitive files:** $sensitive_files"
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::Refused: gate=$gate reason=$reason"
@@ -68,16 +71,43 @@ jobs:
           event="$(cat "$GITHUB_EVENT_PATH")"
           case "$EVENT_NAME" in
             workflow_run)
-              [[ "$(jq -r '.workflow_run.name // empty' <<<"$event")" == "CI" ]] || {
-                gate="workflow identity"
-                refuse "workflow_run was not produced by the exact CI workflow"
-              }
-              [[ "$(jq '[.workflow_run.pull_requests[]?.number] | unique | length' <<<"$event")" == "1" ]] || {
-                gate="PR resolution"
-                refuse "workflow_run does not identify exactly one pull request"
-              }
-              pr_number="$(jq -r '[.workflow_run.pull_requests[]?.number] | unique | .[0]' <<<"$event")"
+              run_name="$(jq -r '.workflow_run.name // empty' <<<"$event")"
               sha="$(jq -r '.workflow_run.head_sha // empty' <<<"$event")"
+              if [[ "$run_name" == "CI" ]]; then
+                [[ "$(jq '[.workflow_run.pull_requests[]?.number] | unique | length' <<<"$event")" == "1" ]] || {
+                  gate="PR resolution"
+                  refuse "workflow_run does not identify exactly one pull request"
+                }
+                pr_number="$(jq -r '[.workflow_run.pull_requests[]?.number] | unique | .[0]' <<<"$event")"
+              elif [[ "$run_name" == "Claude Code Review" ]]; then
+                # pull_request_target ne lie aucune PR au run : on la retrouve par sa branche et
+                # sa tête exactes. Toutes les autres preuves sont relues plus bas.
+                jq -e --arg repo "$REPOSITORY" '
+                  .workflow_run.path == ".github/workflows/claude-code-review.yml" and
+                  .workflow_run.event == "pull_request_target" and
+                  .workflow_run.head_repository.full_name == $repo
+                ' <<<"$event" >/dev/null || {
+                  gate="workflow identity"
+                  refuse "workflow_run was not produced by the default-branch review workflow"
+                }
+                head_branch="$(jq -r '.workflow_run.head_branch // empty' <<<"$event")"
+                [[ -n "$head_branch" && "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+                  gate="PR resolution"
+                  refuse "review workflow_run has no head branch or head SHA"
+                }
+                candidates="$(gh api --method GET "repos/$REPOSITORY/pulls" -f state=open -f head="${REPOSITORY%%/*}:$head_branch" -f per_page=100)" || {
+                  gate="PR resolution"
+                  refuse "pull requests of the reviewed branch could not be read"
+                }
+                [[ "$(jq --arg sha "$sha" '[.[] | select(.head.sha == $sha) | .number] | unique | length' <<<"$candidates")" == "1" ]] || {
+                  gate="PR resolution"
+                  refuse "review workflow_run does not identify exactly one open pull request"
+                }
+                pr_number="$(jq -r --arg sha "$sha" '[.[] | select(.head.sha == $sha) | .number] | unique | .[0]' <<<"$candidates")"
+              else
+                gate="workflow identity"
+                refuse "workflow_run was not produced by the exact CI or review workflow"
+              fi
               ;;
             workflow_dispatch)
               pr_number="${DISPATCH_PR:-}"
@@ -200,6 +230,91 @@ jobs:
             refuse "the tested commit does not merge the exact head into the current base"
           }
 
+          # Revue exigée (lot 6.2) dès que la base porte le workflow de revue : approbation de
+          # Claude ou de son relais Codex sur la tête exacte. Le texte publié sur la PR n'est pas
+          # cru, tout workflow d'une branche peut écrire sous github-actions[bot] : le verdict est
+          # lu dans l'artefact d'un run pull_request_target du workflow de la branche par défaut.
+          review_required="no"
+          review_state="not configured"
+          if review_presence="$(gh api "repos/$REPOSITORY/contents/.github/workflows/claude-code-review.yml?ref=$base_sha" --jq '.type' 2>&1)"; then
+            [[ "$review_presence" == "file" ]] || {
+              gate="review"
+              refuse "the review workflow path is not a regular file"
+            }
+            review_required="yes"
+          elif ! grep -q 'HTTP 404' <<<"$review_presence"; then
+            gate="review"
+            refuse "review workflow presence could not be read"
+          fi
+          if [[ "$review_required" == "yes" ]]; then
+            review_state="missing"
+            review_checks="$(gh api "repos/$REPOSITORY/commits/$sha/check-runs?check_name=claude-review&per_page=100")" || {
+              gate="review"
+              refuse "review check runs could not be read"
+            }
+            [[ "$(jq -r '.total_count' <<<"$review_checks")" =~ ^[0-9]+$ ]] && [[ "$(jq -r '.total_count' <<<"$review_checks")" -le 100 ]] || {
+              gate="review"
+              refuse "review check run list is incomplete"
+            }
+            review_check="$(jq -c --arg sha "$sha" '
+              [.check_runs[] | select(.head_sha == $sha and .app.slug == "github-actions")] | sort_by(.id) | last // {}
+            ' <<<"$review_checks")"
+            review_check_id="$(jq -r '.id // empty' <<<"$review_check")"
+            [[ "$review_check_id" =~ ^[1-9][0-9]*$ ]] || {
+              gate="review"
+              refuse "no review has run on the current head"
+            }
+            review_state="$(jq -r 'if .status == "completed" then (.conclusion // "unknown") else (.status // "missing") end' <<<"$review_check")"
+            [[ "$review_state" == "success" ]] || {
+              gate="review"
+              refuse "the latest review on the current head did not succeed (unavailable or still running)"
+            }
+            review_run_id="$(jq -r '.details_url // empty' <<<"$review_check" | sed -nE 's#^https://github\.com/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$#\1#p')"
+            [[ "$review_run_id" =~ ^[1-9][0-9]*$ ]] || {
+              gate="review provenance"
+              refuse "the review check run does not link to an Actions run"
+            }
+            review_run="$(gh api "repos/$REPOSITORY/actions/runs/$review_run_id")" || {
+              gate="review provenance"
+              refuse "the review run could not be read"
+            }
+            jq -e --arg sha "$sha" --arg repo "$REPOSITORY" '
+              .path == ".github/workflows/claude-code-review.yml" and .event == "pull_request_target" and
+              .head_sha == $sha and .repository.full_name == $repo and .head_repository.full_name == $repo and
+              .status == "completed" and .conclusion == "success"
+            ' <<<"$review_run" >/dev/null || {
+              gate="review provenance"
+              refuse "the review run is not the default-branch review workflow for this head"
+            }
+            review_attempt="$(jq -r '.run_attempt // empty' <<<"$review_run")"
+            [[ "$review_attempt" =~ ^[1-9][0-9]*$ ]] || {
+              gate="review provenance"
+              refuse "the review run attempt is missing"
+            }
+            verdict_dir="$(mktemp -d)"
+            gh run download "$review_run_id" -R "$REPOSITORY" -n "github-review-verdict-$review_attempt" -D "$verdict_dir" >/dev/null 2>&1 || {
+              gate="review verdict"
+              refuse "the review verdict artifact could not be downloaded"
+            }
+            verdict_file="$verdict_dir/verdict.json"
+            [[ -f "$verdict_file" && ! -L "$verdict_file" ]] && [[ "$(stat -c %s "$verdict_file")" -le 200000 ]] || {
+              gate="review verdict"
+              refuse "the review verdict artifact is not a bounded regular file"
+            }
+            reviewer="$(jq -r '.relecteur // "claude"' "$verdict_file" 2>/dev/null || echo invalid)"
+            review_state="$(jq -r '"\(.status // "unknown") / \(.verdict // "no verdict") by \(.relecteur // "claude")"' "$verdict_file" 2>/dev/null || echo "unreadable verdict")"
+            jq -e --arg sha "$sha" --arg repo "$REPOSITORY" --argjson pr "$pr_number" --arg run "$review_run_id" --arg attempt "$review_attempt" '
+              .schema_version == 1 and .repository == $repo and .pr == $pr and .head_sha == $sha and
+              .run_id == $run and .run_attempt == $attempt and .status == "reviewed" and .verdict == "approved" and
+              (.findings | type) == "array" and (.findings | length) == 0 and
+              ((.relecteur // "claude") | IN("claude", "codex"))
+            ' "$verdict_file" >/dev/null || {
+              gate="review verdict"
+              refuse "the review did not approve the current head"
+            }
+            review_state="approved by $reviewer (run $review_run_id attempt $review_attempt)"
+          fi
+
           threads="$(gh api graphql -f query='query($owner:String!, $name:String!, $number:Int!) { repository(owner:$owner, name:$name) { pullRequest(number:$number) { reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } } } } }' -F owner="${REPOSITORY%%/*}" -F name="${REPOSITORY##*/}" -F number="$pr_number")" || {
             gate="review threads"
             refuse "review thread state could not be read"
@@ -285,6 +400,20 @@ jobs:
             gate="final CI"
             refuse "latest CI changed after validation"
           }
+          if [[ "$review_required" == "yes" ]]; then
+            review_again="$(gh api "repos/$REPOSITORY/commits/$sha/check-runs?check_name=claude-review&per_page=100")" || {
+              gate="final review"
+              refuse "review check runs could not be re-read"
+            }
+            jq -e --arg sha "$sha" --argjson id "$review_check_id" '
+              (.total_count | type) == "number" and .total_count <= 100 and
+              ([.check_runs[] | select(.head_sha == $sha and .app.slug == "github-actions")] | sort_by(.id) | last
+                | .id == $id and .status == "completed" and .conclusion == "success")
+            ' <<<"$review_again" >/dev/null || {
+              gate="final review"
+              refuse "a newer review started or the approved review changed after validation"
+            }
+          fi
           threads="$(gh api graphql -f query='query($owner:String!, $name:String!, $number:Int!) { repository(owner:$owner, name:$name) { pullRequest(number:$number) { reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } } } } }' -F owner="${REPOSITORY%%/*}" -F name="${REPOSITORY##*/}" -F number="$pr_number")" || {
             gate="final review threads"
             refuse "review threads could not be re-read"
@@ -323,7 +452,7 @@ jobs:
             echo "- **HEAD SHA:** $sha"
             echo "- **CI:** $ci_state"
             echo "- **Tested merge:** $tested_merge (head=$sha base=$base_sha run=$ci_id attempt=$ci_attempt)"
-            echo "- **External reviews:** advisory; unresolved threads still block"
+            echo "- **Review:** $review_state; unresolved threads still block"
             echo "- **Sensitive files:** none"
             echo "- **Merge:** REST squash with the validated SHA"
           } >> "$GITHUB_STEP_SUMMARY"
