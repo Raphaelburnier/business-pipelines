@@ -194,8 +194,8 @@ dépôt sont conservées.
   contenant un jeton Anthropic est de toute façon refusé à la publication. Le risque n'est pas
   nul tant qu'un secret et un contenu non fiable partagent un processus.
 - Une injection peut orienter le correctif dans du code non sensible. Les bornes, la CI qui
-  repasse et la revue Claude limitent l'effet, mais `agent-gated-merge` fusionne seul une PR
-  `claude/` verte : ce risque existait déjà et n'est pas supprimé.
+  repasse et la revue limitent l'effet, mais `agent-gated-merge` fusionne seul une PR
+  `claude/` verte et approuvée par la revue (lot 6.2) : ce risque est réduit, pas supprimé.
 - Sans shell, Claude ne lance plus les tests avant de proposer. Une correction ratée coûte un
   aller-retour de CI, borné par la limite de 3.
 - L'échange OIDC vers le jeton de l'app Claude utilise le service d'Anthropic qu'appelle
@@ -252,8 +252,8 @@ variante ; ce correctif conserve son implémentation.
 Le plugin de revue pouvait réussir avec un simple commentaire « aucun problème », ou
 ne rien publier ; les erreurs `is_error:true` ne donnaient pas de verdict exploitable.
 Le workflow conserve son nom `Claude Code Review`, mais sépare désormais lecture et
-publication. La revue reste consultative et distincte du workflow `CI` : exiger ce
-verdict avant fusion relève du lot 6.2, et déclencher une correction du lot 6.3.
+publication. La revue reste distincte du workflow `CI`. Le gate de fusion exige son
+approbation depuis le lot 6.2 (section suivante) ; déclencher une correction relève du lot 6.3.
 
 `pull_request_target` et la relance `workflow_dispatch` utilisent seulement le code de
 confiance de la branche par défaut. Aucun checkout, hook, test ou script de la PR n'est
@@ -312,14 +312,59 @@ recetter deux erreurs successives sans relance et vérifier la revue sur le comm
 Un quota Claude épuisé reste un arrêt explicite : ce lot n'ajoute aucun basculement Codex.
 
 
+### Revue exigée et relais Codex (lot 6.2)
+
+Résumé : une PR d'agent ne fusionne automatiquement qu'avec une revue approuvée sur sa tête
+exacte. Claude relit d'abord ; si Claude n'a pas pu relire, Codex prend le relais avec le
+même instantané, le même schéma et la même validation.
+
+**Relais.** Le relais ne part que si l'instantané est prêt et que Claude a échoué pour
+`quota` ou `provider_error`. L'action Claude masque son message d'erreur, donc un quota
+épuisé sort en `provider_error`. Un verdict rendu, une revue incomplète ou un résultat
+invalide ne passent jamais à Codex : ce serait chercher un second avis jusqu'à l'approbation.
+Codex tourne par `openai/codex-action` épinglée, avec le secret `OPENAI_API_KEY` du dépôt,
+facturé à l'usage par l'API OpenAI, séparément de l'abonnement ChatGPT. Il lit en
+`:read-only`, sans réseau, sans jeton GitHub (`GH_TOKEN` vidé), et `drop-sudo` retire sudo
+au runner pour la suite du job. Le schéma qui lui est remis perd ses bornes de longueur et
+de nombre, que la sortie structurée stricte d'OpenAI n'accepte pas toutes ; ces bornes
+restent contrôlées par le validateur. Sans secret, le verdict reste indisponible et la
+publication indique « Relais Codex non configuré ». La relance manuelle
+`workflow_dispatch` accepte `relecteur: codex` pour la recette du relais.
+
+Le verdict porte `relecteur` (`claude` ou `codex`) et, pour Codex, `relais_de` (motif de
+Claude) et `relais_codex` (`non_configure`, `indisponible` ou `invalide`) quand il n'a pas
+abouti. Sans résultat de Codex, `reason` garde le motif de Claude : le hook Stop local
+continue de reconnaître un quota ou une panne (lot 6.5).
+
+**Gate.** Quand la base porte `.github/workflows/claude-code-review.yml`, `agent-gated-merge`
+exige, après les preuves de CI :
+
+- le dernier run `pull_request_target` du workflow de revue sur la tête, lu par l'API Actions
+  (la permission `actions: read` du gate suffit ; les check-runs demanderaient `checks: read`),
+  terminé en succès, de ce chemin exact et de ce dépôt ;
+- l'artefact `github-review-verdict-<tentative>` de ce run : même dépôt, PR, tête, run et
+  tentative, `status: reviewed`, `verdict: approved`, aucun constat, relecteur connu.
+
+Le texte de la revue publiée n'est jamais cru : n'importe quel workflow d'une branche peut
+écrire sous `github-actions[bot]`. Juste avant la fusion, le gate relit les runs de revue : une
+revue relancée entre-temps refuse la fusion. La fin du workflow de revue relance aussi le
+gate, qui retrouve la PR par sa branche et sa tête exactes ; sinon une revue terminée après
+la CI laisserait la PR en attente. Sans workflow de revue sur la base (Steam, tcg, Saas),
+l'exigence reste inactive ; une erreur de lecture refuse la fusion.
+
+Une revue indisponible ou une demande de corrections laisse la PR ouverte. On la débloque
+en relançant le run de revue de la PR (`gh run rerun <id> --failed`), après correction, ou
+par la fusion explicite depuis le cockpit, inchangée. Les tests sont dans
+`test/agent-gated-merge.test.js` et `test/github-review.test.js`.
+
 ### Correction déclenchée par la revue (lot 6.3)
 
 Dans business-pipelines, `CI autofix` écoute également la fin réussie de `Claude Code
 Review`. Il ne corrige que les revues automatiques `pull_request_target` sur une PR
 interne ouverte, non brouillon, visant la branche par défaut et issue d’une branche
 `codex/`, `claude/`, `agent/` ou `automation/`. Les cinq autres copies du correcteur
-conservent leur fonctionnement CI. Le `workflow_dispatch` de revue reste consultatif :
-pour relancer aussi le correcteur, relancer le run automatique de la PR. Ses métadonnées
+conservent leur fonctionnement CI. Le `workflow_dispatch` de revue reste consultatif : ni le
+correcteur ni le gate ne le lisent. Pour qu'ils en tiennent compte, relancer le run automatique de la PR. Ses métadonnées
 conservent la branche de la PR et donc le verrou commun avec le correcteur CI.
 
 Le tri relit le workflow source (nom, chemin, événement, dépôt, tête, conclusion,
