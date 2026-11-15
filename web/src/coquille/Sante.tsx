@@ -69,6 +69,23 @@ export function evaluerSante({ machines, connecte, usage, file }: { machines: Re
   return { niveau, problemes: dangers + alertes, lignes };
 }
 
+/** Les lignes de santé : le panneau de la barre du haut et la carte de la vue d'ensemble. */
+export function ListeSante({ lignes }: { lignes: ReadonlyArray<LigneSante> }) {
+  return (
+    <ul className="flex flex-col">
+      {lignes.map((l) => (
+        <li key={l.cle} className="flex items-center gap-3 border-b border-trait py-2 last:border-0">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium text-encre">{l.libelle}</div>
+            {l.detail && <div className="text-xs text-douce">{l.detail}</div>}
+          </div>
+          {typeof l.jauge === "number" ? <Jauge valeur={l.jauge} libelle="" /> : <Statut ton={l.ton}>{l.mot}</Statut>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const PASTILLE: Record<Niveau, { ton: Ton; mot: string }> = {
   ok: { ton: "ok", mot: "Système OK" },
   alerte: { ton: "alerte", mot: "À surveiller" },
@@ -120,17 +137,7 @@ export function Sante({ evaluation, aller }: { evaluation: EvaluationSante; alle
       </button>
       {ouvert && (
         <div id={id} role="region" aria-label="Santé du système" className="ao-pop">
-          <ul className="flex flex-col">
-            {evaluation.lignes.map((l) => (
-              <li key={l.cle} className="flex items-center gap-3 border-b border-trait py-2 last:border-0">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-encre">{l.libelle}</div>
-                  {l.detail && <div className="text-xs text-douce">{l.detail}</div>}
-                </div>
-                {typeof l.jauge === "number" ? <Jauge valeur={l.jauge} libelle="" /> : <Statut ton={l.ton}>{l.mot}</Statut>}
-              </li>
-            ))}
-          </ul>
+          <ListeSante lignes={evaluation.lignes} />
           <a
             href="/systeme"
             onClick={(event) => {

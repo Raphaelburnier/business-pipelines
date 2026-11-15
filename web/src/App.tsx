@@ -9,10 +9,11 @@ import { evaluerSante, Sante } from "./coquille/Sante";
 import { Onglets } from "./composants/Onglets";
 import { Tiroir } from "./composants/Tiroir";
 import { FournisseurToasts } from "./composants/Toasts";
+import { useADecider } from "./donnees/aDecider";
 import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
-import { cleActive, lireRoute, miettes } from "./routes";
+import { adresseCanonique, cleActive, lireRoute, miettes, type Route } from "./routes";
 import { useTheme } from "./theme";
-import { Topologie, type Selection } from "./topologie/Topologie";
+import type { Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
 import { Branches } from "./vues/Branches";
 import { BandeauPause, ControleDemarrages, useControleFile } from "./vues/ControleExecution";
@@ -24,6 +25,7 @@ import { Missions } from "./vues/Missions";
 import { Panneau } from "./vues/Panneau";
 import { Pipelines } from "./vues/Pipelines";
 import { RunPipeline } from "./vues/RunPipeline";
+import { VueEnsemble } from "./vues/VueEnsemble";
 
 export { lireRoute } from "./routes";
 
@@ -31,18 +33,27 @@ const Systeme = lazy(() => import("./systeme/Systeme").then((module) => ({ defau
 const Marketing = lazy(() => import("./vues/Marketing").then((module) => ({ default: module.Marketing })));
 const AIStudio = lazy(() => import("./ai-studio/AIStudio").then((module) => ({ default: module.AIStudio })));
 const TaskBoard = lazy(() => import("./TaskBoard").then((module) => ({ default: module.TaskBoard })));
+// Le graphe (React Flow) ne sert plus qu'à Système : il quitte le premier chargement.
+const Topologie = lazy(() => import("./topologie/Topologie").then((module) => ({ default: module.Topologie })));
 const Finance = lazy(() => import("./finance/Finance").then((module) => ({ default: module.Finance })));
 
+/** Lit la route après avoir remplacé une ancienne adresse par la nouvelle, sans entrée d'historique. */
+function lireEtCorriger(): Route {
+  const canonique = adresseCanonique(window.location.pathname);
+  if (canonique) window.history.replaceState(null, "", canonique + window.location.search);
+  return lireRoute();
+}
+
 function useNavigation() {
-  const [route, setRoute] = useState(lireRoute);
+  const [route, setRoute] = useState(lireEtCorriger);
   useEffect(() => {
-    const suivre = () => setRoute(lireRoute());
+    const suivre = () => setRoute(lireEtCorriger());
     window.addEventListener("popstate", suivre);
     return () => window.removeEventListener("popstate", suivre);
   }, []);
   const aller = useCallback((destination: string) => {
     if (window.location.pathname + window.location.search !== destination) window.history.pushState(null, "", destination);
-    setRoute(lireRoute());
+    setRoute(lireEtCorriger());
   }, []);
   return { route, aller };
 }
@@ -68,16 +79,11 @@ function Coquille() {
   const declencheur = useRef<HTMLElement | null>(null);
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const { donnees: usage } = useCharge((s) => s.usage(), []);
-  const { donnees: livraison } = useCharge((s) => s.livraison(), []);
-  const { donnees: boite } = useCharge((s) => s.approbations(), []);
   const activite = useActivite();
+  const aDecider = useADecider(activite.runs);
   const file = useControleFile();
-  // Ce qui attend Raphaël : les approbations des runs, les plans métier de la boîte, et une
-  // livraison possible.
-  const decisions =
-    (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) +
-    (boite?.etat.decidables ?? 0) +
-    (livraison?.proposition?.disponible && !livraison.enCours ? 1 : 0);
+  // Ce qui attend Raphaël, compté une fois : le badge et la vue d'ensemble lisent la même liste.
+  const decisions = aDecider.elements.length;
   const sante = evaluerSante({ machines: topo?.machines ?? null, connecte, usage, file: source.etatExecution ? file : null });
   const active = cleActive(route);
   const chemin = miettes(route);
@@ -155,8 +161,8 @@ function Coquille() {
           </div>
         )}
 
-        <main id="contenu" tabIndex={-1} className={`ao-contenu${route.type === "graph" ? " ao-contenu-graphe" : ""}`}>
-          {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => (choix ? ouvrir(choix) : fermer())} />}
+        <main id="contenu" tabIndex={-1} className={`ao-contenu${route.type === "systeme" && route.page === "topologie" ? " ao-contenu-graphe" : ""}`}>
+          {route.type === "accueil" && <VueEnsemble decisions={aDecider} activite={activite} sante={sante} aller={naviguer} />}
           {(route.type === "agents" || route.type === "detail") && (
             <div className="mb-4">
               <Kpis />
@@ -181,7 +187,7 @@ function Coquille() {
           {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
           {route.type === "systeme" && (
             <Suspense fallback={<Chargement quoi="du système" />}>
-              <Systeme page={route.page} aller={naviguer} />
+              <Systeme page={route.page} aller={naviguer} topologie={<Topologie selection={selection} onSelection={(choix) => (choix ? ouvrir(choix) : fermer())} />} />
             </Suspense>
           )}
           {route.type === "taskboard" && (
@@ -194,7 +200,7 @@ function Coquille() {
               <AIStudio route={route.studio} aller={naviguer} />
             </Suspense>
           )}
-          {route.type === "detail" && <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />}
+          {route.type === "detail" && <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/systeme/topologie")} />}
           {route.type === "inconnue" && (
             <section className="page-vide">
               <div className="font-mono text-[11px] uppercase tracking-widest text-douce">404</div>
