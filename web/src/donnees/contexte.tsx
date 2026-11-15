@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { sourceMaquette } from "../mock/source";
 import type { Evenement } from "../types";
 import { sourceApi } from "./api";
+import { lireErreur, type ErreurLisible } from "./erreurs";
 import type { Source } from "./source";
 
 function choisirSource(): Source {
@@ -55,11 +56,24 @@ export function useSource(): Contexte {
  * Charge une donnée et la recharge à chaque événement du flux. Les réponses arrivées dans
  * le désordre sont écartées : seule la dernière demande a le droit d'écrire l'état.
  */
-export function useCharge<T>(charger: (source: Source) => Promise<T>, cles: ReadonlyArray<unknown>) {
+export interface Chargement<T> {
+  donnees: T | null;
+  /** Message lisible (voir `lireErreur`), prêt à afficher ; `null` après une lecture réussie. */
+  erreur: string | null;
+  /** Le message technique d'origine quand il diffère, pour un « Détail technique ». */
+  detail: string | null;
+  /** Vrai tant que la première lecture n'a rien rendu : le moment d'un squelette. */
+  chargement: boolean;
+  /** Relit tout de suite, sans attendre le prochain événement : le bouton « Réessayer ». */
+  recharger: () => void;
+}
+
+export function useCharge<T>(charger: (source: Source) => Promise<T>, cles: ReadonlyArray<unknown>): Chargement<T> {
   const { source, version } = useSource();
   const versionLissee = useLissage(version, 600);
   const [donnees, setDonnees] = useState<T | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<ErreurLisible | null>(null);
+  const [essai, setEssai] = useState(0);
   const numero = useRef(0);
   const lancer = useCallback(() => charger(source), [source, ...cles]);
 
@@ -72,11 +86,17 @@ export function useCharge<T>(charger: (source: Source) => Promise<T>, cles: Read
         setErreur(null);
       })
       .catch((err: unknown) => {
-        if (moi === numero.current) setErreur(err instanceof Error ? err.message : String(err));
+        if (moi === numero.current) setErreur(lireErreur(err));
       });
-  }, [lancer, versionLissee]);
+  }, [lancer, versionLissee, essai]);
 
-  return { donnees, erreur };
+  // Effacer l'erreur rend le squelette pendant la relecture : le clic se voit tout de suite.
+  const recharger = useCallback(() => {
+    setErreur(null);
+    setEssai((n) => n + 1);
+  }, []);
+
+  return { donnees, erreur: erreur?.message ?? null, detail: erreur?.detail ?? null, chargement: donnees === null && erreur === null, recharger };
 }
 
 // Un agent bavard émet un `step.progress` par tour de modèle. Relire l'API à chacun ferait

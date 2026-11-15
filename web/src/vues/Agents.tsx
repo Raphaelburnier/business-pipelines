@@ -408,7 +408,7 @@ function Competences({ agent: a }: { agent: MembreEquipe }) {
     return (
       <div className="ao-competences">
         <div className="entete">
-          <span className="titre">Competences</span>
+          <span className="titre">Compétences</span>
         </div>
         <p className="aucune">
           {a.llm.via === "omniroute" && !a.llm.model.includes("/")
@@ -421,7 +421,7 @@ function Competences({ agent: a }: { agent: MembreEquipe }) {
   return (
     <div className="ao-competences">
       <div className="entete">
-        <span className="titre">Competences</span>
+        <span className="titre">Compétences</span>
         {c.prix && (
           <span className="prix" title="Prix public par million de jetons, entrée / sortie">
             {c.prix.entreeUsdParM === 0 && c.prix.sortieUsdParM === 0 ? "gratuit" : `${c.prix.entreeUsdParM} $ / ${c.prix.sortieUsdParM} $ par M jetons`}
