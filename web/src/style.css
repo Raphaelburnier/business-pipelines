@@ -107,86 +107,128 @@ body {
 /* Un bouton primaire (fond accent) : arrondi comme tous les contrôles. */
 button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
 
-/* ---------- Coquille : rail | centre | en cours ---------- */
+/* ---------- Coquille : barre latérale | centre (| inspection) ----------
+   PC (plus de 1100 px) : barre dépliée de 232 px, libellés et groupes. Tablette : 64 px,
+   icônes seules, leur nom en infobulle et pour les lecteurs d'écran. Téléphone (720 px et
+   moins) : pas de barre, quatre onglets en bas et « Plus » pour le reste. */
 .ao-shell {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 280px;
+  grid-template-columns: 232px minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
-  transition: grid-template-columns .2s ease;
 }
-.ao-shell.ouvert { grid-template-columns: 240px minmax(0, 1fr) 280px; }
+.ao-evitement { position: fixed; top: 8px; left: 8px; z-index: 50; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-sur-accent); font-weight: 600; text-decoration: none; transform: translateY(-200%); }
+.ao-evitement:focus { transform: none; }
 
-.ao-rail {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-  overflow: hidden;
-  border-right: 1px solid var(--color-trait);
-  background: var(--color-surface);
-  padding: 12px 8px;
-}
-.ao-marque { display: flex; align-items: center; gap: 12px; height: 40px; margin-bottom: 12px; white-space: nowrap; }
-.ao-marque b { font: 700 15px/1 var(--font-sans); color: var(--color-encre); transition: opacity .15s; }
-.ao-shell:not(.ouvert) .ao-marque b, .ao-shell:not(.ouvert) .ao-txt { opacity: 0; }
-.ao-txt { transition: opacity .15s; }
+.ao-rail { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--color-trait); background: var(--color-surface); }
+.ao-marque { display: flex; flex: none; align-items: center; gap: 10px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--color-trait); color: var(--color-encre); text-decoration: none; white-space: nowrap; }
+.ao-marque b { font: 700 15px/1 var(--font-sans); }
+.ao-monogramme { display: inline-grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-sur-accent); font: 700 11px/1 var(--font-sans); letter-spacing: .02em; }
 
-.ao-bouton-icone {
-  display: inline-grid;
-  flex: none;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: var(--radius-md);
-  color: var(--color-douce);
-  cursor: pointer;
-}
+/* Un bouton d'icône seule (fermer, retour) : son nom passe par aria-label. */
+.ao-bouton-icone { display: inline-grid; flex: none; place-items: center; width: 32px; height: 32px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-douce); cursor: pointer; }
 .ao-bouton-icone:hover { border-color: var(--color-trait-fort); color: var(--color-encre); }
 .ao-bouton-icone[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
 
-.ao-nav { display: flex; flex-direction: column; gap: 2px; }
-.ao-nav a, .ao-nav .ao-theme {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 40px;
-  padding: 0 12px;
-  color: var(--color-douce);
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.ao-nav a:hover, .ao-nav .ao-theme:hover { background: var(--color-carte); color: var(--color-encre); }
-.ao-nav .ao-theme { width: 100%; border: 0; background: transparent; font: 500 14px/1 var(--font-sans); cursor: pointer; }
-.ao-nav a[aria-current="page"] {
-  background: var(--color-carte);
-  color: var(--color-encre);
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-.ao-nav .ao-compte { margin-left: auto; min-width: 20px; padding: 3px 6px; border-radius: 999px; background: var(--color-carte); font: 600 11px/1 var(--font-sans); font-variant-numeric: tabular-nums; text-align: center; }
-.ao-nav .ao-compte.alerte { background: var(--color-alerte-fond); color: var(--color-alerte); }
+.ao-nav { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 16px; padding: 12px 8px; overflow-y: auto; }
+.ao-nav ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ao-nav .ao-pied { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--color-trait); }
+.ao-groupe-titre { margin: 0 0 4px; padding: 0 12px; font: 600 11px/16px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--color-douce); }
 
-.ao-pied { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
-.ao-pied .ao-legende { padding: 0 12px; font: 500 11px/1.4 var(--font-sans); color: var(--color-douce); white-space: nowrap; }
+.ao-lien { position: relative; display: flex; width: 100%; height: 36px; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-douce); font: 500 14px/1 var(--font-sans); text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color .15s, color .15s; }
+.ao-lien:hover { background: var(--color-carte); color: var(--color-encre); }
+.ao-lien[aria-current="page"] { background: var(--color-accent-doux); box-shadow: inset 2px 0 0 var(--color-accent); color: var(--color-encre); }
+.ao-lien[aria-current="page"] svg { color: var(--color-accent); }
+.ao-lien .ao-compte { margin-left: auto; min-width: 20px; padding: 3px 6px; border-radius: 999px; background: var(--color-alerte-fond); color: var(--color-alerte); font: 600 11px/1 var(--font-sans); font-variant-numeric: tabular-nums; text-align: center; }
 
-.ao-centre { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 16px; padding: 0 24px 24px; }
-.ao-haut { display: flex; flex: none; align-items: center; gap: 12px; height: 56px; border-bottom: 1px solid var(--color-trait); }
-.ao-haut h1 { margin: 0; font: 600 18px/24px var(--font-sans); color: var(--color-encre); white-space: nowrap; }
-.ao-sys { display: flex; align-items: center; gap: 12px; margin-left: auto; }
-.ao-machine { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--font-sans); color: var(--color-douce); white-space: nowrap; }
-.ao-machine i { width: 8px; height: 8px; border-radius: 999px; background: var(--color-douce); }
-.ao-machine.nas i { border-radius: 2px; }
-.ao-machine.ok i { background: var(--color-ok); }
-.ao-machine.run i { background: var(--color-encours); }
-.ao-machine.veille i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-douce); }
-.ao-machine.hs i { background: var(--color-danger); }
-.ao-burger { display: none; }
-.ao-contenu { min-width: 0; min-height: 0; flex: 1; }
-.ao-contenu-finance { overflow: auto; }
+.ao-centre { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.ao-haut { position: sticky; top: 0; z-index: 10; display: flex; flex: none; align-items: center; gap: 12px; height: 56px; padding: 0 24px; border-bottom: 1px solid var(--color-trait); background: var(--color-fond); }
+.ao-fil { display: flex; min-width: 0; flex: 1; align-items: center; gap: 4px; }
+.ao-fil ol { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ao-fil-parent { display: inline-flex; flex: none; align-items: center; gap: 6px; font-size: 13px; color: var(--color-douce); white-space: nowrap; }
+.ao-fil-parent a { color: var(--color-douce); text-decoration: none; }
+.ao-fil-parent a:hover { color: var(--color-encre); text-decoration: underline; text-underline-offset: 3px; }
+.ao-fil-sep { color: var(--color-trait-fort); }
+.ao-fil-courant { min-width: 0; }
+.ao-fil-courant h1 { margin: 0; overflow: hidden; font: 600 16px/24px var(--font-sans); color: var(--color-encre); text-overflow: ellipsis; white-space: nowrap; }
+.ao-retour { display: none; }
+.ao-sys { display: flex; flex: none; align-items: center; gap: 8px; }
+.ao-maquette { padding: 2px 8px; border-radius: 999px; background: var(--color-alerte-fond); color: var(--color-alerte); font: 500 12px/18px var(--font-sans); white-space: nowrap; }
+
+/* Santé : la pastille est un bouton, son détail un panneau sous elle. */
+.ao-sante { position: relative; }
+.ao-sante-bouton { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: none; cursor: pointer; }
+.ao-sante-bouton:hover > span, .ao-sante-bouton[aria-expanded="true"] > span { box-shadow: inset 0 0 0 1px currentColor; }
+.ao-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 320px; max-height: min(480px, 70dvh); padding: 8px 16px 12px; overflow-y: auto; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); box-shadow: var(--ombre-pop); }
+
+/* Activité : le bouton de la barre du haut, et les cartes de son tiroir. */
+.ao-activite-bouton { display: inline-flex; height: 32px; align-items: center; gap: 6px; padding: 0 8px 0 10px; border: 1px solid var(--color-trait-fort); border-radius: var(--radius-md); background: transparent; color: var(--color-encre); font: 500 13px/1 var(--font-sans); cursor: pointer; transition: background-color .15s, border-color .15s; }
+.ao-activite-bouton:hover { background: var(--color-carte); }
+.ao-activite-n { min-width: 20px; padding: 3px 6px; border-radius: 999px; background: var(--color-carte); font: 600 11px/1 var(--font-sans); text-align: center; }
+.ao-activite-bouton.alerte { border-color: var(--color-alerte); }
+.ao-activite-bouton.alerte .ao-activite-n { background: var(--color-alerte-fond); color: var(--color-alerte); }
+.ao-activite { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); background: var(--color-carte); }
+.ao-activite.wait { border-color: var(--color-alerte); }
+.ao-etapes { display: flex; gap: 3px; }
+.ao-etapes i { height: 4px; flex: 1; border-radius: 2px; background: var(--color-trait-fort); }
+.ao-etapes i.fait { background: var(--color-douce); }
+.ao-etapes i.maintenant { background: var(--color-encours); }
+.ao-etapes i.maintenant.wait { background: var(--color-alerte); }
+
+.ao-sous-onglets { flex: none; padding: 0 24px; }
+.ao-contenu { min-width: 0; min-height: 0; flex: 1; padding: 16px 24px 24px; overflow: auto; }
+.ao-contenu:focus { outline: none; }
+.ao-contenu-graphe { overflow: hidden; }
+.ao-onglets-bas { display: none; }
+
+/* Tablette : la barre se réduit aux icônes, la page reprend sa hauteur naturelle et défile
+   en entier ; seul le graphe, qui n'en a pas, reçoit une hauteur fixe (audit du 2026-09-29). */
+@media (max-width: 1100px) {
+  .ao-shell { display: block; height: auto; min-height: 100dvh; overflow: visible; padding-left: 64px; }
+  .ao-rail { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: 64px; }
+  .ao-marque { justify-content: center; padding: 0; }
+  .ao-rail :is(.ao-txt, .ao-groupe-titre) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .ao-rail .ao-nav { gap: 8px; }
+  .ao-rail .ao-groupe + .ao-groupe { padding-top: 8px; border-top: 1px solid var(--color-trait); }
+  .ao-rail .ao-lien { width: 40px; height: 40px; justify-content: center; margin-inline: auto; padding: 0; }
+  .ao-rail .ao-lien[aria-current="page"] { box-shadow: none; }
+  .ao-rail .ao-lien .ao-compte { position: absolute; top: 1px; right: -3px; min-width: 16px; padding: 2px 4px; font-size: 10px; }
+  .ao-centre { min-height: 100dvh; }
+  .ao-contenu, .ao-contenu-graphe { flex: none; overflow: visible; }
+  .ao-contenu > .flex.h-full, .ao-contenu > section.h-full { height: auto; }
+  .ao-canevas { flex: none; height: clamp(380px, 62dvh, 700px); }
+  /* Le tableau des étapes ne coupe plus ses mots : il défile dans son cadre si besoin. */
+  .ao-contenu table :is(th, td) { white-space: nowrap; }
+}
+
+/* Téléphone (via Tailscale) : quatre onglets en bas, « Plus » ouvre toutes les pages. Les
+   cibles font 44 px et les champs 16 px, sous quoi iOS zoome à la saisie. */
+@media (max-width: 720px) {
+  .ao-shell { padding-left: 0; padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+  .ao-rail { display: none; }
+  .ao-haut { height: calc(52px + env(safe-area-inset-top, 0px)); gap: 8px; padding: env(safe-area-inset-top, 0px) 12px 0; }
+  .ao-retour { display: inline-grid; width: 40px; height: 40px; margin-left: -8px; }
+  .ao-fil-parent { display: none; }
+  .ao-fil-courant h1 { font-size: 17px; }
+  .ao-sys { gap: 4px; }
+  :is(.ao-sante-mot, .ao-activite-mot) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .ao-sante-bouton { min-width: 44px; min-height: 44px; }
+  .ao-activite-bouton { height: 40px; padding: 0 8px; }
+  .ao-maquette { padding: 2px 6px; font-size: 11px; }
+  .ao-pop { position: fixed; top: calc(56px + env(safe-area-inset-top, 0px)); right: 12px; left: 12px; width: auto; }
+  .ao-sous-onglets { padding: 0 12px; }
+  .ao-contenu { padding: 12px 12px 16px; }
+  .ao-canevas { height: clamp(340px, 58dvh, 560px); }
+  .ao-kpis.flottant { right: 12px; max-width: none; }
+  .ao-onglets-bas { position: fixed; right: 0; bottom: 0; left: 0; z-index: 20; display: flex; padding-bottom: env(safe-area-inset-bottom, 0px); border-top: 1px solid var(--color-trait); background: var(--color-surface); }
+  .ao-onglets-bas .ao-lien { height: 60px; min-width: 0; flex: 1; flex-direction: column; justify-content: center; gap: 4px; padding: 0 2px; border-radius: 0; font-size: 11px; }
+  .ao-onglets-bas .ao-lien[aria-current="page"] { background: transparent; box-shadow: inset 0 2px 0 var(--color-accent); color: var(--color-accent); }
+  .ao-onglets-bas .ao-compte { position: absolute; top: 6px; left: calc(50% + 6px); margin: 0; min-width: 16px; padding: 2px 4px; font-size: 10px; }
+  .ao-nav-menu { padding: 0; overflow: visible; }
+  .ao-nav-menu .ao-lien { height: 44px; }
+  .ao-toasts { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  input, select, textarea { font-size: 16px; }
+}
 
 /* ---------- Canevas du graphe ---------- */
 .ao-canevas {
@@ -240,37 +282,6 @@ button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
 .ao-kpi .delta.danger, .ao-kpi .k.epuise { color: var(--color-danger); }
 
 /* ---------- En cours : une ligne par run, le détail au clic ---------- */
-.ao-encours { position: relative; display: flex; min-height: 0; flex-direction: column; border-left: 1px solid var(--color-trait); background: var(--color-surface); }
-.ao-encours > header { display: flex; flex: none; align-items: center; gap: 8px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--color-trait); }
-.ao-encours > header h2 { margin: 0; font: 600 15px/20px var(--font-sans); color: var(--color-encre); }
-.ao-encours > header .n { min-width: 20px; padding: 3px 6px; border-radius: 999px; background: var(--color-carte); font: 600 11px/1 var(--font-sans); color: var(--color-douce); text-align: center; }
-.ao-encours ul { position: relative; z-index: 1; display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; margin: 0; padding: 8px; overflow: auto; list-style: none; }
-.ao-ligne { position: relative; }
-.ao-ligne > button { display: flex; width: 100%; height: 40px; align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-encre); font: 500 14px/1 var(--font-sans); text-align: left; cursor: pointer; }
-.ao-ligne > button:hover { background: var(--color-carte); }
-.ao-ligne > button:focus-visible { outline-offset: -2px; }
-.ao-ligne .point { width: 8px; height: 8px; flex: none; border-radius: 999px; background: var(--color-douce); }
-.ao-ligne.run .point { background: var(--color-encours); animation: ao-pouls 1.6s ease-in-out infinite; }
-.ao-ligne.wait .point { background: var(--color-alerte); }
-.ao-ligne.pause .point { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-douce); }
-.ao-ligne.err .point { background: var(--color-danger); }
-.ao-ligne .ttl { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ao-ligne .r { flex: none; font: 500 12px/1 var(--font-sans); color: var(--color-douce); }
-.ao-ligne .r.alerte { color: var(--color-alerte); }
-.ao-ligne .filet { position: absolute; top: 36px; right: 10px; left: 28px; height: 2px; overflow: hidden; }
-.ao-ligne .filet i { display: block; height: 100%; background: var(--color-trait-fort); }
-.ao-ligne.run .filet i { background: var(--color-encours); }
-.ao-ligne.wait .filet i { background: var(--color-alerte); }
-.ao-ligne.ouverte { border-radius: var(--radius-lg); background: var(--color-carte); box-shadow: inset 0 0 0 1px var(--color-trait-fort); }
-.ao-ligne.wait.ouverte { box-shadow: inset 0 0 0 1px var(--color-alerte); }
-.ao-ligne.ouverte .filet { display: none; }
-.ao-detail { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px 28px; }
-.ao-detail .meta { display: flex; flex-wrap: wrap; gap: 0 8px; font: 400 12px/16px var(--font-mono); color: var(--color-douce); }
-.ao-etapes { display: flex; gap: 3px; }
-.ao-etapes i { height: 4px; flex: 1; border-radius: 2px; background: var(--color-trait); }
-.ao-etapes i.fait { background: var(--color-douce); }
-.ao-etapes i.maintenant { background: var(--color-encours); }
-.ao-ligne.wait .ao-etapes i.maintenant { background: var(--color-alerte); }
 .ao-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .ao-btn { display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--color-trait-fort); border-radius: var(--radius-md); background: transparent; color: var(--color-encre); font: 500 13px/1 var(--font-sans); text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color .15s, border-color .15s; }
 .ao-btn:hover { background: var(--color-carte); }
@@ -278,7 +289,6 @@ button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
 .ao-btn.primaire:hover { filter: brightness(1.08); }
 .ao-btn.danger { border-color: var(--color-danger-fort); background: var(--color-danger-fort); color: #ffffff; }
 .ao-btn.danger:hover { filter: brightness(1.08); }
-.ao-vide { padding: 16px 10px; font-size: 13px; color: var(--color-douce); }
 
 /* ---------- React Flow aux couleurs du cockpit ---------- */
 .react-flow {
@@ -340,8 +350,7 @@ button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
   .ao-flux.actif .react-flow__edge-path { animation: ao-flux .9s linear infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ao-shell { transition: none; }
-  .ao-ligne.run .point, .arete-active .react-flow__edge-path, .ao-flux .react-flow__edge-path { animation: none !important; }
+  .arete-active .react-flow__edge-path, .ao-flux .react-flow__edge-path { animation: none !important; }
 }
 
 /* ---------- Pages hors graphe ---------- */
@@ -349,37 +358,8 @@ button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
 .page-vide { width: min(100%, 34rem); margin: 12vh auto 0; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); padding: 2rem; }
 .page-vide h2 { font: 600 20px/1.3 var(--font-sans); color: var(--color-encre); }
 
-/* ---------- Tablette : En cours passe sous le contenu ---------- */
-@media (max-width: 1100px) {
-  .ao-shell, .ao-shell.ouvert { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; height: auto; min-height: 100dvh; overflow: visible; }
-  .ao-shell.ouvert { grid-template-columns: 240px minmax(0, 1fr); }
-  .ao-rail { position: sticky; top: 0; grid-row: 1 / span 2; height: 100dvh; }
-  .ao-centre { min-height: 100dvh; }
-  .ao-contenu { min-height: 70dvh; }
-  .ao-encours { grid-column: 2; border-top: 1px solid var(--color-trait); border-left: 0; }
-  .ao-encours ul { max-height: none; }
-}
-
-/* ---------- Téléphone (via Tailscale) : le menu devient un tiroir en superposition ---------- */
-@media (max-width: 720px) {
-  .ao-shell, .ao-shell.ouvert { grid-template-columns: minmax(0, 1fr); }
-  .ao-rail { position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: 240px; box-shadow: var(--ombre-pop); transform: translateX(-100%); transition: transform .2s ease; }
-  .ao-shell.ouvert .ao-rail { transform: none; }
-  .ao-shell .ao-marque b, .ao-shell .ao-txt { opacity: 1; }
-  .ao-burger { display: inline-grid; }
-  .ao-encours { grid-column: 1; }
-  .ao-centre { padding: env(safe-area-inset-top) 12px 12px; }
-  .ao-haut { gap: 8px; }
-  .ao-haut h1 { font-size: 22px; }
-  .ao-code, .ao-machine span { display: none; }
-  .ao-kpis.flottant { right: 12px; max-width: none; }
-  .ao-contenu { min-height: 55dvh; }
-}
 
 /* ---------- AI Studio : une planche-contact dans AgenticOS ---------- */
-.ao-shell.sans-encours { grid-template-columns: 64px minmax(0, 1fr); }
-.ao-shell.sans-encours.ouvert { grid-template-columns: 240px minmax(0, 1fr); }
-.ao-shell.sans-encours .ao-contenu { overflow: auto; }
 .studio-page { width: min(100%, 1480px); min-height: 100%; margin-inline: auto; padding-bottom: 48px; }
 .studio-page h2, .studio-page h3, .studio-page p { margin-top: 0; }
 .studio-page h2 { margin-bottom: 8px; font: 600 clamp(28px, 4vw, 52px)/.95 var(--font-sans); letter-spacing: -.035em; color: var(--color-encre); }
@@ -515,12 +495,10 @@ button.bg-accent, a.bg-accent, .ao-coupe { border-radius: var(--radius-md); }
 .studio-inspector-actions .studio-alert { flex-basis: 100%; }
 
 @media (max-width: 900px) {
-  .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert { grid-template-rows: minmax(0, 1fr); }
   .studio-generate, .studio-inspector { grid-template-columns: 1fr; }
   .studio-inspector-image { position: relative; }
 }
 @media (max-width: 720px) {
-  .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert { grid-template-columns: minmax(0, 1fr); }
   .studio-hero { grid-template-columns: 1fr; min-height: 0; padding-top: 50px; }.studio-comfy { min-width: 0; }
   .studio-model-row { grid-template-columns: 90px minmax(0, 1fr) auto; }.studio-model-row > b { grid-column: 2 / -1; justify-self: start; }
   .studio-create, .studio-settings, .studio-form-grid, .studio-advanced { grid-template-columns: 1fr; }.studio-field.wide { grid-column: auto; }
@@ -584,44 +562,6 @@ details.ao-liv-depot { display: block; }
   .ao-liv-depot ul { padding-left: 0; }
 }
 
-/* ---------- Tablette et téléphone : chaque page à sa hauteur (audit du 2026-09-29) ----------
-   Étirer le contenu sur toute la hauteur de l'écran laissait des cadres vides (Agents, Run)
-   et repoussait « En cours » sous le pli. Le contenu prend sa hauteur naturelle ; seul le
-   graphe, qui n'en a pas, reçoit une hauteur fixe. */
-@media (max-width: 1100px) {
-  /* Le rail sort de la grille : fixe à gauche, le contenu décalé de sa largeur. Tant qu'il y
-     était, collant et haut de tout l'écran, sa hauteur se répartissait dans les rangées et
-     creusait un vide sous le contenu. La grille ne tient plus que le contenu et « En cours ». */
-  .ao-shell, .ao-shell.ouvert, .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    align-content: start;
-    padding-left: 64px;
-    transition: padding-left .2s ease;
-  }
-  .ao-shell.ouvert, .ao-shell.sans-encours.ouvert { padding-left: 240px; }
-  .ao-rail { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: 64px; height: auto; transition: width .2s ease; }
-  .ao-shell.ouvert .ao-rail { width: 240px; }
-  .ao-encours { grid-column: 1; }
-  /* Menu ouvert, le contenu rétrécit : l'état système se replie au lieu de déborder. */
-  .ao-sys { min-width: 0; overflow: hidden; }
-  .ao-centre { min-height: 0; }
-  .ao-contenu { min-height: 0; flex: none; }
-  .ao-contenu > .flex.h-full, .ao-contenu > section.h-full { height: auto; }
-  .ao-canevas { flex: none; height: clamp(380px, 62dvh, 700px); }
-  /* Le tableau des étapes ne coupe plus ses mots : il défile dans son cadre si besoin. */
-  .ao-contenu table :is(th, td) { white-space: nowrap; }
-}
-@media (max-width: 720px) {
-  /* Téléphone : le rail est un tiroir superposé, le contenu prend toute la largeur. */
-  .ao-shell, .ao-shell.ouvert, .ao-shell.sans-encours, .ao-shell.sans-encours.ouvert { padding-left: 0; }
-  .ao-rail, .ao-shell.ouvert .ao-rail { width: 240px; }
-  .ao-canevas { height: clamp(340px, 58dvh, 560px); }
-  .ao-haut { gap: 8px; }
-  .ao-haut h1 { overflow: hidden; font-size: 20px; text-overflow: clip; }
-  .ao-sys { min-width: 0; flex-shrink: 1; gap: 8px; overflow: hidden; }
-  .ao-sys > span:first-child.bg-alerte-fond { padding: 2px 6px; font-size: 10px; }
-}
 
 /* Cibles tactiles : 40 px de haut au moins sur tablette et téléphone. Les barres de la
    timeline d'un run, positionnées en absolu, gardent leur hauteur. */

@@ -1,18 +1,18 @@
-// Le panneau « En cours » (AgenticOS) : une ligne de 40px par run vivant, le détail au clic,
-// une seule ligne ouverte à la fois. Ordre : à valider, en cours, en pause.
+// L'activité du système, dans le tiroir ouvert depuis la barre du haut : ce qui attend ta
+// décision, ce qui tourne, ce qui attend une ressource. La coquille lit les données une fois
+// (le compteur du bouton et la liste viennent de la même lecture).
 //
 // Les actions ne proposent que les chemins qui existent côté serveur : ouvrir le run, et
 // aller décider pour une validation. Pause, Arrêter et Relancer arriveront avec leurs routes ;
 // un bouton qui ne fait rien apprendrait à se méfier des autres.
-import { useMemo, useState } from "react";
+import { useMemo, type MouseEvent, type ReactNode } from "react";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 import { useCharge, useHorloge } from "../donnees/contexte";
 import { depuis, usd } from "../format";
-import { naviguer } from "../navigation";
 import type { Run } from "../types";
 import { Etat } from "../ui";
-import type { Selection } from "../topologie/Topologie";
 
-type Genre = "wait" | "run" | "pause";
+export type Genre = "wait" | "run" | "pause";
 
 const GENRES: Partial<Record<Run["statut"], Genre>> = {
   waiting_approval: "wait",
@@ -26,114 +26,174 @@ const GENRES: Partial<Record<Run["statut"], Genre>> = {
 };
 
 const RANG: Record<Genre, number> = { wait: 0, run: 1, pause: 2 };
+const SECTIONS: ReadonlyArray<{ genre: Genre; titre: string }> = [
+  { genre: "wait", titre: "À valider" },
+  { genre: "run", titre: "En cours" },
+  { genre: "pause", titre: "En attente" },
+];
 
-function aDroite(run: Run, genre: Genre, faites: number): { texte: string; alerte: boolean } {
-  if (genre === "wait") return { texte: "à valider", alerte: true };
-  if (run.statut === "waiting_quota") return { texte: "quota", alerte: false };
-  if (run.statut === "waiting_auth") return { texte: "connexion requise", alerte: true };
-  if (run.statut === "waiting_machine") return { texte: "machine", alerte: false };
-  if (run.statut === "waiting_freshness") return { texte: "base à synchroniser", alerte: true };
-  if (genre === "pause") return { texte: "pause", alerte: false };
-  if (run.statut === "queued") return { texte: "en file", alerte: false };
-  return { texte: `${faites}/${run.etapes.total}`, alerte: false };
+// Ce qui bloque un run en attente, dit en clair : la pastille donne l'état, ceci la cause.
+function cause(run: Run): string | null {
+  if (run.statut === "waiting_quota") return "attend le quota";
+  if (run.statut === "waiting_auth") return "connexion requise";
+  if (run.statut === "waiting_machine") return "attend une machine";
+  if (run.statut === "waiting_freshness") return "base à synchroniser";
+  return null;
 }
 
-export function EnCours({ onSelection }: { onSelection?: (selection: Selection) => void }) {
-  const maintenant = useHorloge(5000);
-  const { donnees, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
+export interface Activite {
+  lignes: ReadonlyArray<{ run: Run; genre: Genre }>;
+  livraison: { etape: string | null } | null;
+  /** Runs vivants et livraison en cours : le nombre du bouton « Activité ». */
+  total: number;
+  aValider: number;
+  erreur: string | null;
+  detail: string | null;
+  chargement: boolean;
+  recharger: () => void;
+}
+
+export function useActivite(): Activite {
+  const runs = useCharge((s) => s.runs({ limite: 30 }), []);
   // Une livraison du cockpit en cours se suit aussi d'ici ; le détail est sur Décisions.
   const { donnees: livraison } = useCharge((s) => s.livraison(), []);
-  const livraisonEnCours = livraison?.enCours ?? null;
-  const [ouverte, setOuverte] = useState<string | null | undefined>(undefined);
-
+  const enCours = livraison?.enCours ?? null;
   const lignes = useMemo(
     () =>
-      (donnees ?? [])
+      (runs.donnees ?? [])
         .flatMap((run) => {
           const genre = GENRES[run.statut];
           return genre ? [{ run, genre }] : [];
         })
         .sort((a, b) => RANG[a.genre] - RANG[b.genre] || Date.parse(b.run.debut ?? "") - Date.parse(a.run.debut ?? "")),
-    [donnees]
+    [runs.donnees]
   );
+  return {
+    lignes,
+    livraison: enCours ? { etape: enCours.etape ?? null } : null,
+    total: lignes.length + (enCours ? 1 : 0),
+    aValider: lignes.filter((l) => l.genre === "wait").length,
+    erreur: runs.erreur,
+    detail: runs.detail,
+    chargement: runs.chargement,
+    recharger: runs.recharger,
+  };
+}
 
-  // Par défaut, la première ligne est ouverte : en pratique celle qui attend ta décision.
-  const idOuverte = ouverte === undefined ? (lignes[0]?.genre === "wait" ? lignes[0].run.id : null) : ouverte;
+/** Un lien interne : le clic simple reste dans l'application, le clic molette ouvre un onglet. */
+function LienInterne({ href, aller, className, children }: { href: string; aller: (href: string) => void; className: string; children: ReactNode }) {
+  const ouvrir = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    aller(href);
+  };
+  return (
+    <a href={href} onClick={ouvrir} className={className}>
+      {children}
+    </a>
+  );
+}
+
+function Progression({ faites, total, genre }: { faites: number; total: number; genre: Genre }) {
+  if (total <= 0) return null;
+  return (
+    <div className="ao-etapes" role="img" aria-label={`${faites} étape${faites > 1 ? "s" : ""} faite${faites > 1 ? "s" : ""} sur ${total}`}>
+      {Array.from({ length: total }, (_, i) => (
+        <i key={i} className={i < faites ? "fait" : i === faites && genre !== "pause" ? `maintenant ${genre}` : ""} />
+      ))}
+    </div>
+  );
+}
+
+export function ListeActivite({ activite, aller }: { activite: Activite; aller: (href: string) => void }) {
+  const maintenant = useHorloge(5000);
+  const { lignes, livraison } = activite;
+
+  if (activite.erreur && !lignes.length) {
+    return <EtatErreur titre="Activité illisible" message={activite.erreur} detail={activite.detail} onReessayer={activite.recharger} />;
+  }
+  if (activite.chargement) return <Squelette lignes={4} libelle="Lecture des runs…" />;
+  if (!lignes.length && !livraison) {
+    return (
+      <EtatVide
+        icone="activite"
+        message="Rien ne tourne en ce moment."
+        detail="Les runs lancés depuis Missions ou le Planning apparaissent ici, avec ce qui attend ta décision."
+        action={
+          <LienInterne href="/missions" aller={aller} className="ao-btn">
+            Préparer une mission
+          </LienInterne>
+        }
+      />
+    );
+  }
 
   return (
-    <aside className="ao-encours" aria-label="En cours">
-      <header>
-        <h2>En cours</h2>
-        <span className="n">{lignes.length + (livraisonEnCours ? 1 : 0)}</span>
-      </header>
-      {erreur && <p className="ao-vide text-danger">{erreur}</p>}
-      {!erreur && !donnees && <p className="ao-vide">Lecture des runs…</p>}
-      {donnees && !lignes.length && <p className="ao-vide">Rien ne tourne. Lance un run depuis un projet du graphe.</p>}
-      <ul>
-        {livraisonEnCours && (
-          <li className="ao-ligne run">
-            <button type="button" onClick={() => naviguer("/decisions")} title="Suivre la livraison sur Décisions">
-              <span className="point" aria-hidden="true" />
-              <span className="ttl">livraison du cockpit</span>
-              <span className="r">{livraisonEnCours.etape ?? "en file"}</span>
-            </button>
-          </li>
-        )}
-        {lignes.map(({ run, genre }) => {
-          const faites = run.etapes.parStatut.succeeded ?? 0;
-          const total = run.etapes.total;
-          const droite = aDroite(run, genre, faites);
-          const estOuverte = run.id === idOuverte;
-          const titre = run.projet ?? "sans projet";
-          return (
-            <li key={run.id} className={`ao-ligne ${genre} ${estOuverte ? "ouverte" : ""}`}>
-              <button type="button" aria-expanded={estOuverte} onClick={() => setOuverte(estOuverte ? null : run.id)}>
-                <span className="point" aria-hidden="true" />
-                <span className="ttl" title={`${titre} · ${run.pipeline}`}>
-                  {titre}
-                </span>
-                <span className={`r ${droite.alerte ? "alerte" : ""}`}>{droite.texte}</span>
-              </button>
-              {!estOuverte && total > 0 && (
-                <span className="filet" aria-hidden="true">
-                  <i style={{ width: `${(faites / total) * 100}%` }} />
-                </span>
-              )}
-              {estOuverte && (
-                <div className="ao-detail">
+    <div className="flex flex-col gap-5">
+      {activite.erreur && (
+        <p role="alert" className="text-[13px] text-danger">
+          Dernière lecture en échec : {activite.erreur}. La liste affichée peut dater.
+        </p>
+      )}
+      {SECTIONS.map(({ genre, titre }) => {
+        const section = lignes.filter((l) => l.genre === genre);
+        const avecLivraison = genre === "run" && livraison;
+        if (!section.length && !avecLivraison) return null;
+        return (
+          <section key={genre} aria-label={titre} className="flex flex-col gap-2">
+            <h3 className="flex items-baseline gap-2 text-xs font-semibold uppercase tracking-[.04em] text-douce">
+              {titre}
+              <span className="tabular-nums">{section.length + (avecLivraison ? 1 : 0)}</span>
+            </h3>
+            <ul className="flex flex-col gap-2">
+              {avecLivraison && (
+                <li className="ao-activite run">
                   <div className="flex items-center gap-2">
-                    <Etat etat={run.statut} />
-                    <span className="ml-auto font-mono text-[11px] text-douce" title="Sur abonnement, un équivalent API, pas une dépense">
-                      {usd(run.coutEquivalentUsd)} · {depuis(run.debut, maintenant)}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-encre">Livraison du cockpit</span>
+                    <span className="text-xs text-douce">{livraison.etape ?? "en file"}</span>
                   </div>
-                  <div className="meta">
-                    <span>{run.pipeline}</span>
-                    {run.declencheur && <span>· {run.declencheur}</span>}
-                  </div>
-                  {total > 0 && (
-                    <div className="ao-etapes" aria-label={`Étape ${Math.min(faites + 1, total)} sur ${total}`}>
-                      {Array.from({ length: total }, (_, i) => (
-                        <i key={i} className={i < faites ? "fait" : i === faites && genre !== "pause" ? "maintenant" : ""} />
-                      ))}
-                    </div>
-                  )}
                   <div className="ao-actions">
-                    {genre === "wait" && (
-                      <a className="ao-btn primaire" href="/decisions">
-                        Décider
-                      </a>
-                    )}
-                    <button type="button" className="ao-btn" onClick={() => onSelection ? onSelection({ type: "run", id: run.id }) : naviguer(`/runs/${encodeURIComponent(run.id)}`)}>
-                      Ouvrir le run
-                    </button>
+                    <LienInterne href="/decisions" aller={aller} className="ao-btn">
+                      Suivre sur Décisions
+                    </LienInterne>
                   </div>
-                </div>
+                </li>
               )}
-            </li>
-          );
-        })}
-      </ul>
-    </aside>
+              {section.map(({ run }) => {
+                const faites = run.etapes.parStatut.succeeded ?? 0;
+                const raison = cause(run);
+                return (
+                  <li key={run.id} className={`ao-activite ${genre}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate font-medium text-encre" title={`${run.projet ?? "sans projet"} · ${run.pipeline}`}>
+                        {run.projet ?? "Sans projet"}
+                      </span>
+                      <Etat etat={run.statut} />
+                    </div>
+                    <div className="flex flex-wrap gap-x-2 font-mono text-xs text-douce">
+                      <span>{run.pipeline}</span>
+                      {raison && <span>· {raison}</span>}
+                      <span>· {depuis(run.debut, maintenant)}</span>
+                      <span title="Sur abonnement, un équivalent API, pas une dépense">· {usd(run.coutEquivalentUsd)}</span>
+                    </div>
+                    <Progression faites={faites} total={run.etapes.total} genre={genre} />
+                    <div className="ao-actions">
+                      {genre === "wait" && (
+                        <LienInterne href="/decisions" aller={aller} className="ao-btn primaire">
+                          Décider
+                        </LienInterne>
+                      )}
+                      <LienInterne href={`/run/${encodeURIComponent(run.id)}`} aller={aller} className="ao-btn">
+                        Ouvrir le run
+                      </LienInterne>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
   );
 }
