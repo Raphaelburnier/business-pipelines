@@ -92,8 +92,12 @@ export function useControleFile(): ControleFile {
       if (!source.pauseExecution) throw new Error("Ce cockpit ne pilote pas la file d'exécution.");
       const { id } = await source.pauseExecution(pause);
       await attendreCommande(source, id);
-      const relu = await source.etatExecution?.();
-      if (relu) setEtat(relu);
+      try {
+        const relu = await source.etatExecution?.();
+        if (relu) setEtat(relu);
+      } catch {
+        // La commande est faite : le sondage de 2 s resynchronisera l'état.
+      }
     },
     [source]
   );
