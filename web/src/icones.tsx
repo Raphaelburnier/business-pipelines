@@ -3,12 +3,14 @@
 // de dessin ne touche qu'ici.
 import {
   Activity,
+  ArrowLeft,
   Bot,
   Calendar,
   Camera,
   ChartLine,
   Check,
   ChevronDown,
+  ChevronRight,
   ChevronsUpDown,
   ChevronUp,
   CircleAlert,
@@ -16,6 +18,7 @@ import {
   CirclePlay,
   CircleX,
   Clock,
+  Ellipsis,
   ExternalLink,
   Flag,
   GitBranch,
@@ -30,6 +33,7 @@ import {
   Moon,
   Network,
   Pause,
+  Play,
   RotateCw,
   Server,
   ShieldAlert,
@@ -78,6 +82,10 @@ const ICONES = {
   tri: ChevronsUpDown,
   triMonte: ChevronUp,
   triDescend: ChevronDown,
+  retour: ArrowLeft,
+  suite: ChevronRight,
+  plus: Ellipsis,
+  reprendre: Play,
 } satisfies Record<string, LucideIcon>;
 
 export type NomIcone = keyof typeof ICONES;

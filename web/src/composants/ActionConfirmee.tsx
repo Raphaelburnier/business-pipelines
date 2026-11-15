@@ -17,21 +17,23 @@ type Props = {
   confirmer: string;
   libelleEnCours?: string;
   variante?: Extract<VarianteBouton, "primaire" | "danger">;
+  /** L'allure du premier bouton, quand l'action est rare et ne doit pas attirer l'œil. */
+  declencheur?: VarianteBouton;
   desactive?: boolean;
   /** Rejeter la promesse garde la question ouverte et affiche le message. */
   onConfirmer: () => Promise<unknown>;
 };
 
-export function ActionConfirmee({ libelle, question, details, confirmer, libelleEnCours = "Envoi…", variante = "primaire", desactive = false, onConfirmer }: Props) {
+export function ActionConfirmee({ libelle, question, details, confirmer, libelleEnCours = "Envoi…", variante = "primaire", declencheur, desactive = false, onConfirmer }: Props) {
   const [ouverte, setOuverte] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const boutonConfirmer = useRef<HTMLButtonElement>(null);
-  const declencheur = useRef<HTMLButtonElement>(null);
+  const boutonDeclencheur = useRef<HTMLButtonElement>(null);
   const aOuvert = useRef(false);
 
   useEffect(() => {
     if (ouverte) boutonConfirmer.current?.focus();
-    else if (aOuvert.current) declencheur.current?.focus();
+    else if (aOuvert.current) boutonDeclencheur.current?.focus();
     aOuvert.current = ouverte;
   }, [ouverte]);
 
@@ -53,7 +55,7 @@ export function ActionConfirmee({ libelle, question, details, confirmer, libelle
 
   if (!ouverte) {
     return (
-      <Bouton ref={declencheur} variante={variante} disabled={desactive} onClick={() => setOuverte(true)}>
+      <Bouton ref={boutonDeclencheur} variante={declencheur ?? variante} disabled={desactive} onClick={() => setOuverte(true)}>
         {libelle}
       </Bouton>
     );

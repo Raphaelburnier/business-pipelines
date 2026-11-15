@@ -1,93 +1,37 @@
-// Les cellules s'inspectent sans quitter le graphe. Les URL de détail restent accessibles
-// directement, pour les liens partagés et les favoris existants.
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+// La coquille du cockpit : barre latérale groupée, barre du haut (fil d'Ariane, santé,
+// activité), bandeau de pause et, sur téléphone, onglets du bas. Les cellules du graphe
+// s'inspectent sans quitter la page ; les URL de détail restent accessibles directement,
+// pour les liens partagés et les favoris existants.
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { BoutonActivite, FilAriane } from "./coquille/BarreHaute";
+import { BarreLaterale, MenuComplet, OngletsBas } from "./coquille/Navigation";
+import { evaluerSante, Sante } from "./coquille/Sante";
+import { Onglets } from "./composants/Onglets";
+import { Tiroir } from "./composants/Tiroir";
 import { FournisseurToasts } from "./composants/Toasts";
 import { FournisseurSource, useCharge, useSource } from "./donnees/contexte";
-import { mot } from "./format";
-import { Icone, type NomIcone } from "./icones";
+import { cleActive, lireRoute, miettes } from "./routes";
 import { useTheme } from "./theme";
-import type { EtatMachine, Machine } from "./types";
 import { Topologie, type Selection } from "./topologie/Topologie";
 import { Agents } from "./vues/Agents";
+import { Branches } from "./vues/Branches";
+import { BandeauPause, ControleDemarrages, useControleFile } from "./vues/ControleExecution";
 import { Decisions } from "./vues/Decisions";
 import { Demander } from "./vues/Demander";
-import { lienDemander } from "./navigation";
-import { EnCours } from "./vues/EnCours";
+import { ListeActivite, useActivite } from "./vues/EnCours";
 import { Kpis } from "./vues/Kpis";
-import { Panneau } from "./vues/Panneau";
 import { Missions } from "./vues/Missions";
-import { Branches } from "./vues/Branches";
+import { Panneau } from "./vues/Panneau";
 import { Pipelines } from "./vues/Pipelines";
 import { RunPipeline } from "./vues/RunPipeline";
-import { ControleFile } from "./vues/ControleExecution";
-import type { AIStudioPage } from "./ai-studio/AIStudio";
+
+export { lireRoute } from "./routes";
 
 const Systeme = lazy(() => import("./systeme/Systeme").then((module) => ({ default: module.Systeme })));
 const Marketing = lazy(() => import("./vues/Marketing").then((module) => ({ default: module.Marketing })));
 const AIStudio = lazy(() => import("./ai-studio/AIStudio").then((module) => ({ default: module.AIStudio })));
 const TaskBoard = lazy(() => import("./TaskBoard").then((module) => ({ default: module.TaskBoard })));
 const Finance = lazy(() => import("./finance/Finance").then((module) => ({ default: module.Finance })));
-
-type Route =
-  | { type: "graph" }
-  | { type: "agents" }
-  | { type: "pipelines"; pipelineId: string | null }
-  | { type: "run"; runId: string | null }
-  | { type: "missions"; projetId: string | null; brouillonId: string | null }
-  | { type: "branches" }
-  | { type: "marketing"; projetId: string | null; filId: string | null }
-  | { type: "demander"; filId: string | null }
-  | { type: "decisions" }
-  | { type: "systeme"; page: "carte" | "fonctionnement" }
-  | { type: "finance" }
-  | { type: "taskboard" }
-  | { type: "approbations" }
-  | { type: "ai-studio"; studio: AIStudioPage }
-  | { type: "detail"; selection: Selection }
-  | { type: "inconnue" };
-
-function segment(valeur: string): string {
-  try {
-    return decodeURIComponent(valeur);
-  } catch {
-    return valeur;
-  }
-}
-
-export function lireRoute(): Route {
-  const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
-  if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
-  if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
-  if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", pipelineId: morceaux[1] ? segment(morceaux[1]) : null };
-  if (morceaux[0] === "run" && morceaux.length <= 2) return { type: "run", runId: morceaux[1] ? segment(morceaux[1]) : null };
-  if (morceaux[0] === "finance" && morceaux.length === 1) return { type: "finance" };
-  if (morceaux[0] === "missions" && morceaux[1] === "branches" && morceaux.length === 2) return { type: "branches" };
-  if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? segment(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
-  if (morceaux[0] === "marketing" && morceaux.length <= 3) return { type: "marketing", projetId: morceaux[1] ? segment(morceaux[1]) : null, filId: morceaux[2] ? segment(morceaux[2]) : null };
-  if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
-  if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
-  if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme", page: "carte" };
-  if (morceaux[0] === "systeme" && morceaux[1] === "fonctionnement" && morceaux.length === 2) return { type: "systeme", page: "fonctionnement" };
-  if (["taskboard", "a-venir", "calendrier"].includes(morceaux[0] ?? "") && morceaux.length === 1) return { type: "taskboard" };
-  if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? segment(morceaux[1]) : null };
-  if (morceaux[0] === "ai-studio") {
-    if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
-    if (morceaux[1] === "profiles" && morceaux[2]) {
-      const tab = morceaux[3] || "gallery";
-      if (["gallery", "generate", "references", "settings"].includes(tab)) {
-        return { type: "ai-studio", studio: { page: "profile", id: segment(morceaux[2]), tab: tab as "gallery" | "generate" | "references" | "settings" } };
-      }
-    }
-    if (morceaux[1] === "generations" && morceaux[2] && morceaux.length === 3) {
-      return { type: "ai-studio", studio: { page: "generation", id: segment(morceaux[2]) } };
-    }
-    return { type: "inconnue" };
-  }
-  const correspondances: Record<string, Selection["type"]> = { projects: "projet", runs: "run", machines: "machine" };
-  const type = correspondances[morceaux[0] ?? ""];
-  if (type && morceaux[1]) return { type: "detail", selection: { type, id: segment(morceaux[1]) } as Selection };
-  return { type: "inconnue" };
-}
 
 function useNavigation() {
   const [route, setRoute] = useState(lireRoute);
@@ -97,86 +41,58 @@ function useNavigation() {
     return () => window.removeEventListener("popstate", suivre);
   }, []);
   const aller = useCallback((destination: string) => {
-    if (window.location.pathname !== destination) window.history.pushState(null, "", destination);
+    if (window.location.pathname + window.location.search !== destination) window.history.pushState(null, "", destination);
     setRoute(lireRoute());
   }, []);
   return { route, aller };
 }
 
-function Lien({ href, actif, aller, icone, compte, alerte = false, children }: { href: string; actif: boolean; aller: (href: string) => void; icone: NomIcone; compte?: number; alerte?: boolean; children: string }) {
-  const ouvrir = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    aller(href);
-  };
+/** Une boîte de dialogue modale est ouverte (tiroir) : Échap lui appartient. */
+const dialogueOuvert = (): boolean => document.querySelector('[aria-modal="true"]') !== null;
+
+function Chargement({ quoi }: { quoi: string }) {
   return (
-    <a href={href} onClick={ouvrir} aria-current={actif ? "page" : undefined} title={children}>
-      <Icone nom={icone} />
-      <span className="ao-txt">{children}</span>
-      {compte !== undefined && compte > 0 && <span className={`ao-compte ao-txt ${alerte ? "alerte" : ""}`}>{compte}</span>}
-    </a>
+    <section className="page-vide" role="status">
+      <p>Chargement {quoi}…</p>
+    </section>
   );
-}
-
-const CLASSE_MACHINE: Record<EtatMachine, string> = { online: "ok", busy: "run", waking: "run", sleeping: "veille", offline: "hs", error: "hs" };
-
-/** L'état des machines dans la barre du haut : un point (rond PC, carré NAS) et son mot. */
-function Machines({ machines }: { machines: Machine[] }) {
-  return (
-    <>
-      {machines.map((m) => (
-        <span key={m.machine} className={`ao-machine ${/nas/i.test(m.machine) ? "nas" : ""} ${CLASSE_MACHINE[m.etat]}`} title={`${m.nom ?? m.machine} : ${mot(m.etat)}`}>
-          <i aria-hidden="true" />
-          {m.machine}
-          <span>{mot(m.etat)}</span>
-        </span>
-      ))}
-    </>
-  );
-}
-
-function titreDe(route: Route): string {
-  if (route.type === "graph") return "Accueil";
-  if (route.type === "agents") return "Agents";
-  if (route.type === "missions") return "Missions";
-  if (route.type === "branches") return "Branches";
-  if (route.type === "pipelines") return "Pipelines";
-  if (route.type === "run") return "Run";
-  if (route.type === "marketing") return "Équipe marketing";
-  if (route.type === "demander") return "Demander";
-  if (route.type === "decisions" || route.type === "approbations") return "Décisions";
-  if (route.type === "ai-studio") return "AI Studio";
-  if (route.type === "systeme") return "Système";
-  if (route.type === "finance") return "Finance";
-  if (route.type === "taskboard") return "TaskBoard";
-  if (route.type === "detail") return { projet: "Projet", run: "Run", machine: "Machine", orchestrateur: "Orchestrateur" }[route.selection.type];
-  return "Introuvable";
 }
 
 function Coquille() {
   const { route, aller } = useNavigation();
   const { source, connecte } = useSource();
   const { theme, basculer } = useTheme();
-  const [ouvert, setOuvert] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [activiteOuverte, setActiviteOuverte] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const declencheur = useRef<HTMLElement | null>(null);
   const { donnees: topo } = useCharge((s) => s.topologie(), []);
   const { donnees: usage } = useCharge((s) => s.usage(), []);
   const { donnees: livraison } = useCharge((s) => s.livraison(), []);
-  // Ce qui attend Raphaël : les approbations des pipelines, et une livraison possible.
   const { donnees: boite } = useCharge((s) => s.approbations(), []);
+  const activite = useActivite();
+  const file = useControleFile();
   // Ce qui attend Raphaël : les approbations des runs, les plans métier de la boîte, et une
   // livraison possible.
   const decisions =
     (topo?.projets.reduce((n, p) => n + p.approbationsEnAttente, 0) ?? 0) +
     (boite?.etat.decidables ?? 0) +
     (livraison?.proposition?.disponible && !livraison.enCours ? 1 : 0);
+  const sante = evaluerSante({ machines: topo?.machines ?? null, connecte, usage, file: source.etatExecution ? file : null });
+  const active = cleActive(route);
+  const chemin = miettes(route);
+  const titre = chemin[chemin.length - 1]?.libelle ?? "AgenticOS";
 
-  // Sur téléphone, le tiroir se referme dès qu'on a choisi une destination.
+  useEffect(() => {
+    document.title = `${titre} · AgenticOS`;
+  }, [titre]);
+
+  // Choisir une destination referme ce qui la couvrait : menu, tiroir, inspection.
   const naviguer = useCallback(
     (href: string) => {
       setSelection(null);
-      if (window.matchMedia("(max-width: 720px)").matches) setOuvert(false);
+      setMenu(false);
+      setActiviteOuverte(false);
       aller(href);
     },
     [aller]
@@ -199,7 +115,7 @@ function Coquille() {
   useEffect(() => {
     if (!selection) return;
     const echapper = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) {
+      if (event.key === "Escape" && !event.defaultPrevented && !dialogueOuvert()) {
         event.preventDefault();
         fermer();
       }
@@ -209,85 +125,38 @@ function Coquille() {
   }, [selection, fermer]);
 
   return (
-    <div className={`ao-shell ${ouvert ? "ouvert" : ""} ${selection ? "avec-inspection" : ""} ${route.type === "pipelines" || route.type === "run" || route.type === "ai-studio" || route.type === "systeme" || route.type === "taskboard" || route.type === "decisions" || route.type === "approbations" ? "sans-encours" : ""}`}>
-      <aside className="ao-rail" id="menu-principal">
-        <div className="ao-marque">
-          <button
-            type="button"
-            className="ao-bouton-icone"
-            onClick={() => setOuvert((o) => !o)}
-            aria-expanded={ouvert}
-            aria-controls="menu-principal"
-            aria-label={ouvert ? "Replier le menu" : "Ouvrir le menu"}
-            title={ouvert ? "Replier le menu" : "Ouvrir le menu"}
-          >
-            <Icone nom={ouvert ? "fermer" : "menu"} />
-          </button>
-          <b>AgenticOS</b>
-        </div>
-        <nav className="ao-nav" aria-label="Navigation principale">
-          <Lien href="/" actif={route.type === "graph"} aller={naviguer} icone="graphe">
-            Accueil
-          </Lien>
-          <Lien href="/agents" actif={route.type === "agents"} aller={naviguer} icone="agent" compte={usage?.runsActifs}>
-            Agents
-          </Lien>
-          <Lien href="/missions" actif={route.type === "missions"} aller={naviguer} icone="mission">Missions</Lien>
-          <Lien href="/missions/branches" actif={route.type === "branches"} aller={naviguer} icone="branche">Branches</Lien>
-          <Lien href="/pipelines" actif={route.type === "pipelines"} aller={naviguer} icone="pipeline">Pipelines</Lien>
-          <Lien href="/run" actif={route.type === "run"} aller={naviguer} icone="run">Run</Lien>
-          <Lien href="/taskboard" actif={route.type === "taskboard"} aller={naviguer} icone="calendrier">TaskBoard</Lien>
-          <Lien href="/finance" actif={route.type === "finance"} aller={naviguer} icone="finance">Finance</Lien>
-          <Lien href="/marketing" actif={route.type === "marketing"} aller={naviguer} icone="marketing">Marketing</Lien>
-          <Lien href={lienDemander()} actif={route.type === "demander"} aller={naviguer} icone="demander">
-            Demander
-          </Lien>
-          <Lien href="/ai-studio" actif={route.type === "ai-studio"} aller={naviguer} icone="studio">
-            AI Studio
-          </Lien>
-          <Lien href="/systeme" actif={route.type === "systeme"} aller={naviguer} icone="systeme">
-            Système
-          </Lien>
-          <Lien href="/decisions" actif={route.type === "decisions" || route.type === "approbations"} aller={naviguer} icone="decision" compte={decisions} alerte>
-            Décisions
-          </Lien>
-        </nav>
-        <div className="ao-pied">
-          <div className="ao-nav">
-            <button
-              type="button"
-              className="ao-theme"
-              aria-pressed={theme === "jour"}
-              onClick={basculer}
-              title={theme === "jour" ? "Passer au thème sombre" : "Passer au thème clair"}
-            >
-              <Icone nom={theme === "jour" ? "lune" : "soleil"} />
-              <span className="ao-txt">{theme === "jour" ? "Thème sombre" : "Thème clair"}</span>
-            </button>
-          </div>
-          <span className="ao-legende ao-txt">NAS · tailnet</span>
-        </div>
-      </aside>
+    <div className={`ao-shell ${selection ? "avec-inspection" : ""}`}>
+      <a href="#contenu" className="ao-evitement">
+        Aller au contenu
+      </a>
+      <BarreLaterale active={active} aller={naviguer} decisions={decisions} theme={theme} basculer={basculer} />
 
       <div className="ao-centre">
         <header className="ao-haut">
-          <button type="button" className="ao-bouton-icone ao-burger" onClick={() => setOuvert(true)} aria-controls="menu-principal" aria-expanded={ouvert} aria-label="Ouvrir le menu">
-            <Icone nom="menu" />
-          </button>
-          <h1>{titreDe(route)}</h1>
+          <FilAriane chemin={chemin} aller={naviguer} />
           <div className="ao-sys">
-            {source.nom === "maquette" && <span className="rounded-full bg-alerte-fond px-2 py-0.5 text-xs font-medium text-alerte">Maquette</span>}
-            <Machines machines={topo?.machines ?? []} />
-            <span className={`ao-machine ${connecte ? "ok" : "hs"}`} title={connecte ? "Flux d'événements connecté" : "Flux d'événements interrompu"}>
-              <i className={connecte ? "pulse-douce" : ""} aria-hidden="true" />
-              <span>{connecte ? "en direct" : "flux coupé"}</span>
-            </span>
+            {source.nom === "maquette" && <span className="ao-maquette">Maquette</span>}
+            <Sante evaluation={sante} aller={naviguer} />
+            <BoutonActivite total={activite.total} aValider={activite.aValider} ouvert={activiteOuverte} onOuvrir={() => setActiviteOuverte(true)} />
           </div>
         </header>
-        <ControleFile />
+        <BandeauPause controle={file} />
+        {(route.type === "missions" || route.type === "branches") && (
+          <div className="ao-sous-onglets">
+            <Onglets
+              libelle="Missions"
+              actif={route.type === "branches" ? "branches" : "missions"}
+              onChoisir={(cle) => naviguer(cle === "branches" ? "/missions/branches" : "/missions")}
+              onglets={[
+                { cle: "missions", libelle: "Missions" },
+                { cle: "branches", libelle: "Branches" },
+              ]}
+            />
+          </div>
+        )}
 
-        <main className={`ao-contenu${route.type === "finance" ? " ao-contenu-finance" : ""}`}>
-          {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => choix ? ouvrir(choix) : fermer()} />}
+        <main id="contenu" tabIndex={-1} className={`ao-contenu${route.type === "graph" ? " ao-contenu-graphe" : ""}`}>
+          {route.type === "graph" && <Topologie selection={selection} onSelection={(choix) => (choix ? ouvrir(choix) : fermer())} />}
           {(route.type === "agents" || route.type === "detail") && (
             <div className="mb-4">
               <Kpis />
@@ -298,34 +167,61 @@ function Coquille() {
           {route.type === "run" && <RunPipeline runId={route.runId} aller={naviguer} />}
           {route.type === "missions" && <Missions key={`${route.projetId}:${route.brouillonId}`} projetInitial={route.projetId} brouillonId={route.brouillonId} aller={naviguer} />}
           {route.type === "branches" && <Branches aller={naviguer} />}
-          {route.type === "finance" && <Suspense fallback={<section className="page-vide"><p>Chargement de Finance…</p></section>}><Finance /></Suspense>}
-          {route.type === "marketing" && <Suspense fallback={<p>Chargement de l'équipe marketing…</p>}><Marketing key={`${route.projetId}:${route.filId}`} projetInitial={route.projetId} filId={route.filId} aller={naviguer} /></Suspense>}
+          {route.type === "finance" && (
+            <Suspense fallback={<Chargement quoi="de Finance" />}>
+              <Finance />
+            </Suspense>
+          )}
+          {route.type === "marketing" && (
+            <Suspense fallback={<Chargement quoi="de l'équipe marketing" />}>
+              <Marketing key={`${route.projetId}:${route.filId}`} projetInitial={route.projetId} filId={route.filId} aller={naviguer} />
+            </Suspense>
+          )}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
           {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
-          {route.type === "systeme" && <Suspense fallback={<section className="page-vide"><p>Chargement du système…</p></section>}><Systeme page={route.page} aller={naviguer} /></Suspense>}
-          {route.type === "taskboard" && <Suspense fallback={<section className="page-vide"><p>Chargement du TaskBoard…</p></section>}><TaskBoard /></Suspense>}
-          {route.type === "ai-studio" && <Suspense fallback={<section className="page-vide"><p>Chargement de l’AI Studio…</p></section>}><AIStudio route={route.studio} aller={naviguer} /></Suspense>}
-          {route.type === "detail" && (
-            <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />
+          {route.type === "systeme" && (
+            <Suspense fallback={<Chargement quoi="du système" />}>
+              <Systeme page={route.page} aller={naviguer} />
+            </Suspense>
           )}
+          {route.type === "taskboard" && (
+            <Suspense fallback={<Chargement quoi="du planning" />}>
+              <TaskBoard />
+            </Suspense>
+          )}
+          {route.type === "ai-studio" && (
+            <Suspense fallback={<Chargement quoi="de l'AI Studio" />}>
+              <AIStudio route={route.studio} aller={naviguer} />
+            </Suspense>
+          )}
+          {route.type === "detail" && <Panneau modePage key={`${route.selection.type}:${route.selection.id}`} selection={route.selection} onSelection={ouvrir} onFermer={() => naviguer("/")} />}
           {route.type === "inconnue" && (
             <section className="page-vide">
               <div className="font-mono text-[11px] uppercase tracking-widest text-douce">404</div>
               <h2>Introuvable</h2>
-              <p className="text-douce">Cette page n’existe pas.</p>
+              <p className="text-douce">Cette page n’existe pas, ou son adresse a changé.</p>
               <button type="button" className="mt-2 cursor-pointer bg-accent px-4 py-2 text-sm font-semibold text-sur-accent" onClick={() => naviguer("/")}>
-                Revenir à l’accueil
+                Revenir à la vue d'ensemble
               </button>
             </section>
           )}
         </main>
       </div>
 
-      {selection ? (
+      {selection && (
         <aside className="ao-inspection" aria-label="Détails de la cellule">
           <Panneau key={`${selection.type}:${selection.id}:${selection.type === "run" ? selection.etapeId ?? "" : ""}`} selection={selection} onSelection={ouvrir} onFermer={fermer} />
         </aside>
-      ) : route.type !== "pipelines" && route.type !== "run" && route.type !== "ai-studio" && route.type !== "systeme" && route.type !== "taskboard" && route.type !== "decisions" && route.type !== "approbations" && <EnCours onSelection={ouvrir} />}
+      )}
+
+      <OngletsBas active={active} aller={naviguer} decisions={decisions} plusOuvert={menu} onPlus={() => setMenu(true)} />
+      <MenuComplet ouvert={menu} onFermer={() => setMenu(false)} active={active} aller={naviguer} decisions={decisions} theme={theme} basculer={basculer} />
+      <Tiroir ouvert={activiteOuverte} onFermer={() => setActiviteOuverte(false)} titre={`Activité · ${activite.total}`}>
+        <div className="flex flex-col gap-5">
+          <ListeActivite activite={activite} aller={naviguer} />
+          <ControleDemarrages controle={file} />
+        </div>
+      </Tiroir>
     </div>
   );
 }

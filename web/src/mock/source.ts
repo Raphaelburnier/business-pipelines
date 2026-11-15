@@ -31,6 +31,8 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
   const attributions: AttributionAvenir[] = [];
   const nomsPipelines = new Map<string, string>();
   const rattachements: Rattachement[] = [];
+  // La file d'exécution : la maquette autorise la pause, appliquée dès la commande déposée.
+  const execution = { pause: false, par: null as string | null, depuis: null as string | null, autorise: true };
 
   return {
     ...discussionsMaquette(),
@@ -61,6 +63,15 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
       };
     },
     usage: async () => etat().usage,
+    etatExecution: async () => ({ ...execution }),
+    async pauseExecution(pause: boolean) {
+      const id = `commande-maquette-${commandes.size + 1}`;
+      execution.pause = pause;
+      execution.par = pause ? "maquette" : null;
+      execution.depuis = pause ? new Date(maintenant()).toISOString() : null;
+      commandes.set(id, { id, type: "execution.pause", statut: "done", run: null, resultat: { ok: true } });
+      return { id, statut: "pending" };
+    },
     modeles: async () => catalogueMaquette(maintenant()),
     attributionsAvenir: async () => [...attributions],
     fils: chat.fils,

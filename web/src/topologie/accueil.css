@@ -40,8 +40,7 @@
 .ao-graphe-outils button:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* Le détail remplace « En cours » dans la colonne de droite ; le graphe reste utilisable. */
-.ao-shell.avec-inspection { grid-template-columns: 64px minmax(0, 1fr) min(400px, 35vw); }
-.ao-shell.avec-inspection.ouvert { grid-template-columns: 240px minmax(0, 1fr) min(400px, 35vw); }
+.ao-shell.avec-inspection { grid-template-columns: 232px minmax(0, 1fr) min(400px, 35vw); }
 .ao-inspection { min-width: 0; min-height: 0; height: 100%; border-left: 1px solid var(--color-trait-fort); background: var(--color-surface); }
 .ao-inspection .inspection-contenu { gap: 18px; border: 0; border-radius: 0; padding: 0 20px 24px; overscroll-behavior: contain; overflow-wrap: anywhere; }
 .ao-inspection-tete { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; }
@@ -54,7 +53,6 @@
 .ao-inspection .inspection-contenu > div { flex-shrink: 0; }
 
 @media (max-width: 1100px) {
-  .ao-shell.avec-inspection, .ao-shell.avec-inspection.ouvert { grid-template-columns: minmax(0, 1fr); }
   .ao-inspection { position: fixed; z-index: 25; top: 56px; right: 0; bottom: 0; width: min(400px, calc(100vw - 80px)); height: auto; box-shadow: -20px 0 60px #00000030; }
   .ao-accueil { height: auto; }
   .ao-accueil .ao-canevas { flex: none; height: clamp(420px, 66dvh, 740px); }
