@@ -16,7 +16,7 @@ export type Route =
   | { type: "branches" }
   | { type: "marketing"; projetId: string | null; filId: string | null }
   | { type: "demander"; filId: string | null }
-  | { type: "decisions" }
+  | { type: "decisions"; element: string | null }
   | { type: "systeme"; page: PageSysteme }
   | { type: "finance" }
   | { type: "taskboard" }
@@ -45,7 +45,7 @@ export function lireRoute(): Route {
   if (morceaux[0] === "missions" && morceaux.length <= 2) return { type: "missions", projetId: morceaux[1] ? segment(morceaux[1]) : null, brouillonId: new URLSearchParams(window.location.search).get("brouillon") };
   if (morceaux[0] === "marketing" && morceaux.length <= 3) return { type: "marketing", projetId: morceaux[1] ? segment(morceaux[1]) : null, filId: morceaux[2] ? segment(morceaux[2]) : null };
   if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
-  if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
+  if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions", element: new URLSearchParams(window.location.search).get("d") };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme", page: "carte" };
   if (morceaux[0] === "systeme" && (morceaux[1] === "fonctionnement" || morceaux[1] === "topologie") && morceaux.length === 2) return { type: "systeme", page: morceaux[1] };
   if (["taskboard", "a-venir", "calendrier"].includes(morceaux[0] ?? "") && morceaux.length === 1) return { type: "taskboard" };

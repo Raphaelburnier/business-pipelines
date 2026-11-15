@@ -7,7 +7,7 @@ import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 import { Tableau, type Colonne } from "../composants/Tableau";
 import { ListeSante, type EvaluationSante } from "../coquille/Sante";
 import { suivreLien } from "../coquille/Navigation";
-import type { ADecider, GenreDecision } from "../donnees/aDecider";
+import { NOM_GENRE, type ADecider } from "../donnees/aDecider";
 import { useCharge, useHorloge } from "../donnees/contexte";
 import { attente } from "../donnees/decisions";
 import { CLASSES_TON, depuis, VIDE, type Ton } from "../format";
@@ -18,7 +18,6 @@ import type { Activite } from "./EnCours";
 
 const JOUR_MS = 24 * 3_600_000;
 const DECISIONS_MONTREES = 5;
-const GENRES: Record<GenreDecision, string> = { run: "Run", pr: "PR", livraison: "Livraison", plan: "Plan" };
 
 type Aller = (href: string) => void;
 
@@ -114,6 +113,7 @@ function Tuiles({ decisions, activite, aller }: { decisions: ADecider; activite:
 
 function Decisions({ decisions, aller }: { decisions: ADecider; aller: Aller }) {
   const { elements, chargement, erreurs } = decisions;
+  const maintenant = useHorloge(30_000);
   const visibles = elements.slice(0, DECISIONS_MONTREES);
   const reste = elements.length - visibles.length;
   let contenu: ReactNode;
@@ -134,13 +134,14 @@ function Decisions({ decisions, aller }: { decisions: ADecider; aller: Aller }) 
       <ul className="flex flex-col">
         {visibles.map((e) => (
           <li key={e.cle} className="ao-decision">
-            <span className={`ao-decision-genre ${e.genre}`}>{GENRES[e.genre]}</span>
+            <span className={`ao-decision-genre ${e.genre}`}>{NOM_GENRE[e.genre]}</span>
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium text-encre" title={e.titre}>
                 {e.titre}
               </div>
               <div className="truncate text-[13px] text-douce" title={e.detail}>
                 {e.detail}
+                {e.depuis ? ` · depuis ${attente(e.depuis, maintenant)}` : ""}
               </div>
             </div>
             <LienInterne href={e.href} aller={aller} className={`ao-btn ${e.genre === "run" ? "primaire" : ""}`}>

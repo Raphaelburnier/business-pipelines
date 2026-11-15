@@ -651,14 +651,39 @@ details.ao-liv-depot { display: block; }
   .ao-contenu .relative.h-4, .ao-contenu .relative.h-4 > button.absolute { height: 28px; line-height: 28px; }
 }
 
-/* ---------- Décisions : livraison à gauche, approbations à droite (2026-09-30) ---------- */
-.ao-decisions { display: grid; width: 100%; max-width: 1600px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 16px; align-items: start; margin-inline: auto; }
-.ao-decisions-colonne { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
-/* La livraison reste sous les yeux quand on descend dans une longue liste d'approbations. */
-.ao-decisions-colonne:first-child { position: sticky; top: 12px; }
-@media (max-width: 1100px) {
-  .ao-decisions { grid-template-columns: minmax(0, 1fr); }
-  .ao-decisions-colonne:first-child { position: static; }
+/* ---------- Décisions : une file triée par urgence, puis ce qui avance sans décision ---------- */
+.ao-decisions { display: flex; width: 100%; max-width: 960px; flex-direction: column; gap: 24px; margin-inline: auto; }
+.ao-file-entete { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.ao-file-identite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ao-file { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ao-file-element { min-width: 0; scroll-margin-top: 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); transition: border-color .15s; }
+.ao-file-element.ouvert { border-color: var(--color-trait-fort); }
+.ao-file-tete { display: flex; width: 100%; min-height: 60px; align-items: center; gap: 12px; padding: 10px 14px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color .15s; }
+.ao-file-tete:hover { background: var(--color-carte); }
+.ao-file-tete:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.ao-file-element.ouvert .ao-file-tete { border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+.ao-file-texte { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.ao-file-titre { overflow: hidden; font: 500 14.5px/20px var(--font-sans); color: var(--color-encre); text-overflow: ellipsis; white-space: nowrap; }
+.ao-file-detail { overflow: hidden; font-size: 13px; line-height: 18px; color: var(--color-douce); text-overflow: ellipsis; white-space: nowrap; }
+.ao-file-age { flex: none; font-size: 12.5px; color: var(--color-douce); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ao-file-chevron { flex: none; color: var(--color-douce); transition: transform .15s; }
+.ao-file-element.ouvert .ao-file-chevron { transform: rotate(90deg); }
+.ao-file-corps { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 14px 16px 16px; border-top: 1px solid var(--color-trait); }
+.ao-decisions-intertitre { margin: 8px 0 0; font: 600 13px/18px var(--font-sans); color: var(--color-douce); }
+.ao-decision-genre.pr, .ao-decision-genre.livraison, .ao-decision-genre.plan { background: var(--color-neutre-fond); }
+@media (prefers-reduced-motion: reduce) {
+  .ao-file-chevron, .ao-file-element, .ao-file-tete { transition: none; }
+}
+@media (max-width: 720px) {
+  .ao-decisions { gap: 20px; }
+  /* Le genre et l'attente au-dessus, le titre en pleine largeur : rien ne se coupe à 390 px. */
+  .ao-file-tete { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 10px; padding: 12px; }
+  .ao-file-tete .ao-decision-genre { grid-column: 1; grid-row: 1; justify-self: start; min-width: 0; }
+  .ao-file-age { grid-column: 2; grid-row: 1; justify-self: end; }
+  .ao-file-chevron { grid-column: 3; grid-row: 1; }
+  .ao-file-texte { grid-column: 1 / -1; grid-row: 2; }
+  .ao-file-titre, .ao-file-detail { white-space: normal; }
+  .ao-file-corps { padding: 12px; }
 }
 
 /* ---------- Agents : sélection de personnages (design system AgenticOS, écran Agents) ---------- */
