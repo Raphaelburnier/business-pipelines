@@ -833,3 +833,47 @@ button.ao-puce { cursor: pointer; }
 
 /* Tiroir : son pied reste au-dessus de la barre système du téléphone. */
 .ao-tiroir { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ---------- Vue d'ensemble (page d'accueil) ----------
+   Quatre tuiles, la file des décisions à côté de la santé, puis les runs en cours. */
+.ao-ensemble { display: flex; width: 100%; max-width: 1400px; flex-direction: column; gap: 16px; margin-inline: auto; }
+.ao-indicateurs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ao-indicateur { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); color: var(--color-encre); text-decoration: none; }
+.ao-indicateur-lien { transition: border-color .15s, background-color .15s; }
+.ao-indicateur-lien:hover { border-color: var(--color-trait-fort); background: var(--color-carte); }
+.ao-indicateur-tete { display: flex; align-items: center; gap: 6px; font: 500 13px/18px var(--font-sans); color: var(--color-douce); }
+.ao-indicateur-valeur { font: 600 28px/34px var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.ao-indicateur-detail { overflow: hidden; font-size: 12px; color: var(--color-douce); text-overflow: ellipsis; white-space: nowrap; }
+.ao-ensemble-grille { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+.ao-decision { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-trait); }
+.ao-decision:first-child { padding-top: 0; }
+.ao-decision:last-child { padding-bottom: 0; border-bottom: 0; }
+.ao-decision-genre { flex: none; min-width: 72px; padding: 3px 8px; border-radius: 999px; background: var(--color-neutre-fond); color: var(--color-douce); font: 600 11px/14px var(--font-sans); text-align: center; }
+.ao-decision-genre.run { background: var(--color-alerte-fond); color: var(--color-alerte); }
+.ao-lien-carte { display: inline-flex; align-items: center; gap: 2px; font: 500 13px/20px var(--font-sans); color: var(--color-accent); text-decoration: none; white-space: nowrap; }
+.ao-lien-carte:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Système › Topologie : le graphe prend la hauteur qui reste sous les liens de la page. */
+.ao-contenu-graphe .sy-page { height: 100%; padding-bottom: 0; }
+.sy-topologie { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+
+@media (max-width: 1100px) {
+  .ao-indicateurs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ao-ensemble-grille { grid-template-columns: minmax(0, 1fr); }
+  .ao-contenu-graphe .sy-page { height: auto; }
+  .sy-topologie { flex: none; }
+}
+@media (max-width: 720px) {
+  .ao-indicateurs { gap: 8px; }
+  .ao-indicateur { padding: 12px; }
+  .ao-indicateur-valeur { font-size: 24px; line-height: 30px; }
+  /* Le genre passe au-dessus du titre ; le bouton reste à droite, à portée de pouce. */
+  .ao-decision { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
+  .ao-decision-genre { grid-column: 1 / -1; justify-self: start; min-width: 0; }
+  .ao-lien-carte { min-height: 44px; }
+  /* Les barres d'indicateurs passent sur deux colonnes au lieu de déborder. */
+  .ao-kpis:not(.flottant) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .ao-kpis:not(.flottant) .ao-kpi { border-top: 1px solid var(--color-trait); border-left: 0; white-space: normal; }
+  .ao-kpis:not(.flottant) .ao-kpi:nth-child(-n + 2) { border-top: 0; }
+  .ao-kpis:not(.flottant) .ao-kpi:nth-child(even) { border-left: 1px solid var(--color-trait); }
+}

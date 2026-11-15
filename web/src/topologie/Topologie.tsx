@@ -7,7 +7,7 @@ import { useCharge, useSource } from "../donnees/contexte";
 import { CLASSES_TON, mot, ton, vivant } from "../format";
 import type { ProjetTopologie as Projet, Topologie as DonneesTopologie } from "../types";
 import { Erreur } from "../ui";
-import { Kpis } from "../vues/Kpis";
+import { EtatErreur, Squelette } from "../composants/Etats";
 import { Icone } from "../icones";
 import { disposer, idMachine, idOrchestrateur, idProjet, roleDeMachine, type ExecutionProjet, type NoeudDispose, OUVERTS_INITIAUX } from "./disposition";
 
@@ -344,18 +344,17 @@ function Arbre({ topologie, selection, onSelection }: { topologie: DonneesTopolo
 }
 
 export function Topologie({ selection, onSelection }: { selection: Selection | null; onSelection: (s: Selection | null) => void }) {
-  const { donnees, erreur } = useCharge((source) => source.topologie(), []);
-  if (erreur) return <Erreur>Liste des projets illisible : {erreur}</Erreur>;
-  if (!donnees) return <p className="p-4 text-sm text-douce">Lecture des projets…</p>;
+  const { donnees, erreur, detail, recharger } = useCharge((source) => source.topologie(), []);
+  if (erreur) return <EtatErreur titre="Topologie illisible" message={erreur} detail={detail} onReessayer={recharger} />;
+  if (!donnees) return <Squelette lignes={6} libelle="Lecture de la topologie…" className="p-4" />;
   const projets = donnees.projets.filter((projet) => projet.aFiche);
 
   return (
     <section className="ao-accueil">
       <header className="ao-accueil-tete">
-        <div><span className="ao-accueil-kicker">Vue d’ensemble</span><h2>Chaque projet, son flux.</h2><p>Explore les machines, les projets et les étapes de leur dernier run.</p></div>
+        <div><h2>Chaque projet, son flux</h2><p>Les machines, les projets et les étapes de leur dernier run, en direct.</p></div>
         <div className="ao-accueil-parcours" aria-label="Lecture des flux"><span>Pilotage</span><b aria-hidden="true">→</b><span>Machines</span><b aria-hidden="true">→</b><span>Projets</span><b aria-hidden="true">→</b><span>Étapes</span></div>
       </header>
-      <Kpis />
       {donnees.anomalies.length > 0 && <div className="mb-2">{donnees.anomalies.map((anomalie) => <Erreur key={anomalie}>{anomalie}</Erreur>)}</div>}
       <div className="ao-canevas min-h-0 flex-1">
         <ReactFlowProvider>

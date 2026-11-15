@@ -1,11 +1,14 @@
 // Les adresses du cockpit, lues depuis `window.location`. Les anciennes adresses (/graph,
 // /app, /a-venir, /calendrier, /decisions/pipelines) restent valides : des liens partagés et
-// des favoris y mènent encore.
+// des favoris y mènent encore. /graph, l'ancien accueil, mène au graphe devenu Système ›
+// Topologie ; l'application l'y redirige (`adresseCanonique`).
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 import type { Selection } from "./topologie/Topologie";
 
+export type PageSysteme = "carte" | "topologie" | "fonctionnement";
+
 export type Route =
-  | { type: "graph" }
+  | { type: "accueil" }
   | { type: "agents" }
   | { type: "pipelines"; pipelineId: string | null }
   | { type: "run"; runId: string | null }
@@ -14,7 +17,7 @@ export type Route =
   | { type: "marketing"; projetId: string | null; filId: string | null }
   | { type: "demander"; filId: string | null }
   | { type: "decisions" }
-  | { type: "systeme"; page: "carte" | "fonctionnement" }
+  | { type: "systeme"; page: PageSysteme }
   | { type: "finance" }
   | { type: "taskboard" }
   | { type: "approbations" }
@@ -32,7 +35,8 @@ function segment(valeur: string): string {
 
 export function lireRoute(): Route {
   const morceaux = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
-  if (!morceaux.length || morceaux[0] === "graph" || morceaux[0] === "app") return { type: "graph" };
+  if (!morceaux.length || (morceaux[0] === "app" && morceaux.length === 1)) return { type: "accueil" };
+  if (morceaux[0] === "graph" && morceaux.length === 1) return { type: "systeme", page: "topologie" };
   if (morceaux[0] === "agents" && morceaux.length === 1) return { type: "agents" };
   if (morceaux[0] === "pipelines" && morceaux.length <= 2) return { type: "pipelines", pipelineId: morceaux[1] ? segment(morceaux[1]) : null };
   if (morceaux[0] === "run" && morceaux.length <= 2) return { type: "run", runId: morceaux[1] ? segment(morceaux[1]) : null };
@@ -43,7 +47,7 @@ export function lireRoute(): Route {
   if (morceaux[0] === "decisions" && morceaux[1] === "pipelines" && morceaux.length === 2) return { type: "approbations" };
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions" };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme", page: "carte" };
-  if (morceaux[0] === "systeme" && morceaux[1] === "fonctionnement" && morceaux.length === 2) return { type: "systeme", page: "fonctionnement" };
+  if (morceaux[0] === "systeme" && (morceaux[1] === "fonctionnement" || morceaux[1] === "topologie") && morceaux.length === 2) return { type: "systeme", page: morceaux[1] };
   if (["taskboard", "a-venir", "calendrier"].includes(morceaux[0] ?? "") && morceaux.length === 1) return { type: "taskboard" };
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? segment(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
@@ -65,14 +69,20 @@ export function lireRoute(): Route {
   return { type: "inconnue" };
 }
 
+/** L'adresse à afficher pour une ancienne : /graph devient /systeme/topologie. Null si elle est déjà la bonne. */
+export function adresseCanonique(chemin: string): string | null {
+  return /^\/graph\/?$/.test(chemin) ? "/systeme/topologie" : null;
+}
+
 /** Les entrées du menu ; une route en allume au plus une. */
 export type CleNav = "accueil" | "decisions" | "runs" | "planning" | "missions" | "pipelines" | "agents" | "finance" | "marketing" | "ai-studio" | "demander" | "systeme";
 
 export function cleActive(route: Route): CleNav | null {
   switch (route.type) {
-    case "graph":
-    case "detail":
+    case "accueil":
       return "accueil";
+    case "detail":
+      return "systeme";
     case "decisions":
     case "approbations":
       return "decisions";
@@ -115,10 +125,10 @@ const NOM_DETAIL: Record<Selection["type"], string> = { projet: "Projet", run: "
 /** Le chemin jusqu'à la page affichée ; le dernier niveau est son titre. */
 export function miettes(route: Route): Miette[] {
   switch (route.type) {
-    case "graph":
+    case "accueil":
       return [{ libelle: "Vue d'ensemble" }];
     case "detail":
-      return [{ libelle: "Vue d'ensemble", href: "/" }, { libelle: NOM_DETAIL[route.selection.type] }, { libelle: route.selection.id, code: true }];
+      return [{ libelle: "Système", href: "/systeme" }, { libelle: "Topologie", href: "/systeme/topologie" }, { libelle: `${NOM_DETAIL[route.selection.type]} ${route.selection.id}` }];
     case "decisions":
     case "approbations":
       return [{ libelle: "Décisions" }];
@@ -148,6 +158,7 @@ export function miettes(route: Route): Miette[] {
     case "demander":
       return route.filId ? [{ libelle: "Demander", href: "/demander" }, { libelle: "Conversation" }] : [{ libelle: "Demander" }];
     case "systeme":
+      if (route.page === "topologie") return [{ libelle: "Système", href: "/systeme" }, { libelle: "Topologie" }];
       return route.page === "fonctionnement" ? [{ libelle: "Système", href: "/systeme" }, { libelle: "Fonctionnement" }] : [{ libelle: "Système" }];
     case "inconnue":
       return [{ libelle: "Introuvable" }];

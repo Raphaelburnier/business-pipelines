@@ -25,6 +25,8 @@ const GENRES: Partial<Record<Run["statut"], Genre>> = {
   waiting_freshness: "pause",
 };
 
+const AUCUN_RUN: ReadonlyArray<Run> = [];
+
 const RANG: Record<Genre, number> = { wait: 0, run: 1, pause: 2 };
 const SECTIONS: ReadonlyArray<{ genre: Genre; titre: string }> = [
   { genre: "wait", titre: "À valider" },
@@ -42,6 +44,8 @@ function cause(run: Run): string | null {
 }
 
 export interface Activite {
+  /** Les derniers runs lus, vivants ou non : les décisions y cherchent les runs à valider. */
+  runs: ReadonlyArray<Run>;
   lignes: ReadonlyArray<{ run: Run; genre: Genre }>;
   livraison: { etape: string | null } | null;
   /** Runs vivants et livraison en cours : le nombre du bouton « Activité ». */
@@ -69,6 +73,7 @@ export function useActivite(): Activite {
     [runs.donnees]
   );
   return {
+    runs: runs.donnees ?? AUCUN_RUN,
     lignes,
     livraison: enCours ? { etape: enCours.etape ?? null } : null,
     total: lignes.length + (enCours ? 1 : 0),

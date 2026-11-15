@@ -2,7 +2,8 @@
 // comment un run réussi arrive en production. Tout vient de carte.ts. Le graphe garde les
 // briques à une taille de lecture et isole une famille de liaisons à la fois.
 import "./systeme.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { PageSysteme } from "../routes";
 import {
   BRIQUES,
   ETAPES,
@@ -331,12 +332,13 @@ const CHIFFRES: Array<{ valeur: string; libelle: string }> = [
   { valeur: String(JALONS.length), libelle: "jalons depuis juillet" },
 ];
 
-export function Systeme({ page, aller }: { page: "carte" | "fonctionnement"; aller: (href: string) => void }) {
+/** `topologie` : le graphe vivant (machines, projets, flux), fourni par la coquille qui garde sa sélection. */
+export function Systeme({ page, aller, topologie }: { page: PageSysteme; aller: (href: string) => void; topologie?: ReactNode }) {
   const [onglet, setOnglet] = useState<Onglet>("architecture");
   return (
     <section className="sy-page">
       <nav className="sy-navigation" aria-label="Pages du système">
-        {([{ id: "carte", href: "/systeme", nom: "Carte du système" }, { id: "fonctionnement", href: "/systeme/fonctionnement", nom: "Fonctionnement" }] as const).map((lien) => (
+        {([{ id: "carte", href: "/systeme", nom: "Carte du système" }, { id: "topologie", href: "/systeme/topologie", nom: "Topologie" }, { id: "fonctionnement", href: "/systeme/fonctionnement", nom: "Fonctionnement" }] as const).map((lien) => (
           <a key={lien.id} href={lien.href} aria-current={page === lien.id ? "page" : undefined} onClick={(event) => {
             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
             event.preventDefault();
@@ -344,7 +346,7 @@ export function Systeme({ page, aller }: { page: "carte" | "fonctionnement"; all
           }}>{lien.nom}</a>
         ))}
       </nav>
-      {page === "fonctionnement" ? <Fonctionnement /> : <>
+      {page === "topologie" ? <div className="sy-topologie">{topologie}</div> : page === "fonctionnement" ? <Fonctionnement /> : <>
       <header className="sy-hero">
         <div>
           <span className="kicker">SYS//MAP · relevé du 2026-09-30</span>

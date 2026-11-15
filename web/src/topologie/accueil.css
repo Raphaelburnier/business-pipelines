@@ -1,12 +1,10 @@
-/* L'accueil garde le langage Night City : le signal est dans les données et les flux. */
+/* Le graphe des projets, devenu Système › Topologie : le signal est dans les données et les flux. */
 .ao-accueil { display: flex; height: 100%; min-height: 0; flex-direction: column; gap: 14px; }
 .ao-accueil-tete { display: flex; flex: none; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding: 3px 0 2px; }
-.ao-accueil-kicker { color: var(--color-accent); font: 400 10px/1.4 var(--font-mono); letter-spacing: .16em; text-transform: uppercase; }
-.ao-accueil-tete h2 { margin: 4px 0 2px; color: var(--color-encre); font: 600 clamp(24px, 2.1vw, 32px)/1.12 var(--font-sans); letter-spacing: -.02em; }
+.ao-accueil-tete h2 { margin: 0 0 2px; color: var(--color-encre); font: 600 18px/24px var(--font-sans); }
 .ao-accueil-tete p { margin: 0; color: var(--color-douce); font-size: 13px; }
-.ao-accueil-parcours { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding-bottom: 3px; font: 400 10px/1.5 var(--font-mono); color: var(--color-douce); }
+.ao-accueil-parcours { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 3px; font: 500 12px/1.5 var(--font-sans); color: var(--color-douce); }
 .ao-accueil-parcours b { font-weight: 400; color: var(--color-accent); }
-.ao-accueil > .ao-kpis { flex: none; align-self: flex-start; border-top-width: 1px; border-color: var(--color-trait); background: var(--color-surface); }
 .ao-accueil .ao-canevas { border-color: var(--color-trait); background-color: var(--color-surface); }
 .ao-accueil .ao-canevas::after { display: none; }
 .ao-accueil .ao-legende-graphe { right: auto; left: 18px; gap: 10px 16px; max-width: calc(100% - 40px); padding: 7px 9px; background: var(--color-surface); font-size: 9px; line-height: 1.4; }
@@ -60,9 +58,9 @@
 @media (max-width: 720px) {
   .ao-accueil-mobile-note { display: inline; }
   .ao-accueil-tete { gap: 10px; }
-  .ao-accueil-tete h2 { font-size: 27px; }
+  .ao-accueil-tete h2 { font-size: 17px; }
   .ao-accueil-tete p { font-size: 12px; }
-  .ao-accueil-parcours { gap: 8px; font-size: 9px; }
+  .ao-accueil-parcours { gap: 6px; font-size: 11px; }
   .ao-accueil .ao-canevas { height: clamp(400px, 65dvh, 640px); }
   .ao-accueil .ao-legende-graphe { bottom: 12px; gap: 7px 12px; }
   .ao-graphe-outils button > span { display: none; }
