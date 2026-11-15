@@ -184,7 +184,7 @@ function Coquille() {
             </Suspense>
           )}
           {route.type === "demander" && <Demander filId={route.filId} aller={naviguer} />}
-          {(route.type === "decisions" || route.type === "approbations") && <Decisions />}
+          {(route.type === "decisions" || route.type === "approbations") && <Decisions aDecider={aDecider} element={route.type === "decisions" ? route.element : null} aller={naviguer} />}
           {route.type === "systeme" && (
             <Suspense fallback={<Chargement quoi="du système" />}>
               <Systeme page={route.page} aller={naviguer} topologie={<Topologie selection={selection} onSelection={(choix) => (choix ? ouvrir(choix) : fermer())} />} />

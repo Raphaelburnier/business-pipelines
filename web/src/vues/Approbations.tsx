@@ -1,9 +1,11 @@
-// Les approbations métier ne sont pas celles des runs : elles tranchent un plan gelé et le
-// serveur vérifie toujours son empreinte avant d'écrire la trace signée.
+// Les dossiers d'approbation, ouverts dans la file des décisions. Les approbations métier ne
+// sont pas celles des runs : elles tranchent un plan gelé et le serveur vérifie toujours son
+// empreinte avant d'écrire la trace signée.
 import { useEffect, useMemo, useState } from "react";
 import { useCharge, useSource } from "../donnees/contexte";
-import { attente, lireAction, nomModele } from "../donnees/decisions";
-import type { ConseilAction, Decision, DemandeDecisionRun, DossierApprobation, EtatConseiller, FilConseil, RapportApprobationRun, SourceConseil } from "../donnees/decisions";
+import { lireAction, nomModele } from "../donnees/decisions";
+import type { ConseilAction, Decision, DemandeDecisionRun, DossierApprobation, EtatConseiller, FilConseil, RapportApprobationRun, ReponseApprobations, SourceConseil } from "../donnees/decisions";
+import { ActionConfirmee } from "../composants/ActionConfirmee";
 import { Erreur, Vide } from "../ui";
 
 type BrouillonAction = { decision: Decision["decision"] | null; motif: string };
@@ -160,7 +162,7 @@ function RapportRun({ rapport }: { rapport: RapportApprobationRun }) {
   );
 }
 
-function EtatConseillerBadge({ conseiller }: { conseiller: EtatConseiller }) {
+export function EtatConseillerBadge({ conseiller }: { conseiller: EtatConseiller }) {
   if (conseiller.disponible) return <span className="ao-auteur ia">{nomModele(conseiller.modele)} connecté</span>;
   const vu = dateLisible(conseiller.vuLe);
   return <span className="ao-auteur indisponible" title={vu ?? undefined}>PC endormi{vu ? `, vu ${vu}` : ""}</span>;
@@ -259,7 +261,8 @@ function ecrireBrouillon(cle: string, valeur: BrouillonSauve | null): void {
   }
 }
 
-function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierApprobation; conseiller: EtatConseiller; recharger: () => void; traite: (message: string) => void }) {
+/** Le corps d'un dossier dans la file des décisions : le titre et l'attente sont sur sa ligne. */
+export function CorpsDossier({ dossier, conseiller, apres }: { dossier: DossierApprobation; conseiller: EtatConseiller; apres: (message: string, regle: boolean) => void }) {
   const { source } = useSource();
   const cle = cleBrouillon(dossier);
   const sauve = useMemo(() => lireBrouillon(cle), [cle]);
@@ -267,15 +270,12 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
   const [brouillon, setBrouillon] = useState<Brouillon>(initial);
   const [reponse, setReponse] = useState(sauve?.reponse ?? "");
   const [mode, setMode] = useState<Mode>(sauve?.mode ?? "trancher");
-  const [confirmation, setConfirmation] = useState(false);
-  const [envoi, setEnvoi] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [succes, setSucces] = useState<string | null>(null);
 
   // Une approbation de run sans actions (rallonge de budget) se tranche d'un seul choix.
   const [verdictRun, setVerdictRun] = useState<"approved" | "rejected" | null>(sauve?.verdictRun ?? null);
   const run = dossier.source === "run";
   const renvoi = mode === "renvoyer";
+  const nom = run ? `${dossier.projet ?? "run"} · ${dossier.nodeId}` : dossier.dossier;
 
   useEffect(() => {
     const vide = !reponse.trim() && !verdictRun && mode === "trancher" && Object.entries(brouillon).every(([id, b]) => {
@@ -308,10 +308,10 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
           ? { decision: "approved", actions: decisions.map(({ motif, ...d }) => ({ ...d, ...(motif ? { note: motif } : {}) })) }
           : null;
   const peutEnvoyer = !verrouille && (run ? demandeRun !== null : renvoi ? Boolean(reponse.trim()) : decisions.length > 0);
+  // Ce que la confirmation redit : la changer referme une question déjà ouverte.
+  const signature = JSON.stringify({ mode, reponse: reponse.trim(), verdictRun, decisions });
 
   function modifier(actionId: string, prochain: Partial<BrouillonAction>): void {
-    setConfirmation(false);
-    setSucces(null);
     setBrouillon((courant): Brouillon => {
       const precedent = courant[actionId] ?? { decision: null, motif: "" };
       return {
@@ -325,78 +325,69 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
   }
 
   async function envoyer(): Promise<void> {
-    setEnvoi(true);
-    setErreur(null);
-    try {
-      if (run && dossier.approbationId && demandeRun) {
-        await source.deciderRun(dossier.approbationId, demandeRun);
-        const quoi =
-          demandeRun.decision === "oriented"
-            ? "renvoyé avec ta consigne, un nouveau tour repart"
-            : demandeRun.decision === "rejected"
-              ? "refus envoyé, le run reprend"
-              : "décision envoyée, le run reprend";
-        setConfirmation(false);
-        ecrireBrouillon(cle, null);
-        traite(`${dossier.projet ?? "run"} · ${dossier.nodeId} : ${quoi}.`);
-        recharger();
-        return;
-      }
-      const resultat = await source.decider({
-        dossier: dossier.dossier,
-        empreinte: dossier.empreinte,
-        decisions: renvoi ? [] : decisions,
-        ...(renvoi && reponse.trim() ? { reponse: reponse.trim() } : {}),
-      });
+    if (run && dossier.approbationId && demandeRun) {
+      await source.deciderRun(dossier.approbationId, demandeRun);
+      const quoi =
+        demandeRun.decision === "oriented"
+          ? "renvoyé avec ta consigne, un nouveau tour repart"
+          : demandeRun.decision === "rejected"
+            ? "refus envoyé, le run reprend"
+            : "décision envoyée, le run reprend";
       ecrireBrouillon(cle, null);
-      const texte = resultat.reponse ? "Consigne enregistrée." : `${resultat.decisions.length} décision${resultat.decisions.length > 1 ? "s" : ""} enregistrée${resultat.decisions.length > 1 ? "s" : ""}.`;
-      setSucces(texte);
-      setConfirmation(false);
-      // Le dossier ne disparaît que s'il est réglé : une consigne, ou toutes les actions
-      // décidées. Une décision partielle laisse les actions restantes à trancher.
-      if (resultat.reponse || dossier.actions.every((a) => brouillon[a.id]?.decision)) traite(`${dossier.dossier} : ${texte}`);
-      recharger();
-    } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
-    } finally {
-      setEnvoi(false);
+      apres(`${nom} : ${quoi}.`, true);
+      return;
     }
+    const resultat = await source.decider({
+      dossier: dossier.dossier,
+      empreinte: dossier.empreinte,
+      decisions: renvoi ? [] : decisions,
+      ...(renvoi && reponse.trim() ? { reponse: reponse.trim() } : {}),
+    });
+    ecrireBrouillon(cle, null);
+    const texte = resultat.reponse ? "consigne enregistrée" : `${resultat.decisions.length} décision${resultat.decisions.length > 1 ? "s" : ""} enregistrée${resultat.decisions.length > 1 ? "s" : ""}`;
+    // Le dossier ne quitte la file que s'il est réglé : une consigne, ou toutes les actions
+    // décidées. Une décision partielle laisse les actions restantes à trancher.
+    apres(`${dossier.dossier} : ${texte}.`, Boolean(resultat.reponse || dossier.actions.every((a) => brouillon[a.id]?.decision)));
   }
 
-  return (
-    <section className="ao-liv ao-approbation" aria-labelledby={`titre-${dossier.dossier}`}>
-      <header>
-        <div>
-          <h2 id={`titre-${dossier.dossier}`}>{run ? `${dossier.projet ?? "run"} · ${dossier.nodeId}` : dossier.dossier}</h2>
-          <p className="font-mono text-[11px] text-douce">
-            {run ? `Run ${dossier.runId?.slice(0, 8)}` : `Plan ${dossier.empreinte}`} · en attente depuis <span title={dossier.depuis}>{attente(dossier.depuis)}</span>
-          </p>
-        </div>
-        {dossier.tranche ? <span className="ao-liv-etat">tranché</span> : dossier.reponse_posee ? <span className="ao-liv-etat encours">consigne envoyée</span> : <span className="ao-liv-etat dispo">à trancher</span>}
-      </header>
+  const question = renvoi
+    ? `Renvoyer ${nom} au pipeline avec ta consigne ?`
+    : run
+      ? demandeRun?.decision === "rejected"
+        ? `Refuser ${dossier.reason === "budget" ? "la rallonge de budget" : "cette approbation"} pour ${nom} ?`
+        : dossier.reason === "budget" && dossier.actions.length === 0
+          ? `Accorder la rallonge de budget à ${nom} ?`
+          : `Envoyer ta décision pour ${nom} ?`
+      : `Enregistrer ${decisions.length} décision${decisions.length > 1 ? "s" : ""} pour ${dossier.dossier} ?`;
+  const consequence = renvoi
+    ? "Rien n'est approuvé ni refusé : le pipeline repart pour un nouveau tour avec cette consigne."
+    : run
+      ? "Le run reprend aussitôt avec ta décision."
+      : `Elles portent sur le plan gelé ${dossier.empreinte} ; s'il a changé depuis l'affichage, le serveur refuse.`;
+  const consigne = renvoi
+    ? "Écris ce que le pipeline doit refaire."
+    : run && dossier.actions.length === 0
+      ? `Choisis ${dossier.reason === "budget" ? "Accorder" : "Approuver"} ou Refuser.`
+      : run
+        ? "Tranche chaque action : le run reprend avec le plan entier."
+        : "Approuve ou refuse au moins une action.";
 
+  return (
+    <div className="flex flex-col gap-3">
       <div className="ao-approbation-meta">
         {run ? <span className="ao-liv-pastille">{dossier.reason === "budget" ? "rallonge de budget" : "approbation de run"}</span> : <Fraicheur dossier={dossier} />}
+        <span className="font-mono text-[11px] text-douce">{run ? `Run ${dossier.runId?.slice(0, 8)}` : `Plan ${dossier.empreinte}`}</span>
         {dossier.appliquer_avec && <span className="font-mono text-[11px] text-douce">Pipeline : {dossier.appliquer_avec}</span>}
-        {dossier.tranche && dossier.note_vault && <span className={`ao-liv-pastille ${dossier.note_vault === "fait" ? "ok" : ""}`}>Note vault : {dossier.note_vault}</span>}
       </div>
 
       {dossier.plan_absent && <Erreur>Le plan gelé est introuvable. Décider à l’aveugle est refusé.</Erreur>}
-      {dossier.reponse_posee && (
-        <div className="ao-liv-issue ok" role="status">
-          <strong>Consigne déjà enregistrée</strong>
-          <span>{dossier.reponse_posee.consigne}</span>
-          <span className="font-mono text-douce">{dossier.reponse_posee.par ?? "identité inconnue"}{dossier.reponse_posee.le ? ` · ${dateLisible(dossier.reponse_posee.le)}` : ""}</span>
-        </div>
-      )}
-
       {dossier.rapport && <RapportRun rapport={dossier.rapport} />}
       {!verrouille && (
         <div className="ao-approbation-mode" role="radiogroup" aria-label="Que faire de ce plan">
-          <button type="button" role="radio" aria-checked={!renvoi} className={`ao-btn ${!renvoi ? "primaire" : ""}`} onClick={() => { setConfirmation(false); setMode("trancher"); }}>
+          <button type="button" role="radio" aria-checked={!renvoi} className={`ao-btn ${!renvoi ? "primaire" : ""}`} onClick={() => setMode("trancher")}>
             Trancher
           </button>
-          <button type="button" role="radio" aria-checked={renvoi} className={`ao-btn ${renvoi ? "primaire" : ""}`} onClick={() => { setConfirmation(false); setMode("renvoyer"); }}>
+          <button type="button" role="radio" aria-checked={renvoi} className={`ao-btn ${renvoi ? "primaire" : ""}`} onClick={() => setMode("renvoyer")}>
             Renvoyer au pipeline
           </button>
         </div>
@@ -409,7 +400,7 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
             maxLength={500}
             rows={4}
             placeholder="Une erreur de raisonnement, une hypothèse fausse, une question à traiter… Rien n'est approuvé ni refusé : le pipeline repart avec cette consigne."
-            onChange={(event) => { setConfirmation(false); setSucces(null); setReponse(event.target.value); }}
+            onChange={(event) => setReponse(event.target.value)}
           />
         </label>
       )}
@@ -418,108 +409,53 @@ function Dossier({ dossier, conseiller, recharger, traite }: { dossier: DossierA
         <fieldset className="ao-approbation-choix">
           <legend>Décision pour ce run</legend>
           <label>
-            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "approved"} onChange={() => { setConfirmation(false); setVerdictRun("approved"); }} />
+            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "approved"} onChange={() => setVerdictRun("approved")} />
             {dossier.reason === "budget" ? "Accorder" : "Approuver"}
           </label>
           <label>
-            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "rejected"} onChange={() => { setConfirmation(false); setVerdictRun("rejected"); }} />
+            <input type="radio" name={`verdict-${dossier.dossier}`} checked={verdictRun === "rejected"} onChange={() => setVerdictRun("rejected")} />
             Refuser
           </label>
         </fieldset>
-      )}
-      {run && dossier.actions.length > 0 && !verrouille && !renvoi && !toutTranche && decisions.length > 0 && (
-        <p className="text-[12px] text-douce">Trancher chaque action avant d’envoyer : le run reprend avec le plan entier.</p>
       )}
       {dossier.actions.map((action) => (
         <ActionPlan key={action.id} action={action} brouillon={brouillon[action.id] ?? { decision: null, motif: "" }} modifier={(prochain) => modifier(action.id, prochain)} verrouille={verrouille || renvoi} />
       ))}
 
-      <DiscussionConseiller dossier={dossier.dossier} conseiller={conseiller} />
+      {!verrouille && (
+        <div className="flex flex-col items-start gap-1.5">
+          <ActionConfirmee
+            key={signature}
+            libelle={renvoi ? "Renvoyer avec cette consigne" : run ? "Envoyer la décision" : "Enregistrer la décision"}
+            question={question}
+            details={consequence}
+            confirmer={renvoi ? "Confirmer le renvoi" : "Confirmer la décision"}
+            desactive={!peutEnvoyer}
+            onConfirmer={envoyer}
+          />
+          {!peutEnvoyer && <p className="text-[12.5px] text-douce">{consigne}</p>}
+        </div>
+      )}
 
-      {erreur && <Erreur>{erreur}</Erreur>}
-      {succes && <div className="ao-liv-issue ok" role="status"><strong>{succes}</strong></div>}
-      {!verrouille && peutEnvoyer && !confirmation && (
-        <div className="ao-actions">
-          <button type="button" className="ao-btn primaire" onClick={() => setConfirmation(true)}>{renvoi ? "Renvoyer avec cette consigne" : "Enregistrer la décision"}</button>
-        </div>
-      )}
-      {!verrouille && confirmation && (
-        <div className="ao-liv-confirmation" role="group" aria-label={`Confirmer la décision pour ${dossier.dossier}`}>
-          <p>
-            {renvoi
-              ? "Renvoyer ce plan au pipeline avec ta consigne ? Rien n'est approuvé ni refusé, un nouveau tour repart."
-              : run
-                ? `Envoyer ${demandeRun?.decision === "rejected" ? "le refus" : "la décision"} ? Le run reprend aussitôt.`
-                : `Enregistrer ${decisions.length} décision${decisions.length > 1 ? "s" : ""} pour ce plan gelé ?`}
-          </p>
-          <div className="ao-actions">
-            <button type="button" className="ao-btn primaire" disabled={envoi} onClick={envoyer}>{envoi ? "Envoi…" : "Confirmer"}</button>
-            <button type="button" className="ao-btn" disabled={envoi} onClick={() => setConfirmation(false)}>Annuler</button>
-          </div>
-        </div>
-      )}
-    </section>
+      <DiscussionConseiller dossier={dossier.dossier} conseiller={conseiller} />
+    </div>
   );
 }
 
-/** `integre` : dans une colonne de la page Décisions, sans largeur propre ni centrage. */
-export function Approbations({ integre = false }: { integre?: boolean }) {
-  const [revision, setRevision] = useState(0);
-  // Un dossier réglé quitte la liste dès l'envoi réussi, sans attendre la relecture : le
-  // serveur garde les dossiers tranchés pour relecture, la page ne les montre plus.
-  const [traites, setTraites] = useState<Set<string>>(new Set());
-  const [dernier, setDernier] = useState<string | null>(null);
-  const { donnees, erreur } = useCharge((source) => source.approbations(), [revision]);
-  const cle = (d: DossierApprobation) => `${d.dossier}:${d.empreinte}`;
-  const dossiers = (donnees?.etat.dossiers ?? []).filter((d) => !d.tranche && !d.reponse_posee && !traites.has(cle(d)));
-  const conseiller: EtatConseiller = donnees?.conseiller ?? { disponible: false, vuLe: null, modele: null, vault: null };
-
+/** Les modules du cockpit liés aux plans métier : où leurs effets se voient. */
+export function Modules({ modules }: { modules: ReponseApprobations["modules"] }) {
+  if (modules.erreur) return <Erreur>{modules.erreur}</Erreur>;
+  if (!modules.apps.length) return null;
   return (
-    <div className={integre ? "flex min-w-0 flex-col gap-4" : "mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto"}>
-      <section className="ao-liv" aria-labelledby="titre-approbations">
-        <header>
-          <h2 id="titre-approbations">Approbations des pipelines</h2>
-          {donnees && <span className={`ao-liv-etat ${dossiers.length ? "dispo" : ""}`}>{dossiers.length ? `${dossiers.length} à trancher` : "rien à trancher"}</span>}
-        </header>
-        {dernier && <div className="ao-liv-issue ok" role="status"><strong>{dernier}</strong></div>}
-        <p className="text-douce">Valider, refuser ou renvoyer un plan métier avant son exécution. Chaque écriture reste liée à l’empreinte du plan affiché.</p>
-        {donnees && <p className="font-mono text-[11px] text-douce">Identité : {donnees.qui.nom ?? donnees.qui.par} · {donnees.qui.canal}</p>}
-        {donnees && <div className="ao-conseiller-etat"><EtatConseillerBadge conseiller={conseiller} />{conseiller.vault && <span className="font-mono text-[11px] text-douce">Vault : {conseiller.vault.fichiers} fichiers indexés</span>}</div>}
-        {erreur && <Erreur>{erreur}</Erreur>}
-        {!donnees && !erreur && <p className="text-douce">Lecture des approbations…</p>}
-      </section>
-
-      {donnees && !dossiers.length && <Vide>Aucun plan métier ne demande de décision.</Vide>}
-      {dossiers.map((dossier) => (
-        <Dossier
-          key={cle(dossier)}
-          dossier={dossier}
-          conseiller={conseiller}
-          recharger={() => setRevision((courant) => courant + 1)}
-          traite={(message) => {
-            setDernier(message);
-            setTraites((courant) => new Set(courant).add(cle(dossier)));
-          }}
-        />
+    <div className="ao-approbation-modules">
+      {modules.apps.map((module) => (
+        <article key={module.nom}>
+          <h3>{module.nom}</h3>
+          <p className="text-douce">{module.description ?? "Sans description."}</p>
+          <p className="font-mono text-[11px] text-douce">{module.etat}{module.notes.length ? ` · ${module.notes.join(" · ")}` : ""}</p>
+          {module.url && <a className="ao-btn" href={module.url}>{module.url.startsWith("/") ? "Ouvrir" : "Consulter"}</a>}
+        </article>
       ))}
-
-      {donnees?.modules.erreur && <Erreur>{donnees.modules.erreur}</Erreur>}
-      {donnees && donnees.modules.apps.length > 0 && (
-        <section className="ao-liv" aria-labelledby="titre-modules">
-          {/* Cyberpunk n'a que A–Z a–z : un titre sans accent. */}
-          <header><h2 id="titre-modules">Modules</h2></header>
-          <div className="ao-approbation-modules">
-            {donnees.modules.apps.map((module) => (
-              <article key={module.nom}>
-                <h3>{module.nom}</h3>
-                <p className="text-douce">{module.description ?? "Sans description."}</p>
-                <p className="font-mono text-[11px] text-douce">{module.etat}{module.notes.length ? ` · ${module.notes.join(" · ")}` : ""}</p>
-                {module.url && <a className="ao-btn" href={module.url}>{module.url.startsWith("/") ? "Ouvrir" : "Consulter"}</a>}
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

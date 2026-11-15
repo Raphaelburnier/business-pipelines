@@ -20,11 +20,13 @@ type Props = {
   /** L'allure du premier bouton, quand l'action est rare et ne doit pas attirer l'œil. */
   declencheur?: VarianteBouton;
   desactive?: boolean;
+  /** Le premier clic : figer ce que la question montre (les versions d'une livraison). */
+  onOuvrir?: () => void;
   /** Rejeter la promesse garde la question ouverte et affiche le message. */
   onConfirmer: () => Promise<unknown>;
 };
 
-export function ActionConfirmee({ libelle, question, details, confirmer, libelleEnCours = "Envoi…", variante = "primaire", declencheur, desactive = false, onConfirmer }: Props) {
+export function ActionConfirmee({ libelle, question, details, confirmer, libelleEnCours = "Envoi…", variante = "primaire", declencheur, desactive = false, onOuvrir, onConfirmer }: Props) {
   const [ouverte, setOuverte] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const boutonConfirmer = useRef<HTMLButtonElement>(null);
@@ -55,7 +57,10 @@ export function ActionConfirmee({ libelle, question, details, confirmer, libelle
 
   if (!ouverte) {
     return (
-      <Bouton ref={boutonDeclencheur} variante={declencheur ?? variante} disabled={desactive} onClick={() => setOuverte(true)}>
+      <Bouton ref={boutonDeclencheur} variante={declencheur ?? variante} disabled={desactive} onClick={() => {
+          onOuvrir?.();
+          setOuverte(true);
+        }}>
         {libelle}
       </Bouton>
     );
