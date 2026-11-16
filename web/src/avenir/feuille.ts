@@ -55,6 +55,11 @@ export const DATE_AUDIT = "2026-10-17";
 // Classement éditorial validé le 22 octobre : il ne change pas la priorité des runs.
 export const PRIORITES = [
   {
+    titre: "Confiner le PC et réduire le travail en cours",
+    detail: "Revue du 16 novembre : les agents du PC tournent sans isolation, une vingtaine d'étapes sont ouvertes en même temps et rien n'est jamais retiré. Bac à sable du PC (18.4) d'abord, plafond de trois étapes en cours (18.11) ; 17.6, 17.7 et le lot 15 attendent un premier résultat métier.",
+    lots: ["18"],
+  },
+  {
     titre: "Fiabiliser les runs",
     detail: "Avant de relancer 0.7 : préparer les dépendances, borner la planification et conserver la cause d'arrêt ainsi que l'usage partiel. Puis traiter les délais de la file et la reprise au retour du worker (2.6, 2.7).",
     lots: ["2"],
@@ -76,7 +81,7 @@ export const PRIORITES = [
   },
   {
     titre: "Étendre les métiers et simplifier l'interface",
-    detail: "Compléter les branches métier pluggables après la fiabilisation, puis traiter les ajustements Finance et la lisibilité du graphe d'accueil. La refonte UX du cockpit (17) avance lot par lot, une PR chacun.",
+    detail: "Compléter les branches métier pluggables après la fiabilisation, puis traiter les ajustements Finance et la lisibilité du graphe d'accueil. La refonte UX du cockpit (17) avance lot par lot, une PR chacun ; après 17.5, elle attend un premier résultat métier (18.11).",
     lots: ["3", "8", "13", "17"],
   },
   {
@@ -350,9 +355,44 @@ export const LOTS: Lot[] = [
       { id: "17.2", titre: "Coquille et navigation", detail: "Barre latérale groupée (Vue d'ensemble, Décisions, Pilotage, Configuration, Métiers), barre haute avec fil d'Ariane et pastille de santé, tiroir Activité à la place de la colonne « En cours », bandeau de pause des démarrages, onglets du bas sur téléphone. Les anciennes adresses restent valides. Fusionné par #264 ; restent la livraison et la recette.", fichiers: ["BP web/src/App.tsx", "BP web/src/vues/EnCours.tsx", "BP web/src/vues/ControleExecution.tsx"], statut: "en-cours" },
       { id: "17.3", titre: "Vue d'ensemble en page d'accueil", detail: "Décisions en attente, runs actifs, échecs sur 24 h et quota en tête ; décisions priorisées, santé des machines et du flux, runs en cours. Le graphe devient l'onglet Topologie de Système et /graph y mène. Fusionné par #266 ; restent la livraison et la recette.", fichiers: ["BP web/src/App.tsx", "BP web/src/topologie/Topologie.tsx", "BP web/src/systeme/Systeme.tsx"], statut: "en-cours" },
       { id: "17.4", titre: "Décisions : une file triée par urgence", detail: "Livraison, PR, plans et runs à valider dans une seule file ; confirmations uniformes et toasts. La revérification de la proposition avant envoi reste intacte. Fusionné par #269 ; restent la livraison et la recette.", fichiers: ["BP web/src/vues/Decisions.tsx", "BP web/src/vues/Approbations.tsx"], statut: "en-cours" },
-      { id: "17.5", titre: "Runs et Planning", detail: "Runs en tableau filtrable, détail en panneau, graphe conservé ; TaskBoard en onglets Calendrier, Tâches et Activité.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/TaskBoard.tsx"], statut: "a-faire" },
+      { id: "17.5", titre: "Runs et Planning", detail: "Runs en tableau filtrable, détail en panneau, graphe conservé ; TaskBoard en onglets Calendrier, Tâches et Activité. Commencé le 16 novembre sur la branche claude/refonte-ux-lot-e.", fichiers: ["BP web/src/vues/RunPipeline.tsx", "BP web/src/TaskBoard.tsx"], statut: "en-cours" },
       { id: "17.6", titre: "Missions, Pipelines et Agents", detail: "Branches devient un onglet de Missions ; formulaires et fiches reprennent les composants partagés.", fichiers: ["BP web/src/vues/Missions.tsx", "BP web/src/vues/Pipelines.tsx", "BP web/src/vues/Agents.tsx"], statut: "a-faire" },
       { id: "17.7", titre: "Finance, Marketing, Demander, AI Studio et Système", detail: "Mêmes composants et mêmes états d'attente, de vide et d'erreur. Les appels directs de Finance, du calendrier et d'AI Studio passent par la gestion d'erreur commune.", fichiers: ["BP web/src/finance/api.ts", "BP web/src/calendrier/api.ts", "BP web/src/ai-studio/api.ts"], statut: "a-faire" },
+    ],
+  },
+  {
+    // Revue de l'agenticOS du 16 novembre 2026, constats acceptés par Raphaël le même jour.
+    // Rapport complet : artefact « Revue critique de l'agenticOS ».
+    id: "18",
+    titre: "Revue du 16 novembre : confinement, cadence et ménage",
+    but: "Confiner les agents du PC comme ceux du NAS, réduire le travail en cours et retirer ce que les runs laissent derrière eux.",
+    prerequis: "Viennent juste après : modèles épinglés (14.8, 14.9), pipeline de test des garde-fous (14.13) et cas d'évaluation des skills (16.11).",
+    etapes: [
+      { id: "18.1", titre: "Droits des sauvegardes de configuration du worker", detail: "Trois copies de backends.json contenant des clés étaient lisibles par tous les comptes du PC. Droits ramenés au seul propriétaire le 16 novembre.", fichiers: ["PC config agent-orchestrator"], statut: "fait" },
+      { id: "18.2", titre: "Jetons d'une étape en échec", detail: "Une étape en échec ne comptait pas les jetons écrits en cache, une étape réussie si. Un seul calcul pour les deux, moteur #126 fusionné le 16 novembre. Restent la mise à jour du worker PC et la livraison du moteur NAS.", fichiers: ["AO src/stage-executor.js"], statut: "en-cours" },
+      { id: "18.3", titre: "Nettoyage du poste", detail: "212 worktrees, 26 copies du worker et 29 dossiers de runs, environ 44 Go. Outil en simulation par défaut (moteur #127) : il ne retire qu'un worktree propre dont la PR est fusionnée et garde les quatre copies du worker les plus récentes. Suppression lancée après la fusion.", fichiers: ["AO scripts/pc/nettoyer-poste.mjs"], statut: "en-cours" },
+      { id: "18.4", titre: "Bac à sable des agents sur le PC", detail: "Le worker PC lance les agents sous le compte de Raphaël, sans isolation : un agent avec Bash lit les clés SSH, le jeton GitHub, le vault et les identifiants Claude. Lancer chaque agent dans bubblewrap : workspace en écriture, système en lecture seule, dossier personnel masqué. Passe avant 14.17.", fichiers: ["AO src/agent-runner.js", "AO src/identite-agent.js", "AO src/worker-exec.js"], statut: "en-cours" },
+      { id: "18.5", titre: "Plafond de taille des artefacts d'entrée", detail: "Les artefacts d'entrée sont collés en entier dans le prompt de chaque étape suivante. Les borner, et dire à l'agent ce qui a été coupé et où lire le reste.", fichiers: ["AO src/stage-executor.js"], statut: "en-cours" },
+      { id: "18.6", titre: "Script de mise à jour du worker", detail: "Cinq gestes manuels par mise à jour, d'où 26 copies aux noms improvisés et un worker plusieurs fois en retard sur le moteur. Un script : extraction du commit fusionné, installation, fichier de version, bascule du lien app après contrôle de repos, contrôle de dérive.", fichiers: ["AO scripts/pc", "AO docs/WORKER-RELEASE.md"], statut: "a-faire" },
+      { id: "18.7", titre: "Fichiers du gate identiques dans les trois dépôts", detail: "Les fichiers du gate et de la revue du registre diffèrent encore de ceux du cockpit et du moteur tant que le registre #39 n'est pas fusionné. Puis un contrôle de CI qui compare les trois copies.", fichiers: ["REG .github/workflows/agent-gated-merge.yml", "AO .github/workflows/ci.yml"], statut: "a-faire" },
+      { id: "18.8", titre: "Fin de l'exception de fusion manuelle", detail: "La CI des dépôts privés tourne de nouveau (runs verts du 15 et du 16 novembre). Retirer l'exception « facturation GitHub Actions » des règles communes et de la norme du dossier de travail ; elle reste une porte de sortie de la CI.", fichiers: ["REG shared/AGENTS.md"], statut: "a-faire" },
+      { id: "18.9", titre: "Suppression des branches fusionnées", detail: "Les dépôts gardent 439 branches distantes. Activer la suppression automatique de la branche à la fusion d'une PR sur le cockpit, le moteur et le registre.", fichiers: ["GitHub réglages des dépôts"], statut: "a-faire" },
+      { id: "18.10", titre: "Revues de code et de sécurité en parallèle", detail: "improve-app@9 enchaîne deux revues en lecture seule et indépendantes. Une version 10 les lance ensemble ; il faut d'abord qu'un worker puisse tenir deux étapes du même run sans partager le dossier de travail.", fichiers: ["REG pipelines/improve-app", "AO src/worker-exec.js"], statut: "a-faire" },
+      { id: "18.11", titre: "Plafond de trois étapes en cours", detail: "Une vingtaine d'étapes étaient en cours le 16 novembre, sans run métier qui rapporte. Ne pas démarrer une étape tant que trois sont en développement actif ; 17.6, 17.7 et le lot 15 attendent un premier résultat métier. Fait quand le compte tombe à trois.", fichiers: ["BP web/src/avenir/feuille.ts"], statut: "en-cours" },
+      { id: "18.12", titre: "Sorties réseau du runner", detail: "Le runner du NAS sort librement sur internet : c'est le chemin d'exfiltration qui reste après l'uid dédié. Limiter ses sorties aux fournisseurs de modèles, à GitHub et au registre npm.", fichiers: ["BP docker-compose.yaml"], statut: "a-faire" },
+      { id: "18.13", titre: "Durcir les services du compose", detail: "Cockpit, runner, maître et publieur tournent en root sans cap_drop, sans no-new-privileges et sans limite de mémoire. Le relais et l'alerteur montrent la forme à suivre.", fichiers: ["BP docker-compose.yaml"], statut: "a-faire" },
+      { id: "18.14", titre: "Pas de lecture externe avec Bash", detail: "Un contrôle de CI du registre refuse un agent qui cumule WebFetch ou WebSearch avec Bash. Complète 14.11 et 14.13.", fichiers: ["REG scripts/"], statut: "a-faire" },
+      { id: "18.15", titre: "Rétention de la base et des journaux", detail: "Ni la base d'événements, ni les journaux bruts, ni les runs ne sont purgés. Retirer les événements de progression et les journaux de plus de 90 jours ; garder runs, étapes et décisions.", fichiers: ["AO src/event-store.js", "BP bin/sauvegarder-etat.js"], statut: "a-faire" },
+      { id: "18.16", titre: "Résultats par version de pipeline", detail: "Rien ne dit si improve-app@9 fait mieux que @8. Un tableau dans le cockpit : runs, réussite, corrections, coût équivalent et durée par version.", fichiers: ["BP src/api-lecture.js", "BP web/src/vues/Pipelines.tsx"], statut: "a-faire" },
+      { id: "18.17", titre: "CI plus rapide", detail: "La CI du cockpit enchaîne trois npm ci sans cache, les tests, le build web et le build Docker dans un seul job. Cache npm et jobs séparés pour le serveur, le web et Docker.", fichiers: ["BP .github/workflows/ci.yml", "AO .github/workflows/ci.yml"], statut: "a-faire" },
+      { id: "18.18", titre: "Checkouts de référence à jour", detail: "Le checkout local du cockpit avait 41 commits de retard ; celui du moteur est sur une ancienne branche avec des fichiers non commités. Les trier, puis remettre les deux sur la branche par défaut.", fichiers: ["PC checkouts"], statut: "a-faire" },
+      { id: "18.19", titre: "Découper le serveur du cockpit", detail: "bin/cockpit.js fait 1 242 lignes. Le découper par famille de routes, sans changer les adresses. Retirer l'ancien moteur en stages (engine.js) quand le générateur SaaS n'en dépend plus.", fichiers: ["BP bin/cockpit.js", "AO src/engine.js"], statut: "a-faire" },
+      { id: "18.20", titre: "Délai avant de retenter un crash du SDK", detail: "Le nouvel essai après la mort du processus Claude part tout de suite. Ajouter un délai croissant.", fichiers: ["AO src/agent-runner.js"], statut: "a-faire" },
+      { id: "18.21", titre: "Variables transmises aux agents", detail: "Hors identité dédiée, toutes les variables ANTHROPIC_* et CLAUDE_* passent à l'agent, jeton d'abonnement compris. Remplacer ces jokers par une liste de variables non secrètes.", fichiers: ["AO src/agent-runner.js"], statut: "a-faire" },
+      { id: "18.22", titre: "Revue de sécurité sur un modèle moins cher", detail: "Les deux revues tournent sur Opus sans mesure qui le justifie. Essayer un modèle moins cher une fois les cas d'évaluation de 16.11 écrits.", fichiers: ["REG agents/security-reviewer"], statut: "a-faire" },
+      { id: "18.23", titre: "Préfixe de prompt stable", detail: "Garder brief et skills en tête et les données variables en fin de prompt, pour profiter du cache de prompt d'une étape à l'autre.", fichiers: ["AO src/stage-executor.js"], statut: "a-faire" },
+      { id: "18.24", titre: "Jetons leurres sur le PC", detail: "Des faux identifiants dans le dossier personnel, surveillés, pour détecter une lecture qui n'aurait pas dû avoir lieu.", fichiers: ["PC"], statut: "a-faire" },
+      { id: "18.25", titre: "Ranger la documentation", detail: "44 documents dans docs/ et 10 spécifications à la racine du cockpit ; AUDIT.md décrit l'état de septembre. Archiver les documents périmés et garder un index d'une page.", fichiers: ["BP docs/"], statut: "a-faire" },
     ],
   },
 ];
