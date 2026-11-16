@@ -154,7 +154,7 @@ function Conversation({ filId, projectId, aller }: { filId: string; projectId: s
       {fil.tours.map((t) => <article key={t.id} className="rounded-xl border border-trait bg-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-douce"><span>{t.par} · {t.type === "directive" ? "Directive conservée" : "Message"}</span><span role="status">{messageStatut(t.statut)}</span></div>
         <p className="mt-2 whitespace-pre-wrap text-sm">{t.contenu}</p>
-        {t.run && <a className="mt-2 inline-block text-xs text-accent underline" href={`/runs/${t.run}`}>Suivre ce tour</a>}
+        {t.run && <a className="mt-2 inline-block text-xs text-accent underline" href={`/run/${t.run}`}>Suivre ce tour</a>}
         {t.erreur && <Erreur>{t.erreur}</Erreur>}
         {t.reponses.map((r) => <div key={r.membre} className="mt-4 rounded-lg border-l-2 border-accent bg-carte p-3">
           <h3 className="text-sm font-semibold">{fil.participants.find((p) => p.membre === r.membre)?.nom ?? r.membre}<span className="ml-2 text-xs font-normal text-douce">{r.modeleObserve}</span></h3>

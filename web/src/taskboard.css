@@ -1,176 +1,166 @@
-.taskboard-page { display: flex; width: min(100%, 1800px); flex-direction: column; gap: 14px; margin-inline: auto; padding-bottom: 32px; }
-.taskboard-entete { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 18px 22px; border: 1px solid var(--color-trait-fort); border-top: 2px solid var(--color-accent); background: var(--color-surface); }
-.taskboard-entete .kicker { margin: 0; font: 400 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--color-douce); }
-.taskboard-entete h2 { margin: 5px 0 6px; font: 700 clamp(20px, 2.4vw, 30px)/1.12 var(--font-sans); color: var(--color-encre); }
-.taskboard-entete p:last-child { margin: 0; max-width: 70ch; color: var(--color-douce); }
-.taskboard-grille { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(340px, .9fr); gap: 12px; align-items: start; }
-.taskboard-calendrier, .taskboard-taches { min-width: 0; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-surface); }
-.taskboard-calendrier { border-top: 2px solid var(--color-accent); }
-.taskboard-taches { max-height: calc(100vh - 190px); overflow: auto; scrollbar-color: var(--color-trait-fort) transparent; }
+/* Le Planning : une phrase d'usage et le quota, le panneau de planification quand une tâche
+   est choisie, puis trois onglets (Calendrier, Tâches, Activité) dont les panneaux restent
+   montés. */
+.taskboard-page { display: flex; width: min(100%, 1800px); flex-direction: column; gap: 16px; margin-inline: auto; padding-bottom: 32px; }
 .taskboard-page :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.taskboard-retour { margin: 0; padding: 9px 12px; border-left: 3px solid var(--color-accent); background: var(--color-surface); color: var(--color-encre); }
-.taskboard-quota { margin-top: 7px !important; font: 400 11px/1.4 var(--font-mono); color: var(--color-douce); }
-.taskboard-system-plan { display: flex; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid var(--color-trait-fort); border-left: 3px solid var(--color-accent); background: var(--color-surface); }
+
+.taskboard-entete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+.taskboard-entete > p { margin: 0; max-width: 78ch; color: var(--color-douce); font-size: 13.5px; line-height: 1.5; }
+.taskboard-quota { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--color-trait); border-radius: 999px; background: var(--color-surface); color: var(--color-douce); font-size: 12.5px !important; font-variant-numeric: tabular-nums; }
+
+.taskboard-retour { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--color-danger); border-radius: var(--radius-lg); background: var(--color-danger-fond); color: var(--color-encre); font-size: 13.5px; }
+.taskboard-retour svg { flex: none; margin-top: 2px; color: var(--color-danger); }
+.taskboard-aide { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-douce); font-size: 13px; line-height: 1.5; }
+.taskboard-aide svg { flex: none; margin-top: 2px; }
+.taskboard-lien { color: var(--color-accent); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+.taskboard-lien:hover { text-decoration: none; }
+
+/* Le panneau de planification d'une tâche système. */
+.taskboard-system-plan { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-accent); border-radius: var(--radius-xl); background: var(--color-surface); font-size: 13.5px; }
 .taskboard-system-plan > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.taskboard-system-plan h3, .taskboard-system-plan h4 { margin: 0; color: var(--color-encre); }
-.taskboard-system-plan article { padding: 10px; border: 1px solid var(--color-trait); }
-.taskboard-system-plan article p { margin: 6px 0; }
-.taskboard-system-plan fieldset { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px; border: 1px solid var(--color-trait); }
-.taskboard-system-plan button { align-self: flex-start; }
+.taskboard-system-plan h3 { margin: 0; color: var(--color-encre); font: 600 16px/1.3 var(--font-sans); }
+.taskboard-system-plan h4 { margin: 0; color: var(--color-encre); font: 600 14px/1.3 var(--font-sans); }
+.taskboard-system-plan > p { margin: 0; color: var(--color-douce); }
+.taskboard-system-plan > label { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; color: var(--color-douce); font-size: 13px; }
+.taskboard-system-plan article { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); }
+.taskboard-system-plan article p { margin: 0; }
+.taskboard-system-plan fieldset { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 10px 12px; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); }
+.taskboard-system-plan fieldset label { display: inline-flex; align-items: center; gap: 6px; }
+.taskboard-system-plan > button { align-self: flex-start; }
+.taskboard-boutons { display: flex; flex-wrap: wrap; gap: 8px; }
+.taskboard-case { display: flex; flex-direction: row; align-items: center; gap: 9px; color: var(--color-encre); }
+
+/* Les onglets et leurs panneaux. Une tâche en main signale les onglets qu'elle peut ouvrir. */
+.taskboard-glissement .taskboard-onglets [role="tab"][aria-selected="false"] { outline: 1px dashed var(--color-accent); outline-offset: -4px; border-radius: var(--radius-md); }
+.taskboard-calendrier, .taskboard-taches, .taskboard-activite-panneau { display: flex; min-width: 0; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
+
+.taskboard-sans-glisser { font-size: 13px; }
+.taskboard-sans-glisser > summary { width: fit-content; color: var(--color-accent); font-weight: 500; cursor: pointer; }
+.taskboard-sans-glisser fieldset { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 10px 0 0; padding: 0; border: 0; }
+.taskboard-sans-glisser label { display: flex; flex-direction: column; gap: 4px; color: var(--color-douce); }
+
+/* Glisser-déposer : les jours cibles, la poignée. */
 .taskboard-taches [draggable="true"] { cursor: grab; }
 .taskboard-taches [draggable="true"]:active { cursor: grabbing; }
 [data-calendar-date] { transition: background-color .12s ease, outline-color .12s ease; }
 [data-calendar-date].taskboard-drop-cible { outline: 2px dashed var(--color-accent); outline-offset: -3px; background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
+.taskboard-glissement [data-calendar-date] { outline: 1px dashed var(--color-accent); outline-offset: -2px; }
+.taskboard-glissement [data-calendar-date].taskboard-drop-cible { outline-width: 3px; background: var(--color-carte); }
+.cal-drop-indice { display: none; }
+.taskboard-glissement .cal-drop-indice { display: block; margin-bottom: 6px; color: var(--color-accent); font-size: 12px; }
+.task-poignee { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 3px 7px; border: 1px dashed var(--color-trait-fort); border-radius: var(--radius-md); color: var(--color-douce); font: 500 11.5px/1 var(--font-sans); cursor: grab; user-select: none; }
+.task-poignee:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.task-poignee:active { cursor: grabbing; }
+
+/* Calendrier et tâches embarqués dans leur onglet. */
 .cal-embarque, .av-embarque { width: 100%; margin: 0; padding: 0; }
-.av-embarque { gap: 10px; }
-.av-embarque-titre { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); gap: 8px; align-items: center; padding: 2px 4px 8px; border-bottom: 1px solid var(--color-trait); }
-.av-embarque-titre .kicker { display: block; }
-.av-embarque-titre h2 { margin: 2px 0 0; font: 700 18px/1.2 var(--font-sans); color: var(--color-encre); }
-.av-chiffres-compact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-.av-chiffres-compact div { min-width: 0; padding: 4px 6px; }
-.av-chiffres-compact dt { font-size: 9px; }
+.av-embarque { gap: 12px; }
+.av-embarque-titre { display: flex; }
+.av-chiffres-compact { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.av-chiffres-compact div { min-width: 64px; padding: 6px 10px; }
 .av-chiffres-compact dd { font-size: 17px; }
-.cal-chiffres-compact { gap: 5px; }
-.cal-chiffres-compact div { min-width: 72px; padding: 5px 8px; }
-.cal-chiffres-compact dt { font-size: 9px; }
+.cal-chiffres-compact { gap: 6px; }
+.cal-chiffres-compact div { min-width: 88px; padding: 6px 10px; }
 .cal-chiffres-compact dd { font-size: 18px; }
-.av-embarque .av-filtres-bloc { padding: 9px; }
-.av-embarque .av-filtres { gap: 5px; }
-.av-embarque .av-filtres button { padding: 6px 8px; font-size: 11px; }
+.av-embarque .av-filtres-bloc { padding: 12px; }
+.av-embarque .av-filtres { gap: 6px; }
 .av-embarque .av-filtres label { margin-left: 0; }
-.av-embarque .av-lot > header, .av-embarque details.av-section > summary { padding: 10px 12px; }
-.av-embarque .av-lot ul > li, .av-embarque .av-defaut { padding: 9px 12px; }
-.av-embarque .av-section-but { font-size: 12px; }
-
-.cal-vues { display: inline-flex; border: 1px solid var(--color-trait); }
-.cal-vues button { min-height: 36px; padding: 0 10px; border: 0; background: var(--color-carte); color: var(--color-douce); font: 600 11px/1 var(--font-mono); text-transform: uppercase; cursor: pointer; }
-.cal-vues button + button { border-left: 1px solid var(--color-trait); }
-.cal-vues button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-sur-accent); }
-.cal-mois { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin: 0; padding: 0; list-style: none; }
-.cal-mois-entete { padding: 4px 6px; border-bottom: 1px solid var(--color-trait-fort); color: var(--color-douce); font: 400 10px/1.2 var(--font-mono); letter-spacing: .08em; text-align: center; text-transform: uppercase; }
-.cal-mois-jour { min-width: 0; min-height: 112px; padding: 6px; border: 1px solid var(--color-trait); background: var(--color-surface); }
-.cal-mois-jour.aujourdhui { border-color: var(--color-accent); box-shadow: inset 0 2px 0 var(--color-accent); }
-.cal-mois-jour.hors-mois { opacity: .48; }
-.cal-mois-jour > h3 { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; font: 400 10px/1.2 var(--font-mono); color: var(--color-douce); text-transform: uppercase; }
-.cal-mois-jour > h3 b { font-size: 12px; color: var(--color-encre); }
-.cal-mois-jour > ul { display: flex; flex-direction: column; gap: 4px; }
-.cal-mois-jour .cal-carte { gap: 2px; padding: 5px; }
-.cal-mois-jour .cal-carte strong { font-size: 10px; }
-.cal-mois-jour .cal-carte small, .cal-mois-jour .cal-etat, .cal-mois-jour .cal-heure { display: none; }
-.cal-plus { display: block; margin-top: 4px; color: var(--color-douce); font: 400 10px/1.2 var(--font-mono); }
-
-@media (max-width: 1320px) {
-  .taskboard-grille { grid-template-columns: minmax(0, 1.35fr) minmax(300px, .85fr); }
-  .cal-semaine { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
-}
-@media (max-width: 980px) {
-  .taskboard-grille { grid-template-columns: minmax(0, 1fr); }
-  .taskboard-taches { max-height: none; }
-}
-@media (max-width: 640px) {
-  .taskboard-entete { padding: 15px; }
-  .av-embarque-titre { grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); }
-  .taskboard-calendrier, .taskboard-taches { padding: 9px; }
-  .cal-barre { align-items: center; }
-  .cal-periode { flex: 1 1 140px; }
-  .cal-vues { order: 2; }
-  .cal-barre > .cal-action { order: 3; }
-  .cal-mois { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
-  .cal-mois-jour { min-height: 76px; padding: 3px; }
-  .cal-mois-jour > h3 { font-size: 9px; }
-  .cal-mois-jour .cal-carte { padding: 3px; }
-  .cal-mois-jour .cal-carte strong { font-size: 9px; }
-  .cal-plus { font-size: 9px; }
-}
-
-/* Un plan de travail : calendrier stable à gauche, tâches et commandes à droite. */
-.taskboard-entete { padding: 12px 18px; }
-.taskboard-entete h2 { font-size: 22px; }
-.taskboard-entete p { margin: 4px 0; font-size: 13px; }
-.taskboard-grille { grid-template-columns: minmax(0, 1.1fr) minmax(440px, 1fr); }
-.taskboard-calendrier { position: sticky; top: 82px; }
-.taskboard-cal-titre { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 0 10px; }
-.taskboard-cal-titre h3 { margin: 0; font-size: 17px; }
-.taskboard-cal-titre p { margin: 0; font-size: 12px; color: var(--color-douce); }
-.taskboard-taches { max-height: none; overflow: visible; padding: 14px; }
-.taskboard-taches .av-filtres-bloc { position: sticky; top: 82px; z-index: 2; }
-.av-embarque .av-embarque-titre { grid-template-columns: 1fr auto; }
-.av-embarque .av-chiffres-compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.av-embarque .av-chiffres-compact div { min-width: 58px; }
+.av-embarque .av-lot > header, .av-embarque details.av-section > summary { padding: 12px 14px; }
+.av-embarque .av-lot ul > li, .av-embarque .av-defaut { padding: 10px 14px; }
+.av-embarque .av-section-but { font-size: 12.5px; }
 .av-page .av-filtres-dropdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 10px; }
-.av-page .av-filtres-dropdown label { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin: 0; min-width: 0; font-size: 11px; }
-.av-page .av-filtres-dropdown select, .av-page .av-filtres-dropdown input { width: 100%; min-height: 36px; flex: initial; }
+.av-page .av-filtres-dropdown label { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin: 0; min-width: 0; font-size: 12px; }
+.av-page .av-filtres-dropdown select, .av-page .av-filtres-dropdown input { width: 100%; min-height: 34px; flex: initial; }
 .av-page .av-filtres-dropdown .av-recherche { grid-column: 1 / 4; }
 .av-page .av-filtres-dropdown .av-action { grid-column: 4; justify-self: end; margin: 0; }
 .taskboard-taches .av-ligne { align-items: center; gap: 6px 9px; }
 .taskboard-taches .av-titre { flex-basis: 190px; font-weight: 600; }
-.task-poignee { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 3px 6px; border: 1px dashed var(--color-trait-fort); color: var(--color-douce); font: 400 10px/1 var(--font-mono); cursor: grab; user-select: none; }
-.task-poignee:hover { color: var(--color-accent); border-color: var(--color-accent); }
-.task-poignee:active { cursor: grabbing; }
-.taskboard-glissement [data-calendar-date] { outline: 1px dashed var(--color-accent); outline-offset: -2px; }
-.cal-drop-indice { display: none; }
-.taskboard-glissement .cal-drop-indice { display: block; margin-bottom: 6px; color: var(--color-accent); font: 400 10px/1.4 var(--font-mono); }
-.taskboard-glissement [data-calendar-date].taskboard-drop-cible { outline-width: 3px; background: var(--color-carte); }
-.taskboard-taches .av-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.5; margin: 8px 0; }
-.av-fichiers-details { margin-top: 8px; font-size: 11px; color: var(--color-douce); }
+.taskboard-taches .av-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; line-height: 1.5; margin: 8px 0; }
+.av-fichiers-details { margin-top: 8px; font-size: 12px; color: var(--color-douce); }
 .av-fichiers-details > summary { cursor: pointer; }
 .av-attribution:has(> .av-action:only-child) { padding: 0; border: 0; background: transparent; }
 .av-form { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
 .av-form > label, .av-form > fieldset { width: 100%; box-sizing: border-box; }
-.av-form .av-case, .taskboard-system-plan .taskboard-case { display: flex; flex-direction: row; align-items: center; gap: 9px; color: var(--color-encre); }
+.av-form .av-case { display: flex; flex-direction: row; align-items: center; gap: 9px; color: var(--color-encre); }
 .av-case input[type="checkbox"], .taskboard-case input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--color-accent); }
-.av-form .av-choix-agents { margin: 0; border-radius: 0; }
-.av-choix-agents label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 12px; }
-.av-choix-agents p { font-size: 11px; line-height: 1.5; }
-.av-choix-agents select { min-height: 36px; }
+.av-choix-agents label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 12.5px; }
+.av-choix-agents p { font-size: 12px; line-height: 1.5; }
+.av-choix-agents select { min-height: 34px; }
+.av-plan-indisponible { color: var(--color-douce); font-size: 12.5px; margin: 8px 0; }
 .taskboard-equipes { width: 100%; }
 .taskboard-equipes fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 0 8px; }
 .taskboard-equipes fieldset legend, .taskboard-equipes fieldset > p { grid-column: 1 / -1; }
 .taskboard-page label.run-prioritaire { display: flex; flex-direction: row; align-items: center; gap: 10px; color: var(--color-encre); }
-.task-agents { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 100%; }
-.task-agent { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 2px; background: var(--color-carte); border: 1px solid var(--color-trait); border-radius: 20px; color: var(--color-encre); font-size: 11px; }
-.task-agent-portrait { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-surface); color: var(--color-accent); font: 600 9px/1 var(--font-mono); overflow: hidden; }
-.task-agent-portrait img { width: 100%; height: 100%; object-fit: cover; }
-.task-agent-vide { display: inline-block; font-size: 11px; color: var(--color-douce); }
-.task-agents.compact { gap: 2px; }
-.task-agents.compact .task-agent { padding: 0; border: 0; }
-.task-agents.compact .task-agent-nom { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.cal-carte .task-agent-vide { font-size: 9px; }
-@media (max-width: 1100px) {
-  .taskboard-grille { grid-template-columns: minmax(0, 1fr); }
-  .taskboard-calendrier { position: static; }
-  .taskboard-taches { max-height: none; }
-}
-@media (max-width: 640px) {
-  .taskboard-entete { padding: 12px; }
-  .taskboard-cal-titre { align-items: flex-start; flex-direction: column; gap: 4px; }
-  .av-embarque .av-embarque-titre { grid-template-columns: 1fr; }
-  .taskboard-equipes fieldset { grid-template-columns: 1fr; }
-  .taskboard-taches .av-titre { flex-basis: calc(100% - 80px); }
-}
 
-@media (max-width: 640px) {
+/* Le calendrier : bascule semaine ou mois, grille du mois. */
+.cal-vues { display: inline-flex; overflow: hidden; border: 1px solid var(--color-trait-fort); border-radius: var(--radius-md); }
+.cal-vues button { min-height: 32px; padding: 0 12px; border: 0; background: transparent; color: var(--color-douce); font: 500 13px/1 var(--font-sans); cursor: pointer; }
+.cal-vues button + button { border-left: 1px solid var(--color-trait-fort); }
+.cal-vues button:hover { color: var(--color-encre); }
+.cal-vues button[aria-pressed="true"] { background: var(--color-accent-doux); color: var(--color-encre); }
+.cal-mois { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cal-mois-entete { padding: 4px 6px; border-bottom: 1px solid var(--color-trait-fort); color: var(--color-douce); font: 600 12px/1.2 var(--font-sans); text-align: center; }
+.cal-mois-jour { min-width: 0; min-height: 112px; padding: 6px; border: 1px solid var(--color-trait); border-radius: var(--radius-md); background: var(--color-surface); }
+.cal-mois-jour.aujourdhui { border-color: var(--color-accent); box-shadow: inset 0 2px 0 var(--color-accent); }
+.cal-mois-jour.hors-mois { opacity: .48; }
+.cal-mois-jour > h3 { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; font: 500 12px/1.2 var(--font-sans); color: var(--color-douce); }
+.cal-mois-jour > h3 b { font-size: 12.5px; color: var(--color-encre); }
+.cal-mois-jour > ul { display: flex; flex-direction: column; gap: 4px; }
+.cal-mois-jour .cal-carte { gap: 2px; padding: 5px; }
+.cal-mois-jour .cal-carte strong { font-size: 11px; }
+.cal-mois-jour .cal-carte small, .cal-mois-jour .cal-etat, .cal-mois-jour .cal-heure { display: none; }
+.cal-plus { display: block; margin-top: 4px; color: var(--color-douce); font-size: 11.5px; }
+.cal-carte .cal-etat { max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+
+/* Les agents d'une tâche. */
+.task-agents { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 100%; }
+.task-agent { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 2px; background: var(--color-carte); border: 1px solid var(--color-trait); border-radius: 20px; color: var(--color-encre); font-size: 11.5px; }
+.task-agent-portrait { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-surface); color: var(--color-accent); font: 600 9px/1 var(--font-sans); overflow: hidden; }
+.task-agent-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.task-agent-vide { display: inline-block; font-size: 11.5px; color: var(--color-douce); }
+.task-agents.compact { gap: 0; }
+.task-agents.compact .task-agent { padding: 0; border: 0; }
+.task-agents.compact .task-agent + .task-agent { margin-left: -3px; }
+.task-agents.compact .task-agent-nom { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.task-agents.compact .task-agent-portrait { flex-basis: 18px; width: 18px; height: 18px; font-size: 8px; }
+.cal-carte .task-agent-vide { font-size: 10px; }
+
+/* L'onglet Activité. */
+.taskboard-activite { display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; }
+.taskboard-activite > header { display: flex; flex-direction: column; gap: 4px; }
+.taskboard-activite-resume { margin: 0; color: var(--color-encre); font-weight: 600; }
+.taskboard-activite-liste { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); }
+.taskboard-activite-liste > li { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+.taskboard-activite-liste > li + li { border-top: 1px solid var(--color-trait); }
+.taskboard-activite-liste p { margin: 0; color: var(--color-douce); }
+.taskboard-run-entete { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.taskboard-run-titre { display: flex; min-width: 0; flex: 1 1 260px; flex-direction: column; gap: 2px; }
+.taskboard-run-titre strong { color: var(--color-encre); font-weight: 600; overflow-wrap: anywhere; }
+.taskboard-run-titre span { color: var(--color-douce); font-size: 12.5px; }
+.taskboard-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.taskboard-run-actions .taskboard-lien { font-size: 12.5px; }
+.taskboard-run-detail { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--color-carte); }
+
+@media (max-width: 1320px) {
+  .cal-semaine { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+}
+@media (max-width: 720px) {
+  .taskboard-calendrier, .taskboard-taches, .taskboard-activite-panneau { padding: 12px; }
+  .taskboard-quota { border-radius: var(--radius-lg); }
+  .av-chiffres-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .av-page .av-filtres-dropdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .av-page .av-filtres-dropdown .av-recherche, .av-page .av-filtres-dropdown .av-action { grid-column: 1 / -1; }
-  .taskboard-taches .av-filtres-bloc { position: static; }
+  .taskboard-equipes fieldset { grid-template-columns: 1fr; }
+  .taskboard-taches .av-titre { flex-basis: calc(100% - 80px); }
+  .cal-barre { align-items: center; }
+  .cal-periode { flex: 1 1 140px; }
+  .cal-vues { order: 2; }
+  .cal-barre > .cal-action { order: 3; }
+  .cal-mois { gap: 2px; }
+  .cal-mois-jour { min-height: 76px; padding: 3px; }
+  .cal-mois-jour > h3 { font-size: 10px; }
+  .cal-mois-jour .cal-carte { padding: 3px; }
+  .cal-mois-jour .cal-carte strong { font-size: 9.5px; }
+  .cal-plus { font-size: 10px; }
+  .taskboard-run-actions { width: 100%; }
 }
-.taskboard-entete > div { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); column-gap: 24px; }
-.taskboard-entete .kicker, .taskboard-entete h2, .taskboard-entete > div > p:not(.taskboard-quota) { grid-column: 1; }
-.taskboard-entete .taskboard-quota { grid-column: 2; grid-row: 1 / 4; align-self: center; margin: 0 !important; padding-left: 18px; border-left: 1px solid var(--color-trait); }
-@media (max-width: 800px) {
-  .taskboard-entete > div { grid-template-columns: minmax(0, 1fr); }
-  .taskboard-entete .taskboard-quota { grid-column: 1; grid-row: auto; padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--color-trait); }
-}
-.cal-carte .cal-etat { max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
-.task-agents.compact { gap: 0; }
-.task-agents.compact .task-agent-portrait { flex-basis: 18px; width: 18px; height: 18px; font-size: 8px; }
-.task-agents.compact .task-agent + .task-agent { margin-left: -3px; }
-
-.av-plan-indisponible { color: var(--color-douce); font-size: 12px; margin: 8px 0; }
-.taskboard-activite { padding: 14px; border: 1px solid var(--color-trait); background: var(--color-surface); font-size: 13px; }
-.taskboard-activite h3 { margin: 0; }
-.taskboard-activite ul { list-style: none; padding: 0; margin: 12px 0 0; }
-.taskboard-activite li { border-top: 1px solid var(--color-trait); padding: 12px 0; }
-.taskboard-run-entete { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
-.taskboard-run-entete strong { overflow-wrap: anywhere; }
-.taskboard-run-detail { padding-top: 10px; }

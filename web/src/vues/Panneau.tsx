@@ -10,6 +10,7 @@ import type { Etape, EtapeAvecOutils, RunDetaille, RunDetailleAvecOutils } from 
 import { Erreur, Etat, Titre, Vide } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { naviguer } from "../navigation";
+import { lienDecision } from "../donnees/aDecider";
 import { BlocLivraison, PastilleLivraison } from "./LivraisonRun";
 import { BlocMotifs, BlocRevues } from "./RevuesRun";
 import { AttenteRun } from "./AttenteRun";
@@ -163,12 +164,10 @@ function PanneauProjet({ id, onSelection }: { id: string; onSelection: (s: Selec
 function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string }) {
   const maintenant = useHorloge();
   const { donnees: run, erreur } = useCharge((s) => s.run(id), [id]);
-  const [choisie, setChoisie] = useState<string | null>(etapeInitiale ?? null);
 
   if (erreur) return <Erreur>{erreur}</Erreur>;
   if (run === null) return <p className="text-sm text-douce">Lecture du run…</p>;
   const fin = run.fin ? Date.parse(run.fin) : maintenant;
-  const etape = run.etapes.find((e) => e.id === choisie) ?? null;
 
   return (
     <>
@@ -185,7 +184,19 @@ function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string 
       </div>
 
       <ControleRun key={run.id} run={run} />
+      <CorpsRun run={run} etapeInitiale={etapeInitiale} />
+    </>
+  );
+}
 
+/** Ce qu'un run raconte sous son en-tête : mission, attentes, livraison, revues, exécution, étapes. */
+export function CorpsRun({ run, etapeInitiale }: { run: RunDetailleAvecOutils; etapeInitiale?: string }) {
+  const maintenant = useHorloge();
+  const [choisie, setChoisie] = useState<string | null>(etapeInitiale ?? null);
+  const etape = run.etapes.find((e) => e.id === choisie) ?? null;
+
+  return (
+    <>
       {run.mission && <div className="rounded-xl border border-trait bg-carte p-3 text-sm">
         <Titre>Mission</Titre>
         {run.mission.origine && <a className="text-xs text-accent underline" href={`/marketing/${run.projet}/${run.mission.origine.fil}`}>Discussion marketing à l'origine de cette spec</a>}
@@ -221,7 +232,15 @@ function PanneauRun({ id, etapeInitiale }: { id: string; etapeInitiale?: string 
               </div>
             </div>
           ))}
-          <a className="mt-1 inline-block text-xs font-semibold text-accent underline" href="/decisions">
+          <a
+            className="mt-1 inline-block text-xs font-semibold text-accent underline"
+            href={lienDecision(`run:${run.approbations[0]!.id}`)}
+            onClick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              naviguer(lienDecision(`run:${run.approbations[0]!.id}`));
+            }}
+          >
             Aller décider
           </a>
         </div>
