@@ -92,7 +92,7 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
     if (!commandeId) return;
     return suivreCommande(source, commandeId, {
       surCommande: (c) => {
-        if (c.run) aller(`/run/${encodeURIComponent(c.run)}`);
+        if (c.run) aller(`/runs/${encodeURIComponent(c.run)}`);
         else if (c.statut === "refused" || c.statut === "done") {
           setErreur(c.resultat?.raison || "La commande s'est terminée sans run associé.");
           setCommandeId(null);
