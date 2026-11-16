@@ -182,9 +182,9 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
       href={`/taskboard/taches#${ancre}`}
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        // L'onglet Tâches est déjà monté : l'ouvrir suffit, puis la tâche vient à l'écran.
+        // L'ancre reste dans l'adresse : AVenir la lit au rendu pour déplier le lot, puis la tâche vient à l'écran.
         event.preventDefault();
-        naviguer("/taskboard/taches");
+        naviguer(`/taskboard/taches#${ancre}`);
         requestAnimationFrame(() => document.getElementById(ancre)?.scrollIntoView({ block: "center" }));
       }}
     >
