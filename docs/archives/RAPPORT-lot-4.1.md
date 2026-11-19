@@ -1,5 +1,7 @@
 # Lot 4.1 — Pause globale et arrêt d’urgence
 
+> Archivé le 19 novembre 2026 (étape 18.25) : document d'un lot clos, plus cité ailleurs. Voir `docs/archives/README.md`.
+
 ## Résumé
 
 Le lot 4.1 est livré et vérifié le 28 octobre 2026 : pause durable des démarrages, annulation explicite par run, conservation des fichiers et confirmation de l’arrêt distant. Les tests de l’image installée et l’interface réelle sur bureau et mobile passent. Les démarrages sont actifs à la fin de la recette. Le lot est clos dans la feuille de route ; les opérateurs peuvent utiliser ces contrôles en exploitation.
