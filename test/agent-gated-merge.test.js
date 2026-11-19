@@ -206,3 +206,16 @@ test("les trois workflows de fusion partagent le même script et passent bash -n
     assert.equal(spawnSync("bash", ["-n"], { input: code }).status, 0);
   }
 });
+
+// Le gate lit le verdict produit par la revue : les fichiers de la revue doivent eux aussi
+// être identiques à ceux du moteur (18.7). Le registre se compare au cockpit dans sa propre
+// CI ; l'ordre de fusion d'un changement de ces fichiers est donc moteur, cockpit, registre.
+test("la revue et son script de verdict sont identiques à ceux du moteur", () => {
+  for (const relatif of [".github/workflows/agent-gated-merge.yml", ".github/workflows/claude-code-review.yml", ".github/scripts/review-verdict.cjs"]) {
+    const moteur = path.join(__dirname, "../../agent-orchestrator", relatif);
+    if (!fs.existsSync(moteur)) continue; // Hors de la CI, le moteur n'est pas à côté.
+    const local = path.join(__dirname, "..", relatif);
+    if (!fs.existsSync(local)) continue; // L'image Docker (.dockerignore) n'embarque pas tous les fichiers de .github.
+    assert.equal(fs.readFileSync(local, "utf8"), fs.readFileSync(moteur, "utf8"), `${relatif} diffère du moteur`);
+  }
+});
