@@ -1,7 +1,7 @@
 // La liste des runs : un tableau trié (les actifs d'abord), filtrable par statut, projet et
 // texte. Les filtres vivent dans l'adresse (/run?statut=echecs&projet=…&q=…) : le retour
 // depuis un run les retrouve, et l'accueil peut y mener déjà filtré.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bouton } from "../composants/Bouton";
 import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 import { Tableau, type Colonne } from "../composants/Tableau";
@@ -80,10 +80,22 @@ export function ListeRuns({ aller }: { aller: (href: string) => void }) {
   const [filtre, setFiltre] = useState<FiltreRuns>(() => lireFiltre(window.location.search));
 
   // Les filtres suivent l'adresse sans créer d'entrée d'historique à chaque frappe.
+  const ecrite = useRef(adresseFiltre(filtre));
   useEffect(() => {
     const cible = adresseFiltre(filtre);
+    ecrite.current = cible;
     if (cible !== window.location.pathname + window.location.search) window.history.replaceState(window.history.state, "", cible);
   }, [filtre]);
+
+  // Et l'adresse suit les filtres dans l'autre sens : un clic sur « Runs » ou le bouton retour
+  // change l'adresse sans remonter la liste. Une adresse que nous n'avons pas écrite est reprise.
+  useEffect(() => {
+    const lue = window.location.pathname + window.location.search;
+    if (lue !== ecrite.current) {
+      ecrite.current = lue;
+      setFiltre(lireFiltre(window.location.search));
+    }
+  });
 
   const connus = useMemo(() => new Map<string, PipelineConnu>((catalogue?.pipelines ?? []).map((p) => [p.id, p])), [catalogue]);
   const nom = (pipeline: string) => nomPipeline(pipeline, connus);
