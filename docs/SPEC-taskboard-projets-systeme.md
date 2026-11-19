@@ -1,11 +1,10 @@
 # TaskBoard : rendre exécutables le registre et agent-secrets
 
-Résumé : ajouter deux projets au catalogue pour préparer des plans qui couvrent tous
-les dépôts annoncés. Les fiches réutilisent les contrats et le pipeline existants.
-Le raccordement a été validé le 12 novembre ; les fiches et les montages sont
-fusionnés par #238. Les copies Git NAS, l’alias SSH du PC et sa liste d’admission
-sont préparés. La confiance Git de l’image doit encore être complétée et les accès
-du publieur vérifiés avant l’approbation du modèle et la livraison opérateur.
+Résumé : agent-registry et agent-secrets sont raccordés au TaskBoard ; fiches,
+montages individuels et transport Git ont été livrés et recettés. Le run opérateur
+registre `2f76664b` a réussi, puis sa PR README #40 a été fusionnée le 15 novembre.
+R10 et R11 sont corrigés et recettés. Un complément README explicite encore le
+registre NAS en lecture seule et sa mise à jour par livraison opérateur.
 
 ## Fonctionnement proposé
 
@@ -152,6 +151,32 @@ La recette complète et la publication du README restent attendues. 11.6,
 O6, R10 et R11 restent en cours ; aucun objectif 11.6 n'est attribuable.
 La mission cockpit `a825a81d` attend encore sa synchronisation ; sa branche
 de travail contient la résolution du conflit de suivi, sans nouvelle reprise.
+
+## Bilan de recette confirmé le 19 novembre 2026
+
+Cette section remplace les attentes historiques de livraison, d'alignement et de
+reprise mentionnées plus haut. Le run `2f76664b`, explicitement lancé par Raphaël,
+est `succeeded`. Son résultat final est la [PR registre #40](https://github.com/Raphaelburnier/agent-registry/pull/40),
+fusionnée le 15 novembre à 12:38 UTC en `75b69eef` ; son diff porte seulement sur
+`README.md`. Aucune version publiée ni permission n'a été modifiée par cette mission.
+
+L'attestation finale porte sur un même arbre `0a7ff3f878a9` : tests réussis,
+revue de code PASS et revue de sécurité PASS. La CI registre `43714809228` est
+verte : validation du registre, contrôle des versions figées et fusion testée.
+La revue GitHub `43714809213` est également verte. Les limites déclarées par les
+relecteurs restent dans la PR ; leur lecture statique ne vaut pas exécution des tests.
+
+Le correctif R10 (#122) et la sélection de session par passage R11 (#123) ont été
+livrés, et le trajet réel après quota Claude puis relais Codex a abouti. Le refus
+normal d'une reprise dont l'instantané a disparu reste conservé ; le nouveau
+passage ouvre une session distincte. R10 et R11 sont clos par ces preuves.
+
+Le complément documentaire précise que les checkpoints `run/<id>` restent dans
+le dépôt de travail NAS, que la PR est portée par `agent/…`, et que le registre
+monté en lecture seule sous `/app/agent-registry` est mis à jour par une livraison
+demandée par Raphaël. 11.6/O6 restent en cours jusqu'à sa fusion ; l'objectif 11.6
+reste absent du catalogue attribuable. Le run cockpit `a825a81d` est annulé :
+aucune reprise de ce run n'est prévue.
 
 ## Ordre d’activation opérateur
 
