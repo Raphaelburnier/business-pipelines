@@ -1,5 +1,7 @@
 # A4 — preuves d’acceptation
 
+> Archivé le 19 novembre 2026 (étape 18.25) : document d'un lot clos, plus cité ailleurs. Voir `docs/archives/README.md`.
+
 Référence : audit d’autonomie du 14 octobre, lot A4 demandé par Raphaël.
 
 - Un verdict global ne valide aucun critère sans constat propre à ce critère.

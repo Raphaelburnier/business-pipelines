@@ -1,5 +1,7 @@
 # Lot 0.1 — Isolation réseau du runner
 
+> Archivé le 19 novembre 2026 (étape 18.25) : document d'un lot clos, plus cité ailleurs. Voir `docs/archives/README.md`.
+
 ## Résumé
 
 Le lot 0.1 est livré et vérifié en production. Le runner est séparé du réseau hôte et du réseau du cockpit ; le maître des workers est un service sans agents et l’identité du cockpit passe par son socket Unix. La livraison conjointe avec le lot 0.6 a réussi le 26 octobre ; la recette en lecture a été répétée le 27 octobre. F1 et 0.1 sont clôturés. La suite de la feuille est le lot 4.1 : annulation d’un run et pause globale des démarrages.
