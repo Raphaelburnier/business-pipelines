@@ -161,6 +161,7 @@ export function sourceApi(): Source {
       await ecrire<{ ok: true }>("/api/equipe/profil", { agent, ...changement });
     },
     pipelines: () => lire<ReponsePipelines>("/api/pipelines"),
+    resultatsPipelines: () => lire<import("../types").ResultatsPipelines>("/api/pipelines/resultats"),
     async renommerPipeline(pipeline, nom) {
       await ecrire<{ ok: true }>("/api/pipelines/nom", { pipeline, nom });
     },

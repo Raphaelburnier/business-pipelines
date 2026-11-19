@@ -19,7 +19,14 @@ const catalogue: ReponsePipelines = {
 };
 
 describe("Pipelines", () => {
-  beforeEach(() => vi.mocked(useCharge).mockReturnValue({ donnees: catalogue, erreur: null } as never));
+  // Le catalogue et les résultats par version passent tous deux par useCharge : la maquette
+  // rend à chacun sa forme selon la méthode de source appelée.
+  beforeEach(() => {
+    vi.mocked(useCharge).mockImplementation(((charger: (s: Record<string, () => string>) => string) =>
+      charger({ pipelines: () => "catalogue", resultatsPipelines: () => "resultats" }) === "resultats"
+        ? { donnees: { depuis: "2026-08-21T00:00:00.000Z", jours: 90, versions: [] }, erreur: null }
+        : { donnees: catalogue, erreur: null }) as never);
+  });
   it("rend seulement le catalogue du registre", () => {
     const html = renderToStaticMarkup(createElement(Pipelines, { pipelineId: "saas-build", aller: vi.fn() }));
     expect(html).toContain("Construire un SaaS"); expect(html).toContain("Sauvegarde du NAS");

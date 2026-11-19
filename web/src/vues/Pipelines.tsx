@@ -82,6 +82,35 @@ function EnTete({ pipeline, catalogue, renomme }: { pipeline: PipelineConnu; cat
   </div>;
 }
 
+const POURCENT = new Intl.NumberFormat("fr-CH", { style: "percent", maximumFractionDigits: 0 });
+const DOLLARS = new Intl.NumberFormat("fr-CH", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+
+// Une ligne par version du pipeline choisi : de quoi dire si la dernière fait mieux que la
+// précédente. Le taux ignore les runs annulés ; durée, corrections et coût ne portent que sur
+// les runs terminés.
+function ResultatsParVersion({ pipelineId }: { pipelineId: string }) {
+  const { donnees, erreur } = useCharge((s) => s.resultatsPipelines(), []);
+  if (erreur) return <Erreur>{erreur}</Erreur>;
+  if (!donnees) return <p className="pl-sous">Chargement des résultats…</p>;
+  const lignes = donnees.versions.filter((v) => v.pipeline.replace(/@\d+$/, "") === pipelineId);
+  return <section className="pl-resultats" aria-label="Résultats par version">
+    <h3>Résultats par version <small>sur {donnees.jours} jours</small></h3>
+    {lignes.length === 0 ? <p className="pl-sous">Aucun run de ce pipeline sur la période.</p> :
+      <div className="pl-tableau"><table>
+        <thead><tr><th scope="col">Version</th><th scope="col">Runs</th><th scope="col">Réussite</th><th scope="col">Durée médiane</th><th scope="col">Corrections</th><th scope="col">Coût moyen</th></tr></thead>
+        <tbody>{lignes.map((v) => <tr key={v.pipeline}>
+          <th scope="row">v{v.pipeline.match(/@(\d+)$/)?.[1] ?? "?"}</th>
+          <td>{v.runs}<small> · {v.reussis} réussi{v.reussis > 1 ? "s" : ""}, {v.echecs} en échec{v.annules ? `, ${v.annules} annulé${v.annules > 1 ? "s" : ""}` : ""}{v.enCours ? `, ${v.enCours} en cours` : ""}</small></td>
+          <td>{v.tauxReussite === null ? VIDE : POURCENT.format(v.tauxReussite)}</td>
+          <td>{v.dureeMedianeMinutes === null ? VIDE : `${Math.round(v.dureeMedianeMinutes)} min`}</td>
+          <td>{v.correctionsMoyennes === null ? VIDE : v.correctionsMoyennes.toLocaleString("fr-CH", { maximumFractionDigits: 1 })}</td>
+          <td>{v.coutEquivalentMoyenUsd === null ? VIDE : DOLLARS.format(v.coutEquivalentMoyenUsd)}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    <p className="pl-sous">Taux calculé sans les runs annulés. Coût en équivalent API, pas en dépense.</p>
+  </section>;
+}
+
 export function Pipelines({ pipelineId, aller }: { pipelineId: string | null; aller: (href: string) => void }) {
   const [relecture, setRelecture] = useState(0);
   const relire = useCallback(() => setRelecture((n) => n + 1), []);
@@ -110,6 +139,7 @@ export function Pipelines({ pipelineId, aller }: { pipelineId: string | null; al
         <div className="ao-kpi"><span className="k">Runs</span><span className="v">{choisi.runs}</span></div>
         <div className="ao-kpi"><span className="k">Dernier run</span><span className="v">{choisi.dernierRun ? depuis(choisi.dernierRun) : VIDE}</span></div>
       </div>
+      <ResultatsParVersion pipelineId={choisi.id} />
     </section>}
   </div>;
 }
