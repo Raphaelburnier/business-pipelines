@@ -19,7 +19,7 @@
 .pl-entete { display: flex; flex: none; flex-direction: column; gap: 6px; padding: 12px 12px 0; }
 .pl-titre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 .pl-titre h2 { margin: 0 8px 0 0; font: 700 22px/1.1 var(--font-sans); overflow-wrap: anywhere; }
-.pl-champ { flex: 1 1 220px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--color-accent); background: var(--color-fond); color: var(--color-encre); font: 600 15px/1 var(--font-sans); }
+.pl-champ { flex: 1 1 220px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-fond); color: var(--color-encre); font: 600 15px/1 var(--font-sans); }
 .pl-champ:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .pl-sous { margin: 0; font: 400 11px/1.4 var(--font-mono); color: var(--color-douce); }
 .pl-sous code { color: var(--color-encre); }
@@ -36,7 +36,7 @@
 .pl-defile { flex: 1; min-height: 0; overflow: auto; padding: 0 12px; }
 .pl-graphe { display: block; width: 100%; height: auto; max-width: 900px; margin: 0 auto; }
 .pl-barre { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 12px; border-top: 1px solid var(--color-trait); }
-.pl-leg { display: inline-flex; align-items: center; gap: 6px; font: 400 10px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--color-douce); }
+.pl-leg { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--font-sans); color: var(--color-douce); }
 .pl-leg::before { content: ""; width: 22px; height: 0; border-top: 2px solid var(--color-douce); }
 .pl-leg.ctx::before { border-top: 2px dotted var(--color-bleu); }
 .pl-leg.loop::before { border-top-style: dashed; }
@@ -46,7 +46,7 @@
 
 /* Le graphe */
 .pl-couloir { fill: var(--color-fond); fill-opacity: .45; stroke: var(--color-trait); stroke-dasharray: 2 4; }
-.pl-couloir-titre { fill: var(--color-douce); font: 400 9px var(--font-mono); letter-spacing: .14em; }
+.pl-couloir-titre { fill: var(--color-douce); font: 600 11px var(--font-sans); }
 .pl-lien { fill: none; stroke-width: 1.6; }
 .pl-lien.pending { stroke: var(--color-trait-fort); stroke-dasharray: 3 5; opacity: .7; }
 .pl-lien.done, .pl-lien.err { stroke: var(--color-douce); }
@@ -66,7 +66,7 @@
 .pl-paquet.ctx { fill: var(--color-bleu); }
 .pl-etiquette { cursor: pointer; }
 .pl-etiquette rect { fill: var(--color-carte); stroke: var(--color-trait); }
-.pl-etiquette text { fill: var(--color-douce); font: 400 10px var(--font-mono); }
+.pl-etiquette text { fill: var(--color-douce); font: 500 10.5px var(--font-sans); }
 .pl-etiquette.run rect { stroke: var(--color-accent); }
 .pl-etiquette.run text { fill: var(--color-encre); }
 
@@ -89,10 +89,10 @@
 .pl-noeud .visage foreignObject > * { display: block; width: 40px; height: auto; }
 .pl-noeud text.nom { fill: var(--color-encre); font: 700 15px var(--font-sans); }
 .pl-noeud text.qui { fill: var(--color-encre); font: 600 12px var(--font-sans); }
-.pl-noeud text.sous { fill: var(--color-douce); font: 400 10px var(--font-mono); }
-.pl-noeud text.genre { fill: var(--color-douce); font: 400 9px var(--font-mono); letter-spacing: .14em; }
+.pl-noeud text.sous { fill: var(--color-douce); font: 400 10.5px var(--font-sans); }
+.pl-noeud text.genre { fill: var(--color-douce); font: 600 10px var(--font-sans); }
 .pl-noeud .numero rect { fill: var(--color-trait-fort); }
-.pl-noeud .numero text { fill: var(--color-fond); font: 400 10px var(--font-mono); }
+.pl-noeud .numero text { fill: var(--color-fond); font: 600 10px var(--font-sans); font-variant-numeric: tabular-nums; }
 .pl-noeud.run .numero rect { fill: var(--color-accent); }
 .pl-noeud.run .numero text { fill: var(--color-sur-accent); }
 .pl-noeud .pastille.done { fill: var(--color-ok); }
@@ -106,20 +106,20 @@
 /* L'inspecteur */
 .pl-inspecteur { min-height: 0; overflow: auto; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
 .pl-insp { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
-.pl-insp h3 { margin: 0; font: 700 20px/1.1 var(--font-sans); overflow-wrap: anywhere; }
-.pl-label { font: 400 10px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--color-douce); }
+.pl-insp h3 { margin: 0; font: 650 18px/1.2 var(--font-sans); overflow-wrap: anywhere; }
+.pl-label { font: 600 12px/1.2 var(--font-sans); color: var(--color-douce); }
 .pl-flux { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.pl-puce { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid var(--color-trait-fort); font: 700 13px/1 var(--font-sans); }
+.pl-puce { display: inline-flex; align-items: center; padding: 4px 10px; border: 1px solid var(--color-trait-fort); border-radius: 999px; font: 600 13px/1 var(--font-sans); }
 .pl-fl { font: 400 14px/1 var(--font-mono); color: var(--color-douce); }
 .pl-fl.ctx { color: var(--color-bleu); }
 .pl-qui { display: flex; align-items: center; gap: 12px; }
 .pl-qui > :first-child:not(div) { flex: none; border: 1px solid var(--color-trait-fort); }
 .pl-qui b { display: block; font: 700 16px/1.1 var(--font-sans); }
 .pl-qui code { display: block; margin-top: 4px; font: 400 12px/1.2 var(--font-mono); color: var(--color-douce); overflow-wrap: anywhere; }
-.pl-insp dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font: 400 12px/1.3 var(--font-mono); }
-.pl-insp dt { padding-top: 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-douce); }
+.pl-insp dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font: 400 13px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
+.pl-insp dt { color: var(--color-douce); }
 .pl-insp dd { margin: 0; color: var(--color-encre); }
-.pl-insp pre { margin: 0; padding: 12px; border: 1px solid var(--color-trait); background: var(--color-fond); color: var(--color-encre); font: 400 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pl-insp pre { margin: 0; padding: 12px; border: 1px solid var(--color-trait); border-radius: var(--radius-lg); background: var(--color-fond); color: var(--color-encre); font: 400 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .pl-insp pre.json { max-height: 520px; overflow: auto; font-size: 11px; line-height: 16px; }
 .pl-io { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pl-io ul { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
@@ -127,11 +127,11 @@
 .pl-io li.ctx { border-left-color: var(--color-bleu); }
 .pl-io li.loop { border-left-style: dashed; }
 .pl-io li span { display: block; font: 600 13px/1.2 var(--font-sans); overflow-wrap: anywhere; }
-.pl-io li small { font: 400 10px/1 var(--font-mono); color: var(--color-douce); }
+.pl-io li small { font: 400 11.5px/1.3 var(--font-sans); color: var(--color-douce); }
 .pl-io li.aucun { border: 0; color: var(--color-douce); }
-.pl-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .pl-actions .ao-btn[disabled] { opacity: .45; cursor: not-allowed; }
-.pl-ok { align-self: center; font: 400 12px/1.2 var(--font-mono); color: var(--color-ok); }
+.pl-ok { display: inline-flex; align-items: center; gap: 6px; margin: 0; font: 500 13px/1.2 var(--font-sans); color: var(--color-ok); }
 
 @media (max-width: 1180px) {
   .pl-ecran { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
@@ -146,6 +146,39 @@
 @media (max-width: 520px) {
   .pl-io { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* La page d'un run : en-tête sur toute la largeur, graphe à gauche, panneau de détail à droite. */
+.pl-run { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 16px; align-items: start; }
+.pl-run > * { min-width: 0; }
+.pl-run > .pl-entete, .pl-run > .pl-run-plein { grid-column: 1 / -1; }
+.pl-run .pl-entete { gap: 8px; padding: 16px; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); }
+.pl-entete-haut { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pl-run .pl-titre h2 { margin: 0; font: 650 20px/1.2 var(--font-sans); }
+.pl-run .pl-sous { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 400 13px/1.4 var(--font-sans); }
+.pl-run .pl-sous code { font: 400 12px/1.4 var(--font-mono); color: var(--color-douce); }
+.pl-run .pl-centre { min-height: 420px; border-radius: var(--radius-xl); overflow: hidden; }
+.pl-run .pl-defile { padding-bottom: 12px; }
+.pl-panneau { position: sticky; top: 0; display: flex; max-height: calc(100vh - 140px); flex-direction: column; border: 1px solid var(--color-trait); border-radius: var(--radius-xl); background: var(--color-surface); overflow: hidden; }
+.pl-panneau-onglets { flex: none; padding: 0 12px; }
+.pl-panneau-corps { min-height: 0; flex: 1; overflow: auto; }
+@media (max-width: 1100px) {
+  .pl-run { grid-template-columns: minmax(0, 1fr); }
+  .pl-panneau { position: static; max-height: none; }
+}
+@media (max-width: 720px) {
+  .pl-run .pl-centre { min-height: 0; }
+  .pl-entete-haut > div:last-child { width: 100%; }
+}
+
+/* Les puces de filtre de la liste des runs : un compteur discret, une cible confortable.
+   Le sélecteur double passe devant `.ao-puce` de style.css, chargé après cette feuille. */
+.ao-puce.ao-puce-filtre { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: 13px; }
+.ao-puce-filtre span { color: var(--color-douce); font-weight: 500; }
+.ao-puce-filtre.on span { color: inherit; }
+@media (max-width: 720px) { .ao-puce.ao-puce-filtre { height: 40px; } }
+
+/* Sans couloir de contexte, le graphe est étroit : le borner évite de le grossir au-delà de sa taille. */
+.pl-run .pl-graphe:not(.avec-contexte) { max-width: 600px; }
 
 /* Résultats par version (18.16) : un tableau sobre, chiffres alignés. */
 .pl-resultats { display: flex; flex-direction: column; gap: 8px; margin: 0 12px 12px; }

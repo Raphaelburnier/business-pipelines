@@ -1,11 +1,15 @@
 // Les adresses du cockpit, lues depuis `window.location`. Les anciennes adresses (/graph,
-// /app, /a-venir, /calendrier, /decisions/pipelines) restent valides : des liens partagés et
-// des favoris y mènent encore. /graph, l'ancien accueil, mène au graphe devenu Système ›
-// Topologie ; l'application l'y redirige (`adresseCanonique`).
+// /app, /a-venir, /calendrier, /decisions/pipelines, /runs/:id) restent valides : des liens
+// partagés et des favoris y mènent encore. /graph, l'ancien accueil, mène au graphe devenu
+// Système › Topologie, et /runs/:id à l'unique page d'un run, /run/:id ; l'application les y
+// redirige (`adresseCanonique`). /a-venir et /calendrier ouvrent l'onglet du Planning.
 import type { AIStudioPage } from "./ai-studio/AIStudio";
 import type { Selection } from "./topologie/Topologie";
 
 export type PageSysteme = "carte" | "topologie" | "fonctionnement";
+
+export type OngletPlanning = "calendrier" | "taches" | "activite";
+const ONGLETS_PLANNING: ReadonlyArray<OngletPlanning> = ["calendrier", "taches", "activite"];
 
 export type Route =
   | { type: "accueil" }
@@ -19,7 +23,7 @@ export type Route =
   | { type: "decisions"; element: string | null }
   | { type: "systeme"; page: PageSysteme }
   | { type: "finance" }
-  | { type: "taskboard" }
+  | { type: "taskboard"; onglet: OngletPlanning }
   | { type: "approbations" }
   | { type: "ai-studio"; studio: AIStudioPage }
   | { type: "detail"; selection: Selection }
@@ -48,7 +52,12 @@ export function lireRoute(): Route {
   if (morceaux[0] === "decisions" && morceaux.length === 1) return { type: "decisions", element: new URLSearchParams(window.location.search).get("d") };
   if (morceaux[0] === "systeme" && morceaux.length === 1) return { type: "systeme", page: "carte" };
   if (morceaux[0] === "systeme" && (morceaux[1] === "fonctionnement" || morceaux[1] === "topologie") && morceaux.length === 2) return { type: "systeme", page: morceaux[1] };
-  if (["taskboard", "a-venir", "calendrier"].includes(morceaux[0] ?? "") && morceaux.length === 1) return { type: "taskboard" };
+  if (morceaux[0] === "a-venir" && morceaux.length === 1) return { type: "taskboard", onglet: "taches" };
+  if (morceaux[0] === "calendrier" && morceaux.length === 1) return { type: "taskboard", onglet: "calendrier" };
+  if (morceaux[0] === "taskboard" && morceaux.length <= 2) {
+    const onglet = (morceaux[1] ?? "calendrier") as OngletPlanning;
+    return ONGLETS_PLANNING.includes(onglet) ? { type: "taskboard", onglet } : { type: "inconnue" };
+  }
   if (morceaux[0] === "demander" && morceaux.length <= 2) return { type: "demander", filId: morceaux[1] ? segment(morceaux[1]) : null };
   if (morceaux[0] === "ai-studio") {
     if (morceaux.length === 1) return { type: "ai-studio", studio: { page: "home" } };
@@ -69,10 +78,15 @@ export function lireRoute(): Route {
   return { type: "inconnue" };
 }
 
-/** L'adresse à afficher pour une ancienne : /graph devient /systeme/topologie. Null si elle est déjà la bonne. */
+/** L'adresse à afficher pour une ancienne : /graph devient /systeme/topologie, /runs/:id devient /run/:id. Null si elle est déjà la bonne. */
 export function adresseCanonique(chemin: string): string | null {
-  return /^\/graph\/?$/.test(chemin) ? "/systeme/topologie" : null;
+  if (/^\/graph\/?$/.test(chemin)) return "/systeme/topologie";
+  const run = /^\/runs\/([^/]+)\/?$/.exec(chemin);
+  return run ? `/run/${run[1]}` : null;
 }
+
+/** L'adresse d'un onglet du Planning ; le calendrier est l'onglet par défaut. */
+export const adressePlanning = (onglet: OngletPlanning): string => (onglet === "calendrier" ? "/taskboard" : `/taskboard/${onglet}`);
 
 /** Les entrées du menu ; une route en allume au plus une. */
 export type CleNav = "accueil" | "decisions" | "runs" | "planning" | "missions" | "pipelines" | "agents" | "finance" | "marketing" | "ai-studio" | "demander" | "systeme";

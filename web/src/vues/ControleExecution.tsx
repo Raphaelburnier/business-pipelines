@@ -184,13 +184,16 @@ export function ControleDemarrages({ controle }: { controle: ControleFile }) {
   );
 }
 
+/**
+ * Arrêter un run : une action sans retour, donc en deux temps. « Arrêter » plutôt
+ * qu'« Annuler », qui nomme déjà le bouton qui referme la question.
+ */
 export function ControleRun({ run }: { run: Pick<RunDetaille, "id" | "statut" | "annulation"> }) {
   const { source } = useSource();
+  const toasts = useToasts();
   const [autorise, setAutorise] = useState(false);
   const [droitsIllisibles, setDroitsIllisibles] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
-  const [erreur, setErreur] = useState("");
   const suivi = useSuiviCommande(id);
   const commande = suivi.commande;
   useEffect(() => {
@@ -209,29 +212,38 @@ export function ControleRun({ run }: { run: Pick<RunDetaille, "id" | "statut" | 
   }, [source]);
   const raison = commande?.statut === "refused" ? commande.resultat?.raison : run.annulation?.statut === "refused" ? run.annulation.raison : null;
   const termine = ["succeeded", "failed", "cancelled"].includes(run.statut);
-  const pending = envoi || Boolean(id && (!commande || ["pending", "taken"].includes(commande.statut))) || ["pending", "taken"].includes(run.annulation?.statut || "");
-  const annuler = async () => {
+  const pending = Boolean(id && (!commande || ["pending", "taken"].includes(commande.statut))) || ["pending", "taken"].includes(run.annulation?.statut || "");
+  // Une erreur d'envoi remonte à la question, qui reste ouverte et l'affiche.
+  const arreter = async () => {
     if (!source.annulerRun) return;
-    setEnvoi(true);
-    setErreur("");
-    try {
-      setId((await source.annulerRun(run.id)).id);
-    } catch (err) {
-      setErreur(lireErreur(err).message);
-    } finally {
-      setEnvoi(false);
-    }
+    setId((await source.annulerRun(run.id)).id);
+    toasts.info("Arrêt du run demandé : le moteur interrompt ses étapes.");
   };
-  const message = erreur || raison || (pending ? suivi.erreur : null) || (!termine ? droitsIllisibles && `Droits d'arrêt illisibles : ${droitsIllisibles}` : null);
+  const message = raison || (pending ? suivi.erreur : null) || (!termine ? droitsIllisibles && `Droits d'arrêt illisibles : ${droitsIllisibles}` : null);
+  const visible = autorise && source.annulerRun && (!termine || raison);
+  if (!visible && !message) return null;
   return (
-    <div className="my-2 text-sm">
-      {autorise && source.annulerRun && (!termine || raison) && (
-        <button type="button" className="rounded border border-trait px-3 py-1 text-alerte" disabled={pending} onClick={() => void annuler()}>
-          {pending ? "Annulation demandée…" : raison ? "Réessayer l’arrêt" : "Annuler ce run"}
-        </button>
-      )}
+    <div className="flex flex-col items-start gap-1.5 text-sm">
+      {visible &&
+        (pending ? (
+          <Bouton enCours libelleEnCours="Arrêt demandé…">
+            Arrêter ce run
+          </Bouton>
+        ) : (
+          <ActionConfirmee
+            libelle={raison ? "Réessayer l'arrêt" : "Arrêter ce run"}
+            declencheur="secondaire"
+            variante="danger"
+            question={`Arrêter le run ${run.id} ?`}
+            details="Les étapes en cours s'interrompent et le run passe à « Annulé »."
+            confirmer="Confirmer l'arrêt"
+            libelleEnCours="Arrêt…"
+            onConfirmer={arreter}
+          />
+        ))}
       {message && (
-        <p role="alert" className="mt-1 text-alerte">
+        <p role="alert" className="flex items-start gap-1.5 text-[13px] text-alerte">
+          <Icone nom="alerte" taille={15} className="mt-0.5" />
           {message}
         </p>
       )}

@@ -37,6 +37,7 @@ export function Onglets<C extends string>({ onglets, actif, onChoisir, libelle }
             }}
             type="button"
             role="tab"
+            data-cle={o.cle}
             aria-selected={choisi}
             tabIndex={choisi ? 0 : -1}
             onClick={() => onChoisir(o.cle)}

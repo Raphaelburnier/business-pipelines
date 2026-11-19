@@ -1,15 +1,25 @@
-// La page Run : les runs des projets à gauche, le graphe du run choisi au centre,
-// l'inspecteur à droite. Un clic sur une étape, un lien ou
-// son étiquette ouvre son détail ; « { } » montre le JSON du graphe.
+// La page Run. /run liste les runs (ListeRuns) ; /run/:id montre un run : son en-tête, son
+// graphe au centre, et un panneau à deux onglets. « Étape » détaille ce qui est choisi dans
+// le graphe (une étape, un lien, ou le JSON avec « { } ») ; « Run » raconte le run entier
+// (mission, attentes, livraison, revues, exécution).
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { useCharge, useSource } from "../donnees/contexte";
+import { ActionConfirmee } from "../composants/ActionConfirmee";
+import { Bouton } from "../composants/Bouton";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
+import { Onglets } from "../composants/Onglets";
+import { useToasts } from "../composants/Toasts";
+import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import type { MembreEquipe } from "../donnees/equipe";
-import { construireGraphe, grapheJson, trierRuns, type EtatNoeud, type GraphePipeline, type LienPipeline, type NoeudPipeline } from "../donnees/pipelineGraphe";
+import { lireErreur } from "../donnees/erreurs";
+import { construireGraphe, grapheJson, type EtatNoeud, type GraphePipeline, type LienPipeline, type NoeudPipeline } from "../donnees/pipelineGraphe";
 import { idPipeline, nomPipeline, versionPipeline, type PipelineConnu, type Rattachement, type ReponsePipelines } from "../donnees/pipelines";
 import { VIDE, depuis, duree, jetons, usd } from "../format";
 import { Icone } from "../icones";
 import type { RunDetailleAvecOutils } from "../types";
-import { Erreur, Etat, Vide } from "../ui";
+import { Erreur, Etat } from "../ui";
+import { ControleRun } from "./ControleExecution";
+import { ListeRuns } from "./ListeRuns";
+import { CorpsRun } from "./Panneau";
 import { Portrait } from "./Portrait";
 import "./pipelines.css";
 
@@ -122,9 +132,9 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
       </defs>
       {aContexte && (
         <>
-          <rect x={CTX.x - 8} y={4} width={CTX.w + 16} height={hauteur - 12} className="pl-couloir" />
+          <rect x={CTX.x - 8} y={4} width={CTX.w + 16} height={hauteur - 12} rx={10} className="pl-couloir" />
           <text x={CTX.x} y={hauteur - 14} className="pl-couloir-titre">
-            CONTEXTE
+            Contexte
           </text>
         </>
       )}
@@ -150,7 +160,7 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
                 onKeyDown={activer(() => choisir({ type: "lien", index }))}
               />
               {anime && (
-                <rect className={`pl-paquet ${l.genre}`} width={7} height={7} x={-3.5} y={-3.5}>
+                <rect className={`pl-paquet ${l.genre}`} width={7} height={7} x={-3.5} y={-3.5} rx={3.5}>
                   <animateMotion dur={l.genre === "ctx" ? "2.4s" : "1.6s"} repeatCount="indefinite" rotate="auto">
                     <mpath href={`#pl-lien-${index}`} />
                   </animateMotion>
@@ -173,7 +183,7 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
           const texte = texteLien(l);
           return (
             <g key={index} className={`pl-etiquette ${l.etat} ${l.genre}`} transform={`translate(${etiquette.x} ${etiquette.y})`} onClick={() => choisir({ type: "lien", index })}>
-              <rect width={texte.length * 6 + 12} height={18} />
+              <rect width={texte.length * 6 + 12} height={18} rx={4} />
               <text x={6} y={12}>
                 {texte}
               </text>
@@ -216,9 +226,9 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
                 </>
               ) : n.genre === "input" || n.genre === "output" || n.genre === "script" || n.genre === "ctx" ? (
                 <>
-                  <path className="boite" d={`M0 0H${b.w - 12}L${b.w} 12V${H}H0Z`} />
+                  <rect className="boite" width={b.w} height={H} rx={8} />
                   <text x={16} y={18} className="genre">
-                    {{ input: "ENTRÉE", output: "SORTIE", script: "SCRIPT", ctx: "LECTURE" }[n.genre]}
+                    {{ input: "Entrée", output: "Sortie", script: "Script", ctx: "Lecture" }[n.genre]}
                   </text>
                   <text x={16} y={37} className="nom">
                     {couper(n.titre, b.w - 40, 8)}
@@ -229,8 +239,8 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
                 </>
               ) : (
                 <>
-                  <path className="boite" d={`M0 0H${b.w - 12}L${b.w} 12V${H}H0Z`} />
-                  <rect className="lisere" x={0} y={0} width={3} height={H} />
+                  <rect className="boite" width={b.w} height={H} rx={8} />
+                  <rect className="lisere" x={0} y={10} width={3} height={H - 20} rx={1.5} />
                   <g transform="translate(10 7)" className="visage">
                     {membre ? (
                       <foreignObject width={40} height={47}>
@@ -238,7 +248,7 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
                       </foreignObject>
                     ) : (
                       <>
-                        <rect width={40} height={46} className="sans-visage" />
+                        <rect width={40} height={46} rx={6} className="sans-visage" />
                         <text x={20} y={29} textAnchor="middle" className="initiale">
                           {n.titre.slice(0, 1).toUpperCase()}
                         </text>
@@ -257,8 +267,8 @@ function Graphe({ graphe, membres, choix, choisir }: { graphe: GraphePipeline; m
                 </>
               )}
               {n.genre !== "ctx" && n.genre !== "input" && (
-                <g className="numero" transform={`translate(-14 ${H / 2 - 9})`}>
-                  <rect width={14} height={18} />
+                <g className="numero" transform={`translate(-16 ${H / 2 - 9})`}>
+                  <rect width={14} height={18} rx={3} />
                   <text x={7} y={13} textAnchor="middle">
                     {String(numero).padStart(2, "0")}
                   </text>
@@ -313,23 +323,10 @@ function InspecteurLien({ graphe, lien, membres }: { graphe: GraphePipeline; lie
   );
 }
 
-function InspecteurNoeud({
-  run,
-  graphe,
-  noeud,
-  membres,
-  aller,
-}: {
-  run: RunDetailleAvecOutils;
-  graphe: GraphePipeline;
-  noeud: NoeudPipeline;
-  membres: Map<string, MembreEquipe>;
-  aller: (href: string) => void;
-}) {
+function InspecteurNoeud({ run, graphe, noeud, membres }: { run: RunDetailleAvecOutils; graphe: GraphePipeline; noeud: NoeudPipeline; membres: Map<string, MembreEquipe> }) {
   const { source } = useSource();
-  const [confirmer, setConfirmer] = useState<"approved" | "rejected" | null>(null);
-  const [envoi, setEnvoi] = useState<"idle" | "envoi" | "fait">("idle");
-  const [erreur, setErreur] = useState<string | null>(null);
+  const toasts = useToasts();
+  const [envoye, setEnvoye] = useState(false);
   const entrees = graphe.liens.filter((l) => l.vers === noeud.id);
   const sorties = graphe.liens.filter((l) => l.de === noeud.id);
   const membre = noeud.membre ? membres.get(noeud.membre) : undefined;
@@ -345,18 +342,13 @@ function InspecteurNoeud({
   const relais = !escalade && new Set(noeud.tentatives.map((t) => t.llm?.via).filter(Boolean)).size > 1 ? fournisseurs.join(" → ") : null;
   const decidable = noeud.approbation?.statut === "pending" && run.statut === "waiting_approval";
 
+  // Une erreur d'envoi remonte à la question, qui reste ouverte et l'affiche.
   async function decider(decision: "approved" | "rejected") {
     if (!noeud.approbation) return;
-    setEnvoi("envoi");
-    setErreur(null);
-    try {
-      await source.deciderRun(noeud.approbation.id, { decision });
-      setEnvoi("fait");
-      setConfirmer(null);
-    } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
-      setEnvoi("idle");
-    }
+    await source.deciderRun(noeud.approbation.id, { decision });
+    setEnvoye(true);
+    if (decision === "approved") toasts.succes(`« ${noeud.titre} » validée : le run reprend.`);
+    else toasts.succes(`Refus de « ${noeud.titre} » envoyé au moteur.`);
   }
 
   const liste = (liens: LienPipeline[], sens: "de" | "vers") =>
@@ -437,39 +429,40 @@ function InspecteurNoeud({
         </div>
       </div>
       {outils.length > 0 && <pre>{outils.join("\n")}</pre>}
-      {erreur && <Erreur>{erreur}</Erreur>}
-      <div className="pl-actions">
-        {decidable && envoi !== "fait" && !confirmer && (
-          <>
-            <button type="button" className="ao-btn primaire" onClick={() => setConfirmer("approved")}>
-              Valider
-            </button>
-            <button type="button" className="ao-btn" onClick={() => setConfirmer("rejected")}>
-              Refuser
-            </button>
-          </>
-        )}
-        {decidable && confirmer && (
-          <>
-            <button type="button" className={`ao-btn ${confirmer === "approved" ? "primaire" : ""}`} disabled={envoi === "envoi"} onClick={() => decider(confirmer)}>
-              {confirmer === "approved" ? "Confirmer la validation" : "Confirmer le refus"}
-            </button>
-            <button type="button" className="ao-btn" onClick={() => setConfirmer(null)}>
-              Annuler
-            </button>
-          </>
-        )}
-        {envoi === "fait" && <span className="pl-ok">Décision envoyée, le run reprend.</span>}
-        {noeud.genre === "output" && run.livraison?.prUrl && (
+      {decidable && !envoye && (
+        <div className="pl-actions">
+          <ActionConfirmee
+            libelle="Valider l'étape"
+            question={`Valider « ${noeud.titre} » ?`}
+            details="Le run reprend à l'étape suivante."
+            confirmer="Confirmer la validation"
+            onConfirmer={() => decider("approved")}
+          />
+          <ActionConfirmee
+            libelle="Refuser"
+            declencheur="secondaire"
+            variante="danger"
+            question={`Refuser « ${noeud.titre} » ?`}
+            details="Le moteur reçoit ton refus et applique la règle de ce point de validation."
+            confirmer="Confirmer le refus"
+            onConfirmer={() => decider("rejected")}
+          />
+        </div>
+      )}
+      {envoye && (
+        <p className="pl-ok" role="status">
+          <Icone nom="ok" taille={15} />
+          Décision envoyée.
+        </p>
+      )}
+      {noeud.genre === "output" && run.livraison?.prUrl && (
+        <div className="pl-actions">
           <a className="ao-btn" href={run.livraison.prUrl} target="_blank" rel="noreferrer">
             <Icone nom="ouvrir" taille={16} />
             Ouvrir la PR
           </a>
-        )}
-        <button type="button" className="ao-btn" onClick={() => aller(`/runs/${encodeURIComponent(run.id)}`)}>
-          Voir le run
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -575,204 +568,213 @@ function Rattacher({ id, connu, catalogue, change }: { id: string; connu: Pipeli
   );
 }
 
-/** Le nom du pipeline du run, ce qu'il est sous le capot, les projets qui s'en servent, et son renommage. */
-function EnTete({ refPipeline, connus, catalogue, renomme }: { refPipeline: string; connus: ReadonlyMap<string, PipelineConnu>; catalogue: ReponsePipelines | null; renomme: () => void }) {
+/** L'en-tête du run : son état, le nom de son pipeline (renommable), d'où il vient, et son arrêt. */
+function EnTete({ run, connus, catalogue, renomme }: { run: RunDetailleAvecOutils; connus: ReadonlyMap<string, PipelineConnu>; catalogue: ReponsePipelines | null; renomme: () => void }) {
   const { source } = useSource();
-  const id = idPipeline(refPipeline);
+  const toasts = useToasts();
+  const maintenant = useHorloge(30_000);
+  const id = idPipeline(run.pipeline);
   const connu = connus.get(id);
-  const nom = nomPipeline(refPipeline, connus);
+  const nom = nomPipeline(run.pipeline, connus);
   const [edition, setEdition] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
   async function enregistrer(valeur: string | null) {
-    setEnvoi(true);
     setErreur(null);
     try {
       await source.renommerPipeline(id, valeur);
       setEdition(null);
       renomme();
+      toasts.succes(valeur ? `Pipeline renommé « ${valeur.trim()} ».` : "Le pipeline reprend le titre du registre.");
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
-    } finally {
-      setEnvoi(false);
+      setErreur(lireErreur(err).message);
     }
   }
 
   return (
-    <div className="pl-entete">
-      {edition === null ? (
-        <div className="pl-titre">
-          <h2>{nom}</h2>
-          <button type="button" className="ao-btn" onClick={() => setEdition(connu?.perso ? nom : "")}>
-            Renommer
-          </button>
-        </div>
-      ) : (
-        <form
-          className="pl-titre"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (edition.trim()) void enregistrer(edition);
-          }}
-        >
-          <label className="sr-only" htmlFor="pl-nom">
-            Nom du pipeline
-          </label>
-          <input id="pl-nom" className="pl-champ" value={edition} maxLength={60} placeholder={connu?.titreRegistre ?? nom} onChange={(e) => setEdition(e.target.value)} autoFocus />
-          <button type="submit" className="ao-btn primaire" disabled={envoi || !edition.trim()}>
-            Enregistrer
-          </button>
-          {connu?.perso && (
-            <button type="button" className="ao-btn" disabled={envoi} onClick={() => void enregistrer(null)} title="Revenir au titre du registre">
-              Nom d'origine
-            </button>
-          )}
-          <button type="button" className="ao-btn" disabled={envoi} onClick={() => setEdition(null)}>
-            Annuler
-          </button>
-        </form>
-      )}
-      <p className="pl-sous">
-        <code>
-          {id} {versionPipeline(refPipeline)}
-        </code>
-        {connu && (
-          <>
-            {" · "}
-            {connu.projets.length ? `utilisé par ${connu.projets.join(", ")}` : "aucun projet"}
-            {" · "}
-            {connu.runs} run{connu.runs > 1 ? "s" : ""}
-          </>
+    <section className="pl-entete" aria-label="Run">
+      <div className="pl-entete-haut">
+        {edition === null ? (
+          <div className="pl-titre">
+            <Etat etat={run.statut} />
+            <h2>{nom}</h2>
+            <Bouton taille="petit" variante="fantome" onClick={() => setEdition(connu?.perso ? nom : "")}>
+              Renommer
+            </Bouton>
+          </div>
+        ) : (
+          <form
+            className="pl-titre"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (edition.trim()) void enregistrer(edition);
+            }}
+          >
+            <label className="sr-only" htmlFor="pl-nom">
+              Nom du pipeline
+            </label>
+            <input id="pl-nom" className="ao-champ pl-champ" value={edition} maxLength={60} placeholder={connu?.titreRegistre ?? nom} onChange={(e) => setEdition(e.target.value)} autoFocus />
+            <Bouton variante="primaire" disabled={!edition.trim()} onClick={() => (edition.trim() ? enregistrer(edition) : undefined)} libelleEnCours="Enregistrement…">
+              Enregistrer
+            </Bouton>
+            {connu?.perso && (
+              <Bouton onClick={() => enregistrer(null)} title="Revenir au titre du registre">
+                Nom d'origine
+              </Bouton>
+            )}
+            <Bouton variante="fantome" onClick={() => setEdition(null)}>
+              Annuler
+            </Bouton>
+          </form>
         )}
+        <ControleRun key={run.id} run={run} />
+      </div>
+      <p className="pl-sous">
+        <span>{run.projet ?? "sans projet"}</span>
+        <span>{run.debut ? <span title={new Date(run.debut).toLocaleString("fr-CH", { timeZone: "Europe/Zurich" })}>démarré il y a {depuis(run.debut, maintenant)}</span> : "pas encore démarré"}</span>
+        {run.declencheur && <span>par {run.declencheur}</span>}
+        <code>
+          {id} {versionPipeline(run.pipeline)}
+        </code>
+        {connu && <span>{connu.projets.length ? `utilisé par ${connu.projets.join(", ")}` : "aucun projet"} · {connu.runs} run{connu.runs > 1 ? "s" : ""}</span>}
+        <code title="Identifiant du run">{run.id}</code>
       </p>
       {erreur && <Erreur>{erreur}</Erreur>}
       {catalogue && <Rattacher id={id} connu={connu} catalogue={catalogue} change={renomme} />}
-    </div>
+    </section>
   );
 }
 
+type OngletPanneau = "selection" | "run";
+
+/** /run : la liste ; /run/:id : le run, son graphe et son panneau de détail. */
 export function RunPipeline({ runId, aller }: { runId: string | null; aller: (href: string) => void }) {
-  const { donnees: runs, erreur } = useCharge((s) => s.runs({ limite: 30 }), []);
+  return runId ? <DetailRun key={runId} runId={runId} aller={aller} /> : <ListeRuns aller={aller} />;
+}
+
+function DetailRun({ runId, aller }: { runId: string; aller: (href: string) => void }) {
+  // L'API répond null pour un run inconnu : l'envelopper distingue « introuvable » de « pas encore lu ».
+  const { donnees: lu, erreur, detail, recharger } = useCharge((s) => s.run(runId).then((run) => ({ run })), [runId]);
   const { donnees: equipe } = useCharge((s) => s.equipe(), []);
   const [renommages, setRenommages] = useState(0);
   const relire = useCallback(() => setRenommages((n) => n + 1), []);
   const { donnees: catalogue } = useCharge((s) => s.pipelines(), [renommages]);
   const connus = useMemo(() => new Map((catalogue?.pipelines ?? []).map((p) => [p.id, p])), [catalogue]);
-  const tries = useMemo(() => trierRuns(runs ?? []), [runs]);
-  const actif = runId ?? tries[0]?.id ?? null;
-  const { donnees: run, erreur: erreurRun } = useCharge((s) => (actif ? s.run(actif) : Promise.resolve(null)), [actif]);
+  const run = lu?.run ?? null;
   const graphe = useMemo(() => (run ? construireGraphe(run) : null), [run]);
   const membres = useMemo(() => new Map((equipe?.agents ?? []).map((m) => [m.id, m])), [equipe]);
   const [choix, setChoix] = useState<Choix | null>(null);
+  const [onglet, setOnglet] = useState<OngletPanneau>("selection");
+  const maintenant = useHorloge(5_000);
 
-  // À l'ouverture d'un run, l'inspecteur montre ce qui travaille ou attend.
-  useEffect(() => setChoix(null), [actif]);
-  const choixEffectif: Choix | null =
-    choix ?? (graphe ? { type: "noeud", id: (graphe.noeuds.find((n) => n.etat === "run" || n.etat === "wait" || n.etat === "err") ?? graphe.noeuds[0]!).id } : null);
+  if (erreur && !lu) return <EtatErreur titre="Lecture du run impossible" message={erreur} detail={detail} onReessayer={recharger} />;
+  if (!lu) return <Squelette lignes={8} libelle="Chargement du run…" className="rounded-xl border border-trait bg-surface p-4" />;
+  if (!run || !graphe)
+    return (
+      <EtatVide
+        icone="run"
+        message="Run introuvable"
+        detail={
+          <>
+            Aucun run ne porte l'identifiant <code className="font-mono">{runId}</code>. Il a pu être purgé, ou l'adresse est incomplète.
+          </>
+        }
+        action={
+          <Bouton variante="primaire" onClick={() => aller("/run")}>
+            Voir tous les runs
+          </Bouton>
+        }
+      />
+    );
 
-  if (erreur) return <Erreur>{erreur}</Erreur>;
-  if (!runs) return <p className="text-douce">Chargement des pipelines…</p>;
-  if (!tries.length) return <Vide>Aucun run enregistré : lance une mission pour voir son pipeline ici.</Vide>;
-
-  const enCours = tries.filter((r) => r.statut === "running" || r.statut === "queued").length;
-  const attente = tries.filter((r) => r.statut.startsWith("waiting")).length;
-  const noeudChoisi = choixEffectif?.type === "noeud" ? graphe?.noeuds.find((n) => n.id === choixEffectif.id) : undefined;
-  const lienChoisi = choixEffectif?.type === "lien" ? graphe?.liens[choixEffectif.index] : undefined;
-  const travail = graphe?.noeuds.filter((n) => n.genre === "agent" || n.genre === "script" || n.genre === "gate") ?? [];
+  // À l'ouverture, le panneau montre ce qui travaille, attend ou a échoué.
+  const choixEffectif: Choix = choix ?? { type: "noeud", id: (graphe.noeuds.find((n) => n.etat === "run" || n.etat === "wait" || n.etat === "err") ?? graphe.noeuds[0]!).id };
+  const choisir = (c: Choix) => {
+    setChoix(c);
+    setOnglet("selection");
+  };
+  const noeudChoisi = choixEffectif.type === "noeud" ? graphe.noeuds.find((n) => n.id === choixEffectif.id) : undefined;
+  const lienChoisi = choixEffectif.type === "lien" ? graphe.liens[choixEffectif.index] : undefined;
+  const travail = graphe.noeuds.filter((n) => n.genre === "agent" || n.genre === "script" || n.genre === "gate");
   const finies = travail.filter((n) => n.etat === "done").length;
-  const transmis = run?.etapes.reduce((s, e) => s + e.tokens.sortie, 0) ?? 0;
-  const dureeRun = run?.debut ? duree((run.fin ? Date.parse(run.fin) : Date.now()) - Date.parse(run.debut)) : VIDE;
+  const transmis = run.etapes.reduce((s, e) => s + e.tokens.sortie, 0);
+  const dureeRun = run.debut ? duree((run.fin ? Date.parse(run.fin) : maintenant) - Date.parse(run.debut)) : VIDE;
+  const libelleSelection = choixEffectif.type === "lien" ? "Lien" : choixEffectif.type === "json" ? "JSON" : "Étape";
 
   return (
-    <div className="pl-ecran">
-      <p className="pl-resume">
-        {tries.length} runs · {enCours} en cours · {attente} en attente
-      </p>
-      <nav className="pl-liste" aria-label="Runs">
-        {tries.map((r) => (
-          <a
-            key={r.id}
-            href={`/run/${encodeURIComponent(r.id)}`}
-            aria-current={r.id === actif ? "page" : undefined}
-            className={r.id === actif ? "on" : ""}
-            onClick={(event) => {
-              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              aller(`/run/${encodeURIComponent(r.id)}`);
-            }}
-          >
-            <Etat etat={r.statut} />
-            <b>{nomPipeline(r.pipeline, connus)}</b>
-            <small>
-              {r.projet ?? "sans projet"} · {r.debut ? `il y a ${depuis(r.debut)}` : "pas démarré"}
-            </small>
-            <small className="pl-ref">
-              {idPipeline(r.pipeline)} {versionPipeline(r.pipeline)}
-            </small>
-          </a>
-        ))}
-      </nav>
+    <div className="pl-run">
+      <EnTete run={run} connus={connus} catalogue={catalogue} renomme={relire} />
+      {erreur && (
+        <div className="pl-run-plein">
+          <Erreur onReessayer={recharger}>Relecture du run impossible : {erreur}. Le run affiché date de la dernière lecture réussie.</Erreur>
+        </div>
+      )}
 
       <section className="pl-centre" aria-label="Graphe du run">
-        {erreurRun && <Erreur>{erreurRun}</Erreur>}
-        {run && graphe ? (
-          <>
-            <EnTete refPipeline={run.pipeline} connus={connus} catalogue={catalogue} renomme={relire} />
-            <div className="ao-kpis pl-stats" role="group" aria-label="Indicateurs du run">
-              <div className="ao-kpi">
-                <span className="k">Étape</span>
-                <span className="v">
-                  {finies}/{travail.length}
-                </span>
-              </div>
-              <div className="ao-kpi">
-                <span className="k">Coût éq.</span>
-                <span className="v">{usd(run.coutEquivalentUsd)}</span>
-              </div>
-              <div className="ao-kpi">
-                <span className="k">Durée</span>
-                <span className="v">{dureeRun}</span>
-              </div>
-              <div className="ao-kpi">
-                <span className="k">Transmis</span>
-                <span className="v">{jetons(transmis)} tok</span>
-              </div>
-            </div>
-            <div className="pl-defile">
-              <Graphe graphe={graphe} membres={membres} choix={choixEffectif} choisir={setChoix} />
-            </div>
-            <div className="pl-barre">
-              <span className="pl-leg work">Travail</span>
-              <span className="pl-leg ctx">Contexte</span>
-              <span className="pl-leg loop">Retour</span>
-              <span className="pl-leg wait">Ta décision</span>
-              <button
-                type="button"
-                className="ao-bouton-icone pl-json"
-                aria-pressed={choixEffectif?.type === "json"}
-                aria-label="Voir le JSON du pipeline"
-                title="Voir le JSON du pipeline"
-                onClick={() => setChoix({ type: "json" })}
-              >
-                {"{ }"}
-              </button>
-            </div>
-          </>
-        ) : (
-          !erreurRun && <p className="text-douce">Chargement du run…</p>
-        )}
+        <div className="ao-kpis pl-stats" role="group" aria-label="Indicateurs du run">
+          <div className="ao-kpi">
+            <span className="k">Étapes</span>
+            <span className="v">
+              {finies}/{travail.length}
+            </span>
+          </div>
+          <div className="ao-kpi" title="Sur abonnement, un équivalent API, pas une dépense">
+            <span className="k">Coût éq.</span>
+            <span className="v">{usd(run.coutEquivalentUsd)}</span>
+          </div>
+          <div className="ao-kpi">
+            <span className="k">Durée</span>
+            <span className="v">{dureeRun}</span>
+          </div>
+          <div className="ao-kpi">
+            <span className="k">Transmis</span>
+            <span className="v">{jetons(transmis)} jetons</span>
+          </div>
+        </div>
+        <div className="pl-defile">
+          <Graphe graphe={graphe} membres={membres} choix={choixEffectif} choisir={choisir} />
+        </div>
+        <div className="pl-barre">
+          <span className="pl-leg work">Travail</span>
+          <span className="pl-leg ctx">Contexte</span>
+          <span className="pl-leg loop">Retour</span>
+          <span className="pl-leg wait">Ta décision</span>
+          <button type="button" className="ao-bouton-icone pl-json" aria-pressed={choixEffectif.type === "json"} aria-label="Voir le JSON du pipeline" title="Voir le JSON du pipeline" onClick={() => choisir({ type: "json" })}>
+            {"{ }"}
+          </button>
+        </div>
       </section>
 
-      <aside className="pl-inspecteur" aria-label="Inspecteur" aria-live="polite">
-        {run && graphe && choixEffectif?.type === "json" && (
-          <div className="pl-insp">
-            <div className="pl-label">Pipeline · JSON</div>
-            <pre className="json">{grapheJson(run, graphe)}</pre>
-          </div>
-        )}
-        {run && graphe && noeudChoisi && <InspecteurNoeud key={`${run.id}:${noeudChoisi.id}`} run={run} graphe={graphe} noeud={noeudChoisi} membres={membres} aller={aller} />}
-        {graphe && lienChoisi && <InspecteurLien graphe={graphe} lien={lienChoisi} membres={membres} />}
+      <aside className="pl-panneau" aria-label="Détail du run">
+        <div className="pl-panneau-onglets">
+          <Onglets<OngletPanneau>
+            libelle="Détail du run"
+            actif={onglet}
+            onChoisir={setOnglet}
+            onglets={[
+              { cle: "selection", libelle: libelleSelection },
+              { cle: "run", libelle: "Run" },
+            ]}
+          />
+        </div>
+        <div className="pl-panneau-corps" aria-live="polite">
+          {onglet === "run" ? (
+            <div className="flex flex-col gap-3 p-4">
+              <CorpsRun run={run} />
+            </div>
+          ) : (
+            <>
+              {choixEffectif.type === "json" && (
+                <div className="pl-insp">
+                  <div className="pl-label">Pipeline en JSON</div>
+                  <pre className="json">{grapheJson(run, graphe)}</pre>
+                </div>
+              )}
+              {noeudChoisi && <InspecteurNoeud key={`${run.id}:${noeudChoisi.id}`} run={run} graphe={graphe} noeud={noeudChoisi} membres={membres} />}
+              {lienChoisi && <InspecteurLien graphe={graphe} lien={lienChoisi} membres={membres} />}
+            </>
+          )}
+        </div>
       </aside>
     </div>
   );

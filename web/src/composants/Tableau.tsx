@@ -1,5 +1,6 @@
 // Un tableau de données : colonnes alignées, en-têtes triables au clic, ligne survolée.
-// Un tableau sans ligne laisse la place à l'état vide fourni par le parent.
+// Un tableau sans ligne laisse la place à l'état vide fourni par le parent. Avec `onLigne`,
+// toute la ligne s'ouvre au clic ; le clavier passe par le lien que la ligne doit porter.
 import { useMemo, useState, type ReactNode } from "react";
 import { Icone } from "../icones";
 
@@ -14,7 +15,7 @@ export interface Colonne<L> {
 
 type Sens = "croissant" | "decroissant";
 
-export function Tableau<L>({ colonnes, lignes, cleLigne, libelle, vide, triInitial }: { colonnes: ReadonlyArray<Colonne<L>>; lignes: ReadonlyArray<L>; cleLigne: (ligne: L) => string; libelle: string; vide?: ReactNode; triInitial?: { cle: string; sens: Sens } }) {
+export function Tableau<L>({ colonnes, lignes, cleLigne, libelle, vide, triInitial, onLigne }: { colonnes: ReadonlyArray<Colonne<L>>; lignes: ReadonlyArray<L>; cleLigne: (ligne: L) => string; libelle: string; vide?: ReactNode; triInitial?: { cle: string; sens: Sens }; onLigne?: (ligne: L) => void }) {
   const [tri, setTri] = useState(triInitial ?? null);
 
   const triees = useMemo(() => {
@@ -60,7 +61,18 @@ export function Tableau<L>({ colonnes, lignes, cleLigne, libelle, vide, triIniti
         </thead>
         <tbody>
           {triees.map((ligne) => (
-            <tr key={cleLigne(ligne)} className="border-b border-trait transition-colors duration-150 last:border-0 hover:bg-carte">
+            <tr
+              key={cleLigne(ligne)}
+              onClick={
+                onLigne &&
+                ((event) => {
+                  // Un lien, un bouton ou une sélection de texte gardent leur propre effet.
+                  if ((event.target as HTMLElement).closest("a, button, input, select, textarea, summary") || window.getSelection()?.toString()) return;
+                  onLigne(ligne);
+                })
+              }
+              className={`border-b border-trait transition-colors duration-150 last:border-0 hover:bg-carte ${onLigne ? "cursor-pointer" : ""}`}
+            >
               {colonnes.map((c) => (
                 <td key={c.cle} className={`px-3.5 py-2.5 align-top ${c.alignement === "droite" ? "text-right tabular-nums" : ""}`}>
                   {c.rendu(ligne)}

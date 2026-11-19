@@ -183,7 +183,7 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
   return <div className="av-attribution">
     {attribution.commandeId && <div className="av-attribution-meta">
       <span>{agentNom}</span><span>{projetNom}</span>
-      {attribution.runId ? <a href={`/runs/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
+      {attribution.runId ? <a href={`/run/${encodeURIComponent(attribution.runId)}`}>Run {attribution.runId.slice(0, 8)}</a> : <span>Commande {attribution.commandeId.slice(0, 8)}</span>}
       <span className={`av-statut ${indisponible ? "en-cours" : attribution.statut === "failed" ? "a-faire" : "fait"}`}>{STATUT_ATTRIBUTION[attribution.statut] ?? attribution.statut}</span>
       {attribution.prevuLe && !attribution.runId && <a href="/calendrier">Prévu le {new Date(attribution.prevuLe).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</a>}
       {attribution.positionFile != null && <span>Objectifs #{attribution.positionFile}</span>}
@@ -241,7 +241,7 @@ function SuiviPlans({ objectifs }: { objectifs: Objectif[] }) {
   return <ul className="av-suivi-plans" aria-label="Exécutions de cette tâche">{derniers.map(o => {
     const occurrence = o.occurrences[0];
     return <li key={o.id}><span>{o.projectId} · {occurrence ? STATUT_ATTRIBUTION[occurrence.statut] ?? occurrence.statut : o.active ? 'planifiée' : 'programmation en pause'}</span>
-      {occurrence?.runId && <> · <a href={`/runs/${encodeURIComponent(occurrence.runId)}`}>Ouvrir le run {occurrence.runId.slice(0, 8)}</a></>}
+      {occurrence?.runId && <> · <a href={`/run/${encodeURIComponent(occurrence.runId)}`}>Ouvrir le run {occurrence.runId.slice(0, 8)}</a></>}
       {occurrence?.raison && <p>{occurrence.raison}</p>}
       {occurrence?.attente?.prochaineReprise && <p>Nouvelle tentative : {new Date(occurrence.attente.prochaineReprise).toLocaleString('fr-CH', { timeZone: FUSEAU })}</p>}
     </li>;
@@ -289,7 +289,7 @@ function TacheProjet({ tache }: { tache: Tache }) {
       {prochain && o.active ? <a href="/calendrier">Prochain départ le {prochain}</a> : <a href="/calendrier">{o.active ? "Aucun départ prévu" : "À planifier : en pause dans le calendrier"}</a>}
       {o.repetition !== "none" && <span>{MOT_REPETITION[o.repetition]}</span>}
       <span>{o.priority === "haute" ? "Prioritaire" : "Non prioritaire"}</span>
-      {dernier?.runId && <a href={`/runs/${encodeURIComponent(dernier.runId)}`}>Dernier run {dernier.runId.slice(0, 8)} · {STATUT_ATTRIBUTION[dernier.statut] ?? dernier.statut}</a>}
+      {dernier?.runId && <a href={`/run/${encodeURIComponent(dernier.runId)}`}>Dernier run {dernier.runId.slice(0, 8)} · {STATUT_ATTRIBUTION[dernier.statut] ?? dernier.statut}</a>}
     </div>
   </li>;
 }
@@ -373,8 +373,7 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
           <div className={critiques ? "alerte" : ""}><dt>critiques</dt><dd>{critiques}</dd></div>
         </dl>
       </section>}
-      {integre && <header className="av-embarque-titre">
-        <div><span className="kicker">À planifier</span><h2>Tâches</h2></div>
+      {integre && <header className="av-embarque-titre" aria-label="Tâches à planifier">
         <dl className="av-chiffres av-chiffres-compact">
           <div><dt>projets</dt><dd>{compter(taches, "projet")}</dd></div>
           <div><dt>fonctionnalités</dt><dd>{compter(taches, "fonctionnalite")}</dd></div>
