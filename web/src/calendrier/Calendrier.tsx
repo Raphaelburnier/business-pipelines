@@ -7,6 +7,7 @@ import { LOTS } from "../avenir/feuille";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import { lignes } from "../donnees/missions";
 import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
+import { naviguer } from "../navigation";
 import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Objectif, type Priorite, type Repetition, type SourceCalendrier } from "./api";
 import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, enRetard, etatDepartFeuille, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type DepartFeuille, type Entree } from "./semaine";
 
@@ -145,7 +146,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
       return <li key={o.id}>
         <span>{jourLisible(quand.date)} {quand.heure}</span>
         <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
-        {o.runId ? <a href={`/runs/${encodeURIComponent(o.runId)}`}>Run {o.runId.slice(0, 8)}</a> : <span>Commande {o.commandId.slice(0, 8)}</span>}
+        {o.runId ? <a href={`/run/${encodeURIComponent(o.runId)}`}>Run {o.runId.slice(0, 8)}</a> : <span>Commande {o.commandId.slice(0, 8)}</span>}
         {o.raison && <span className="cal-raison">{o.raison}</span>}
         {o.attente?.prochaineReprise && <span className="cal-raison">reprise prévue {new Date(o.attente.prochaineReprise).toLocaleString("fr-CH", { timeZone: FUSEAU })}</span>}
         {o.attente?.raisonManuelle && <span className="cal-raison">{o.attente.raisonManuelle}</span>}
@@ -170,15 +171,32 @@ function Carte({ entree, choisie, onChoisir }: { entree: Entree; choisie: boolea
 
 const ETAPES = new Map(LOTS.flatMap((lot) => lot.etapes.map((e) => [e.id, { lot: lot.id, titre: e.titre }] as const)));
 
-/** Un objectif de la feuille de route planifié depuis À venir : son suivi reste là-bas. */
+/** Un objectif de la feuille de route planifié depuis l'onglet Tâches : son suivi reste là-bas. */
 function CarteFeuille({ depart }: { depart: DepartFeuille }) {
   const etat = etatDepartFeuille(depart);
   const etape = ETAPES.get(depart.objectifId);
+  const ancre = `av-etape-${depart.objectifId}`;
   return <li draggable={!depart.runId && depart.statut === "queued"} data-task-payload={JSON.stringify({ type: "depart", commandeId: depart.cle, prevuLe: depart.prevuLe })}>
-    <a className={`cal-carte feuille ${etat.ton}`} href={`/a-venir#av-etape-${depart.objectifId}`}>
+    <a
+      className={`cal-carte feuille ${etat.ton}`}
+      href={`/taskboard/taches#${ancre}`}
+      onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        // L'ancre reste dans l'adresse : AVenir la lit au rendu pour déplier le lot, puis la tâche vient à l'écran.
+        // Un lot replié à la main garde son attribut `open` à vrai côté React : on le rouvre ici.
+        event.preventDefault();
+        naviguer(`/taskboard/taches#${ancre}`);
+        requestAnimationFrame(() => {
+          const tache = document.getElementById(ancre);
+          const lot = tache?.closest("details");
+          if (lot && !lot.open) lot.open = true;
+          tache?.scrollIntoView({ block: "center" });
+        });
+      }}
+    >
       <span className="cal-heure">{depart.heure}</span>
       <strong>{depart.objectifId} · {etape?.titre ?? "Objectif de la feuille de route"}</strong>
-      <small>{depart.projetId} · À venir, lot {etape?.lot ?? "?"}</small>
+      <small>{depart.projetId} · Tâches, lot {etape?.lot ?? "?"}</small>
       <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
     </a>
   </li>;

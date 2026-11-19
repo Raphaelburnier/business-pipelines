@@ -96,7 +96,7 @@ function Tuiles({ decisions, activite, aller }: { decisions: ADecider; activite:
         detail={echecs.erreur ? "lecture impossible" : recents?.length ? `le dernier ${depuis(dernierEchec, maintenant)}` : recents ? "aucun échec" : "lecture…"}
         ton={recents?.length || echecs.erreur ? "danger" : "ok"}
         icone={recents?.length || echecs.erreur ? "echec" : "ok"}
-        href="/run"
+        href="/run?statut=echecs"
         aller={aller}
       />
       <Tuile

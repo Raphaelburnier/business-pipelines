@@ -192,7 +192,7 @@ function Coquille() {
           )}
           {route.type === "taskboard" && (
             <Suspense fallback={<Chargement quoi="du planning" />}>
-              <TaskBoard />
+              <TaskBoard onglet={route.onglet} aller={naviguer} />
             </Suspense>
           )}
           {route.type === "ai-studio" && (
