@@ -16,6 +16,9 @@ export type Machine = z.infer<typeof cockpit.machine>;
 export type Approbation = z.infer<typeof cockpit.approbation>;
 export type Etape = z.infer<typeof cockpit.etape>;
 export type Run = z.infer<typeof cockpit.run>;
+/** Résultats par version de pipeline sur la fenêtre glissante (18.16). */
+export type ResultatsPipelines = z.infer<typeof cockpit.resultatsPipelines>;
+export type ResultatVersion = z.infer<typeof cockpit.resultatVersion>;
 /** La livraison d'un run jusqu'à GitHub ; `Livraison` plus bas est celle du cockpit sur le NAS. */
 export type LivraisonRun = z.infer<typeof cockpit.livraison>;
 export type StatutLivraison = z.infer<typeof cockpit.statutLivraison>;

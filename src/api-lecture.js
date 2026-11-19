@@ -476,4 +476,80 @@ function usage(store, { maintenant = Date.now(), limiteRuns = 1000 } = {}) {
   };
 }
 
-module.exports = { runs, run, objectifsAvenirs, machines, evenements, topologie, usage, resumerApprobation, lireFiches, ETATS_VIVANTS };
+const TERMINES = new Set(["succeeded", "failed", "cancelled"]);
+
+/** @param {number[]} valeurs */
+function mediane(valeurs) {
+  if (!valeurs.length) return null;
+  const tries = [...valeurs].sort((a, b) => a - b);
+  const milieu = Math.floor(tries.length / 2);
+  return tries.length % 2 ? tries[milieu] : (tries[milieu - 1] + tries[milieu]) / 2;
+}
+
+/** @param {number[]} valeurs */
+function moyenne(valeurs) {
+  return valeurs.length ? valeurs.reduce((a, b) => a + b, 0) / valeurs.length : null;
+}
+
+/** @param {number|null} v @param {number} chiffres */
+const arrondi = (v, chiffres) => (v === null ? null : Number(v.toFixed(chiffres)));
+
+/**
+ * Les résultats par version de pipeline sur une fenêtre glissante (18.16, spécification validée
+ * le 19 novembre 2026) : de quoi dire si `improve-app@9` fait mieux que `@8`. Forme :
+ * `cockpit.resultatsPipelines` d'agent-orchestrator.
+ *
+ * Le taux de réussite se calcule sur les runs réussis et en échec, sans les annulés : un arrêt
+ * demandé n'est pas une faute du pipeline. Durée, corrections et coût ne portent que sur les
+ * runs terminés ; un run vivant n'a encore ni fin ni coût définitif. Les corrections d'un run
+ * sont son plus haut tour (`loop_index`) parmi ses étapes.
+ * @param {any} store
+ * @param {{ maintenant?: number, jours?: number }} [options]
+ */
+function resultatsPipelines(store, { maintenant = Date.now(), jours = 90 } = {}) {
+  const depuis = new Date(maintenant - jours * 24 * 3600 * 1000).toISOString();
+  const lignes = store.db.prepare(`
+    SELECT r.pipeline_ref AS pipeline, r.status AS statut, r.started_at AS debut, r.finished_at AS fin,
+           r.est_cost_usd AS cout, (SELECT MAX(s.loop_index) FROM steps s WHERE s.run_id = r.id) AS tours
+    FROM runs r
+    WHERE r.started_at IS NULL OR r.started_at >= ?
+  `).all(depuis);
+  /** @type {Map<string, any[]>} */
+  const parVersion = new Map();
+  for (const l of lignes) {
+    const cle = String(l.pipeline);
+    if (!parVersion.has(cle)) parVersion.set(cle, []);
+    parVersion.get(cle)?.push(l);
+  }
+  const versions = [...parVersion.entries()].map(([pipeline, liste]) => {
+    const compte = (/** @type {string} */ statut) => liste.filter((l) => l.statut === statut).length;
+    const reussis = compte("succeeded");
+    const echecs = compte("failed");
+    const termines = liste.filter((l) => TERMINES.has(String(l.statut)));
+    const durees = termines
+      .filter((l) => l.debut && l.fin && Date.parse(l.fin) >= Date.parse(l.debut))
+      .map((l) => (Date.parse(l.fin) - Date.parse(l.debut)) / 60000);
+    const debuts = liste.map((l) => l.debut).filter(Boolean).sort();
+    return {
+      pipeline,
+      runs: liste.length,
+      reussis,
+      echecs,
+      annules: compte("cancelled"),
+      enCours: liste.filter((l) => ETATS_VIVANTS.has(String(l.statut))).length,
+      tauxReussite: reussis + echecs ? arrondi(reussis / (reussis + echecs), 3) : null,
+      dureeMedianeMinutes: arrondi(mediane(durees), 1),
+      correctionsMoyennes: arrondi(moyenne(termines.map((l) => Number(l.tours || 0))), 2),
+      coutEquivalentMoyenUsd: arrondi(moyenne(termines.map((l) => Number(l.cout || 0))), 4),
+      premierRun: debuts[0] || null,
+      dernierRun: debuts[debuts.length - 1] || null,
+    };
+  });
+  // Par pipeline, puis de la version la plus récente à la plus ancienne.
+  const nom = (/** @type {string} */ ref) => ref.replace(/@\d+$/, "");
+  const numero = (/** @type {string} */ ref) => Number((ref.match(/@(\d+)$/) || [])[1] || 0);
+  versions.sort((a, b) => nom(a.pipeline).localeCompare(nom(b.pipeline)) || numero(b.pipeline) - numero(a.pipeline));
+  return { depuis, jours, versions };
+}
+
+module.exports = { runs, run, objectifsAvenirs, machines, evenements, topologie, usage, resultatsPipelines, resumerApprobation, lireFiches, ETATS_VIVANTS };

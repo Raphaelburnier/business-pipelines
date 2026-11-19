@@ -62,6 +62,8 @@ export interface Source {
   runs(filtre?: FiltreRuns): Promise<Run[]>;
   run(id: string): Promise<RunDetailleAvecOutils | null>;
   usage(): Promise<Usage>;
+  /** Réussite, durée, corrections et coût par version de pipeline (18.16). */
+  resultatsPipelines(): Promise<import("../types").ResultatsPipelines>;
   /** Le dernier relevé des modèles poussé par le PC. */
   modeles(): Promise<ReponseModeles>;
   /** Dernière attribution connue par objectif de la feuille de route. */
