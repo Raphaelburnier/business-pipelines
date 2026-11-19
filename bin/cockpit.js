@@ -913,6 +913,12 @@ async function traiter(req, res) {
     return json(res, 200, api.usage(magasinOuvert));
   }
 
+  if (lecture && lecture.pathname === "/api/pipelines/resultats") {
+    const magasinOuvert = store();
+    if (!magasinOuvert) return json(res, 503, { erreur: `event store indisponible : ${magasinErreur}` });
+    return json(res, 200, api.resultatsPipelines(magasinOuvert));
+  }
+
   if (lecture && lecture.pathname === "/api/equipe") {
     try {
       // Sans event store, la page montre quand même l'équipe et ses affectations.

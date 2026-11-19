@@ -63,6 +63,15 @@ export function sourceMaquette({ t0 = Date.now(), maintenant = () => Date.now(),
       };
     },
     usage: async () => etat().usage,
+    // Exemple de maquette : deux versions d'improve-app, la plus récente meilleure.
+    resultatsPipelines: async () => ({
+      depuis: "2026-08-21T00:00:00.000Z",
+      jours: 90,
+      versions: [
+        { pipeline: "improve-app@9", runs: 6, reussis: 3, echecs: 2, annules: 1, enCours: 0, tauxReussite: 0.6, dureeMedianeMinutes: 41.5, correctionsMoyennes: 1.2, coutEquivalentMoyenUsd: 2.35, premierRun: "2026-11-10T09:00:00.000Z", dernierRun: "2026-11-19T08:40:47.000Z" },
+        { pipeline: "improve-app@8", runs: 4, reussis: 1, echecs: 3, annules: 0, enCours: 0, tauxReussite: 0.25, dureeMedianeMinutes: 55, correctionsMoyennes: 2, coutEquivalentMoyenUsd: 3.1, premierRun: "2026-10-24T10:00:00.000Z", dernierRun: "2026-11-09T18:00:00.000Z" },
+      ],
+    }),
     etatExecution: async () => ({ ...execution }),
     async pauseExecution(pause: boolean) {
       const id = `commande-maquette-${commandes.size + 1}`;
