@@ -21,6 +21,13 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Les tests serveur sont répartis en trois groupes sur trois machines (18.17) : joués à la
+    # suite, ils prenaient 290 des 330 secondes de la CI. Les étapes web, sauvegardes et Docker
+    # ne tournent qu'une fois, dans le groupe 1. Le run CI ne réussit que si les trois réussissent.
+    strategy:
+      fail-fast: true
+      matrix:
+        groupe: [1, 2, 3]
     steps:
       - name: Check out business-pipelines
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -78,27 +85,32 @@ jobs:
         run: npm ci
 
       - name: Install web dependencies
+        if: matrix.groupe == 1
         working-directory: business-pipelines/web
         run: npm ci
 
-      - name: Run server tests
+      - name: Run server tests (group ${{ matrix.groupe }} of 3)
         working-directory: business-pipelines
-        run: npm test
+        run: node bin/tests-groupe.js ${{ matrix.groupe }} 3
 
       # Les outils de sauvegarde s’exécutent sur le PC Linux (Python/flock), pas dans l’image servie.
       - name: Verify off-NAS backup and isolated restore
+        if: matrix.groupe == 1
         working-directory: business-pipelines
         run: npm run test:sauvegardes
 
       - name: Run web tests and typecheck
+        if: matrix.groupe == 1
         working-directory: business-pipelines
         run: npm run web:test
 
       - name: Build web application
+        if: matrix.groupe == 1
         working-directory: business-pipelines/web
         run: npm run build
 
       - name: Verify Docker build dependencies and tests
+        if: matrix.groupe == 1
         working-directory: business-pipelines
         shell: bash
         run: |
