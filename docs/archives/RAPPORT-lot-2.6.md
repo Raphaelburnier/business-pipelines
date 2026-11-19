@@ -1,5 +1,7 @@
 # Lot 2.6 — activation et contrôle de la copie installée
 
+> Archivé le 19 novembre 2026 (étape 18.25) : document d'un lot clos, plus cité ailleurs. Voir `docs/archives/README.md`.
+
 ## Résumé
 
 Les délais d'opérations sont actifs sur le NAS et le worker PC. Le livreur a été reconstruit

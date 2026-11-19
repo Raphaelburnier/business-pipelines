@@ -1,5 +1,7 @@
 # Lot 2.8 — reprise après quota
 
+> Archivé le 19 novembre 2026 (étape 18.25) : document d'un lot clos, plus cité ailleurs. Voir `docs/archives/README.md`.
+
 ## Résumé
 
 Un run bloqué par quota peut reprendre automatiquement même lorsque le fournisseur
