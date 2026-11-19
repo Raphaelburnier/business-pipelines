@@ -1,11 +1,10 @@
 # TaskBoard : rendre exécutables le registre et agent-secrets
 
-Résumé : ajouter deux projets au catalogue pour préparer des plans qui couvrent tous
-les dépôts annoncés. Les fiches réutilisent les contrats et le pipeline existants.
-Le raccordement a été validé le 12 novembre ; les fiches et les montages sont
-fusionnés par #238. Les copies Git NAS, l’alias SSH du PC et sa liste d’admission
-sont préparés. La confiance Git de l’image doit encore être complétée et les accès
-du publieur vérifiés avant l’approbation du modèle et la livraison opérateur.
+Résumé : les deux projets système sont raccordés au TaskBoard. Le parcours
+complet a été vérifié sur une mission documentaire : validation, deux revues
+indépendantes, publication puis fusion d'une PR limitée au README. Le complément
+documentaire distingue explicitement la copie Git de travail du registre NAS
+installé en lecture seule ; sa fusion reste nécessaire avant clôture du lot.
 
 ## Fonctionnement proposé
 
@@ -152,6 +151,26 @@ La recette complète et la publication du README restent attendues. 11.6,
 O6, R10 et R11 restent en cours ; aucun objectif 11.6 n'est attribuable.
 La mission cockpit `a825a81d` attend encore sa synchronisation ; sa branche
 de travail contient la résolution du conflit de suivi, sans nouvelle reprise.
+
+## Bilan de recette
+
+Le parcours demandé est vérifié sur une mission documentaire lancée explicitement
+par l'opérateur. Le résultat fusionné ne modifie que le README : aucune version
+publiée ni permission n'est modifiée. La validation déterministe et les deux
+revues indépendantes portent sur un même arbre ; la CI vérifie aussi l'immuabilité
+des versions et la fusion testée. Les preuves détaillées sont conservées hors du
+dépôt public.
+
+La correction du périmètre Git des revues et la sélection de session par passage
+ont été livrées et exercées dans ce parcours. Un relais après quota peut terminer
+la revue. Un nouveau passage ouvre une session distincte ; une reprise dans le
+même passage reste refusée si son instantané a disparu ou changé.
+
+Le complément README précise que les checkpoints `run/<id>` restent dans le dépôt
+de travail, que la PR est portée par `agent/…`, et que le registre installé en
+lecture seule est mis à jour par une livraison demandée par l'opérateur. Le lot
+et son défaut de raccordement restent en cours jusqu'à la fusion de ce complément.
+L'objectif reste absent du catalogue attribuable.
 
 ## Ordre d’activation opérateur
 
