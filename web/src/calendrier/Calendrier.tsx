@@ -183,9 +183,15 @@ function CarteFeuille({ depart }: { depart: DepartFeuille }) {
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         // L'ancre reste dans l'adresse : AVenir la lit au rendu pour déplier le lot, puis la tâche vient à l'écran.
+        // Un lot replié à la main garde son attribut `open` à vrai côté React : on le rouvre ici.
         event.preventDefault();
         naviguer(`/taskboard/taches#${ancre}`);
-        requestAnimationFrame(() => document.getElementById(ancre)?.scrollIntoView({ block: "center" }));
+        requestAnimationFrame(() => {
+          const tache = document.getElementById(ancre);
+          const lot = tache?.closest("details");
+          if (lot && !lot.open) lot.open = true;
+          tache?.scrollIntoView({ block: "center" });
+        });
       }}
     >
       <span className="cal-heure">{depart.heure}</span>
