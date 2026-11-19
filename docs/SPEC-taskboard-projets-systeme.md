@@ -4,7 +4,8 @@ Résumé : les deux projets système sont raccordés au TaskBoard. Le parcours
 complet a été vérifié sur une mission documentaire : validation, deux revues
 indépendantes, publication puis fusion d'une PR limitée au README. Le complément
 documentaire distingue explicitement la copie Git de travail du registre NAS
-installé en lecture seule ; sa fusion reste nécessaire avant clôture du lot.
+installé en lecture seule. Ce complément est fusionné ; les critères du lot et de
+son défaut de raccordement sont remplis.
 
 ## Fonctionnement proposé
 
@@ -154,6 +155,8 @@ de travail contient la résolution du conflit de suivi, sans nouvelle reprise.
 
 ## Bilan de recette
 
+Ce bilan remplace les attentes historiques de reprise et de publication ci-dessus.
+
 Le parcours demandé est vérifié sur une mission documentaire lancée explicitement
 par l'opérateur. Le résultat fusionné ne modifie que le README : aucune version
 publiée ni permission n'est modifiée. La validation déterministe et les deux
@@ -169,8 +172,11 @@ même passage reste refusée si son instantané a disparu ou changé.
 Le complément README précise que les checkpoints `run/<id>` restent dans le dépôt
 de travail, que la PR est portée par `agent/…`, et que le registre installé en
 lecture seule est mis à jour par une livraison demandée par l'opérateur. Le lot
-et son défaut de raccordement restent en cours jusqu'à la fusion de ce complément.
-L'objectif reste absent du catalogue attribuable.
+et son défaut de raccordement sont clos après la fusion de ce complément. Ses tests
+CI sont verts ; la revue GitHub du complément n'a produit aucun verdict, car la PR
+était déjà fermée lors de sa préparation. Les deux relectures locales n'ont aucun
+constat ; aucune approbation GitHub n'en est déduite. L'objectif reste absent du
+catalogue attribuable.
 
 ## Ordre d’activation opérateur
 
