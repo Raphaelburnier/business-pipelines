@@ -1,5 +1,10 @@
 # TaskBoard — lot 12.2
 
+Proposition complémentaire du 20 novembre 2026 : [cadrage fiable des lots](SPEC-cadrage-lots.md).
+Son schéma et sa migration attendent validation ; ils ne décrivent pas encore le code installé.
+Pourquoi : conserver la décision et les critères de recette au même endroit que les autres
+spécifications TaskBoard, sans faire passer une proposition pour un fonctionnement acquis.
+
 Résumé : réunir les tâches et leur calendrier dans TaskBoard. Une date suffit pour programmer le travail ; les agents exécutent les runs prêts en parallèle selon leur capacité, reprennent après quota et ne s’arrêtent pas à minuit. Avant livraison, vérifier le parcours navigateur, les reprises et la concurrence sur des fournisseurs simulés.
 
 ## Parcours
