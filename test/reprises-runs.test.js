@@ -31,18 +31,21 @@ function fixture(mode = "quota") {
   fs.writeFileSync(fiche,JSON.stringify({id:"demo",name:"Demo",business:"recette",homeMachine:"pc",repo:"/sans-depot",pipelines:[{extends:"demo@1",spec:"spec.json"}]}));
   fs.writeFileSync(path.join(projets,"demo/spec.json"),JSON.stringify({project_name:"demo",task:"OBJECTIF_FIGE"}));
   fs.writeFileSync(path.join(dir,"workers.json"),'{"workers":[]}');
+  // Le faux codex lit son scénario dans recette.json, à côté de lui : le moteur ne passe à
+  // l'enfant Codex qu'une liste blanche de variables (18.4), pas l'environnement du runner.
   fs.writeFileSync(path.join(bin,"codex"),`#!/usr/bin/env node
 const fs=require('fs');
+const recette=JSON.parse(fs.readFileSync(require('path').join(__dirname,'recette.json'),'utf8'));
 if(process.argv[2]==='app-server')process.exit(0); // lecture de quota sans appel d’agent
 if(process.argv[2]==='login'){process.stderr.write('Logged in using ChatGPT');process.exit(0);}
 let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entree+=x);process.stdin.on('end',()=>{
  const appel={args:process.argv.slice(2),cwd:process.cwd(),entree};
- fs.appendFileSync(process.env.RECETTE_APPELS,JSON.stringify(appel)+'\\n');
+ fs.appendFileSync(recette.appels,JSON.stringify(appel)+'\\n');
  console.log(JSON.stringify({type:'thread.started',thread_id:'session-native'}));
- if(!fs.existsSync(process.env.RECETTE_PRET)){
+ if(!fs.existsSync(recette.pret)){
   fs.writeFileSync('partiel.txt','travail à conserver');
-  const connu=process.env.RECETTE_MODE==='quota';
-  const error={message:process.env.RECETTE_MODE==='auth'?'Authentication token expired':'Usage limit reached',...(connu?{resets_at:Math.floor(Date.now()/1000)+3}:{})};
+  const connu=recette.mode==='quota';
+  const error={message:recette.mode==='auth'?'Authentication token expired':'Usage limit reached',...(connu?{resets_at:Math.floor(Date.now()/1000)+3}:{})};
   console.log(JSON.stringify({type:'turn.failed',error}));process.exitCode=1;return;
  }
  fs.writeFileSync('livrable.txt','fait');
@@ -56,6 +59,7 @@ let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entre
   const contrat=mission.figer({resolution,demande:{objectif:"OBJECTIF_FIGE",criteres:["livrable"],directives:"DIRECTIVE_FIGEE",exclusions:"",document:"SPEC_FIGEE"},participants:[{noeud:"code",membre:null,llm:{via:"codex",model:"gpt"},nom:"Codeur",agent:"codeur@1",type:"agent"}]});
   const commande=store.creerCommande({kind:"run.start",payload:{projectId:"demo",mission:contrat},par:"recette"});
   const pret=path.join(dir,"pret"), appels=path.join(dir,"appels.jsonl");
+  fs.writeFileSync(path.join(bin,"recette.json"),JSON.stringify({mode,pret,appels}));
   const env={...process.env,PATH:`${bin}:${process.env.PATH}`,ORCH_EVENT_STORE:file,COCKPIT_PROJETS_DIR:projets,ORCH_REGISTRE:reg,OUTPUT_ROOT:path.join(dir,"workspaces"),NO_VCS:"1",ORCH_ROLE:"pc",ORCH_MACHINE:"pc",COMMAND_POLL_MS:"10",ORCH_MAITRE_PORT:"0",ORCH_MAITRE_HOTE:"127.0.0.1",ORCH_WORKERS:path.join(dir,"workers.json"),RECETTE_MODE:mode,RECETTE_PRET:pret,RECETTE_APPELS:appels};
   if (["machine","parallele"].includes(mode)) {
     // Le vrai maître, sa file durable et la vraie CLI ; seul le transport du worker est
