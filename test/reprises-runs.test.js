@@ -31,18 +31,21 @@ function fixture(mode = "quota") {
   fs.writeFileSync(fiche,JSON.stringify({id:"demo",name:"Demo",business:"recette",homeMachine:"pc",repo:"/sans-depot",pipelines:[{extends:"demo@1",spec:"spec.json"}]}));
   fs.writeFileSync(path.join(projets,"demo/spec.json"),JSON.stringify({project_name:"demo",task:"OBJECTIF_FIGE"}));
   fs.writeFileSync(path.join(dir,"workers.json"),'{"workers":[]}');
+  // Codex ne reçoit que les variables autorisées par le moteur. La fixture embarque
+  // ses chemins et son scénario dans le faux exécutable, sans élargir cet environnement.
   fs.writeFileSync(path.join(bin,"codex"),`#!/usr/bin/env node
 const fs=require('fs');
+const recette=${JSON.stringify({ appels:path.join(dir,"appels.jsonl"), pret:path.join(dir,"pret"), mode })};
 if(process.argv[2]==='app-server')process.exit(0); // lecture de quota sans appel d’agent
 if(process.argv[2]==='login'){process.stderr.write('Logged in using ChatGPT');process.exit(0);}
 let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entree+=x);process.stdin.on('end',()=>{
  const appel={args:process.argv.slice(2),cwd:process.cwd(),entree};
- fs.appendFileSync(process.env.RECETTE_APPELS,JSON.stringify(appel)+'\\n');
+ fs.appendFileSync(recette.appels,JSON.stringify(appel)+'\\n');
  console.log(JSON.stringify({type:'thread.started',thread_id:'session-native'}));
- if(!fs.existsSync(process.env.RECETTE_PRET)){
+ if(!fs.existsSync(recette.pret)){
   fs.writeFileSync('partiel.txt','travail à conserver');
-  const connu=process.env.RECETTE_MODE==='quota';
-  const error={message:process.env.RECETTE_MODE==='auth'?'Authentication token expired':'Usage limit reached',...(connu?{resets_at:Math.floor(Date.now()/1000)+3}:{})};
+  const connu=recette.mode==='quota';
+  const error={message:recette.mode==='auth'?'Authentication token expired':'Usage limit reached',...(connu?{resets_at:Math.floor(Date.now()/1000)+3}:{})};
   console.log(JSON.stringify({type:'turn.failed',error}));process.exitCode=1;return;
  }
  fs.writeFileSync('livrable.txt','fait');
