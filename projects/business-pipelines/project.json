@@ -21,7 +21,7 @@
   "github": "Raphaelburnier/business-pipelines",
   "pipelines": [
     {
-      "extends": "improve-app@9",
+      "extends": "improve-app@10",
       "overrides": {
         "nodes": {
           "plan": { "maxTurns": 35 },
