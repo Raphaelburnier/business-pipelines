@@ -201,9 +201,16 @@ et le contrôle serveur doivent conserver la même source de vérité.
 4. Passer à `clos` et `fait` après confrontation des preuves aux résultats réels.
    Valider le format d'une référence ne prouve pas sa réussite. Garder toute donnée
    sensible hors du dépôt public.
-5. Exécuter `node bin/valider-feuille.js --base origin/main` puis les tests adaptés.
+5. Exécuter `npm run feuille:formater`, puis
+   `node bin/valider-feuille.js --base origin/main` et les tests adaptés.
    `npm test` valide aussi la feuille ; en CI de PR, elle est comparée au premier
    parent du merge testé. Une évolution sans nouvelle révision est refusée.
+
+Le formatage conserve une étape par ligne et vérifie que les données sont identiques.
+La feuille doit tenir dans les 100 000 octets admis par le workflow de revue ; le
+validateur le vérifie avant la CI. Pourquoi : au-delà, GitHub peut omettre le patch et
+la revue refuse un diff tronqué avant même d'appeler un modèle. Le formateur ne retire
+jamais de contenu et aucune limite du workflow n'est augmentée.
 
 Les anciens lots faits ne demandent pas de preuve rétroactive. Les anciennes tâches
 à faire sans cadrage restent affichées avec « cadrage manquant » et sans départ.
