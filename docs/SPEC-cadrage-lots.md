@@ -227,5 +227,5 @@ service de production n'a été appelé par cette recette.
 
 Commande utilisée avec une session dédiée, après démarrage de Vite sur le port local
 4187 : `agent-browser --session cadrage-lots-20261120 open
-http://127.0.0.1:4187/taskboard/taches?source=maquette`. Les assertions métier sont dans
+http://localhost:4187/taskboard/taches?source=maquette`. Les assertions métier sont dans
 les suites versionnées ; cette recette vérifie l'affichage et les gestes réels.
