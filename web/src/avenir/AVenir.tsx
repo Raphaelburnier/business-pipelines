@@ -124,10 +124,10 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     const formulaire = new FormData(event.currentTarget);
     const criteres = lignes(String(formulaire.get("criteres") || ""));
     if (!projectId) return;
-    const spec = { ...construireSpecAttribution(etape, projectId, criteres, sensibleManuel), agents: choixAgents };
     setChoixModifies(false);
     setErreur(null); setAttente(true);
     try {
+      const spec = { ...construireSpecAttribution(etape, projectId, criteres, sensibleManuel), agents: choixAgents };
       const reponse = await source.proposerPlan(spec);
       setProposition({ spec, reponse }); setIndexAgents(reponse.plan?.pipeline.index ?? indexAgents); setAccepteDegrade(false);
     }
