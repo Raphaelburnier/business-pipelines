@@ -3,8 +3,8 @@
 Résumé : donner aux tâches système un cadrage commun au navigateur et au serveur,
 transmettre tous les critères à la mission et refuser un départ dont les dépendances
 ne sont pas terminées. Distinguer développement, fusion et recette sans confondre la
-réussite d'un run avec la clôture du lot. Proposition du 20 novembre 2026, **à valider
-avant implémentation**. Prochaine étape : accord de Raphaël sur le schéma et la migration.
+réussite d'un run avec la clôture du lot. Schéma et migration **approuvés par Raphaël le 20 novembre 2026**.
+Implémentation en cours dans la PR #290 ; fusion et recette restent à vérifier.
 
 ## Objectif et constats
 
@@ -21,7 +21,7 @@ Le statut à trois valeurs sert aux filtres, mais ne distingue pas code terminé
 attendue et recette attendue. Les règles communes imposent déjà cette distinction.
 Une seule capacité est concernée : le cadrage d'une tâche système jusqu'à sa clôture.
 
-## Source de vérité et schéma proposé
+## Source de vérité et schéma approuvé
 
 Déplacer les données `LOTS` et `DEFAUTS` dans `web/src/avenir/feuille.json`, lisible par
 le serveur et le front. `feuille.ts` conserve types et fonctions de présentation en
@@ -161,6 +161,7 @@ et les schémas de mission existants ; le schéma d'exemple donne les noms propo
 Commandes depuis la racine, avec le moteur courant disponible :
 
 ```sh
+node bin/valider-feuille.js --base origin/main
 node test/planificateur.test.js
 npm --prefix web run typecheck
 npm --prefix web test
@@ -178,6 +179,33 @@ Préserver accès, sensibilité, révisions et idempotence. Ne modifier ni workf
 fusion ni politique des fichiers sensibles pour réaliser ce correctif. Toute extension
 du contrat moteur, des formats de preuve ou des droits exige un cadrage distinct.
 
-L'accord demandé porte sur le schéma, les phases de suivi et la migration qui bloque
+L'accord reçu porte sur le schéma, les phases de suivi et la migration qui bloque
 les anciennes tâches incomplètes. Les correctifs seront ensuite préparés, testés et
 relus ; leur livraison reste une action humaine distincte.
+
+## Procédure pour les prochaines sessions
+
+Les données se modifient dans `web/src/avenir/feuille.json` ; `feuille.ts` reste
+la façade du front. Ne pas y réintroduire une seconde copie des lots : l'affichage
+et le contrôle serveur doivent conserver la même source de vérité.
+
+1. Relire l'étape et ses dépendances avant de travailler. Mettre `statut` à
+   `en-cours`, `suivi.phase` à `developpement`, et retirer l'ID du catalogue.
+2. Préparer critères observables, directives, exclusions et dépendances explicites.
+   Ne pas convertir automatiquement un ancien détail vague en critères. Modifier le
+   sens du cadrage impose une nouvelle `cadrage.revision`, identique à celle du
+   catalogue si l'étape y figure, pour invalider les anciens plans.
+3. Après développement, consigner les preuves et utiliser `fusion-attendue`, puis
+   `recette-attendue` si elle est requise. Une attente bloquante prend `bloque`
+   avec une raison compréhensible.
+4. Passer à `clos` et `fait` après confrontation des preuves aux résultats réels.
+   Valider le format d'une référence ne prouve pas sa réussite. Garder toute donnée
+   sensible hors du dépôt public.
+5. Exécuter `node bin/valider-feuille.js --base origin/main` puis les tests adaptés.
+   `npm test` valide aussi la feuille ; en CI de PR, elle est comparée au premier
+   parent du merge testé. Une évolution sans nouvelle révision est refusée.
+
+Les anciens lots faits ne demandent pas de preuve rétroactive. Les anciennes tâches
+à faire sans cadrage restent affichées avec « cadrage manquant » et sans départ.
+Les lots 19 et 20 possèdent un cadrage mais restent hors catalogue et soumis à 18.11.
+Leur présence n'autorise aucun lancement.

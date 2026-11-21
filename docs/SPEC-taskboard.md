@@ -1,7 +1,7 @@
 # TaskBoard — lot 12.2
 
-Proposition complémentaire du 20 novembre 2026 : [cadrage fiable des lots](SPEC-cadrage-lots.md).
-Son schéma et sa migration attendent validation ; ils ne décrivent pas encore le code installé.
+Complément approuvé par Raphaël le 20 novembre 2026 : [cadrage fiable des lots](SPEC-cadrage-lots.md).
+Son schéma et sa migration sont validés ; leur implémentation et leur recette sont suivies par O7.
 Pourquoi : conserver la décision et les critères de recette au même endroit que les autres
 spécifications TaskBoard, sans faire passer une proposition pour un fonctionnement acquis.
 
