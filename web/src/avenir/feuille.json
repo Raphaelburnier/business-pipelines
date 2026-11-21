@@ -1592,11 +1592,11 @@
         {
           "id": "18.20",
           "titre": "Délai avant de retenter un crash du SDK",
-          "detail": "Moteur #131 : 2 s puis 4 s d'attente avant de retenter un crash du CLI, et un arrêt demandé pendant l'attente termine l'étape. Actif sur le worker PC depuis le 20 novembre ; côté NAS, à la prochaine livraison.",
+          "detail": "Moteur #131 : 2 s puis 4 s d'attente avant de retenter un crash du CLI, et un arrêt demandé pendant l'attente termine l'étape. Fait : fusionné le 20 novembre. Recette : le worker PC exécute 4d1a038, qui contient le correctif. Le moteur NAS le reprendra à la prochaine livraison, que seul Raphaël demande depuis le cockpit.",
           "fichiers": [
             "AO src/agent-runner.js"
           ],
-          "statut": "en-cours"
+          "statut": "fait"
         },
         {
           "id": "18.21",
