@@ -74,6 +74,9 @@ function lancerParallele(lancement, options = {}) {
     if (annule()) return { code: 130, annule: true };
     if (arret) return { code: 1, signal: "SIGTERM", erreur: "runner arrêté avant le lancement" };
     require('../src/reserve-quota').verifierLancement(options.store, lancement, { projetsDir: PROJETS });
+    if (!options.reprendre && !options.reverifier && !options.runId && !options.store?.commande(options.commandId)?.run_id) {
+      require('../src/objectifs-avenirs').verifierDepartMission(lancement.mission);
+    }
     return lancer(lancement, options);
   });
   if (key) {

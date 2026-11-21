@@ -4,8 +4,8 @@
 // l'onglet Calendrier quand elle survole son onglet, puis se dépose sur un jour.
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { AVenir, AgentsAttribution } from './avenir/AVenir';
-import { LOTS, DEFAUTS } from './avenir/feuille';
-import objectifsSysteme from './avenir/objectifs.json';
+import { LOTS, DEFAUTS, cadrerEtape, estAttribuable, raisonPreparation } from './avenir/feuille';
+import catalogueSysteme from './avenir/objectifs.json';
 import { sensibiliteEtape } from './avenir/sensibilite';
 import { Calendrier } from './calendrier/Calendrier';
 import { sourceCalendrierApi, sourceCalendrierMaquette } from './calendrier/api';
@@ -30,6 +30,7 @@ const TACHES = new Map<string, Tache>([
   ...DEFAUTS.map(d => [d.id, { type: 'fix', ref: d.id, titre: d.titre, detail: d.correctif }] as const),
 ]);
 const ALIAS: Record<string, string> = { BP: 'business-pipelines', AO: 'agent-orchestrator', REG: 'agent-registry', AS: 'agent-secrets' };
+const objectifsSysteme = catalogueSysteme.filter(o => { const e = [...LOTS.flatMap(l => l.etapes), ...DEFAUTS].find(e => e.id === o.id); return e && estAttribuable(e); });
 const TYPE_GLISSE = 'application/x-taskboard-task';
 /** Le temps de survol d'un onglet, une tâche en main, avant qu'il s'ouvre. */
 const SURVOL_ONGLET_MS = 600;
@@ -136,7 +137,7 @@ export function TaskBoard({ onglet, aller }: { onglet: OngletPlanning; aller: (h
   function ouvrir(cible: Tache, date: string) {
     if (date < dateCivile(Date.now()).date) { setMessage('Choisis aujourd’hui ou un jour futur.'); return; }
     const reference = objectifsSysteme.find(o => o.id === cible.ref);
-    if (!reference) { setMessage('Cette tâche ne dispose pas encore d’un plan exécutable dans le cockpit.'); return; }
+    if (!reference) { setMessage(cible.ref ? raisonPreparation(cible.ref) || 'Préparation requise.' : 'Référence de tâche manquante.'); return; }
     setTache({ ...cible, fichiers: reference.fichiers, date });
     setProjets(depotsDe(reference)); setAgentsParProjet({});
     setPropositions([]); setMessage(''); setSensible(false); setPrioritaire(false); setAccepteDegrade(false);
@@ -150,11 +151,12 @@ export function TaskBoard({ onglet, aller }: { onglet: OngletPlanning; aller: (h
     setEnvoi(true); setMessage('');
     try {
       const reponses = await Promise.all(retenus.map(async projectId => {
-        const spec: SpecMission = { projectId, objectif: `${tache.ref} · ${tache.titre}`, criteres: [(tache.detail || 'Réaliser le changement avec ses preuves de vérification.').slice(0, 950)],
+        const etape = [...LOTS.flatMap(l => l.etapes), ...DEFAUTS].find(e => e.id === tache.ref)!;
+        const spec = cadrerEtape(etape, { projectId, criteres: [],
           document: `${tache.detail || ''}\n\nFichiers annoncés : ${objectifCatalogue.fichiers.join(', ')}. Dépôts retenus : ${retenus.join(', ')}.`,
           directives: 'Respecter les instructions du dépôt et produire les preuves de vérification du changement.', exclusions: `Ce run ne modifie que ${projectId}. Les autres dépôts font l’objet des autres plans validés du groupe.`,
           exigences: risque.sensible || sensible ? ['revue-securite'] : [], runtimesExclus: ['omniroute'],
-          agents: agentsParProjet[projectId] || [], contexte: { _taskBoardObjective: { id: objectifCatalogue.id, revision: objectifCatalogue.revision } } };
+          agents: agentsParProjet[projectId] || [], contexte: { _taskBoardObjective: { id: objectifCatalogue.id, revision: objectifCatalogue.revision } } }) as SpecMission;
         const reponse = await source.proposerPlan(spec);
         return { projectId, spec, reponse, modifie: false, index: reponse.plan?.pipeline.index ?? null };
       }));

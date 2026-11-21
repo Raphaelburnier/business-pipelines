@@ -39,8 +39,9 @@ function fixture({ securite = false, roster = ROSTER, financeDisponible, finance
   });
   process.env.ORCH_REGISTRE = reg;
   const store = new EventStore(path.join(dir, "events.sqlite"));
+  const restaurerCadrage = require("./cadrage-lots").installer();
   const params = { projetsDir: projets, roster, affectations: {}, financeDisponible };
-  return { dir, reg, projets, store, params, fermer: () => { store.fermer(); fs.rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, reg, projets, store, params, fermer: () => { restaurerCadrage(); store.fermer(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
 
 const YANIS = { id: "yanis", nom: "Yanis", role: "Sécurité", famille: "claude", llm: claudeOpus, registre: ["security-reviewer"], budgetMensuelUsd: 30 };
