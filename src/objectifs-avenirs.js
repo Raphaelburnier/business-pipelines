@@ -1,5 +1,5 @@
 // Catalogue strict partagé avec la page « À venir ». Les titres/détails restent dans
-// la feuille TypeScript ; seuls les IDs encore attribuables, leur révision et le projet
+// la feuille JSON commune ; seuls les IDs admis au catalogue, leur révision et le projet
 // système où le travail se fait sont listés ici. TaskBoard peut aussi préparer un groupe
 // pour les dépôts annoncés dans les fichiers ; l'attribution historique reste mono-dépôt.
 const objectifs = require("../web/src/avenir/objectifs.json");

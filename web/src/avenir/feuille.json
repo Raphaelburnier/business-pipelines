@@ -2002,9 +2002,16 @@
         }
       },
       "suivi": {
-        "phase": "developpement",
+        "phase": "fusion-attendue",
         "attente": null,
-        "preuves": []
+        "preuves": [
+          {
+            "type": "verification",
+            "reference": "docs/SPEC-cadrage-lots.md#verification-locale",
+            "revision": 1,
+            "commit": "58becf5136e55004abb15276eb7655b2b920047f"
+          }
+        ]
       }
     },
     {

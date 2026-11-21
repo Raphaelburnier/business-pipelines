@@ -4,7 +4,7 @@ Résumé : donner aux tâches système un cadrage commun au navigateur et au ser
 transmettre tous les critères à la mission et refuser un départ dont les dépendances
 ne sont pas terminées. Distinguer développement, fusion et recette sans confondre la
 réussite d'un run avec la clôture du lot. Schéma et migration **approuvés par Raphaël le 20 novembre 2026**.
-Implémentation en cours dans la PR #290 ; fusion et recette restent à vérifier.
+Correctif préparé et testé dans la PR #290 ; fusion et recette restent à vérifier.
 
 ## Objectif et constats
 
@@ -209,3 +209,23 @@ Les anciens lots faits ne demandent pas de preuve rétroactive. Les anciennes t�
 à faire sans cadrage restent affichées avec « cadrage manquant » et sans départ.
 Les lots 19 et 20 possèdent un cadrage mais restent hors catalogue et soumis à 18.11.
 Leur présence n'autorise aucun lancement.
+
+
+## Vérification locale
+
+Le correctif a passé les 12 tests du cadrage, les 41 tests du planificateur,
+les 100 tests front, le contrôle TypeScript, le build et les 12 recettes de reprise
+avec le vrai runner et un fournisseur simulé. Les cas historiques de ces recettes
+reçoivent un cadrage synthétique en mémoire ; aucun ancien objectif réel n'est rouvert.
+La suite serveur complète et la CI de PR restent à confirmer avant fusion.
+
+Recette Chromium sur la maquette locale : les lots 19 et 20 sont visibles ; une tâche
+historique sans cadrage reste visible et non déplaçable ; O7 affiche sa phase ; les
+critères et dépendances de 20.2 sont consultables et 18.11 explique le blocage. À
+390 pixels de largeur, le contenu ne déborde pas horizontalement. Aucun modèle ni
+service de production n'a été appelé par cette recette.
+
+Commande utilisée avec une session dédiée, après démarrage de Vite sur le port local
+4187 : `agent-browser --session cadrage-lots-20261120 open
+http://127.0.0.1:4187/taskboard/taches?source=maquette`. Les assertions métier sont dans
+les suites versionnées ; cette recette vérifie l'affichage et les gestes réels.
