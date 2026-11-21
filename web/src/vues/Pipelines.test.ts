@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Pipelines } from "./Pipelines";
+import { FournisseurToasts } from "../composants/Toasts";
 import type { ReponsePipelines } from "../donnees/pipelines";
 
 vi.mock("../donnees/contexte", () => ({
@@ -18,6 +19,9 @@ const catalogue: ReponsePipelines = {
   ], projets: [{ id: "demo", nom: "Démo" }], peutRattacher: true, rattachements: [],
 };
 
+// Renommer et rattacher confirment par un toast : la fiche se rend sous le fournisseur des toasts.
+const rendre = (pipelineId: string | null) => renderToStaticMarkup(createElement(FournisseurToasts, null, createElement(Pipelines, { pipelineId, aller: vi.fn() })));
+
 describe("Pipelines", () => {
   // Le catalogue et les résultats par version passent tous deux par useCharge : la maquette
   // rend à chacun sa forme selon la méthode de source appelée.
@@ -28,7 +32,7 @@ describe("Pipelines", () => {
         : { donnees: catalogue, erreur: null }) as never);
   });
   it("rend seulement le catalogue du registre", () => {
-    const html = renderToStaticMarkup(createElement(Pipelines, { pipelineId: "saas-build", aller: vi.fn() }));
+    const html = rendre("saas-build");
     expect(html).toContain("Construire un SaaS"); expect(html).toContain("Sauvegarde du NAS");
     expect(html).not.toContain("adhoc:content-writer"); expect(html).not.toContain("content-writer");
     expect(html).toContain("v3"); expect(html).not.toContain("pl-graphe"); expect(html).not.toContain("pl-noeud");
@@ -36,10 +40,12 @@ describe("Pipelines", () => {
   });
   it("nomme le registre quand il ne contient aucune version", () => {
     vi.mocked(useCharge).mockReturnValue({ donnees: { ...catalogue, pipelines: [catalogue.pipelines[2]!] }, erreur: null } as never);
-    expect(renderToStaticMarkup(createElement(Pipelines, { pipelineId: null, aller: vi.fn() }))).toContain("Aucun pipeline enregistré : le registre ne publie encore aucune version.");
+    const html = rendre(null);
+    expect(html).toContain("Aucun pipeline enregistré");
+    expect(html).toContain("Le registre ne publie encore aucune version.");
   });
   it("retombe sur le premier pipeline pour un identifiant inconnu", () => {
-    const html = renderToStaticMarkup(createElement(Pipelines, { pipelineId: "inconnu", aller: vi.fn() }));
+    const html = rendre("inconnu");
     expect(html).toContain("Construire un SaaS");
   });
 });

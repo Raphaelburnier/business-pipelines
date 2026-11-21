@@ -5,10 +5,13 @@
 // coût publié et sa source (`equipe/benchmarks.json`). Le nom et la photo se changent sur la
 // fiche ; l'affectation à un projet reste celle d'avant, depuis la fiche ou le roster.
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Bouton } from "../composants/Bouton";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
+import { useToasts } from "../composants/Toasts";
 import { useCharge, useHorloge, useSource } from "../donnees/contexte";
 import type { Benchmark, Famille, MembreEquipe, ReponseEquipe } from "../donnees/equipe";
 import { depuis, jetons, usd } from "../format";
-import { Erreur, Titre, Vide } from "../ui";
+import { Erreur, Titre } from "../ui";
 import type { Selection } from "../topologie/Topologie";
 import { Portrait, RARETES, rarete } from "./Portrait";
 
@@ -42,29 +45,34 @@ function niveau(a: MembreEquipe): { niveau: number; progression: number } {
   return { niveau: n, progression: Math.round((racine - n) * 100) };
 }
 
+/** Une écriture de l'équipe : l'action, et la phrase du toast qui confirme sa réussite. */
+type Ecrire = (action: () => Promise<void>, succes: string) => Promise<boolean>;
+
 export function Agents({ onSelection }: { onSelection: (s: Selection) => void }) {
+  const toasts = useToasts();
   const [recharge, setRecharge] = useState(0);
-  const { donnees, erreur } = useCharge((s) => s.equipe(), [recharge]);
+  const { donnees, erreur, detail, recharger } = useCharge((s) => s.equipe(), [recharge]);
   const [vue, setVue] = useState<Vue>("selection");
   const [filtre, setFiltre] = useState<Filtre>("tous");
   const [choisi, setChoisi] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [refus, setRefus] = useState<string | null>(null);
 
-  if (erreur) return <Erreur>{erreur}</Erreur>;
-  if (!donnees) return <p className="text-sm text-douce">Lecture de l'équipe…</p>;
+  if (erreur && !donnees) return <EtatErreur titre="Lecture de l'équipe impossible" message={erreur} detail={detail} onReessayer={recharger} />;
+  if (!donnees) return <Squelette lignes={6} libelle="Lecture de l'équipe…" className="rounded-xl border border-trait bg-surface p-4" />;
 
   const libres = donnees.agents.filter((a) => !a.occupe).length;
   const visibles = donnees.agents.filter((a) => garder(filtre, a));
   const fiche = visibles.find((a) => a.id === choisi) ?? visibles[0] ?? null;
 
-  /** Toute écriture passe ici : une erreur s'affiche, un succès relit l'équipe. */
-  async function ecrire(action: () => Promise<void>): Promise<boolean> {
+  /** Toute écriture passe ici : une erreur s'affiche, un succès relit l'équipe et le dit. */
+  async function ecrire(action: () => Promise<void>, succes: string): Promise<boolean> {
     setEnvoi(true);
     setRefus(null);
     try {
       await action();
       setRecharge((n) => n + 1);
+      toasts.succes(succes);
       return true;
     } catch (err) {
       setRefus(err instanceof Error ? err.message : String(err));
@@ -108,7 +116,14 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
       {refus && <Erreur>{refus}</Erreur>}
 
       {!visibles.length ? (
-        <Vide>Aucun agent ne correspond.</Vide>
+        <EtatVide
+          message="Aucun agent ne correspond à ce filtre"
+          action={
+            <Bouton taille="petit" onClick={() => setFiltre("tous")}>
+              Voir tous les agents
+            </Bouton>
+          }
+        />
       ) : vue === "selection" ? (
         <div className="ao-selection">
           <div className="ao-grille">
@@ -119,7 +134,17 @@ export function Agents({ onSelection }: { onSelection: (s: Selection) => void })
                 className={`ao-tuile r-${rarete(a)} ${fiche?.id === a.id ? "sel" : ""}`}
                 aria-pressed={fiche?.id === a.id}
                 aria-label={`${a.nom}, ${a.occupe ? "occupé" : "libre"}`}
-                onClick={() => setChoisi(a.id)}
+                onClick={() => {
+                  setChoisi(a.id);
+                  // Sur téléphone, la fiche est sous la grille : l'amener à l'écran quand elle n'y est pas.
+                  requestAnimationFrame(() => {
+                    const fiche = document.querySelector<HTMLElement>(".ao-fiche");
+                    if (fiche && fiche.getBoundingClientRect().top > window.innerHeight * 0.6) {
+                      const reduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                      fiche.scrollIntoView({ block: "start", behavior: reduit ? "auto" : "smooth" });
+                    }
+                  });
+                }}
               >
                 <Portrait membre={a} largeur={92} />
                 <span className="nm">{a.nom}</span>
@@ -160,27 +185,28 @@ function Fiche({
   membres: MembreEquipe[];
   projets: string[];
   envoi: boolean;
-  onEcrire: (action: () => Promise<void>) => Promise<boolean>;
+  onEcrire: Ecrire;
   onOuvrirRun: (id: string) => void;
 }) {
   const { source } = useSource();
   const maintenant = useHorloge(30_000);
+  const nomDe = (id: string | null) => membres.find((m) => m.id === id)?.nom ?? id;
   const r = rarete(a);
   const { niveau: n, progression } = niveau(a);
   const projetConnu = a.projet !== null && projets.includes(a.projet);
 
   return (
     <article className={`ao-fiche r-${r}`}>
-      <PhotoModifiable agent={a} niveau={n} envoi={envoi} onChanger={(photo) => onEcrire(() => source.profil(a.id, { photo }))} />
+      <PhotoModifiable agent={a} niveau={n} envoi={envoi} onChanger={(photo) => onEcrire(() => source.profil(a.id, { photo }), photo ? `Photo de ${a.nom} changée.` : `Photo de ${a.nom} retirée.`)} />
 
       <div className="info">
         <div className="top">
           <span className="ao-rarete">{RARETES[r].libelle}</span>
           <span className="handle">@{a.id}</span>
-          <span className="handle">{a.role}</span>
+          <span className="role">{a.role}</span>
         </div>
 
-        <NomModifiable agent={a} envoi={envoi} onRenommer={(nom) => onEcrire(() => source.profil(a.id, { nom }))} />
+        <NomModifiable agent={a} envoi={envoi} onRenommer={(nom) => onEcrire(() => source.profil(a.id, { nom }), nom ? `${a.nom} s'appelle maintenant ${nom}.` : `${a.nomRoster} reprend son nom d'origine.`)} />
 
         <div className="modele">
           <code title={`${a.llm.via}:${a.llm.model}`}>{a.llm.model}</code>
@@ -211,7 +237,12 @@ function Fiche({
           <Reste famille={a.famille} usage={a.usage} />
         </div>
 
-        <Remplacant agent={a} membres={membres} envoi={envoi} onChoisir={(secours) => onEcrire(() => source.profil(a.id, { secours }))} />
+        <Remplacant
+          agent={a}
+          membres={membres}
+          envoi={envoi}
+          onChoisir={(secours) => onEcrire(() => source.profil(a.id, { secours }), secours ? `${nomDe(secours)} remplacera ${a.nom} quand son quota tombe.` : `${a.nom} n'a plus de remplaçant.`)}
+        />
 
         <div className="etat">
           <span className={`ao-dispo ${a.enCours ? "run" : a.occupe ? "wait" : "ok"}`}>
@@ -220,9 +251,9 @@ function Fiche({
           </span>
           {a.projet && <span className="mission">{a.projet}{a.depuis ? ` · depuis ${depuis(a.depuis, maintenant)}` : ""}</span>}
           {a.enCours && (
-            <button type="button" className="lien" onClick={() => onOuvrirRun(a.enCours!.run)}>
-              au travail · {a.enCours.noeud}
-            </button>
+            <Bouton taille="petit" variante="fantome" onClick={() => onOuvrirRun(a.enCours!.run)}>
+              Au travail · {a.enCours.noeud}
+            </Bouton>
           )}
           {a.depuis && <span className={`mission ${projetConnu ? "text-ok" : ""}`}>{projetConnu ? "modèle appliqué aux runs" : "projet hors cockpit : sans effet sur les runs"}</span>}
         </div>
@@ -231,8 +262,8 @@ function Fiche({
           projets={projets}
           envoi={envoi}
           affecte={Boolean(a.depuis)}
-          onAffecter={(projet) => onEcrire(() => source.affecter([a.id], projet))}
-          onLiberer={() => onEcrire(() => source.affecter([a.id], null))}
+          onAffecter={(projet) => onEcrire(() => source.affecter([a.id], projet), `${a.nom} rejoint ${projet}.`)}
+          onLiberer={() => onEcrire(() => source.affecter([a.id], null), `${a.nom} quitte ${a.projet ?? "son projet"}.`)}
         />
       </div>
     </article>
@@ -301,13 +332,13 @@ function PhotoModifiable({
       <button type="button" className="changer" disabled={envoi} onClick={() => entree.current?.click()} title="Changer la photo">
         <Portrait membre={a} largeur={220} />
         <span className="survol">Changer la photo</span>
-        <span className="niv">NIV {n}</span>
+        <span className="niv">Niv. {n}</span>
       </button>
       <input ref={entree} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={choisir} />
       {a.photo && (
-        <button type="button" className="lien retirer" disabled={envoi} onClick={() => onChanger(null)}>
-          retirer la photo
-        </button>
+        <Bouton taille="petit" variante="fantome" className="retirer" disabled={envoi} onClick={() => onChanger(null)}>
+          Retirer la photo
+        </Bouton>
       )}
       {probleme && <p className="text-xs text-danger">{probleme}</p>}
     </div>
@@ -362,12 +393,12 @@ function NomModifiable({ agent: a, envoi, onRenommer }: { agent: MembreEquipe; e
           onKeyDown={(e) => e.key === "Escape" && setEdition(false)}
           aria-label="Nom de l'agent"
         />
-        <button type="submit" className="ao-btn primaire" disabled={envoi || !valeur.trim()}>
+        <Bouton type="submit" variante="primaire" disabled={!valeur.trim()} enCours={envoi} libelleEnCours="Enregistrement…">
           Enregistrer
-        </button>
-        <button type="button" className="ao-btn" onClick={() => setEdition(false)}>
+        </Bouton>
+        <Bouton variante="fantome" onClick={() => setEdition(false)}>
           Annuler
-        </button>
+        </Bouton>
       </form>
     );
   }
@@ -378,20 +409,20 @@ function NomModifiable({ agent: a, envoi, onRenommer }: { agent: MembreEquipe; e
       <h2>
         {premier} {reste.length > 0 && <span>{reste.join(" ")}</span>}
       </h2>
-      <button
-        type="button"
-        className="lien"
+      <Bouton
+        taille="petit"
+        variante="fantome"
         onClick={() => {
           setValeur(a.nom);
           setEdition(true);
         }}
       >
-        renommer
-      </button>
+        Renommer
+      </Bouton>
       {a.nom !== a.nomRoster && (
-        <button type="button" className="lien" disabled={envoi} onClick={() => onRenommer(null)} title={`Revenir au nom du roster : ${a.nomRoster}`}>
-          nom d'origine
-        </button>
+        <Bouton taille="petit" variante="fantome" disabled={envoi} onClick={() => onRenommer(null)} title={`Revenir au nom du roster : ${a.nomRoster}`}>
+          Nom d'origine
+        </Bouton>
       )}
     </div>
   );
@@ -478,7 +509,7 @@ function Affectation({
   envoi: boolean;
   affecte: boolean;
   onAffecter: (projet: string) => Promise<boolean>;
-  onLiberer: () => void;
+  onLiberer: () => Promise<boolean>;
 }) {
   const [cible, setCible] = useState("");
   const [nouveau, setNouveau] = useState("");
@@ -487,9 +518,8 @@ function Affectation({
   return (
     <div className="actions">
       <ChoixProjet projets={projets} cible={cible} nouveau={nouveau} onCible={setCible} onNouveau={setNouveau} />
-      <button
-        type="button"
-        className="ao-btn primaire"
+      <Bouton
+        variante="primaire"
         disabled={!projet || envoi}
         onClick={async () => {
           if (await onAffecter(projet)) {
@@ -499,11 +529,11 @@ function Affectation({
         }}
       >
         Assigner
-      </button>
+      </Bouton>
       {affecte && (
-        <button type="button" className="ao-btn" disabled={envoi} onClick={onLiberer}>
+        <Bouton disabled={envoi} onClick={onLiberer}>
           Libérer
-        </button>
+        </Bouton>
       )}
     </div>
   );
@@ -552,7 +582,7 @@ function Roster({
   agents: MembreEquipe[];
   reponse: ReponseEquipe;
   envoi: boolean;
-  onEcrire: (action: () => Promise<void>) => Promise<boolean>;
+  onEcrire: Ecrire;
   onOuvrir: (id: string) => void;
 }) {
   const { source } = useSource();
@@ -577,12 +607,11 @@ function Roster({
             {choisis.size} agent{choisis.size > 1 ? "s" : ""} →
           </span>
           <ChoixProjet projets={reponse.projets} cible={cible} nouveau={nouveau} onCible={setCible} onNouveau={setNouveau} />
-          <button
-            type="button"
-            className="ao-btn primaire"
+          <Bouton
+            variante="primaire"
             disabled={!projet || envoi}
             onClick={async () => {
-              if (await onEcrire(() => source.affecter([...choisis], projet))) {
+              if (await onEcrire(() => source.affecter([...choisis], projet), `${choisis.size} agent${choisis.size > 1 ? "s rejoignent" : " rejoint"} ${projet}.`)) {
                 setChoisis(new Set());
                 setCible("");
                 setNouveau("");
@@ -590,10 +619,10 @@ function Roster({
             }}
           >
             Associer
-          </button>
-          <button type="button" className="lien" onClick={() => setChoisis(new Set())}>
-            annuler
-          </button>
+          </Bouton>
+          <Bouton variante="fantome" onClick={() => setChoisis(new Set())}>
+            Annuler
+          </Bouton>
         </div>
       )}
       <div className="ao-rentete" aria-hidden="true">
