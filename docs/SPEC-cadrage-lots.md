@@ -4,7 +4,9 @@ Résumé : donner aux tâches système un cadrage commun au navigateur et au ser
 transmettre tous les critères à la mission et refuser un départ dont les dépendances
 ne sont pas terminées. Distinguer développement, fusion et recette sans confondre la
 réussite d'un run avec la clôture du lot. Schéma et migration **approuvés par Raphaël le 20 novembre 2026**.
-Correctif préparé et testé dans la PR #290 ; fusion et recette restent à vérifier.
+Correctif fusionné par la PR #290 ; consignes persistantes fusionnées par registre #48.
+La production contrôlée le 23 novembre ne les contient pas encore. Prochaine étape :
+attendre leur livraison demandée par Raphaël, puis vérifier la version servie avant recette.
 
 ## Objectif et constats
 
@@ -224,7 +226,12 @@ Le correctif a passé les 12 tests du cadrage, les 41 tests du planificateur,
 les 100 tests front, le contrôle TypeScript, le build et les 12 recettes de reprise
 avec le vrai runner et un fournisseur simulé. Les cas historiques de ces recettes
 reçoivent un cadrage synthétique en mémoire ; aucun ancien objectif réel n'est rouvert.
-La suite serveur complète et la CI de PR restent à confirmer avant fusion.
+La suite serveur complète a réussi. La CI finale de PR `45019559811` est verte
+(trois groupes et Docker) ; la revue `45019558190` approuve la tête
+`0adc4777279f0e7b47cefd51e7e11215f0fb8a23`, sans constat. La fusion #290 est
+`7c6c7445e9439ebccfc067535b716d5038733c1a` ; son arbre est identique à celui
+de la tête testée. Registre #48 est fusionnée en
+`bbc19fed7eb6d1743f18e4e45c5c1648c42c472e`, après CI et revue vertes.
 
 Recette Chromium sur la maquette locale : les lots 19 et 20 sont visibles ; une tâche
 historique sans cadrage reste visible et non déplaçable ; O7 affiche sa phase ; les
@@ -236,3 +243,41 @@ Commande utilisée avec une session dédiée, après démarrage de Vite sur le p
 4187 : `agent-browser --session cadrage-lots-20261120 open
 http://localhost:4187/taskboard/taches?source=maquette`. Les assertions métier sont dans
 les suites versionnées ; cette recette vérifie l'affichage et les gestes réels.
+
+## Recette après livraison humaine
+
+Résumé : les fusions sont terminées, mais O7 reste `en-cours`, phase
+`recette-attendue`. Le contrôle du 23 novembre constate une production saine qui
+ne contient pas encore #290 ni registre #48. La livraison déjà en construction
+cible des versions antérieures ; elle ne constitue pas une recette de ce correctif.
+
+Avant une nouvelle demande de livraison, attendre la fin de celle en cours puis
+contrôler la proposition dans le cockpit : les versions proposées doivent contenir
+les deux commits de fusion ci-dessus et la mise à jour du suivi O7 décrite ici,
+pour que sa phase affichée soit cohérente avec les fusions. Une date de calcul récente ne garantit pas
+que les miroirs ont suivi GitHub. Si ces commits manquent, attendre l'actualisation
+des miroirs et relever le motif réel de l'écart ; ne pas remplacer la cible à la
+main. Pourquoi : une livraison réussie peut installer une version antérieure au
+correctif attendu. Seul Raphaël demande la livraison depuis le cockpit.
+
+Après cette livraison, effectuer les contrôles suivants, sans lancer de mission ni
+appeler de fournisseur de modèle :
+
+| Contrôle | Résultat nécessaire |
+| --- | --- |
+| Santé et versions réellement servies | Santé saine ; cockpit et registre contiennent les commits de fusion attendus. Vérifier leur ascendance, pas seulement le nom de release. |
+| O7 dans les tâches, bureau et mobile | Statut en cours et phase recette attendue ; fusion et vérification référencées, aucune clôture annoncée. |
+| Critères et dépendances de 20.2 | Critères distincts et complets ; 18.11 et 20.1 visibles. L'étape reste non attribuable tant que ses prérequis et son admission ne sont pas satisfaits. |
+| Ancienne tâche sans cadrage, par exemple 3.6 | Toujours consultable ; motif de préparation manquante et aucun départ possible. |
+| Runs déjà actifs et historique | Missions conservées ; aucune réécriture, annulation ou relance pour les besoins de la recette. |
+
+Les mutations de planification, les critères longs, les références périmées et les
+reprises se vérifient sur cette même révision dans les tests isolés existants
+(`test/cadrage-lots.test.js`, `test/planificateur.test.js`,
+`test/reprises-runs.test.js`) ; ne pas tenter un départ de production pour démontrer
+un refus. Pourquoi : la recette de l'interface ne doit pas créer un travail réel.
+
+Ne clôturer O7 qu'après ces résultats réels : consigner la version effectivement
+vérifiée et recettée, les références de CI et de fusion, puis proposer `clos`/`fait`
+dans une PR de suivi. Les preuves de vérification et de recette doivent porter sur
+le même commit. Les lots 19/20 restent soumis à 18.11 et hors catalogue.
