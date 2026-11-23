@@ -21,15 +21,15 @@ async function jusqua(fn, detail, ms = 15000) {
 function fixture(mode = "quota") {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"reprises-run-"));
   const projets=path.join(dir,"projects"), reg=path.join(dir,"registre"), bin=path.join(dir,"bin");
-  for(const d of [path.join(projets,"demo"),path.join(reg,"pipelines/demo/v1"),path.join(reg,"agents/codeur/v1"),bin])fs.mkdirSync(d,{recursive:true});
+  for(const d of [path.join(projets,"agent-orchestrator"),path.join(reg,"pipelines/demo/v1"),path.join(reg,"agents/codeur/v1"),bin])fs.mkdirSync(d,{recursive:true});
   fs.writeFileSync(path.join(reg,"agents/codeur/v1/agent.md"),`---\nname: codeur\nversion: 1\ndescription: Codeur fictif\ndefaultLlm: { via: codex, model: gpt }\nallowedTools: [Read, Write]\nskills: []\n---\nProduit le livrable de recette.\n`);
   fs.writeFileSync(path.join(reg,"pipelines/demo/v1/pipeline.json"),JSON.stringify({name:"demo",version:1,nodes:[
     {id:"preparer",type:"script",runsOn:["machine","parallele"].includes(mode) ? "nas" : "pc",run:process.execPath,args:["-e",'const fs=require("fs");fs.writeFileSync("compteur.txt",String(Number(fs.existsSync("compteur.txt")?fs.readFileSync("compteur.txt","utf8"):0)+1));']},
     {id:"code",type:"agent",agent:"codeur@1",runsOn:"pc",slice:"*",outputs:["livrable.txt"]},
   ],edges:[{from:"preparer",to:"code"}]}));
-  const fiche=path.join(projets,"demo/project.json");
-  fs.writeFileSync(fiche,JSON.stringify({id:"demo",name:"Demo",business:"recette",homeMachine:"pc",repo:"/sans-depot",pipelines:[{extends:"demo@1",spec:"spec.json"}]}));
-  fs.writeFileSync(path.join(projets,"demo/spec.json"),JSON.stringify({project_name:"demo",task:"OBJECTIF_FIGE"}));
+  const fiche=path.join(projets,"agent-orchestrator/project.json");
+  fs.writeFileSync(fiche,JSON.stringify({id:"agent-orchestrator",name:"Demo",business:"recette",homeMachine:"pc",repo:"/sans-depot",pipelines:[{extends:"demo@1",spec:"spec.json"}]}));
+  fs.writeFileSync(path.join(projets,"agent-orchestrator/spec.json"),JSON.stringify({project_name:"demo",task:"OBJECTIF_FIGE"}));
   fs.writeFileSync(path.join(dir,"workers.json"),'{"workers":[]}');
   // Le faux codex lit son scénario dans recette.json, à côté de lui : le moteur ne passe à
   // l'enfant Codex qu'une liste blanche de variables (18.4), pas l'environnement du runner.
@@ -55,9 +55,15 @@ let entree='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>entre
 `,{mode:0o755});
   const file=path.join(dir,"events.sqlite"), store=new EventStore(file);
   const resolution=registre.resoudreProjet(fiche,{registre:reg});
-  resolution.spec._mission={objectif:"OBJECTIF_FIGE",criteres:["livrable"],document:"SPEC_FIGEE",objectifFeuille:{id:"1.1",revision:1}};
-  const contrat=mission.figer({resolution,demande:{objectif:"OBJECTIF_FIGE",criteres:["livrable"],directives:"DIRECTIVE_FIGEE",exclusions:"",document:"SPEC_FIGEE"},participants:[{noeud:"code",membre:null,llm:{via:"codex",model:"gpt"},nom:"Codeur",agent:"codeur@1",type:"agent"}]});
-  const commande=store.creerCommande({kind:"run.start",payload:{projectId:"demo",mission:contrat},par:"recette"});
+  // Un nouveau départ doit être admissible ; le cadrage synthétique reste ensuite
+  // figé pour exercer les reprises réelles, sans rouvrir un ancien lot terminé.
+  const restaurerCadrage = require("./fixtures/cadrage-lots").installer();
+  const cadre = require("../src/objectifs-avenirs").cadrerMission({ projectId: "agent-orchestrator", criteres: ["livrable"],
+    document: "SPEC_FIGEE\nOBJECTIF_FIGE", directives: "DIRECTIVE_FIGEE", exclusions: "",
+    contexte: { _roadmapObjective: { id: "3.8", revision: 1 } } });
+  resolution.spec._mission={projectId:"agent-orchestrator",objectif:cadre.objectif,criteres:cadre.criteres,document:cadre.document,objectifFeuille:{id:"3.8",revision:1}};
+  const contrat=mission.figer({resolution,demande:{objectif:cadre.objectif,criteres:cadre.criteres,directives:cadre.directives,exclusions:cadre.exclusions,document:cadre.document},participants:[{noeud:"code",membre:null,llm:{via:"codex",model:"gpt"},nom:"Codeur",agent:"codeur@1",type:"agent"}]});
+  const commande=store.creerCommande({kind:"run.start",payload:{projectId:"agent-orchestrator",mission:contrat},par:"recette"});
   const pret=path.join(dir,"pret"), appels=path.join(dir,"appels.jsonl");
   fs.writeFileSync(path.join(bin,"recette.json"),JSON.stringify({mode,pret,appels}));
   const env={...process.env,PATH:`${bin}:${process.env.PATH}`,ORCH_EVENT_STORE:file,COCKPIT_PROJETS_DIR:projets,ORCH_REGISTRE:reg,OUTPUT_ROOT:path.join(dir,"workspaces"),NO_VCS:"1",ORCH_ROLE:"pc",ORCH_MACHINE:"pc",COMMAND_POLL_MS:"10",ORCH_MAITRE_PORT:"0",ORCH_MAITRE_HOTE:"127.0.0.1",ORCH_WORKERS:path.join(dir,"workers.json"),RECETTE_MODE:mode,RECETTE_PRET:pret,RECETTE_APPELS:appels};
@@ -92,7 +98,7 @@ moteur.Maitre=MaitreRecette;
   }
   const enfants=[];
   function processus(script){
-    const c=spawn(process.execPath,[path.join(RACINE,script)],{cwd:RACINE,env,detached:true,stdio:["ignore","pipe","pipe"]});
+    const c=spawn(process.execPath,["--require",path.join(__dirname,"fixtures/cadrage-preload.js"),path.join(RACINE,script)],{cwd:RACINE,env,detached:true,stdio:["ignore","pipe","pipe"]});
     c.sortie="";for(const flux of [c.stdout,c.stderr])flux.on("data",d=>c.sortie=(c.sortie+d).slice(-16000));
     c.termine=new Promise(r=>c.once("close",r));enfants.push(c);return c;
   }
@@ -106,7 +112,7 @@ moteur.Maitre=MaitreRecette;
   }
   async function arreter(c,signal="SIGTERM") {if(c.exitCode!==null||c.signalCode!==null)return;c.kill(signal);await c.termine;}
   const lectures=()=>fs.existsSync(appels)?fs.readFileSync(appels,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse):[];
-  async function fermer(){for(const c of enfants)await arreter(c);store.fermer();fs.rmSync(dir,{recursive:true,force:true});}
+  async function fermer(){for(const c of enfants)await arreter(c);restaurerCadrage();store.fermer();fs.rmSync(dir,{recursive:true,force:true});}
   return {dir,store,commande,contrat,pret,runner,separerMaitre,arreter,lectures,fermer,projets};
 }
 
@@ -117,16 +123,16 @@ test("quota connu, redémarrage : même run, mission, workspace et session, sans
     const runId=await jusqua(()=>f.store.commande(f.commande.id).status==="done"&&f.store.commande(f.commande.id).run_id,()=>premier.sortie);
     const attente=f.store.attentes.vue(runId);
     assert.equal(attente.statut,"waiting_quota");assert.ok(attente.prochaineReprise);assert.equal(attente.resetSource,"provider.resets_at");
-    const affectationInitiale=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="1.1");
+    const affectationInitiale=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="3.8");
     assert.equal(affectationInitiale.runId,runId);assert.equal(affectationInitiale.statut,"waiting_quota");
     await f.arreter(premier);
     fs.writeFileSync(f.pret,"oui");
-    fs.writeFileSync(path.join(f.projets,"demo/project.json"),"fiche modifiée et invalide");
-    fs.writeFileSync(path.join(f.projets,"demo/spec.json"),'{"task":"AUTRE_OBJECTIF"}');
+    fs.writeFileSync(path.join(f.projets,"agent-orchestrator/project.json"),"fiche modifiée et invalide");
+    fs.writeFileSync(path.join(f.projets,"agent-orchestrator/spec.json"),'{"task":"AUTRE_OBJECTIF"}');
     const second=f.runner();
     await jusqua(()=>f.store.run(runId).status==="succeeded",()=>second.sortie);
     await jusqua(()=>f.store.commandes().some(c=>c.kind==="run.resume"&&c.status==="done"),()=>second.sortie);
-    const affectationReprise=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="1.1");
+    const affectationReprise=api.objectifsAvenirs(f.store).find(a=>a.objectif.id==="3.8");
     assert.equal(affectationReprise.commandeId,affectationInitiale.commandeId,"la reprise conserve la commande qui porte l'objectif");
     assert.equal(affectationReprise.runId,runId,"la reprise conserve le run d'origine");
     assert.equal(f.store.run(runId).status,"succeeded");
@@ -181,7 +187,7 @@ for (const historique of [false, true]) test(`quota sans échéance${historique 
         historique ? "échéance inconnue" : null, ancien, runId);
     f.store.db.prepare("UPDATE events SET ts=? WHERE run_id=? AND type='run.waiting_runtime'").run(ancien, runId);
     fs.writeFileSync(f.pret, "oui");
-    fs.writeFileSync(path.join(f.projets, "demo/project.json"), "fiche devenue invalide");
+    fs.writeFileSync(path.join(f.projets, "agent-orchestrator/project.json"), "fiche devenue invalide");
     const second = f.runner();
     await jusqua(() => f.store.run(runId).status === "succeeded", () => second.sortie);
     await jusqua(() => f.store.commandes().some(c => c.kind === "run.resume" && c.status === "done"), () => second.sortie);
@@ -212,7 +218,7 @@ test("un second runner ne remet pas les commandes réservées par le premier en 
 test("un rejeu après réussite acquitte la reprise sans rappeler la CLI ni publier",async()=>{
   const f=fixture("inconnu");
   try {
-    const runId=f.store.creerRun({pipelineRef:"demo@1",projectId:"demo"});
+    const runId=f.store.creerRun({pipelineRef:"demo@1",projectId:"agent-orchestrator"});
     const a=f.store.attentes.enregistrer(runId,{name:"QuotaAtteint"});
     const commande=f.store.attentes.demander(runId,{waitId:a.wait_id,par:"recette"});
     f.store.statutRun(runId,"succeeded");
@@ -224,7 +230,7 @@ test("un rejeu après réussite acquitte la reprise sans rappeler la CLI ni publ
 test("acquittement de reprise atomique : une panne intermédiaire conserve commande et attente rejouables", async () => {
   const f = fixture("inconnu");
   try {
-    const runId = f.store.creerRun({ pipelineRef: "demo@1", projectId: "demo" });
+    const runId = f.store.creerRun({ pipelineRef: "demo@1", projectId: "agent-orchestrator" });
     const a = f.store.attentes.enregistrerMachine(runId, { name: "MachineIndisponible", machine: "pc" });
     const c = f.store.attentes.demander(runId, { waitId: a.wait_id, par: "test" });
     f.store.prendreCommande({ kinds: ["run.resume"] });
@@ -253,7 +259,7 @@ for (const separe of [false, true]) test(`retour machine après redémarrage : m
     assert.equal(f.store.attentes.lire(runId).attempts, 0);
     await f.arreter(premier);
     fs.writeFileSync(f.pret, "oui");
-    fs.writeFileSync(path.join(f.projets, "demo/project.json"), "fiche invalide après départ");
+    fs.writeFileSync(path.join(f.projets, "agent-orchestrator/project.json"), "fiche invalide après départ");
     const second = f.runner();
     await jusqua(() => f.store.run(runId).status === "succeeded", () => second.sortie);
     await jusqua(() => f.store.commandes().some(c => c.kind === "run.resume" && c.status === "done"), () => second.sortie);
@@ -262,7 +268,7 @@ for (const separe of [false, true]) test(`retour machine après redémarrage : m
     assert.equal(f.lectures().length, 2);
     assert.deepEqual(f.lectures()[0].etape.spec, f.lectures()[1].etape.spec);
     assert.ok(JSON.stringify(f.lectures()[1].etape.spec).includes("OBJECTIF_FIGE"));
-    const espace = path.join(f.dir, "workspaces", "demo", runId);
+    const espace = path.join(f.dir, "workspaces", "agent-orchestrator", runId);
     assert.equal(fs.readFileSync(path.join(espace, "compteur.txt"), "utf8"), "1");
     assert.equal(f.store.etapes(runId).filter(e => e.node_id === "preparer").length, 1);
     assert.doesNotMatch(second.sortie, /EADDRINUSE|second maître/);

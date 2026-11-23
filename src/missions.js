@@ -95,6 +95,9 @@ function construire(params, brut, { verifierBackend = () => {}, verifierBrouillo
     }
     d.demande.criteres = cadre.criteres;
     d.demande.document = cadre.document;
+    d.demande.objectif = cadre.objectif;
+    d.demande.directives = cadre.directives;
+    d.demande.exclusions = cadre.exclusions;
   }
   if (parNoeud.size !== roles.length || [...parNoeud.keys()].some((id) => !roles.some((n) => n.id === id))) {
     throw new Error("La sélection doit couvrir exactement les rôles actifs du workflow, y compris les revues.");

@@ -18,20 +18,18 @@ const objectifsAvenirs = require("../src/objectifs-avenirs");
 const catalogueObjectifs = require("../web/src/avenir/objectifs.json");
 
 test("catalogue des objectifs : IDs admissibles, révisions et cohérence avec la feuille", () => {
-  const feuille = fs.readFileSync(path.join(__dirname, "..", "web/src/avenir/feuille.ts"), "utf8").split("\n");
+  const donnees = require("../web/src/avenir/feuille.json");
+  const feuille = [...donnees.lots.flatMap(l => l.etapes), ...donnees.defauts];
   assert.ok(catalogueObjectifs.length > 0);
   assert.equal(new Set(catalogueObjectifs.map((o) => o.id)).size, catalogueObjectifs.length);
   for (const objectif of catalogueObjectifs) {
     if (objectif.projet) assert.equal(objectifsAvenirs.validerReference(objectif, objectif.projet).id, objectif.id);
     else assert.throws(() => objectifsAvenirs.validerReference(objectif), /hors du cockpit/);
-    const ligne = feuille.find((l) => l.includes(`id: "${objectif.id}"`));
-    assert.ok(ligne, `${objectif.id} doit exister dans la feuille de route`);
-    assert.match(ligne, /statut: "a-faire"/, `${objectif.id} doit rester à faire`);
-    assert.deepEqual(objectif.fichiers, objectif.type === "fix"
-      ? JSON.parse(/fichiers: ("(?:[^"\\]|\\.)*")/.exec(ligne)[1]).split(/\s*[;,]\s*(?=(?:BP|AO|REG|AS)\s)/)
-      : JSON.parse(/fichiers: (\[[^\]]*\])/.exec(ligne)[1]), `${objectif.id} : fichiers partagés avec le serveur`);
-    const raison = /raisonSensibilite: ("(?:[^"\\]|\\.)*")/.exec(ligne);
-    assert.equal(objectif.raisonSensibilite, raison ? JSON.parse(raison[1]) : undefined, `${objectif.id} : risque partagé`);
+    const ligne = feuille.find(e => e.id === objectif.id);
+    assert.ok(ligne, `${objectif.id} doit exister dans la feuille`);
+    assert.equal(ligne.statut, "a-faire");
+    assert.deepEqual(objectif.fichiers, Array.isArray(ligne.fichiers) ? ligne.fichiers : ligne.fichiers.split(/\s*[;,]\s*(?=(?:BP|AO|REG|AS)\s)/));
+    assert.equal(objectif.raisonSensibilite, ligne.raisonSensibilite);
     assert.equal(Number.isInteger(objectif.revision) && objectif.revision > 0, true);
   }
   assert.throws(() => objectifsAvenirs.validerReference({ id: "inconnu", revision: 1 }), /objectif.*inconnu/i);
@@ -620,7 +618,7 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     });
     req.on("error", rejeter); req.end(brut);
   });
-  const enfant = spawn(process.execPath, [path.join(__dirname, "..", "bin", "cockpit.js")], { stdio: ["ignore", "pipe", "pipe"],
+  const enfant = spawn(process.execPath, ["--require", path.join(__dirname, "fixtures", "cadrage-preload.js"), path.join(__dirname, "..", "bin", "cockpit.js")], { stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, COCKPIT_PORT: String(port), APPROVALS_DIR: path.join(f.dir, "approvals"), ORCH_EVENT_STORE: path.join(f.dir, "events.sqlite"),
       COCKPIT_OPERATEUR_LOCAL: "test", COCKPIT_PROJETS_DIR: f.projets, COCKPIT_EQUIPE_ROSTER: roster, ORCH_REGISTRE: f.reg } });
   try {
