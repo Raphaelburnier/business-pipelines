@@ -1,10 +1,16 @@
+// Une nouvelle mission, de deux façons : confier une spec au planificateur (PlanMission), ou
+// composer soi-même l'équipe d'un workflow du projet. Dans les deux cas, rien ne part avant une
+// relecture et un second clic.
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Bouton } from "../composants/Bouton";
+import { EtatErreur, Squelette } from "../composants/Etats";
+import { useToasts } from "../composants/Toasts";
 import { useCharge, useSource } from "../donnees/contexte";
 import { suivreCommande } from "../donnees/lancement";
 import { classer } from "../donnees/modeles";
 import { lignes, specStructuree, type OptionsMission, type ChoixAgentMission } from "../donnees/missions";
 import { libelleNature } from "../donnees/natures";
-import { Erreur, Titre } from "../ui";
+import { Erreur } from "../ui";
 import { PlanMission } from "./PlanMission";
 import type { ReponseModeles } from "../types";
 import type { BrouillonEquipe } from "../donnees/discussions";
@@ -22,18 +28,24 @@ export function Missions({ projetInitial, brouillonId = null, aller }: { projetI
   const [mode, setMode] = useState<"plan" | "equipe">(brouillonId ? "equipe" : "plan");
   const projet = topo.donnees?.projets.find((p) => p.id === projetId);
   const draft = brouillon.donnees;
-  const onglet = (m: typeof mode, libelle: string) => <button type="button" aria-pressed={mode === m} disabled={occupe} onClick={() => setMode(m)}
-    className={`rounded-lg px-3 py-2 text-sm ${mode === m ? "bg-accent font-semibold text-sur-accent" : "border border-trait"}`}>{libelle}</button>;
+  const entete = <div className="flex flex-col gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-encre">Nouvelle mission</h2>
+      <p className="text-sm text-douce">{mode === "plan" ? "Confie une spec : le planificateur choisit le workflow et les agents disponibles, puis te montre le plan." : "Choisis le projet, son équipe et le résultat attendu."}</p>
+    </div>
+    <div className="ao-segment" role="group" aria-label="Façon de lancer la mission">
+      {([["plan", "Confier une spec"], ["equipe", "Composer l'équipe"]] as const).map(([m, libelle]) =>
+        <button key={m} type="button" aria-pressed={mode === m} disabled={occupe} onClick={() => setMode(m)}>{libelle}</button>)}
+    </div>
+  </div>;
   if (mode === "plan") return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
-    <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Confie une spec : le planificateur choisit le workflow et les agents disponibles, puis te montre le plan.</p></div>
-    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
+    {entete}
     <PlanMission projetInitial={projetInitial} aller={aller} />
   </section>;
   return <section className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
-    <div><Titre>Nouvelle mission</Titre><p className="text-sm text-douce">Choisis le projet, son équipe et le résultat attendu.</p></div>
-    <div className="flex gap-2">{onglet("plan", "Confier une spec")}{onglet("equipe", "Composer l'équipe")}</div>
-    {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
-    {brouillon.erreur && <Erreur>{brouillon.erreur}</Erreur>}
+    {entete}
+    {topo.erreur && <EtatErreur titre="Projets illisibles" message={topo.erreur} detail={topo.detail} onReessayer={topo.recharger} />}
+    {brouillon.erreur && <EtatErreur titre="Spec illisible" message={brouillon.erreur} detail={brouillon.detail} onReessayer={brouillon.recharger} />}
     {draft && <p className="rounded-lg border border-trait bg-carte p-3 text-sm">Spec issue de la discussion marketing : {draft.titre}. Relis le workflow, l'équipe dev et les critères avant lancement. <a className="text-accent underline" href={`/marketing/${draft.projectId}/${draft.origine.fil}`}>Revenir au fil</a></p>}
     {!!draft?.directives.length && <details className="rounded-lg border border-trait p-3 text-sm"><summary className="cursor-pointer">Directives du fil transmises comme contexte</summary><ul className="mt-2 list-disc pl-5">{draft.directives.map((d, i) => <li key={i} className="whitespace-pre-wrap">{d}</li>)}</ul></details>}
     <label className="flex flex-col gap-1 text-sm">Projet
@@ -48,7 +60,7 @@ export function Missions({ projetInitial, brouillonId = null, aller }: { projetI
       </select>
       <span className="text-xs text-douce">Changer de projet ou de workflow réinitialise la mission.</span>
     </label>}
-    {brouillonId && !draft && !brouillon.erreur && <p>Lecture de la spec…</p>}
+    {brouillonId && !draft && !brouillon.erreur && <Squelette lignes={3} libelle="Lecture de la spec…" />}
     {draft && draft.projectId !== projetId && <Erreur>Cette spec appartient à un autre projet.</Erreur>}
     {projet && (!brouillonId || draft?.projectId === projetId) && <FormulaireMission key={`${projet.id}:${index}:${brouillonId}`} projectId={projet.id} index={index} brouillon={draft} aller={aller} surEnvoi={setOccupe} />}
   </section>;
@@ -56,6 +68,7 @@ export function Missions({ projetInitial, brouillonId = null, aller }: { projetI
 
 function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { projectId: string; index: number; brouillon: BrouillonEquipe | null; aller: (href: string) => void; surEnvoi: (envoi: boolean) => void }) {
   const { source } = useSource();
+  const toasts = useToasts();
   const catalogue = useCharge((s) => s.modeles(), []);
   const { donnees: natures } = useCharge((s) => s.natures(), []);
   const [options, setOptions] = useState<OptionsMission | null>(null);
@@ -92,7 +105,7 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
     if (!commandeId) return;
     return suivreCommande(source, commandeId, {
       surCommande: (c) => {
-        if (c.run) aller(`/runs/${encodeURIComponent(c.run)}`);
+        if (c.run) aller(`/run/${encodeURIComponent(c.run)}`);
         else if (c.statut === "refused" || c.statut === "done") {
           setErreur(c.resultat?.raison || "La commande s'est terminée sans run associé.");
           setCommandeId(null);
@@ -122,10 +135,13 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
       const c = await source.lancerMission({ projectId, pipelineIndex: index, configuration: options.configuration,
         requestId: tentative.current.id, demande, ...origine });
       setCommandeId(c.id);
+      toasts.info("Mission mise en file : son run s'ouvrira dès son admission.");
     } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); setEnvoi(false); surEnvoi(false); }
   }
 
-  if (!options) return <div>{erreur ? <><Erreur>{erreur}</Erreur><button className={champ} onClick={() => setChargement((n) => n + 1)}>Relire le projet</button></> : <p>Préparation de l'équipe…</p>}</div>;
+  if (!options) return erreur
+    ? <EtatErreur titre="Préparation de l'équipe impossible" message={erreur} onReessayer={() => setChargement((n) => n + 1)} />
+    : <Squelette lignes={5} libelle="Préparation de l'équipe…" className="rounded-xl border border-trait bg-surface p-4" />;
   const changerAgent = (noeud: string, suite: Partial<ChoixAgentMission>) => { setAgents((a) => a.map((c) => c.noeud === noeud ? { ...c, ...suite } : c)); setRelecture(false); };
   return <form onSubmit={envoyer} className="flex flex-col gap-4">
     <p className="text-sm text-douce">{options.titre} · {libelleNature(natures?.natures, options.nature)}</p>
@@ -167,7 +183,7 @@ function FormulaireMission({ projectId, index, brouillon, aller, surEnvoi }: { p
     </div>}
     {commandeId && <p role="status" className="text-sm text-ok">Mission mise en file. Le run s'ouvrira dès son admission.</p>}
     {erreur && <Erreur>{erreur}</Erreur>}
-    <button type="submit" disabled={envoi || !options.roles.length || Boolean(options.blocages?.length)} className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-sur-accent disabled:opacity-50">{envoi ? "Lancement en cours…" : relecture ? "Lancer cette mission" : "Relire la mission"}</button>
+    <div><Bouton type="submit" variante={relecture ? "primaire" : "secondaire"} disabled={!options.roles.length || Boolean(options.blocages?.length)} enCours={envoi} libelleEnCours="Lancement en cours…">{relecture ? "Lancer cette mission" : "Relire la mission"}</Bouton></div>
   </form>;
 }
 
