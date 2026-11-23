@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Bouton } from "../composants/Bouton";
+import { EtatErreur } from "../composants/Etats";
+import { useToasts } from "../composants/Toasts";
 import { useCharge, useSource } from "../donnees/contexte";
 import { suivreCommande } from "../donnees/lancement";
 import { lignes, specStructuree, type PropositionPlan, type SpecMission } from "../donnees/missions";
 import { lireSpecChat, oublierSpecChat } from "../donnees/specChat";
-import { Erreur, Titre } from "../ui";
+import { Erreur } from "../ui";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
 const ROLES: Record<string, string> = { planification: "Planification", developpement: "Développement", verification: "Tests du projet",
@@ -13,6 +16,7 @@ const ROLES: Record<string, string> = { planification: "Planification", developp
 // le plan dans le contrat. L'écran montre le plan avant tout lancement.
 export function PlanMission({ projetInitial, aller }: { projetInitial: string | null; aller: (href: string) => void }) {
   const { source } = useSource();
+  const toasts = useToasts();
   const topo = useCharge((s) => s.topologie(), []);
   const { donnees: natures } = useCharge((s) => s.natures(), []);
   // Une spec écrite par un conseiller de « Demander » préremplit le formulaire, une fois.
@@ -38,7 +42,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
     if (!commandeId) return;
     return suivreCommande(source, commandeId, {
       surCommande: (c) => {
-        if (c.run) aller(`/runs/${encodeURIComponent(c.run)}`);
+        if (c.run) aller(`/run/${encodeURIComponent(c.run)}`);
         else if (c.statut === "refused" || c.statut === "done") {
           setErreur(c.resultat?.raison || "La commande s'est terminée sans run associé.");
           setCommandeId(null);
@@ -76,6 +80,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
     try {
       const c = await source.lancerPlan({ spec: proposition.spec, empreinte, requestId: tentative.current.id, accepterDegrade: accepte });
       setCommandeId(c.id);
+      toasts.info("Plan lancé : son run s'ouvrira dès son admission.");
     } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); setAttente(false); }
   }
 
@@ -84,7 +89,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
     {depuisChat && <p className="rounded-lg border border-trait bg-carte p-3 text-sm">Spec rédigée dans « Demander ». Relis-la, puis propose le plan : rien n'est lancé avant ton clic sur « Lancer ce plan ».</p>}
     <form onSubmit={proposer} className="flex flex-col gap-4">
       <fieldset disabled={attente || Boolean(commandeId)} className="flex flex-col gap-4 disabled:opacity-70">
-        {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
+        {topo.erreur && <EtatErreur titre="Projets illisibles" message={topo.erreur} detail={topo.detail} onReessayer={topo.recharger} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">Projet
             <select className={champ} value={projetId} onChange={(e) => modifier(setProjetId)(e.target.value)}>
@@ -109,7 +114,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
           <textarea className={`${champ} mt-2 font-mono`} rows={6} value={contexte} onChange={(e) => modifier(setContexte)(e.target.value)} />
         </details>
       </fieldset>
-      <button type="submit" disabled={attente || Boolean(commandeId)} className="rounded-lg border border-accent px-4 py-3 text-sm font-semibold disabled:opacity-50">{attente && !r ? "Planification…" : "Proposer un plan"}</button>
+      <div><Bouton type="submit" variante={r ? "secondaire" : "primaire"} disabled={attente || Boolean(commandeId)} enCours={attente && !r} libelleEnCours="Planification…">{r ? "Proposer un nouveau plan" : "Proposer un plan"}</Bouton></div>
     </form>
 
     {r && <section className="flex flex-col gap-3 rounded-xl border border-accent bg-carte p-4 text-sm" aria-live="polite">
@@ -120,8 +125,7 @@ export function PlanMission({ projetInitial, aller }: { projetInitial: string | 
       </div>)}
       {r.plan && <PlanLisible plan={r.plan} />}
       {r.statut === "degrade" && <label className="flex items-center gap-2"><input type="checkbox" checked={accepte} onChange={(e) => setAccepte(e.target.checked)} />J'accepte ce plan dégradé et ses avertissements</label>}
-      {r.statut !== "bloque" && <button type="button" onClick={lancer} disabled={attente || Boolean(commandeId) || (r.statut === "degrade" && !accepte)}
-        className="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-sur-accent disabled:opacity-50">{commandeId ? "Mission en file…" : "Lancer ce plan"}</button>}
+      {r.statut !== "bloque" && <div><Bouton variante="primaire" onClick={lancer} disabled={Boolean(commandeId) || (r.statut === "degrade" && !accepte)} enCours={attente} libelleEnCours="Lancement…">{commandeId ? "Mission en file…" : "Lancer ce plan"}</Bouton></div>}
     </section>}
     {erreur && <Erreur>{erreur}</Erreur>}
   </div>;
