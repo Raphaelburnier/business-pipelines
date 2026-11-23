@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AVenir, construireSpecAttribution, expliquerConflitAttribution } from "./AVenir";
-import { LOTS, estAttribuable, projetObjectif } from "./feuille";
+import { AVenir, SuiviPersistant, construireSpecAttribution, expliquerConflitAttribution } from "./AVenir";
+import { LOTS, cadrerEtape, estAttribuable, projetObjectif } from "./feuille";
 import type { AttributionAvenir } from "../donnees/source";
 import type { Topologie } from "../types";
 import type { Objectif } from "../calendrier/api";
@@ -14,6 +14,10 @@ vi.mock("../donnees/contexte", () => ({
 import { useCharge } from "../donnees/contexte";
 
 const toutesLesEtapes = LOTS.flatMap((lot) => lot.etapes);
+const avecCadrage = (e: typeof toutesLesEtapes[number]) => ({ ...e, statut: "a-faire" as const,
+  cadrage: { revision: 1, criteres: ["Le résultat synthétique est vérifié."], directives: [], exclusions: [], dependances: [], cloture: {} },
+  suivi: { phase: "a-faire" as const, attente: null, preuves: [] } });
+
 const topo = { projets: [{ id: "demo", nom: "Projet démo", aFiche: true, pipelines: ["dev@1"] }] } as unknown as Topologie;
 const attribution: AttributionAvenir = {
   objectif: { id: "5.2", revision: 1 }, commandeId: "cmd-12345678", runId: "run-12345678", projetId: "demo",
@@ -39,7 +43,7 @@ describe("attribution depuis À venir", () => {
   it("n'affiche l'action que pour les objectifs attribuables et montre l'assignation active", () => {
     const html = renderToStaticMarkup(createElement(AVenir));
     const actions = (html.match(/>Attribuer<\/button>/g) ?? []).length;
-    expect(actions).toBe(toutesLesEtapes.filter((e) => estAttribuable(e) && projetObjectif(e.id)).length - 1);
+    expect(actions).toBe(toutesLesEtapes.filter((e) => estAttribuable(e) && projetObjectif(e.id) && e.id !== attribution.objectif.id).length);
     expect(html).toContain("Sacha");
     expect(html).toContain("Projet démo");
     expect(html).toContain("Run run-1234");
@@ -59,30 +63,30 @@ describe("attribution depuis À venir", () => {
         expect(ligne).not.toContain("task-poignee");
         expect(ligne).not.toContain(">Planifier</button>");
       }
-      if (id === "3.6") expect(ligne).toContain(">Planifier</button>");
+      if (id === "3.6") { expect(ligne).not.toContain(">Planifier</button>"); expect(ligne).toContain("cadrage manquant"); }
     }
     expect(html).toContain('id="av-etape-14.7"');
   });
 
   it("prépare la référence, le projet et les critères sans exclure Claude ni Codex", () => {
-    const etape = toutesLesEtapes.find((e) => e.id === "4.3")!;
+    const etape = avecCadrage(toutesLesEtapes.find((e) => e.id === "4.3")!);
     const spec = construireSpecAttribution(etape, "business-pipelines", ["Revue faite"]);
     expect(spec.projectId).toBe("business-pipelines");
     expect(spec.contexte).toEqual({ _roadmapObjective: { id: "4.3", revision: 1 } });
     expect(spec.runtimesExclus).toEqual(["omniroute"]);
-    expect(spec.criteres).toEqual(["Revue faite"]);
+    expect(spec.criteres).toEqual(["Le résultat synthétique est vérifié.", "Revue faite"]);
     expect(spec.exigences).toEqual(["revue-securite"]);
     expect(spec.document).toContain("Fichier protégé annoncé : BP bin/cockpit.js:590-592.");
   });
 
   it("transmet la revue de sécurité pour un chemin protégé ou un risque motivé", () => {
     for (const id of ["2.6", "4.3", "11.5"]) {
-      const etape = toutesLesEtapes.find((e) => e.id === id)!;
+      const etape = avecCadrage(toutesLesEtapes.find((e) => e.id === id)!);
       expect(construireSpecAttribution(etape, "business-pipelines", ["Vérifié"]).exigences, id).toEqual(["revue-securite"]);
     }
-    const presentation = toutesLesEtapes.find((e) => e.id === "13.1")!;
+    const presentation = avecCadrage(toutesLesEtapes.find((e) => e.id === "13.1")!);
     expect(construireSpecAttribution(presentation, "business-pipelines", ["Vérifié"]).exigences).toEqual([]);
-    const planification = toutesLesEtapes.find((e) => e.id === "11.5")!;
+    const planification = avecCadrage(toutesLesEtapes.find((e) => e.id === "11.5")!);
     expect(construireSpecAttribution(planification, "business-pipelines", ["Vérifié"]).document).toContain("Planifier une tâche autorise un lancement différé.");
   });
 
@@ -125,8 +129,37 @@ describe("attribution depuis À venir", () => {
 });
 
 it("permet de renforcer manuellement une tâche non sensible et retire le renommage 11.1", () => {
-  const presentation = toutesLesEtapes.find((e) => e.id === "13.1")!;
+  const presentation = avecCadrage(toutesLesEtapes.find((e) => e.id === "13.1")!);
   expect(construireSpecAttribution(presentation, "business-pipelines", ["Vérifié"], true).exigences).toEqual(["revue-securite"]);
   expect(toutesLesEtapes.some((e) => e.id === "11.1")).toBe(false);
   expect(LOTS.find((l) => l.id === "11")?.titre).toContain("TaskBoard");
+});
+
+
+it("affiche les phases persistantes et garde les anciennes tâches non cadrées visibles sans départ", () => {
+  const html = renderToStaticMarkup(createElement(AVenir));
+  expect(html).toContain("Phase :");
+  expect(html).toContain("Critères de fin et dépendances");
+  expect(html).toContain('id="av-etape-3.6" draggable="false"');
+});
+
+it("Attribuer et le constructeur du calendrier conservent les mêmes critères sans limite à 950 caractères", () => {
+  const e = avecCadrage({ ...toutesLesEtapes[0]!, detail: "x".repeat(1100) });
+  e.cadrage.criteres = ["Premier résultat attendu.", "Deuxième résultat attendu."];
+  const attribution = construireSpecAttribution(e, "business-pipelines", []);
+  const calendrier = cadrerEtape(e, { projectId: "business-pipelines", criteres: [] });
+  expect(attribution.criteres).toEqual(calendrier.criteres);
+  expect(attribution.criteres).toHaveLength(2);
+  expect(attribution.document).toContain(e.detail);
+  expect(attribution.document).toContain(LOTS[0]!.but);
+});
+
+
+it("distingue fusion, recette et blocage avec sa raison", () => {
+  for (const [phase, libelle] of [["fusion-attendue", "Fusion attendue"], ["recette-attendue", "Recette attendue"], ["bloque", "Bloqué"]] as const) {
+    const attente = phase === "bloque" ? "Attente de la livraison opérateur." : null;
+    const html = renderToStaticMarkup(createElement(SuiviPersistant, { suivi: { phase, attente, preuves: [] } }));
+    expect(html).toContain(libelle);
+    if (attente) expect(html).toContain(attente);
+  }
 });

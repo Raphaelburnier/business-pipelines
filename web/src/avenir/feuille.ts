@@ -1,11 +1,27 @@
 // Feuille de route et défauts issus de l'audit du 17 octobre 2026 (rapport « Boucle agentique
 // business pipelines »). Préfixes : AO = agent-orchestrator, BP = business-pipelines,
-// REG = agent-registry, AS = agent-secrets. Mettre `statut` à jour à chaque PR qui avance un point.
+// REG = agent-registry, AS = agent-secrets. Les données et statuts sont dans feuille.json ;
+// ce module garde les types et la présentation. Mettre le suivi à jour avec ses preuves.
 import objectifsAttribuables from "./objectifs.json";
 import donnees from "./feuille.json";
+import { creerCadreur, construireCadrage, LIBELLES_PHASE } from "../../../src/cadrage-lots.mjs";
 
 export type Statut = "a-faire" | "en-cours" | "fait";
 export type Severite = "critique" | "haute" | "moyenne" | "basse";
+
+export interface Cadrage {
+  revision: number;
+  criteres: string[];
+  directives: string[];
+  exclusions: string[];
+  dependances: string[];
+  cloture?: { fusionRequise?: boolean; recetteRequise?: boolean; motifDispenseRecette?: string };
+}
+export interface Suivi {
+  phase: "a-faire" | "developpement" | "fusion-attendue" | "recette-attendue" | "bloque" | "clos";
+  attente: string | null;
+  preuves: Array<{ type: "verification" | "fusion" | "recette"; reference: string; revision: number; commit: string }>;
+}
 
 export interface Etape {
   id: string;
@@ -13,6 +29,8 @@ export interface Etape {
   detail: string;
   fichiers: string[];
   statut: Statut;
+  cadrage?: Cadrage;
+  suivi?: Suivi;
   // Un risque motivé peut renforcer la revue, en plus du classement des chemins.
   raisonSensibilite?: string;
 }
@@ -32,14 +50,28 @@ export interface Defaut {
   fichiers: string;
   correctif: string;
   statut: Statut;
+  cadrage?: Cadrage;
+  suivi?: Suivi;
 }
 
-const IDS_ATTRIBUABLES = new Set(objectifsAttribuables.map((objectif) => objectif.id));
+const cadreur = creerCadreur(donnees, objectifsAttribuables);
 const REVISION_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.revision]));
 const PROJET_OBJECTIFS = new Map(objectifsAttribuables.map((objectif) => [objectif.id, objectif.projet]));
 
 export function estAttribuable(etape: Pick<Etape, "id" | "statut">): boolean {
-  return etape.statut === "a-faire" && IDS_ATTRIBUABLES.has(etape.id);
+  return etape.statut === "a-faire" && cadreur.blocage(etape.id) === null;
+}
+
+export function raisonPreparation(id: string): string | null {
+  return cadreur.blocage(id)?.replace(/^Cadrage [^:]+ : /, "").replace(/^préparation requise, /, "") ?? null;
+}
+
+export function libelleSuivi(suivi?: Suivi): string | null {
+  return suivi ? LIBELLES_PHASE[suivi.phase] : null;
+}
+
+export function cadrerEtape(etape: Etape | Defaut, spec: Record<string, unknown>) {
+  return construireCadrage(etape, donnees.lots.find(l => l.etapes.some(e => e.id === etape.id)), spec);
 }
 
 export function revisionObjectif(id: string): number | null {

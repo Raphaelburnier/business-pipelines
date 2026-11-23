@@ -618,7 +618,7 @@ test("routes HTTP : origine contrôlée, plan proposé, plan changé refusé, la
     });
     req.on("error", rejeter); req.end(brut);
   });
-  const enfant = spawn(process.execPath, [path.join(__dirname, "..", "bin", "cockpit.js")], { stdio: ["ignore", "pipe", "pipe"],
+  const enfant = spawn(process.execPath, ["--require", path.join(__dirname, "fixtures", "cadrage-preload.js"), path.join(__dirname, "..", "bin", "cockpit.js")], { stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, COCKPIT_PORT: String(port), APPROVALS_DIR: path.join(f.dir, "approvals"), ORCH_EVENT_STORE: path.join(f.dir, "events.sqlite"),
       COCKPIT_OPERATEUR_LOCAL: "test", COCKPIT_PROJETS_DIR: f.projets, COCKPIT_EQUIPE_ROSTER: roster, ORCH_REGISTRE: f.reg } });
   try {

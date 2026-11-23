@@ -13,7 +13,7 @@ import type { AttributionAvenir } from "../donnees/source";
 import { type Objectif, type SourceCalendrier, sourceCalendrierApi, sourceCalendrierMaquette } from "../calendrier/api";
 import { Planifier } from "../calendrier/Calendrier";
 import { MOT_REPETITION } from "../calendrier/semaine";
-import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, SUGGESTIONS, estAttribuable, projetObjectif, revisionObjectif, type Etape, type Statut } from "./feuille";
+import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, SUGGESTIONS, cadrerEtape, estAttribuable, raisonPreparation, libelleSuivi, projetObjectif, revisionObjectif, type Etape, type Statut, type Suivi } from "./feuille";
 import { compter, construireTaches, filtrer, FILTRE_DEFAUT, parSeverite, projetsDisponibles, type Filtre, type Tache } from "./taches";
 import { sensibiliteEtape } from "./sensibilite";
 import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
@@ -24,6 +24,10 @@ const MOT_STATUT: Record<Statut, string> = { "a-faire": "à faire", "en-cours": 
 
 function Pastille({ statut }: { statut: Statut }) {
   return <span className={`av-statut ${statut}`}>{MOT_STATUT[statut]}</span>;
+}
+
+export function SuiviPersistant({ suivi }: { suivi?: Suivi }) {
+  return suivi ? <span className="av-description">Phase : {libelleSuivi(suivi)}{suivi.attente ? ` · ${suivi.attente}` : ""}</span> : null;
 }
 
 const STATUT_ATTRIBUTION: Record<string, string> = {
@@ -40,14 +44,14 @@ const prefixeDepot = (projectId: string) => PREFIXES[projectId] ?? `${projectId}
 export function construireSpecAttribution(etape: Etape, projectId: string, criteres: string[], sensibleManuel = false): SpecMission {
   const ailleurs = etape.fichiers.filter((f) => !f.startsWith(prefixeDepot(projectId)));
   const sensibilite = sensibiliteEtape(etape);
-  return {
+  return cadrerEtape(etape, {
     projectId, objectif: `${etape.titre} — ${etape.detail}`, criteres,
     document: `${etape.detail}\n\nFichiers annoncés : ${etape.fichiers.join(", ")}.${sensibilite.sensible ? `\n\nSensibilité :\n${sensibilite.raisons.join("\n")}` : ""}`,
     directives: "Respecter les instructions du dépôt et produire une PR vérifiable.",
     exclusions: ailleurs.length ? `Ce run ne modifie que ${projectId}. Hors périmètre, à traiter dans une autre mission : ${ailleurs.join(", ")}.` : "",
     exigences: sensibilite.sensible || sensibleManuel ? ["revue-securite"] : [], runtimesExclus: ["omniroute"],
     contexte: { _roadmapObjective: { id: etape.id, revision: revisionObjectif(etape.id) ?? 1 } },
-  };
+  }) as SpecMission;
 }
 
 type ChoixAgents = NonNullable<SpecMission["agents"]>;
@@ -120,11 +124,10 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
     const formulaire = new FormData(event.currentTarget);
     const criteres = lignes(String(formulaire.get("criteres") || ""));
     if (!projectId) return;
-    if (!criteres.length) { setErreur("Renseigne au moins un critère."); return; }
-    const spec = { ...construireSpecAttribution(etape, projectId, criteres, sensibleManuel), agents: choixAgents };
     setChoixModifies(false);
     setErreur(null); setAttente(true);
     try {
+      const spec = { ...construireSpecAttribution(etape, projectId, criteres, sensibleManuel), agents: choixAgents };
       const reponse = await source.proposerPlan(spec);
       setProposition({ spec, reponse }); setIndexAgents(reponse.plan?.pipeline.index ?? indexAgents); setAccepteDegrade(false);
     }
@@ -208,7 +211,8 @@ function Attribution({ etape, attribution, projetNom, agentNom, onRefresh }: {
       <label className="av-case"><input type="checkbox" aria-label={`Tâche sensible ${etape.id}`} checked={sensibiliteEtape(etape).sensible || sensibleManuel} disabled={sensibiliteEtape(etape).sensible} onChange={(e) => setSensibleManuel(e.target.checked)} /> Sensible — revue de sécurité et vérifications renforcées</label>
       {sensibiliteEtape(etape).sensible && <p className="av-form-depot">Imposé par les fichiers annoncés ou le risque du cadrage. Le serveur revérifie cette exigence.</p>}
       <InterrupteurPrioritaire checked={priorite === "haute"} onChange={(prioritaire) => setPriorite(prioritaire ? "haute" : "normale")} />
-      <label className="av-form-criteres">Critères de réussite<textarea name="criteres" required defaultValue={`Le changement répond à l'objectif « ${etape.titre} ».\nLes vérifications pertinentes passent et les résultats sont documentés.`} rows={3} /></label>
+      <ul>{etape.cadrage?.criteres.map(c => <li key={c}>{c}</li>)}</ul>
+      <label className="av-form-criteres">Critères supplémentaires (facultatif)<textarea name="criteres" defaultValue="" rows={3} /></label>
       <button type="submit" disabled={attente}>{attente ? "Préparation du plan…" : "Proposer le plan"}</button>
     </form>}
     {plan && <section className="av-plan" aria-live="polite"><b>{plan.statut === "bloque" ? "Plan bloqué" : "Plan proposé"}{plan.projet ? ` · ${plan.projet.nom}` : ""}</b>
@@ -261,8 +265,10 @@ function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [], s
       <Pastille statut={e.statut} />
     </div>
     <p className="av-description">{e.detail}</p>
+    <SuiviPersistant suivi={e.suivi} />
+    {e.cadrage && <details><summary>Critères de fin et dépendances</summary><ul>{e.cadrage.criteres.map(c => <li key={c}>{c}</li>)}</ul><p>Dépendances : {e.cadrage.dependances.join(", ") || "aucune"}</p></details>}
     {planifiable && !departDeplacable && onPlanifier && <button type="button" className="av-action" onClick={() => onPlanifier(e.id)}>Planifier</button>}
-    {e.statut === "a-faire" && !estAttribuable(e) && <p className="av-plan-indisponible">Préparation requise : cette tâche n’a pas encore de plan exécutable dans le cockpit.</p>}
+    {e.statut === "a-faire" && !estAttribuable(e) && <p className="av-plan-indisponible">Préparation requise : {raisonPreparation(e.id)}.</p>}
     {(e.statut !== "fait" || attribution || reservations.length > 0) && <AgentsTache agents={reservations.flatMap(o => o.agents || []).concat(attribution?.agents || (attribution?.agent ? [{ id: attribution.agent.id, nom: attribution.agent.nom, role: "Responsable", via: attribution.agent.llm.via }] : []))} />}
     {!!reservations.length && <p>Planifiée pour {reservations.map(o=>`${o.projectId} (${o.date})`).join(", ")} · <a href="#taskboard-calendrier">Voir dans le calendrier</a></p>}
     <SuiviPlans objectifs={suivis} />
@@ -304,6 +310,7 @@ function Fix({ tache, reservations = [], onPlanifier }: { tache: Tache; reservat
       <span className={`av-severite ${d.severite}`}>{d.severite}</span>
       <span className="av-titre">{d.titre}</span>
       <span className="av-correctif">{d.correctif}</span>
+      <SuiviPersistant suivi={d.suivi} />
       {!!reservations.length && <a href="#taskboard-calendrier">Planifiée ({reservations.length} dépôt(s))</a>}
       <Pastille statut={d.statut} />
     </div>
