@@ -847,6 +847,20 @@ test("base non prouvée : même test et même emplacement, autre erreur levée",
   assert.equal(r.sorties.decision, "claude", r.resume);
 });
 
+test("base rouge ou non selon le message d'erreur écrit sur une seule ligne", () => {
+  const tap = (message, pid) => [
+    "test\tRun server tests\t2026-11-20T13:48:22Z not ok 1 - route", "test\tRun server tests\t2026-11-20T13:48:22Z   ---",
+    "test\tRun server tests\t2026-11-20T13:48:22Z   location: '/w/test/a.test.js:3:1'",
+    "test\tRun server tests\t2026-11-20T13:48:22Z   failureType: 'testCodeFailure'",
+    `test\tRun server tests\t2026-11-20T13:48:22Z   error: '${message} (pid ${pid})'`,
+    "test\tRun server tests\t2026-11-20T13:48:22Z   code: 'ERR_TEST_FAILURE'", "test\tRun server tests\t2026-11-20T13:48:22Z   ...", "",
+  ].join("\n");
+  let r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap("quota inconnu", 4242); c.baseLog = tap("quota inconnu", 17); } });
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+  r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap("lire is not a function", 4242); c.baseLog = tap("quota inconnu", 17); } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
 test("base non prouvée : même test TAP, autre emplacement d'échec", () => {
   const r = trierAvec({ modifier: (c) => {
     baseRouge(c);

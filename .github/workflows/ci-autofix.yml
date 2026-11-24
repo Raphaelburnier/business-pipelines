@@ -307,18 +307,20 @@ jobs:
                     bloc && /^[[:space:]]+\.\.\.$/ { bloc = 0; next }
                     bloc && k < 0 && /^[[:space:]]+---$/ { k = indent($0); next }
                     bloc && k < 0 && /^[[:space:]]+[A-Za-z_]+:/ { k = indent($0) }
-                    bloc && k >= 0 && indent($0) == k && /^[[:space:]]+[A-Za-z_]+:/ {
-                      err = ($0 ~ /^[[:space:]]+error:/)
-                      if ($0 ~ /^[[:space:]]+(location|failureType|code|name|expected|actual|operator):/) emettre(1, $0)
-                      next
-                    }
-                    bloc && err && indent($0) > k {
-                      l = $0
+                    function neutre(l) {
                       gsub(/[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+/, "U", l)
                       gsub(/\/tmp\/[^\/ "]+/, "/tmp/T", l)
                       gsub(/[0-9]+/, "0", l)
-                      emettre(2, l); next
+                      return l
                     }
+                    bloc && k >= 0 && indent($0) == k && /^[[:space:]]+[A-Za-z_]+:/ {
+                      err = ($0 ~ /^[[:space:]]+error:/)
+                      if ($0 ~ /^[[:space:]]+(location|failureType|code|name|expected|actual|operator):/) emettre(1, $0)
+                      # Message sur une seule ligne : node écrit le texte après error:, sans bloc |-.
+                      else if (err && $0 !~ /^[[:space:]]+error:[[:space:]]*[|>][-+]?[[:space:]]*$/) emettre(2, neutre($0))
+                      next
+                    }
+                    bloc && err && indent($0) > k { emettre(2, neutre($0)); next }
                     !bloc && /error TS[0-9]+:|^[[:space:]]*FAIL[[:space:]]|AssertionError/ { emettre(3, $0) }
                   ' <<<"$nettoye" | LC_ALL=C sort)"
                   [[ -n "$diag" ]] || return 1
