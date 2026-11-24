@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { financeRequest, type PriceSnapshot } from "./api";
 import { priceChart } from "./price-chart";
-import { lireErreur } from "../donnees/erreurs";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { EtatErreur, Squelette } from "../composants/Etats";
 const priceFormat = new Intl.NumberFormat("fr-CH", {
   maximumFractionDigits: 4,
 });
@@ -18,7 +19,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
   const [selectedId, setSelectedId] = useState("eodhd:US:AAPL");
   const [adjusted, setAdjusted] = useState(false);
   const [date, setDate] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(0);
   const mutation = useRef<AbortController | null>(null);
@@ -26,7 +27,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
     const abort = new AbortController();
     setData(null);
     setBusy(false);
-    setError("");
+    setError(null);
     financeRequest<PriceSnapshot>(
       maquette ? "prices/example" : "prices",
       undefined,
@@ -36,7 +37,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
         if (!abort.signal.aborted) setData(d);
       })
       .catch((e: Error) => {
-        if (!abort.signal.aborted) setError(lireErreur(e).message);
+        if (!abort.signal.aborted) setError(lireErreur(e));
       });
     return () => {
       abort.abort();
@@ -47,7 +48,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
     const abort = new AbortController();
     mutation.current = abort;
     setBusy(true);
-    setError("");
+    setError(null);
     const previous = data;
     if (data && watchlist)
       setData({
@@ -63,7 +64,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
       if (!abort.signal.aborted) setData(d);
     } catch (e) {
       if (!abort.signal.aborted) {
-        setError(lireErreur(e).message);
+        setError(lireErreur(e));
         if (watchlist) setData(previous);
       }
     } finally {
@@ -116,14 +117,14 @@ export function Cours({ maquette }: { maquette: boolean }) {
           fournisseur.
         </p>
       )}
-      {!data && !error && <p role="status">Chargement des cours…</p>}
+      {!data && !error && <Squelette libelle="Chargement des cours…" />}
       {error && (
-        <div className="fin-error" role="alert">
-          {error}{" "}
-          {!data && (
-            <button onClick={() => setRetry((n) => n + 1)}>Réessayer</button>
-          )}
-        </div>
+        <EtatErreur
+          titre={data ? "Action impossible" : undefined}
+          message={error.message}
+          detail={error.detail}
+          onReessayer={data ? undefined : () => setRetry((n) => n + 1)}
+        />
       )}
       {data && (
         <>

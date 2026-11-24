@@ -7,7 +7,8 @@ import { Tresorerie } from "./Tresorerie";
 import { Analyses } from "./Analyses";
 import { useSource } from "../donnees/contexte";
 import "./finance.css";
-import { lireErreur } from "../donnees/erreurs";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { EtatErreur, Squelette } from "../composants/Etats";
 
 const spaces = ["Trésorerie", "Marchés", "Analyses", "Portefeuille"] as const;
 type Space = (typeof spaces)[number];
@@ -33,7 +34,7 @@ export function Finance() {
   const [demo, setDemo] = useState(false);
   const example = maquette || demo;
   const [data, setData] = useState<Summary | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [currency, setCurrency] = useState("CHF");
@@ -47,7 +48,7 @@ export function Finance() {
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true);
-    setError("");
+    setError(null);
     const params = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v),
     );
@@ -58,7 +59,7 @@ export function Finance() {
     )
       .then(setData)
       .catch((e: Error) => {
-        if (e.name !== "AbortError") setError(lireErreur(e).message);
+        if (e.name !== "AbortError") setError(lireErreur(e));
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
@@ -221,14 +222,13 @@ export function Finance() {
             </form>
           )}
           {loading ? (
-            <p role="status">Chargement des données financières…</p>
+            <Squelette lignes={4} libelle="Chargement des données financières…" />
           ) : error ? (
-            <div role="alert" className="fin-error">
-              {error}
-              <button onClick={() => setRevision((r) => r + 1)}>
-                Réessayer
-              </button>
-            </div>
+            <EtatErreur
+              message={error.message}
+              detail={error.detail}
+              onReessayer={() => setRevision((r) => r + 1)}
+            />
           ) : (
             data && (
               <Tresorerie

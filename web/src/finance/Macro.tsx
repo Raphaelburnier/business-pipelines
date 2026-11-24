@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { financeRequest, type MacroSnapshot } from "./api";
 import { macroChart } from "./macro-chart";
-import { lireErreur } from "../donnees/erreurs";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { EtatErreur, Squelette } from "../composants/Etats";
 
 const percent = (v: number | null | undefined) =>
   v == null
@@ -18,7 +19,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
   const [countryId, setCountryId] = useState("CHE");
   const [indicatorId, setIndicatorId] = useState("NY.GDP.MKTP.KD.ZG");
   const [year, setYear] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -27,7 +28,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
     const abort = new AbortController();
     setData(null);
     setLoading(true);
-    setError("");
+    setError(null);
     setRefreshing(false);
     financeRequest<MacroSnapshot>(
       maquette ? "macro/example" : "macro",
@@ -38,7 +39,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
         if (!abort.signal.aborted) setData(d);
       })
       .catch((e: Error) => {
-        if (!abort.signal.aborted) setError(lireErreur(e).message);
+        if (!abort.signal.aborted) setError(lireErreur(e));
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
@@ -52,7 +53,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
     const abort = new AbortController();
     refreshController.current = abort;
     setRefreshing(true);
-    setError("");
+    setError(null);
     try {
       const d = await financeRequest<MacroSnapshot>(
         "macro/refresh",
@@ -61,7 +62,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
       );
       if (!abort.signal.aborted) setData(d);
     } catch (e) {
-      if (!abort.signal.aborted) setError(lireErreur(e).message);
+      if (!abort.signal.aborted) setError(lireErreur(e));
     } finally {
       if (!abort.signal.aborted) setRefreshing(false);
     }
@@ -109,17 +110,17 @@ export function Macro({ maquette }: { maquette: boolean }) {
           publique n’est interrogée.
         </p>
       )}
-      {loading && <p role="status">Chargement de l’instantané macro…</p>}
+      {loading && <Squelette libelle="Chargement de l’instantané macro…" />}
       {refreshing && (
         <p role="status">Collecte auprès de la Banque mondiale…</p>
       )}
       {error && (
-        <div className="fin-error" role="alert">
-          {error}{" "}
-          {!data && (
-            <button onClick={() => setRetry((n) => n + 1)}>Réessayer</button>
-          )}
-        </div>
+        <EtatErreur
+          titre={data ? "Action impossible" : undefined}
+          message={error.message}
+          detail={error.detail}
+          onReessayer={data ? undefined : () => setRetry((n) => n + 1)}
+        />
       )}
       {data && (
         <>

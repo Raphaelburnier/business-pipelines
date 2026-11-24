@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { financeRequest, type Summary } from "./api";
-import { lireErreur } from "../donnees/erreurs";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { EtatErreur } from "../composants/Etats";
 export function Comptes({
   data,
   onSaved,
@@ -12,11 +13,11 @@ export function Comptes({
   const [ownership, setOwnership] = useState("unknown");
   const [businessId, setBusinessId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   if (!data.accounts.length) return null;
   async function save() {
     setBusy(true);
-    setError("");
+    setError(null);
     try {
       await financeRequest("accounts/scope", {
         accountId,
@@ -25,7 +26,7 @@ export function Comptes({
       });
       onSaved();
     } catch (e) {
-      setError(lireErreur(e).message);
+      setError(lireErreur(e));
     } finally {
       setBusy(false);
     }
@@ -114,9 +115,11 @@ export function Comptes({
           </button>
         </div>
         {error && (
-          <p role="alert" className="fin-error">
-            {error}
-          </p>
+          <EtatErreur
+            titre="Action impossible"
+            message={error.message}
+            detail={error.detail}
+          />
         )}
       </details>
     </section>

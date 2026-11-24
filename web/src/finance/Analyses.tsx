@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { financeRequest, money } from "./api";
-import { lireErreur } from "../donnees/erreurs";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 
 type Entree = { id: string; projectId: string; publishedAt: string; reportSha256: string };
 type Rapport = Entree & {
@@ -19,20 +20,23 @@ type Rapport = Entree & {
 export function Analyses() {
   const [entries, setEntries] = useState<Entree[]>([]);
   const [selected, setSelected] = useState<Rapport | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   const [loading, setLoading] = useState(true);
+  const [essai, setEssai] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setLoading(true);
+    setError(null);
     financeRequest<{ reports: Entree[] }>("reports", undefined, abort.signal)
       .then((data) => setEntries(data.reports))
-      .catch((e: Error) => { if (e.name !== "AbortError") setError(lireErreur(e).message); })
+      .catch((e: Error) => { if (e.name !== "AbortError") setError(lireErreur(e)); })
       .finally(() => { if (!abort.signal.aborted) setLoading(false); });
     return () => abort.abort();
-  }, []);
+  }, [essai]);
   async function ouvrir(id: string) {
-    setError(""); setSelected(null); setLoading(true);
+    setError(null); setSelected(null); setLoading(true);
     try { setSelected(await financeRequest<Rapport>(`reports/${encodeURIComponent(id)}`)); }
-    catch (e) { setError(lireErreur(e).message); }
+    catch (e) { setError(lireErreur(e)); }
     finally { setLoading(false); }
   }
   return (
@@ -41,9 +45,9 @@ export function Analyses() {
       <h2>Analyses financières</h2>
       <p>Les rapports archivés restent datés, sourcés et consultables ici. Une source absente reste inconnue ; les données de marché ne sont pas du temps réel mondial.</p>
       <p><a href="/missions/finance">Préparer une mission Finance</a></p>
-      {error && <p role="alert" className="fin-error">{error}</p>}
-      {loading && <p role="status">Chargement des rapports…</p>}
-      {!loading && entries.length === 0 && <p>Aucun rapport n’a encore été validé et archivé.</p>}
+      {error && <EtatErreur message={error.message} detail={error.detail} onReessayer={entries.length ? undefined : () => setEssai((n) => n + 1)} />}
+      {loading && <Squelette libelle="Chargement des rapports…" />}
+      {!loading && !error && entries.length === 0 && <EtatVide message="Aucun rapport n’a encore été validé et archivé." />}
       {entries.length > 0 && (
         <ul className="fin-report-list">
           {entries.map((entry) => (
