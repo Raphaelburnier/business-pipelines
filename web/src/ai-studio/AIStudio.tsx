@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties,
 import { aiStudioApi } from "./api";
 import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
 import { lireErreur } from "../donnees/erreurs";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
+import { Erreur } from "../ui";
 
 export type AIStudioPage =
   | { page: "home" }
@@ -48,7 +50,7 @@ function StudioHome({ aller }: { aller: (href: string) => void }) {
         </div>
       </section>
 
-      {erreur && <Alerte>{erreur}</Alerte>}
+      {erreur && <EtatErreur titre="Studio illisible" message={erreur} onReessayer={() => void charger()} />}
       <ModelManager />
       <div className="studio-section-head">
         <div><span className="studio-index">A</span><h3>Personnages</h3></div>
@@ -139,7 +141,7 @@ function ModelManager() {
     {catalogue?.models.length ? <div className="studio-model-list">{catalogue.models.map((model) => <div className="studio-model-row" key={`${model.category}/${model.name}`}>
       <span className="studio-model-kind">{MODEL_LABELS[model.category] || model.category}</span><span className="studio-model-name" title={model.name}>{model.name}</span><small>{(model.size / 1024 ** 3).toFixed(2)} Gio</small>
       <b className={model.installed ? "ready" : "pending"}>{model.installed ? "Détecté par ComfyUI" : !catalogue.comfy_available ? "ComfyUI hors ligne" : model.installed === false ? "Sur NAS · à rafraîchir" : "Sur NAS · non vérifié"}</b>
-    </div>)}</div> : <p className="studio-model-empty">Aucun modèle dans IA_Studio_Model. Choisissez son type, puis importez un fichier .safetensors.</p>}
+    </div>)}</div> : catalogue ? <EtatVide message="Aucun modèle dans IA_Studio_Model" detail="Choisissez son type, puis importez un fichier .safetensors." /> : !erreur && <Squelette lignes={2} libelle="Lecture des modèles…" />}
   </section>;
 }
 
@@ -193,12 +195,13 @@ function ProfileStudio({ id, tab, aller }: { id: string; tab: "gallery" | "gener
     const timer = setInterval(() => void charger(), 1500);
     return () => clearInterval(timer);
   }, [actif, charger]);
-  if (erreur) return <Alerte>{erreur}</Alerte>;
+  if (erreur && !profile) return <EtatErreur titre="Profil illisible" message={erreur} onReessayer={() => void charger()} />;
   if (!profile) return <Chargement />;
 
   const racine = `/ai-studio/profiles/${profile.id}`;
   return (
     <div className="studio-page">
+      {erreur && <Erreur onReessayer={() => void charger()}>{erreur}</Erreur>}
       <header className="studio-profile-head">
         <button type="button" className="studio-retour" onClick={() => aller("/ai-studio")}>← AI Studio</button>
         <div className="studio-avatar">{initiales(profile.name)}</div>
@@ -416,7 +419,7 @@ function Inspector({ id, aller }: { id: string; aller: (href: string) => void })
     if (!generation || (["completed", "failed", "cancelled"].includes(generation.status) && !(generation.approved_at && !generation.archived_at))) return;
     const timer = setInterval(() => void charger(), 1200); return () => clearInterval(timer);
   }, [generation, charger]);
-  if (!generation || !profile) return erreur ? <Alerte>{erreur}</Alerte> : <Chargement />;
+  if (!generation || !profile) return erreur ? <EtatErreur titre="Prise illisible" message={erreur} onReessayer={() => void charger()} /> : <Chargement />;
   const terminal = ["completed", "failed", "cancelled"].includes(generation.status);
 
   const valider = async () => {
@@ -535,9 +538,9 @@ function Select({ label, name, options, defaultValue }: { label: string; name: s
   return <label className="studio-field"><span>{label}</span><select name={name} defaultValue={defaultValue || options[0]}>{options.map((o) => <option key={o}>{o}</option>)}</select></label>;
 }
 function Meta({ label, value }: { label: string; value: string }) { return <div><dt>{label}</dt><dd>{value || "—"}</dd></div>; }
-function Alerte({ children }: { children: string }) { return <div className="studio-alert" role="alert">{children}</div>; }
-function Vide({ titre, action }: { titre: string; action: string }) { return <div className="studio-empty"><b>{titre}</b><span>{action}</span></div>; }
-function Chargement() { return <div className="studio-empty"><b>Chargement du studio…</b></div>; }
+function Alerte({ children }: { children: string }) { return <Erreur>{children}</Erreur>; }
+function Vide({ titre, action }: { titre: string; action: string }) { return <EtatVide message={titre} detail={action} />; }
+function Chargement() { return <Squelette lignes={4} libelle="Chargement du studio…" />; }
 function message(err: unknown) { return lireErreur(err).message; }
 function initiales(nom: string) { return nom.split(/\s+/).map((m) => m[0]).join("").slice(0, 2).toUpperCase(); }
 function imageUrl(g: Generation) { return `/api/ai-studio/generations/${encodeURIComponent(g.generation_id)}/image?v=${encodeURIComponent(g.updated_at)}`; }

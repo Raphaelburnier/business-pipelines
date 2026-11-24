@@ -3,6 +3,8 @@ import { useCharge, useSource } from "../donnees/contexte";
 import { enAttente, messageStatut, type FilEquipe, type OptionsDiscussion, type SelectionEquipe } from "../donnees/discussions";
 import { useTexteBrouillon } from "../donnees/brouillons";
 import { Erreur, Titre } from "../ui";
+import { EtatErreur, Squelette } from "../composants/Etats";
+import { lireErreur } from "../donnees/erreurs";
 import { ModeleMission } from "./Missions";
 
 const champ = "w-full rounded-lg border border-trait bg-carte px-3 py-2 text-sm";
@@ -26,14 +28,15 @@ export function Marketing({ projetInitial, filId, aller }: { projetInitial: stri
   const fils = useCharge((s) => s.filsEquipe(projetId || undefined), [projetId]);
   return <section className="mx-auto flex max-w-5xl flex-col gap-4 pb-6">
     <div><Titre>Équipe marketing</Titre><p className="text-sm text-douce">Discute des objectifs du projet, donne des directives et prépare une spec avec ton équipe.</p></div>
-    {topo.erreur && <Erreur>{topo.erreur}</Erreur>}
+    {topo.erreur && <EtatErreur titre="Projets illisibles" message={topo.erreur} detail={topo.detail} onReessayer={topo.recharger} />}
     <label className="text-sm">Projet
       <select className={champ} disabled={occupe} value={projetId} onChange={(e) => { setProjetId(e.target.value); aller(e.target.value ? `/marketing/${encodeURIComponent(e.target.value)}` : "/marketing"); }}>
         <option value="">Choisir un projet…</option>
         {topo.donnees?.projets.filter((p) => p.aFiche).map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
       </select>
     </label>
-    {fils.erreur && <Erreur>{fils.erreur}</Erreur>}
+    {fils.erreur && <EtatErreur titre="Discussions illisibles" message={fils.erreur} detail={fils.detail} onReessayer={fils.recharger} />}
+    {fils.chargement && !fils.erreur && <Squelette lignes={2} libelle="Lecture des discussions…" />}
     {!!fils.donnees?.length && <nav aria-label="Discussions du projet" className="flex flex-wrap gap-2">
       {fils.donnees.map((f) => <a key={f.id} href={`/marketing/${f.projectId}/${f.id}`} aria-current={filId === f.id ? "page" : undefined} className="max-w-xs truncate rounded-lg border border-trait px-3 py-2 text-sm">{f.objectif}</a>)}
     </nav>}
@@ -62,7 +65,7 @@ function Ouvrir({ projectId, aller, surEnvoi }: { projectId: string; aller: (hre
       setOptions(o);
       setParticipants(o.membres.slice(0, 6).map((m) => ({ membre: m.membre, llm: m.llm })));
       setErreur(null);
-    }).catch((err: unknown) => { if (!annule) setErreur(err instanceof Error ? err.message : String(err)); });
+    }).catch((err: unknown) => { if (!annule) setErreur(lireErreur(err).message); });
     return () => { annule = true; };
   }, [source, projectId, lecture]);
   async function ouvrir(e: FormEvent) {
@@ -75,9 +78,11 @@ function Ouvrir({ projectId, aller, surEnvoi }: { projectId: string; aller: (hre
       const f = await source.ouvrirDiscussion({ ...demande, requestId: idPour(demande) });
       oublierObjectif(); oublierContenu();
       aller(`/marketing/${f.projectId}/${f.id}`);
-    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); setEnvoi(false); surEnvoi(false); }
+    } catch (err) { setErreur(lireErreur(err).message); setEnvoi(false); surEnvoi(false); }
   }
-  if (!options) return <div>{erreur ? <><Erreur>{erreur}</Erreur><button className={bouton} onClick={() => setLecture((n) => n + 1)}>Relire l'équipe</button></> : <p>Préparation de l'équipe…</p>}</div>;
+  if (!options) return erreur
+    ? <EtatErreur titre="Préparation de l'équipe impossible" message={erreur} onReessayer={() => setLecture((n) => n + 1)} />
+    : <Squelette lignes={5} libelle="Préparation de l'équipe…" className="rounded-xl border border-trait bg-surface p-4" />;
   return <form onSubmit={ouvrir} className="flex flex-col gap-4 rounded-xl border border-trait bg-surface p-4">
     <h2 className="font-semibold">Nouvelle discussion · {options.nom}</h2>
     <fieldset disabled={envoi} className="flex flex-col gap-3 disabled:opacity-60">
@@ -132,7 +137,7 @@ function Conversation({ filId, projectId, aller }: { filId: string; projectId: s
       await source.envoyerEquipe(filId, { ...demande, requestId: idPour(demande) });
       oublierEnvoi();
       oublierContenu(); setType("message"); setRevision((r) => r + 1);
-    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    } catch (err) { setErreur(lireErreur(err).message); }
     finally { setEnvoi(false); }
   }
   async function transmettre(tour: string, membre: string, proposition: number) {
@@ -142,14 +147,16 @@ function Conversation({ filId, projectId, aller }: { filId: string; projectId: s
     try {
       const b = await source.preparerBrouillonEquipe(filId, { ...demande, requestId: idBrouillon(demande) });
       aller(`/missions/${encodeURIComponent(b.projectId)}?brouillon=${encodeURIComponent(b.id)}`);
-    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    } catch (err) { setErreur(lireErreur(err).message); }
     finally { setPreparation(null); }
   }
-  if (!fil) return lecture.erreur ? <Erreur>{lecture.erreur}</Erreur> : <p>Lecture de la discussion…</p>;
+  if (!fil) return lecture.erreur
+    ? <EtatErreur titre="Discussion illisible" message={lecture.erreur} detail={lecture.detail} onReessayer={lecture.recharger} />
+    : <Squelette lignes={4} libelle="Lecture de la discussion…" />;
   if (fil.projectId !== projectId) return <Erreur>Cette discussion appartient à un autre projet.</Erreur>;
   return <div className="flex flex-col gap-4">
     <header className="rounded-xl border border-trait bg-carte p-4"><h2 className="font-semibold">{fil.objectif}</h2><p className="mt-2 text-xs text-douce">{fil.participants.map((p) => `${p.nom} · ${p.role} · ${p.llm.via}:${p.llm.model}`).join(" / ")}</p></header>
-    {lecture.erreur && <Erreur>{lecture.erreur}</Erreur>}
+    {lecture.erreur && <Erreur onReessayer={lecture.recharger}>{lecture.erreur}</Erreur>}
     <div className="flex flex-col gap-4" aria-label="Messages de l'équipe">
       {fil.tours.map((t) => <article key={t.id} className="rounded-xl border border-trait bg-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-douce"><span>{t.par} · {t.type === "directive" ? "Directive conservée" : "Message"}</span><span role="status">{messageStatut(t.statut)}</span></div>

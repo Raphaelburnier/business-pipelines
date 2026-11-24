@@ -3,6 +3,7 @@ import { financeRequest, type PriceSnapshot } from "./api";
 import { priceChart } from "./price-chart";
 import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
 import { EtatErreur, Squelette } from "../composants/Etats";
+import { Erreur } from "../ui";
 const priceFormat = new Intl.NumberFormat("fr-CH", {
   maximumFractionDigits: 4,
 });
@@ -118,14 +119,16 @@ export function Cours({ maquette }: { maquette: boolean }) {
         </p>
       )}
       {!data && !error && <Squelette libelle="Chargement des cours…" />}
-      {error && (
-        <EtatErreur
-          titre={data ? "Action impossible" : undefined}
-          message={error.message}
-          detail={error.detail}
-          onReessayer={data ? undefined : () => setRetry((n) => n + 1)}
-        />
-      )}
+      {error &&
+        (data ? (
+          <Erreur>{error.message}</Erreur>
+        ) : (
+          <EtatErreur
+            message={error.message}
+            detail={error.detail}
+            onReessayer={() => setRetry((n) => n + 1)}
+          />
+        ))}
       {data && (
         <>
           {!maquette && (

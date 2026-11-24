@@ -1,5 +1,6 @@
 import type { AgentTache } from "../donnees/agents-taches";
 import { ErreurApi } from "../donnees/erreurs";
+import { corpsJson, messageReponse } from "../donnees/api";
 // Les objectifs planifiés de l'atelier (src/api-atelier.js). Le cockpit crée la commande
 // run.start à l'heure dite ; le moteur ne la prend pas avant son scheduling.notBefore.
 export type Priorite = "haute" | "normale" | "basse";
@@ -83,11 +84,8 @@ async function appeler<T>(chemin: string, corps?: unknown): Promise<T> {
   const reponse = await fetch(`/api/atelier/${chemin}`, corps === undefined
     ? { headers: { accept: "application/json" } }
     : { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(corps) });
-  const lu: unknown = await reponse.json().catch(() => ({ erreur: "réponse illisible" }));
-  if (!reponse.ok) {
-    const message = lu && typeof lu === "object" && "erreur" in lu && typeof lu.erreur === "string" ? lu.erreur : `${reponse.status}`;
-    throw new ErreurApi(message, reponse.status);
-  }
+  const lu = await corpsJson(reponse);
+  if (!reponse.ok) throw new ErreurApi(messageReponse(lu, reponse.status), reponse.status);
   return lu as T;
 }
 

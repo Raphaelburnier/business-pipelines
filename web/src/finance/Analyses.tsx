@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { financeRequest, money } from "./api";
 import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
 import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
+import { Erreur } from "../ui";
 
 type Entree = { id: string; projectId: string; publishedAt: string; reportSha256: string };
 type Rapport = Entree & {
@@ -45,7 +46,7 @@ export function Analyses() {
       <h2>Analyses financières</h2>
       <p>Les rapports archivés restent datés, sourcés et consultables ici. Une source absente reste inconnue ; les données de marché ne sont pas du temps réel mondial.</p>
       <p><a href="/missions/finance">Préparer une mission Finance</a></p>
-      {error && <EtatErreur message={error.message} detail={error.detail} onReessayer={entries.length ? undefined : () => setEssai((n) => n + 1)} />}
+      {error && (entries.length ? <Erreur>{error.message}</Erreur> : <EtatErreur message={error.message} detail={error.detail} onReessayer={() => setEssai((n) => n + 1)} />)}
       {loading && <Squelette libelle="Chargement des rapports…" />}
       {!loading && !error && entries.length === 0 && <EtatVide message="Aucun rapport n’a encore été validé et archivé." />}
       {entries.length > 0 && (

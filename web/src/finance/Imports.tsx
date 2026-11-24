@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import { financeRequest, type Kind, type Preview } from "./api";
 import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
-import { EtatErreur } from "../composants/Etats";
+import { Erreur } from "../ui";
 
 export function Imports({ onImported }: { onImported: () => void }) {
   const [kind, setKind] = useState<Kind>("mouvements");
@@ -155,13 +155,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
           inconnue.
         </p>
       </details>
-      {error && (
-        <EtatErreur
-          titre="Action impossible"
-          message={error.message}
-          detail={error.detail}
-        />
-      )}
+      {error && <Erreur>{error.message}</Erreur>}
       {message && (
         <p role="status" className="fin-success">
           {message}

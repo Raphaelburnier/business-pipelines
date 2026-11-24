@@ -3,6 +3,7 @@ import { financeRequest, type MacroSnapshot } from "./api";
 import { macroChart } from "./macro-chart";
 import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
 import { EtatErreur, Squelette } from "../composants/Etats";
+import { Erreur } from "../ui";
 
 const percent = (v: number | null | undefined) =>
   v == null
@@ -114,14 +115,16 @@ export function Macro({ maquette }: { maquette: boolean }) {
       {refreshing && (
         <p role="status">Collecte auprès de la Banque mondiale…</p>
       )}
-      {error && (
-        <EtatErreur
-          titre={data ? "Action impossible" : undefined}
-          message={error.message}
-          detail={error.detail}
-          onReessayer={data ? undefined : () => setRetry((n) => n + 1)}
-        />
-      )}
+      {error &&
+        (data ? (
+          <Erreur>{error.message}</Erreur>
+        ) : (
+          <EtatErreur
+            message={error.message}
+            detail={error.detail}
+            onReessayer={() => setRetry((n) => n + 1)}
+          />
+        ))}
       {data && (
         <>
           {!data.synthetic && data.lastAttempt && !data.lastAttempt.ok && (

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { financeRequest, type Summary } from "./api";
 import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
-import { EtatErreur } from "../composants/Etats";
+import { Erreur } from "../ui";
 export function Comptes({
   data,
   onSaved,
@@ -114,13 +114,7 @@ export function Comptes({
             Confirmer l’attribution
           </button>
         </div>
-        {error && (
-          <EtatErreur
-            titre="Action impossible"
-            message={error.message}
-            detail={error.detail}
-          />
-        )}
+        {error && <Erreur>{error.message}</Erreur>}
       </details>
     </section>
   );
