@@ -838,6 +838,15 @@ test("base rouge : en-tête du runner, PID, dossiers temporaires et UUID ignoré
   assert.equal(r.sorties.decision, "base-rouge", r.resume);
 });
 
+test("base non prouvée : même test et même emplacement, autre erreur levée", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.log = logReel("1a570e87", "jBvypr", 21321, "e1aaead1-ea1a-4db2-a918-3d385b19241a");
+    c.baseLog = c.log.replace("codex exec a échoué (code 1)", "TypeError: lire is not a function");
+  } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
 test("base non prouvée : même test TAP, autre emplacement d'échec", () => {
   const r = trierAvec({ modifier: (c) => {
     baseRouge(c);
