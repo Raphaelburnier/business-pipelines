@@ -290,14 +290,22 @@ jobs:
                 jobs_base="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$base_run/attempts/$base_attempt/jobs?per_page=100")" || jobs_base='[]'
                 echecs() { jq -c '[.[].jobs[] | .name as $job | .steps[]? | select(.conclusion == "failure") | [$job, .name]] | sort | unique'; }
                 empreinte() {
-                  # En-tête gh : job, étape, horodatage ; puis diagnostics stables et complets.
-                  nettoye="$(LC_ALL=C sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //; s/\x1b\[[0-9;?]*[ -/]*[@-~]//g' \
-                    | LC_ALL=C tr -d '\000-\010\013-\037\177' \
-                    | LC_ALL=C sed -E '/^[[:space:]#]*(duration_ms:|duration_ms |duration )[[:space:]]*[0-9.]+/d')"
-                  # Comparer tout le log normalisé : deux AssertionError peuvent avoir des
-                  # valeurs actual/expected différentes. Un nom de test seul ne suffit pas.
-                  LC_ALL=C grep -Eq '(error TS[0-9]+:|^not ok [0-9]+ - |^[[:space:]]*error: |AssertionError|^[[:space:]]*FAIL[[:space:]])' <<<"$nettoye" || return 1
-                  printf '%s' "$nettoye" | sha256sum | cut -d ' ' -f1
+                  # En-tête gh : job, étape, horodatage (la première ligne porte un BOM).
+                  nettoye="$(LC_ALL=C sed -E 's/\xEF\xBB\xBF//g; s/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //; s/\x1b\[[0-9;?]*[ -/]*[@-~]//g' \
+                    | LC_ALL=C tr -d '\000-\010\013-\037\177')"
+                  # Seuls les champs stables des diagnostics : le log entier porte l'en-tête du
+                  # runner (Worker ID, région) et des sorties volatiles (PID, dossiers temporaires,
+                  # UUID), si bien que deux runs du même échec ne coïncidaient jamais (#285, 20
+                  # novembre). Par test TAP : nom, emplacement, type, code et valeurs
+                  # expected/actual, pour que deux AssertionError différentes restent distinctes.
+                  diag="$(LC_ALL=C awk '
+                    /^[[:space:]]*not ok [0-9]+ - / { sub(/not ok [0-9]+ - /, "not ok - "); print; bloc = 1; next }
+                    bloc && /^[[:space:]]+\.\.\.$/ { bloc = 0; next }
+                    bloc && /^[[:space:]]+(location|failureType|code|name|expected|actual|operator): / { print; next }
+                    !bloc && /error TS[0-9]+:|^[[:space:]]*FAIL[[:space:]]|AssertionError/ { print }
+                  ' <<<"$nettoye")"
+                  [[ -n "$diag" ]] || return 1
+                  printf '%s' "$diag" | sha256sum | cut -d ' ' -f1
                 }
                 if [[ "$(echecs <<<"$jobs")" != '[]' && "$(echecs <<<"$jobs")" == "$(echecs <<<"$jobs_base")" ]]; then
                   log_pr="$(gh run view "$run_id" --repo "$REPOSITORY" --attempt "$tentative" --log-failed)" || log_pr=""

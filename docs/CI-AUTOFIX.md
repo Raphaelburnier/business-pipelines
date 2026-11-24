@@ -133,10 +133,13 @@ la tête courante. L'arrêt pour merge périmé reste distinct et demande une mi
 
 Le tri extrait la base du triplet de merge réussi du run, avec la tête exacte de la PR.
 La dernière CI hors PR sur cette base doit être terminée en échec. Les couples job/étape
-échoués et les logs complets normalisés doivent coïncider : seuls l'en-tête horodaté de
-`gh`, les codes ANSI et les durées TAP sont retirés. Les valeurs `actual`/`expected`,
-les noms de tests et les diagnostics TypeScript sont conservés. Un simple code de sortie
-sans diagnostic reconnaissable ne prouve pas une erreur héritée.
+échoués et les diagnostics stables doivent coïncider : pour chaque test TAP en échec, son
+nom, `location`, `failureType`, `code`, `name`, `expected`, `actual` et `operator` ; les
+lignes `error TS…`, `FAIL` et `AssertionError` hors de ces blocs. Le reste du log est ignoré :
+il porte l'en-tête du runner (Worker ID, région) et des sorties volatiles (PID, dossiers
+temporaires, UUID), si bien que deux runs du même échec ne coïncidaient jamais (recette du
+20 novembre, #285). Un simple code de sortie sans diagnostic reconnaissable ne prouve pas
+une erreur héritée.
 
 Si la preuve existe, `signaler` pose `ci-autofix-base:<tête>:<tentative>`, distinct des
 transmissions et arrêts. Aucune correction de cette PR n'est demandée, même si les trois
