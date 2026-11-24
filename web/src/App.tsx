@@ -224,7 +224,7 @@ function Coquille() {
       <MenuComplet ouvert={menu} onFermer={() => setMenu(false)} active={active} aller={naviguer} decisions={decisions} theme={theme} basculer={basculer} />
       <Tiroir ouvert={activiteOuverte} onFermer={() => setActiviteOuverte(false)} titre={`Activité · ${activite.total}`}>
         <div className="flex flex-col gap-5">
-          <ListeActivite activite={activite} aller={naviguer} />
+          <ListeActivite activite={activite} aller={naviguer} autoriseArret={file.etat?.autorise ?? false} />
           <ControleDemarrages controle={file} />
         </div>
       </Tiroir>
