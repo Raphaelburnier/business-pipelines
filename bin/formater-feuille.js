@@ -11,9 +11,10 @@ const lots = donnees.lots.map(({ etapes, ...lot }) => {
   champs.push(`      "etapes": [\n${etapes.map(e => `        ${JSON.stringify(e)}`).join(',\n')}\n      ]`);
   return `    {\n${champs.join(',\n')}\n    }`;
 });
-// L'indentation externe ne porte aucune donnée. La retirer économise la marge
-// nécessaire aux nouveaux suivis, en gardant une entrée par ligne pour la revue.
-const sortie = `{\n  "lots": [\n${lots.join(',\n')}\n  ],\n  "defauts": [\n${donnees.defauts.map(d => `    ${JSON.stringify(d)}`).join(',\n')}\n  ]\n}\n`.replace(/^  /gm, "");
+// Compacter les lignes de structure économise la marge des nouveaux suivis.
+// Garder l'indentation des longues entrées évite de réécrire tout leur diff :
+// GitHub peut sinon omettre le patch, même quand chaque fichier reste sous 100 Ko.
+const sortie = `{\n  "lots": [\n${lots.join(',\n')}\n  ],\n  "defauts": [\n${donnees.defauts.map(d => `    ${JSON.stringify(d)}`).join(',\n')}\n  ]\n}\n`.replace(/^  (?! *\{"id":)/gm, "");
 assert.deepEqual(JSON.parse(sortie), donnees, "Le formatage ne doit modifier aucune donnée.");
 fs.writeFileSync(fichier, sortie);
 console.log(`Feuille formatée sans changement de données : ${Buffer.byteLength(sortie)} octets.`);
