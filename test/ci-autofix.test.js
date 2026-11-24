@@ -861,6 +861,19 @@ test("base rouge ou non selon le message d'erreur écrit sur une seule ligne", (
   assert.equal(r.sorties.decision, "claude", r.resume);
 });
 
+test("base rouge ou non selon les valeurs multilignes expected/actual", () => {
+  const tap = (a) => [
+    "not ok 1 - objet", "  ---", "  location: '/w/test/a.test.js:3:1'", "  failureType: 'testCodeFailure'",
+    "  error: |-", "    Expected values to be strictly deep-equal:", "    + actual - expected",
+    "  code: 'ERR_ASSERTION'", "  name: 'AssertionError'", "  expected:", "    a: 2", "    b: 'x'",
+    "  actual:", `    a: ${a}`, "    b: 'x'", "  operator: 'deepStrictEqual'", "  ...", "",
+  ].map((l) => l && `test\tRun server tests\t2026-11-20T13:48:22Z ${l}`).join("\n");
+  let r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap(3); c.baseLog = tap(3); } });
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+  r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap(3); c.baseLog = tap(4); } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
 test("base non prouvée : même test TAP, autre emplacement d'échec", () => {
   const r = trierAvec({ modifier: (c) => {
     baseRouge(c);

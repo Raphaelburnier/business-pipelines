@@ -303,7 +303,7 @@ jobs:
                   diag="$(LC_ALL=C awk '
                     function indent(s) { match(s, /[^ ]/); return RSTART - 1 }
                     function emettre(rang, ligne) { printf "%06d\t%d\t%s\n", n, rang, ligne }
-                    /^[[:space:]]*not ok [0-9]+ - / { n++; sub(/not ok [0-9]+ - /, "not ok - "); emettre(0, $0); bloc = 1; k = -1; err = 0; next }
+                    /^[[:space:]]*not ok [0-9]+ - / { n++; sub(/not ok [0-9]+ - /, "not ok - "); emettre(0, $0); bloc = 1; k = -1; err = 0; cle = ""; next }
                     bloc && /^[[:space:]]+\.\.\.$/ { bloc = 0; next }
                     bloc && k < 0 && /^[[:space:]]+---$/ { k = indent($0); next }
                     bloc && k < 0 && /^[[:space:]]+[A-Za-z_]+:/ { k = indent($0) }
@@ -314,13 +314,16 @@ jobs:
                       return l
                     }
                     bloc && k >= 0 && indent($0) == k && /^[[:space:]]+[A-Za-z_]+:/ {
-                      err = ($0 ~ /^[[:space:]]+error:/)
-                      if ($0 ~ /^[[:space:]]+(location|failureType|code|name|expected|actual|operator):/) emettre(1, $0)
+                      cle = $0; sub(/^[[:space:]]+/, "", cle); sub(/:.*/, "", cle); seq = 0
+                      err = (cle == "error")
+                      if (cle ~ /^(location|failureType|code|name|expected|actual|operator)$/) emettre(1, $0)
                       # Message sur une seule ligne : node écrit le texte après error:, sans bloc |-.
                       else if (err && $0 !~ /^[[:space:]]+error:[[:space:]]*[|>][-+]?[[:space:]]*$/) emettre(2, neutre($0))
                       next
                     }
                     bloc && err && indent($0) > k { emettre(2, neutre($0)); next }
+                    # Valeurs multilignes (objets, tableaux) : gardées telles quelles et dans leur ordre.
+                    bloc && indent($0) > k && (cle == "expected" || cle == "actual") { emettre(1, sprintf("%s\t%04d\t%s", cle, ++seq, $0)); next }
                     !bloc && /error TS[0-9]+:|^[[:space:]]*FAIL[[:space:]]|AssertionError/ { emettre(3, $0) }
                   ' <<<"$nettoye" | LC_ALL=C sort)"
                   [[ -n "$diag" ]] || return 1
