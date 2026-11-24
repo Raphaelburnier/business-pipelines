@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { financeRequest, type Summary } from "./api";
+import { lireErreur } from "../donnees/erreurs";
 export function Comptes({
   data,
   onSaved,
@@ -24,7 +25,7 @@ export function Comptes({
       });
       onSaved();
     } catch (e) {
-      setError((e as Error).message);
+      setError(lireErreur(e).message);
     } finally {
       setBusy(false);
     }

@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import { financeRequest, type Kind, type Preview } from "./api";
+import { lireErreur } from "../donnees/erreurs";
 
 export function Imports({ onImported }: { onImported: () => void }) {
   const [kind, setKind] = useState<Kind>("mouvements");
@@ -48,7 +49,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
         }),
       );
     } catch (e) {
-      setError((e as Error).message);
+      setError(lireErreur(e).message);
       setPreview(null);
     } finally {
       setBusy(false);
@@ -69,7 +70,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
       setPreview(null);
       onImported();
     } catch (e) {
-      setError((e as Error).message);
+      setError(lireErreur(e).message);
       setPreview(null);
     } finally {
       setBusy(false);

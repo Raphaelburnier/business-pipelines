@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { financeRequest, type PriceSnapshot } from "./api";
 import { priceChart } from "./price-chart";
+import { lireErreur } from "../donnees/erreurs";
 const priceFormat = new Intl.NumberFormat("fr-CH", {
   maximumFractionDigits: 4,
 });
@@ -35,7 +36,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
         if (!abort.signal.aborted) setData(d);
       })
       .catch((e: Error) => {
-        if (!abort.signal.aborted) setError(e.message);
+        if (!abort.signal.aborted) setError(lireErreur(e).message);
       });
     return () => {
       abort.abort();
@@ -62,7 +63,7 @@ export function Cours({ maquette }: { maquette: boolean }) {
       if (!abort.signal.aborted) setData(d);
     } catch (e) {
       if (!abort.signal.aborted) {
-        setError((e as Error).message);
+        setError(lireErreur(e).message);
         if (watchlist) setData(previous);
       }
     } finally {

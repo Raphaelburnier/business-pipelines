@@ -1,3 +1,4 @@
+import { ErreurApi } from "../donnees/erreurs";
 export type Kind = "mouvements" | "soldes" | "factures";
 export type RecordData = Record<string, string | number>;
 export interface Row {
@@ -194,10 +195,11 @@ export async function financeRequest<T>(
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}) as { erreur?: string });
   if (!response.ok)
-    throw new Error(
-      data.erreur || `Finance indisponible (${response.status}).`,
+    throw new ErreurApi(
+      typeof data.erreur === "string" ? data.erreur : `${response.status}`,
+      response.status,
     );
   return data as T;
 }

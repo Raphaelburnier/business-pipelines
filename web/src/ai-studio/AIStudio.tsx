@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
 import { aiStudioApi } from "./api";
 import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
+import { lireErreur } from "../donnees/erreurs";
 
 export type AIStudioPage =
   | { page: "home" }
@@ -537,7 +538,7 @@ function Meta({ label, value }: { label: string; value: string }) { return <div>
 function Alerte({ children }: { children: string }) { return <div className="studio-alert" role="alert">{children}</div>; }
 function Vide({ titre, action }: { titre: string; action: string }) { return <div className="studio-empty"><b>{titre}</b><span>{action}</span></div>; }
 function Chargement() { return <div className="studio-empty"><b>Chargement du studio…</b></div>; }
-function message(err: unknown) { return err instanceof Error ? err.message : String(err); }
+function message(err: unknown) { return lireErreur(err).message; }
 function initiales(nom: string) { return nom.split(/\s+/).map((m) => m[0]).join("").slice(0, 2).toUpperCase(); }
 function imageUrl(g: Generation) { return `/api/ai-studio/generations/${encodeURIComponent(g.generation_id)}/image?v=${encodeURIComponent(g.updated_at)}`; }
 function dateCourte(iso: string) { return new Intl.DateTimeFormat("fr-CH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)); }

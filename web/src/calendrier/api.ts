@@ -1,4 +1,5 @@
 import type { AgentTache } from "../donnees/agents-taches";
+import { ErreurApi } from "../donnees/erreurs";
 // Les objectifs planifiés de l'atelier (src/api-atelier.js). Le cockpit crée la commande
 // run.start à l'heure dite ; le moteur ne la prend pas avant son scheduling.notBefore.
 export type Priorite = "haute" | "normale" | "basse";
@@ -85,7 +86,7 @@ async function appeler<T>(chemin: string, corps?: unknown): Promise<T> {
   const lu: unknown = await reponse.json().catch(() => ({ erreur: "réponse illisible" }));
   if (!reponse.ok) {
     const message = lu && typeof lu === "object" && "erreur" in lu && typeof lu.erreur === "string" ? lu.erreur : `${reponse.status}`;
-    throw new Error(message);
+    throw new ErreurApi(message, reponse.status);
   }
   return lu as T;
 }

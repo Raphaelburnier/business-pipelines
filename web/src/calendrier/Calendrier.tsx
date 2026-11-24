@@ -10,6 +10,7 @@ import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
 import { naviguer } from "../navigation";
 import { sourceCalendrierApi, sourceCalendrierMaquette, type Catalogue, type Objectif, type Priorite, type Repetition, type SourceCalendrier } from "./api";
 import { dateCivile, decaler, departEnRetard, departModifiable, departsFeuille, enRetard, etatDepartFeuille, etatEntree, FUSEAU, joursDeLaSemaine, lundi, MOT_REPETITION, semaine, type DepartFeuille, type Entree } from "./semaine";
+import { lireErreur } from "../donnees/erreurs";
 
 const JOURS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const titreJour = new Intl.DateTimeFormat("fr-CH", { timeZone: "UTC", day: "numeric", month: "short" });
@@ -27,7 +28,7 @@ function useCalendrier(source: SourceCalendrier, revision = 0) {
   const [erreur, setErreur] = useState<string | null>(null);
   const recharger = useCallback(async () => {
     try { setObjectifs(await source.objectifs()); setErreur(null); }
-    catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    catch (err) { setErreur(lireErreur(err).message); }
   }, [source]);
   useEffect(() => {
     void recharger();
@@ -46,7 +47,7 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
   // Un même envoi rejoué après une coupure réseau garde son identifiant : pas de doublon.
   const tentative = useRef<{ empreinte: string; requestId: string } | null>(null);
   useEffect(() => {
-    source.catalogue().then((c) => { setCatalogue(c); setProjet((p) => p || c.projets[0]?.id || ""); }, (err: unknown) => setErreur(err instanceof Error ? err.message : String(err)));
+    source.catalogue().then((c) => { setCatalogue(c); setProjet((p) => p || c.projets[0]?.id || ""); }, (err: unknown) => setErreur(lireErreur(err).message));
   }, [source]);
   const modeles = catalogue?.modeles.filter((m) => m.projectId === projet) ?? [];
 
@@ -68,7 +69,7 @@ export function Planifier({ source, aujourdhui, onPlanifie, onFermer }: { source
       await source.planifier({ requestId: tentative.current.requestId, brouillon, objectif, criteres, priority, calendrier });
       tentative.current = null;
       onPlanifie();
-    } catch (err) { setErreur(err instanceof Error ? err.message : String(err)); }
+    } catch (err) { setErreur(lireErreur(err).message); }
     finally { setEnvoi(false); }
   }
 
@@ -111,7 +112,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
   async function changer(changement: Omit<Parameters<SourceCalendrier["modifier"]>[1], "revision">) {
     setErreur(null); setEnvoi(true);
     try { await source.modifier(objectif.id, { revision: objectif.revision, ...changement }); onChange(); }
-    catch (err) { setErreur(err instanceof Error ? err.message : String(err)); onChange(); }
+    catch (err) { setErreur(lireErreur(err).message); onChange(); }
     finally { setEnvoi(false); }
   }
   function deplacer(event: FormEvent<HTMLFormElement>) {

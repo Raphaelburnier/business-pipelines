@@ -1,20 +1,13 @@
+import { ErreurApi } from "../donnees/erreurs";
 import type { CharacterProfile, ComfyStatus, Generation, ModelLibraryStatus, WorkflowManifest } from "./types";
-
-export class AIStudioApiError extends Error {
-  readonly status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
 
 async function requete<T>(url: string, options: RequestInit = {}): Promise<T> {
   const reponse = await fetch(url, { headers: { accept: "application/json", ...(options.headers || {}) }, ...options });
   const type = reponse.headers.get("content-type") || "";
   const corps = type.includes("json") ? await reponse.json() : await reponse.text();
   if (!reponse.ok) {
-    const message = corps && typeof corps === "object" && "erreur" in corps ? String(corps.erreur) : String(corps || reponse.status);
-    throw new AIStudioApiError(message, reponse.status);
+    const message = corps && typeof corps === "object" && "erreur" in corps ? String(corps.erreur) : String(reponse.status);
+    throw new ErreurApi(message, reponse.status);
   }
   return corps as T;
 }
@@ -42,7 +35,7 @@ export const aiStudioApi = {
       try { data = JSON.parse(xhr.responseText); }
       catch { reject(new Error("réponse du NAS illisible")); return; }
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new AIStudioApiError(data.erreur || "import refusé", xhr.status));
+        reject(new ErreurApi(data.erreur || "import refusé", xhr.status));
       } else resolve(data as { category: string; name: string; size: number; sha256: string });
     };
     xhr.send(file);

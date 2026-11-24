@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { financeRequest, money } from "./api";
+import { lireErreur } from "../donnees/erreurs";
 
 type Entree = { id: string; projectId: string; publishedAt: string; reportSha256: string };
 type Rapport = Entree & {
@@ -24,14 +25,14 @@ export function Analyses() {
     const abort = new AbortController();
     financeRequest<{ reports: Entree[] }>("reports", undefined, abort.signal)
       .then((data) => setEntries(data.reports))
-      .catch((e: Error) => { if (e.name !== "AbortError") setError(e.message); })
+      .catch((e: Error) => { if (e.name !== "AbortError") setError(lireErreur(e).message); })
       .finally(() => { if (!abort.signal.aborted) setLoading(false); });
     return () => abort.abort();
   }, []);
   async function ouvrir(id: string) {
     setError(""); setSelected(null); setLoading(true);
     try { setSelected(await financeRequest<Rapport>(`reports/${encodeURIComponent(id)}`)); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) { setError(lireErreur(e).message); }
     finally { setLoading(false); }
   }
   return (

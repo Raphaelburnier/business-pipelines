@@ -7,6 +7,7 @@ import { Tresorerie } from "./Tresorerie";
 import { Analyses } from "./Analyses";
 import { useSource } from "../donnees/contexte";
 import "./finance.css";
+import { lireErreur } from "../donnees/erreurs";
 
 const spaces = ["Trésorerie", "Marchés", "Analyses", "Portefeuille"] as const;
 type Space = (typeof spaces)[number];
@@ -57,7 +58,7 @@ export function Finance() {
     )
       .then(setData)
       .catch((e: Error) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (e.name !== "AbortError") setError(lireErreur(e).message);
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);

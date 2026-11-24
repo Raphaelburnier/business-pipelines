@@ -14,6 +14,7 @@ import { retenirFilDemander } from "../navigation";
 import type { AgentChat, FilDetaille, ListeFils, MessageChat } from "../types";
 import { Erreur, Titre, Vide } from "../ui";
 import { ActionsChat } from "./ActionsChat";
+import { lireErreur } from "../donnees/erreurs";
 
 const AGENTS: AgentChat[] = ["cockpit", "claude", "codex"];
 const NOMS: Record<AgentChat, string> = { cockpit: "Cockpit", claude: "Claude", codex: "Codex" };
@@ -89,7 +90,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
       // Le menu ramène à ce fil ; un fil disparu ne doit plus y ramener.
       retenirFilDemander(lu ? filId : null);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
+      setErreur(lireErreur(err).message);
     }
   }, [source, filId]);
 
@@ -132,7 +133,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
       setFil(suite);
       if (suite.id !== filId) aller(`/demander/${encodeURIComponent(suite.id)}`);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
+      setErreur(lireErreur(err).message);
     } finally {
       setEnvoi(false);
     }

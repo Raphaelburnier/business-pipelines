@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { financeRequest, type MacroSnapshot } from "./api";
 import { macroChart } from "./macro-chart";
+import { lireErreur } from "../donnees/erreurs";
 
 const percent = (v: number | null | undefined) =>
   v == null
@@ -37,7 +38,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
         if (!abort.signal.aborted) setData(d);
       })
       .catch((e: Error) => {
-        if (!abort.signal.aborted) setError(e.message);
+        if (!abort.signal.aborted) setError(lireErreur(e).message);
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
@@ -60,7 +61,7 @@ export function Macro({ maquette }: { maquette: boolean }) {
       );
       if (!abort.signal.aborted) setData(d);
     } catch (e) {
-      if (!abort.signal.aborted) setError((e as Error).message);
+      if (!abort.signal.aborted) setError(lireErreur(e).message);
     } finally {
       if (!abort.signal.aborted) setRefreshing(false);
     }
