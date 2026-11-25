@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { categories, money, type Bucket, type Row, type Summary } from "./api";
+import { EtatVide } from "../composants/Etats";
 
 function BalanceChart({ bucket }: { bucket: Bucket }) {
   const [selected, setSelected] = useState<number | null>(null);
@@ -430,7 +431,7 @@ export function Tresorerie({
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && <p>Aucun mouvement dans cette sélection.</p>}
+        {rows.length === 0 && <EtatVide message="Aucun mouvement dans cette sélection." detail="Élargis la période ou retire un filtre." />}
         {rows.length > 50 && (
           <div className="fin-actions">
             <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>

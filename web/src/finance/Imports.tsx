@@ -1,5 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import { financeRequest, type Kind, type Preview } from "./api";
+import { lireErreur, type ErreurLisible } from "../donnees/erreurs";
+import { Erreur } from "../ui";
 
 export function Imports({ onImported }: { onImported: () => void }) {
   const [kind, setKind] = useState<Kind>("mouvements");
@@ -9,27 +11,28 @@ export function Imports({ onImported }: { onImported: () => void }) {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErreurLisible | null>(null);
   const [message, setMessage] = useState("");
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0];
     setPreview(null);
     setMapping({});
     setMessage("");
-    setError("");
+    setError(null);
     setFile(null);
     if (!chosen) return;
     if (chosen.size > 1_000_000) {
-      setError(
-        "Fichier limité à 1 Mo. Découper le relevé en plusieurs imports.",
-      );
+      setError({
+        message: "Fichier limité à 1 Mo. Découper le relevé en plusieurs imports.",
+        detail: null,
+      });
       return;
     }
     setBusy(true);
     try {
       setFile({ fileName: chosen.name, csv: await chosen.text() });
     } catch {
-      setError("Impossible de lire ce fichier.");
+      setError({ message: "Impossible de lire ce fichier.", detail: null });
     } finally {
       setBusy(false);
     }
@@ -37,7 +40,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
   async function stage() {
     if (!file) return;
     setBusy(true);
-    setError("");
+    setError(null);
     setMessage("");
     try {
       setPreview(
@@ -48,7 +51,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
         }),
       );
     } catch (e) {
-      setError((e as Error).message);
+      setError(lireErreur(e));
       setPreview(null);
     } finally {
       setBusy(false);
@@ -57,7 +60,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
   async function confirm() {
     if (!preview?.canConfirm) return;
     setBusy(true);
-    setError("");
+    setError(null);
     try {
       const result = await financeRequest<{
         added: number;
@@ -69,7 +72,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
       setPreview(null);
       onImported();
     } catch (e) {
-      setError((e as Error).message);
+      setError(lireErreur(e));
       setPreview(null);
     } finally {
       setBusy(false);
@@ -152,11 +155,7 @@ export function Imports({ onImported }: { onImported: () => void }) {
           inconnue.
         </p>
       </details>
-      {error && (
-        <p role="alert" className="fin-error">
-          {error}
-        </p>
-      )}
+      {error && <Erreur>{error.message}</Erreur>}
       {message && (
         <p role="status" className="fin-success">
           {message}

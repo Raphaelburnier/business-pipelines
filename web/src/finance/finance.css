@@ -539,6 +539,10 @@
 .fin-empty p {
   max-width: 620px;
 }
+.fin-empty > [role="alert"],
+.fin-empty > [role="status"] {
+  margin-top: 1rem;
+}
 
 .fin-report-list { display: grid; gap: .55rem; margin: 1rem 0; padding: 0; list-style: none; }
 .fin-report-list button { width: 100%; padding: .8rem 1rem; border: 1px solid var(--color-trait-fort); border-radius: .7rem; text-align: left; color: inherit; background: var(--color-surface); }

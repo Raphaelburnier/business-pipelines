@@ -13,7 +13,9 @@ import { depuis, usd } from "../format";
 import { retenirFilDemander } from "../navigation";
 import type { AgentChat, FilDetaille, ListeFils, MessageChat } from "../types";
 import { Erreur, Titre, Vide } from "../ui";
+import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 import { ActionsChat } from "./ActionsChat";
+import { lireErreur } from "../donnees/erreurs";
 
 const AGENTS: AgentChat[] = ["cockpit", "claude", "codex"];
 const NOMS: Record<AgentChat, string> = { cockpit: "Cockpit", claude: "Claude", codex: "Codex" };
@@ -89,7 +91,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
       // Le menu ramène à ce fil ; un fil disparu ne doit plus y ramener.
       retenirFilDemander(lu ? filId : null);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
+      setErreur(lireErreur(err).message);
     }
   }, [source, filId]);
 
@@ -132,7 +134,7 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
       setFil(suite);
       if (suite.id !== filId) aller(`/demander/${encodeURIComponent(suite.id)}`);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : String(err));
+      setErreur(lireErreur(err).message);
     } finally {
       setEnvoi(false);
     }
@@ -149,8 +151,9 @@ export function Demander({ filId, aller }: { filId: string | null; aller: (href:
           Nouvelle question
         </button>
         <Titre compteur={liste.donnees?.fils.length}>Conversations</Titre>
-        {liste.erreur && <Erreur>{liste.erreur}</Erreur>}
-        {liste.donnees && !liste.donnees.fils.length && <p className="text-xs text-douce">Aucune conversation pour l'instant.</p>}
+        {liste.erreur && <EtatErreur titre="Conversations illisibles" message={liste.erreur} detail={liste.detail} onReessayer={liste.recharger} />}
+        {liste.chargement && !liste.erreur && <Squelette lignes={4} libelle="Lecture des conversations…" />}
+        {liste.donnees && !liste.donnees.fils.length && <EtatVide icone="vide" message="Aucune conversation pour l'instant." />}
         <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
           {liste.donnees?.fils.map((f) => (
             <li key={f.id}>

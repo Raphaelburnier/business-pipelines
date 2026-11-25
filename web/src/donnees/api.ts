@@ -7,14 +7,22 @@ import type { AttributionAvenir, Commande, FiltreRuns, Source } from "./source";
 import type { EtatPullRequests } from "./pullRequests";
 import { ErreurApi } from "./erreurs";
 
+// Un corps non JSON en erreur (502 HTML du proxy pendant une livraison) ne porte aucun
+// message du serveur : on remonte le code nu, que lireErreur traduit en consigne.
+const ILLISIBLE = { erreur: "réponse illisible" };
+
+/** Le message du serveur, ou le code HTTP nu quand la réponse n'en porte pas. */
+export function messageReponse(corps: unknown, code: number): string {
+  return corps !== ILLISIBLE && corps && typeof corps === "object" && "erreur" in corps && typeof corps.erreur === "string" ? corps.erreur : `${code}`;
+}
+
+/** Lit le corps JSON ; un corps illisible devient ILLISIBLE, reconnu par messageReponse. */
+export const corpsJson = (reponse: Response): Promise<unknown> => reponse.json().catch(() => ILLISIBLE);
+
 async function lire<T>(chemin: string): Promise<T> {
   const reponse = await fetch(chemin, { headers: { accept: "application/json" } });
-  const corps: unknown = await reponse.json().catch(() => ({ erreur: "réponse illisible" }));
-  if (!reponse.ok) {
-    const message =
-      corps && typeof corps === "object" && "erreur" in corps && typeof corps.erreur === "string" ? corps.erreur : `${reponse.status}`;
-    throw new ErreurApi(message, reponse.status);
-  }
+  const corps = await corpsJson(reponse);
+  if (!reponse.ok) throw new ErreurApi(messageReponse(corps, reponse.status), reponse.status);
   return corps as T;
 }
 
@@ -24,11 +32,8 @@ async function ecrire<T>(chemin: string, corps: unknown): Promise<T> {
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify(corps),
   });
-  const lu: unknown = await reponse.json().catch(() => ({ erreur: "réponse illisible" }));
-  if (!reponse.ok) {
-    const message = lu && typeof lu === "object" && "erreur" in lu && typeof lu.erreur === "string" ? lu.erreur : `${reponse.status}`;
-    throw new ErreurApi(message, reponse.status);
-  }
+  const lu = await corpsJson(reponse);
+  if (!reponse.ok) throw new ErreurApi(messageReponse(lu, reponse.status), reponse.status);
   return lu as T;
 }
 
