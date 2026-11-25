@@ -290,14 +290,44 @@ jobs:
                 jobs_base="$(gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$base_run/attempts/$base_attempt/jobs?per_page=100")" || jobs_base='[]'
                 echecs() { jq -c '[.[].jobs[] | .name as $job | .steps[]? | select(.conclusion == "failure") | [$job, .name]] | sort | unique'; }
                 empreinte() {
-                  # En-tête gh : job, étape, horodatage ; puis diagnostics stables et complets.
-                  nettoye="$(LC_ALL=C sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //; s/\x1b\[[0-9;?]*[ -/]*[@-~]//g' \
-                    | LC_ALL=C tr -d '\000-\010\013-\037\177' \
-                    | LC_ALL=C sed -E '/^[[:space:]#]*(duration_ms:|duration_ms |duration )[[:space:]]*[0-9.]+/d')"
-                  # Comparer tout le log normalisé : deux AssertionError peuvent avoir des
-                  # valeurs actual/expected différentes. Un nom de test seul ne suffit pas.
-                  LC_ALL=C grep -Eq '(error TS[0-9]+:|^not ok [0-9]+ - |^[[:space:]]*error: |AssertionError|^[[:space:]]*FAIL[[:space:]])' <<<"$nettoye" || return 1
-                  printf '%s' "$nettoye" | sha256sum | cut -d ' ' -f1
+                  # En-tête gh : job, étape, horodatage (la première ligne porte un BOM).
+                  nettoye="$(LC_ALL=C sed -E 's/\xEF\xBB\xBF//g; s/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //; s/\x1b\[[0-9;?]*[ -/]*[@-~]//g' \
+                    | LC_ALL=C tr -d '\000-\010\013-\037\177')"
+                  # Seuls les diagnostics comptent : le log entier porte l'en-tête du runner
+                  # (Worker ID, région) et des sorties volatiles, si bien que deux runs du même
+                  # échec ne coïncidaient jamais (#285, 20 novembre). Par test TAP : nom, champs
+                  # stables (emplacement, type, code, expected/actual) et texte de l'erreur, pour
+                  # qu'une autre cause dans le même test reste distincte. Dans ce texte, UUID,
+                  # dossiers /tmp et nombres (PID, latences) sont neutralisés, et les lignes triées
+                  # par test : les journaux asynchrones s'y entrelacent différemment à chaque run.
+                  diag="$(LC_ALL=C awk '
+                    function indent(s) { match(s, /[^ ]/); return RSTART - 1 }
+                    function emettre(rang, ligne) { printf "%06d\t%d\t%s\n", n, rang, ligne }
+                    /^[[:space:]]*not ok [0-9]+ - / { n++; sub(/not ok [0-9]+ - /, "not ok - "); emettre(0, $0); bloc = 1; k = -1; err = 0; cle = ""; next }
+                    bloc && /^[[:space:]]+\.\.\.$/ { bloc = 0; next }
+                    bloc && k < 0 && /^[[:space:]]+---$/ { k = indent($0); next }
+                    bloc && k < 0 && /^[[:space:]]+[A-Za-z_]+:/ { k = indent($0) }
+                    function neutre(l) {
+                      gsub(/[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+/, "U", l)
+                      gsub(/\/tmp\/[^\/ "]+/, "/tmp/T", l)
+                      gsub(/[0-9]+/, "0", l)
+                      return l
+                    }
+                    bloc && k >= 0 && indent($0) == k && /^[[:space:]]+[A-Za-z_]+:/ {
+                      cle = $0; sub(/^[[:space:]]+/, "", cle); sub(/:.*/, "", cle); seq = 0
+                      err = (cle == "error")
+                      if (cle ~ /^(location|failureType|code|name|expected|actual|operator)$/) emettre(1, $0)
+                      # Message sur une seule ligne : node écrit le texte après error:, sans bloc |-.
+                      else if (err && $0 !~ /^[[:space:]]+error:[[:space:]]*[|>][-+]?[[:space:]]*$/) emettre(2, neutre($0))
+                      next
+                    }
+                    bloc && err && indent($0) > k { emettre(2, neutre($0)); next }
+                    # Valeurs multilignes (objets, tableaux) : gardées telles quelles et dans leur ordre.
+                    bloc && indent($0) > k && (cle == "expected" || cle == "actual") { emettre(1, sprintf("%s\t%04d\t%s", cle, ++seq, $0)); next }
+                    !bloc && /error TS[0-9]+:|^[[:space:]]*FAIL[[:space:]]|AssertionError/ { emettre(3, $0) }
+                  ' <<<"$nettoye" | LC_ALL=C sort)"
+                  [[ -n "$diag" ]] || return 1
+                  printf '%s' "$diag" | sha256sum | cut -d ' ' -f1
                 }
                 if [[ "$(echecs <<<"$jobs")" != '[]' && "$(echecs <<<"$jobs")" == "$(echecs <<<"$jobs_base")" ]]; then
                   log_pr="$(gh run view "$run_id" --repo "$REPOSITORY" --attempt "$tentative" --log-failed)" || log_pr=""
