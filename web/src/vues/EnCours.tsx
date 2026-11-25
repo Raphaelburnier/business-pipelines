@@ -2,15 +2,17 @@
 // décision, ce qui tourne, ce qui attend une ressource. La coquille lit les données une fois
 // (le compteur du bouton et la liste viennent de la même lecture).
 //
-// Les actions ne proposent que les chemins qui existent côté serveur : ouvrir le run, et
-// aller décider pour une validation. Pause, Arrêter et Relancer arriveront avec leurs routes ;
-// un bouton qui ne fait rien apprendrait à se méfier des autres.
+// Les actions ne proposent que les chemins qui existent côté serveur : ouvrir le run, aller
+// décider pour une validation, et arrêter un run par sa route d'annulation. La pause d'un seul
+// run et Relancer arriveront avec leurs routes ; un bouton qui ne fait rien apprendrait à se
+// méfier des autres. La pause globale des démarrages est sous la liste, dans le même tiroir.
 import { useMemo, type MouseEvent, type ReactNode } from "react";
 import { EtatErreur, EtatVide, Squelette } from "../composants/Etats";
 import { useCharge, useHorloge } from "../donnees/contexte";
 import { depuis, usd } from "../format";
 import type { Run } from "../types";
 import { Etat } from "../ui";
+import { ControleRun } from "./ControleExecution";
 
 export type Genre = "wait" | "run" | "pause";
 
@@ -110,7 +112,12 @@ function Progression({ faites, total, genre }: { faites: number; total: number; 
   );
 }
 
-export function ListeActivite({ activite, aller }: { activite: Activite; aller: (href: string) => void }) {
+export function ListeActivite({ activite, aller, autoriseArret = false }: {
+  activite: Activite;
+  aller: (href: string) => void;
+  /** Droit d'arrêter un run, lu une fois avec l'état de la file plutôt qu'une fois par run. */
+  autoriseArret?: boolean;
+}) {
   const maintenant = useHorloge(5000);
   const { lignes, livraison } = activite;
 
@@ -191,6 +198,7 @@ export function ListeActivite({ activite, aller }: { activite: Activite; aller: 
                       <LienInterne href={`/run/${encodeURIComponent(run.id)}`} aller={aller} className="ao-btn">
                         Ouvrir le run
                       </LienInterne>
+                      <ControleRun run={run} autorise={autoriseArret} />
                     </div>
                   </li>
                 );

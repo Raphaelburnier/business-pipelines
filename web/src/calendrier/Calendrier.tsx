@@ -149,7 +149,7 @@ function Detail({ objectif, source, onChange }: { objectif: Objectif; source: So
         <span className={`cal-etat ${etat.ton}`} title={etat.mot}>{etat.mot}</span>
         {o.runId ? <a href={`/run/${encodeURIComponent(o.runId)}`}>Run {o.runId.slice(0, 8)}</a> : <span>Commande {o.commandId.slice(0, 8)}</span>}
         {o.raison && <span className="cal-raison">{o.raison}</span>}
-        {o.attente?.prochaineReprise && <span className="cal-raison">reprise prévue {new Date(o.attente.prochaineReprise).toLocaleString("fr-CH", { timeZone: FUSEAU })}</span>}
+        {o.attente?.prochaineReprise && <span className="cal-raison">reprise prévue {new Date(o.attente.prochaineReprise).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</span>}
         {o.attente?.raisonManuelle && <span className="cal-raison">{o.attente.raisonManuelle}</span>}
       </li>;
     })}</ul>
@@ -213,6 +213,13 @@ export function Calendrier({ integre = false, sourceCalendrier, revisionExterne 
   const [vue, setVue] = useState<"semaine" | "mois">("semaine");
   const [choisi, setChoisi] = useState<string | null>(null);
   const [formulaire, setFormulaire] = useState(false);
+  // Le détail s'affiche sous la grille : sur téléphone, il naît hors de l'écran sans ce défilement.
+  const detail = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!choisi) return;
+    const reduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    detail.current?.scrollIntoView({ block: "nearest", behavior: reduit ? "auto" : "smooth" });
+  }, [choisi]);
 
   const debut = lundi(dateVue);
   const debutMois = `${dateVue.slice(0, 7)}-01`;
@@ -283,7 +290,7 @@ export function Calendrier({ integre = false, sourceCalendrier, revisionExterne 
     {!!retards.length && <section className="cal-retards" aria-label="Départs en retard">
       <h3>En retard</h3>
       <p className="cal-aide">L'heure prévue est passée et le travail attend encore son résultat. Ouvre son détail pour voir son état et ses blocages.</p>
-      <ul>{retards.map((o) => <li key={o.id}><button type="button" className="cal-lien" onClick={() => setChoisi(o.id)}>{o.titre}</button> prévu {new Date(departEnRetard(o, maintenant)!).toLocaleString("fr-CH", { timeZone: FUSEAU })}</li>)}</ul>
+      <ul>{retards.map((o) => <li key={o.id}><button type="button" className="cal-lien" onClick={() => setChoisi(o.id)}>{o.titre}</button> prévu {new Date(departEnRetard(o, maintenant)!).toLocaleString("fr-CH", { timeZone: FUSEAU, dateStyle: "medium", timeStyle: "short" })}</li>)}</ul>
     </section>}
 
     {objectifs === null && !erreur && <p className="cal-aide">Chargement du calendrier…</p>}
@@ -314,6 +321,6 @@ export function Calendrier({ integre = false, sourceCalendrier, revisionExterne 
       })}
     </ol>}
     {objectifs && !objectifs.length && !(attributions ?? []).some((a) => a.prevuLe) && <p className="cal-aide">Aucun run planifié. « Planifier un run » choisit un pipeline, son objectif et sa journée.</p>}
-    {selection && <Detail objectif={selection} source={source} onChange={() => { void recharger(); onChangement?.(); }} />}
+    {selection && <div ref={detail} className="cal-detail-ancre"><Detail objectif={selection} source={source} onChange={() => { void recharger(); onChangement?.(); }} /></div>}
   </div>;
 }

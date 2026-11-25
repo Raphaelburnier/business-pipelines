@@ -17,8 +17,7 @@ import { DATE_AUDIT, DEFAUTS, LOTS, LOTS_PRIORISES, SUGGESTIONS, cadrerEtape, es
 import { compter, construireTaches, filtrer, FILTRE_DEFAUT, parSeverite, projetsDisponibles, type Filtre, type Tache } from "./taches";
 import { sensibiliteEtape } from "./sensibilite";
 import { InterrupteurPrioritaire } from "../InterrupteurPrioritaire";
-
-
+import { Icone } from "../icones";
 
 const MOT_STATUT: Record<Statut, string> = { "a-faire": "à faire", "en-cours": "en cours", fait: "fait" };
 
@@ -28,6 +27,43 @@ function Pastille({ statut }: { statut: Statut }) {
 
 export function SuiviPersistant({ suivi }: { suivi?: Suivi }) {
   return suivi ? <span className="av-description">Phase : {libelleSuivi(suivi)}{suivi.attente ? ` · ${suivi.attente}` : ""}</span> : null;
+}
+
+// Les sections dépliées à la main le restent d'une visite à l'autre, dans ce navigateur
+// seulement. Sans stockage (navigation privée), tout repart replié.
+const CLE_SECTIONS = "planning.sections-ouvertes";
+function lireSections(): Set<string> {
+  try {
+    const liste: unknown = JSON.parse(window.localStorage.getItem(CLE_SECTIONS) ?? "[]");
+    return new Set(Array.isArray(liste) ? liste.filter((cle): cle is string => typeof cle === "string") : []);
+  } catch { return new Set(); }
+}
+function ecrireSections(sections: Set<string>) {
+  try { window.localStorage.setItem(CLE_SECTIONS, JSON.stringify([...sections])); } catch { /* stockage refusé : l'état vaut pour la visite */ }
+}
+const avecOuSans = (sections: Set<string>, cle: string, present: boolean) => {
+  const suite = new Set(sections);
+  if (present) suite.add(cle); else suite.delete(cle);
+  return suite;
+};
+
+/** Une description coupée à trois lignes dans le Planning ; « Lire la suite » la montre en entier. */
+function DescriptionRepliable({ texte }: { texte: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [deplie, setDeplie] = useState(false);
+  const [tronque, setTronque] = useState(false);
+  // Mesurée à chaque changement de taille : un lot replié mesure zéro, puis le texte apparaît.
+  useEffect(() => {
+    const p = ref.current;
+    if (!p || deplie || typeof ResizeObserver === "undefined") return;
+    const observateur = new ResizeObserver(() => setTronque(p.scrollHeight > p.clientHeight + 1));
+    observateur.observe(p);
+    return () => observateur.disconnect();
+  }, [deplie, texte]);
+  return <>
+    <p ref={ref} className={`av-description${deplie ? " deplie" : ""}`}>{texte}</p>
+    {(tronque || deplie) && <button type="button" className="av-lien-action" aria-expanded={deplie} onClick={() => setDeplie((v) => !v)}>{deplie ? "Réduire" : "Lire la suite"}</button>}
+  </>;
 }
 
 const STATUT_ATTRIBUTION: Record<string, string> = {
@@ -264,7 +300,7 @@ function EtapeLigne({ e, attribution, projetNom, onRefresh, reservations = [], s
       {sensibilite.sensible && <span className="av-sensible" title={`Revue de sécurité demandée. ${sensibilite.raisons.join(" ")} La fusion explicite dépend des fichiers réellement modifiés.`}>sensible</span>}
       <Pastille statut={e.statut} />
     </div>
-    <p className="av-description">{e.detail}</p>
+    <DescriptionRepliable texte={e.detail} />
     <SuiviPersistant suivi={e.suivi} />
     {e.cadrage && <details><summary>Critères de fin et dépendances</summary><ul>{e.cadrage.criteres.map(c => <li key={c}>{c}</li>)}</ul><p>Dépendances : {e.cadrage.dependances.join(", ") || "aucune"}</p></details>}
     {planifiable && !departDeplacable && onPlanifier && <button type="button" className="av-action" onClick={() => onPlanifier(e.id)}>Planifier</button>}
@@ -338,9 +374,30 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
   const [nouvelle, setNouvelle] = useState(false);
   const [ordre, setOrdre] = useState("croissant");
   const rafraichir = () => { setRevision((n) => n + 1); onChangement?.(); };
-  // Le calendrier renvoie vers une étape : la page arrive en chargement différé, on y défile ensuite.
+  // Sections repliées par défaut. L'état suit l'événement toggle du navigateur : un rendu ne
+  // rouvre ni ne referme jamais une section à la place de l'utilisateur. Pendant une recherche,
+  // tout ce qui correspond s'ouvre, et ce qu'il referme reste fermé jusqu'à la recherche suivante.
+  const [sections, setSections] = useState<Set<string>>(lireSections);
+  const [fermeesRecherche, setFermeesRecherche] = useState<Set<string>>(() => new Set());
+  const [autresEtapes, setAutresEtapes] = useState<Set<string>>(() => new Set());
+  const recherche = filtre.recherche.trim() !== "";
+  useEffect(() => { ecrireSections(sections); }, [sections]);
+  useEffect(() => { setFermeesRecherche(new Set()); }, [filtre.recherche]);
+  const estOuverte = (cle: string) => (recherche ? !fermeesRecherche.has(cle) : sections.has(cle));
+  function basculer(cle: string, ouverte: boolean) {
+    if (ouverte === estOuverte(cle)) return;
+    if (recherche) setFermeesRecherche((f) => avecOuSans(f, cle, !ouverte));
+    else setSections((s) => avecOuSans(s, cle, ouverte));
+  }
+  // Le calendrier renvoie vers une étape : son lot s'ouvre, puis la page y défile.
   useEffect(() => {
-    if (window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: "center" });
+    if (!window.location.hash) return;
+    const cible = decodeURIComponent(window.location.hash.slice(1));
+    const ref = cible.startsWith("av-etape-") ? cible.slice("av-etape-".length) : "";
+    const lot = LOTS.find((l) => l.etapes.some((e) => e.id === ref));
+    const cle = lot ? `lot:${lot.id}` : DEFAUTS.some((d) => d.id === ref) ? "fix" : null;
+    if (cle) setSections((s) => avecOuSans(s, cle, true));
+    requestAnimationFrame(() => document.getElementById(cible)?.scrollIntoView({ block: "center" }));
   }, []);
 
   const taches = useMemo(() => construireTaches(LOTS, DEFAUTS, objectifs ?? [], attributions ?? []), [objectifs, attributions]);
@@ -360,9 +417,15 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
     .filter((l) => l.etapes.some((e) => etapesVisibles.has(e.id)));
   const critiques = taches.filter((t) => t.type === "fix" && t.severite === "critique" && t.statut !== "fait").length;
   const aujourdhui = dateCivile(Date.now()).date;
-  // En vue « Tout », les longues listes système restent repliées derrière leur résumé.
-  const deplier = (type: Filtre["type"]) => filtre.type === type || (integre && type === "fonctionnalite" && filtre.type === "tous") || filtre.recherche.trim() !== "";
-  const ancre = typeof window === "undefined" ? "" : window.location.hash;
+  // Les étapes d'un lot que seul le filtre de statut cache : un lot « 3/4 » peut montrer ses faites.
+  const horsStatut = new Set(filtrer(taches, { ...filtre, statut: "toutes" }).filter((t) => t.type === "fonctionnalite").map((t) => t.ref));
+  const motAutres = filtre.statut === "faites" ? ["ouverte", "ouvertes"] : ["faite", "faites"];
+  const clesLots = lots.map((l) => `lot:${l.id}`);
+  const tousOuverts = clesLots.length > 0 && clesLots.every(estOuverte);
+  function basculerTous(ouvrir: boolean) {
+    if (recherche) setFermeesRecherche(ouvrir ? new Set() : new Set(clesLots));
+    else setSections((s) => clesLots.reduce((suite, cle) => avecOuSans(suite, cle, ouvrir), s));
+  }
 
   return (
     <div className={`av-page ${integre ? "av-embarque" : ""}`}>
@@ -425,8 +488,9 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
         </section>
       ))}
 
-      {!!fix.length && <details className="av-lot av-section" open={deplier("fix")}>
+      {!!fix.length && <details className="av-lot av-section" open={estOuverte("fix")} onToggle={(e) => basculer("fix", e.currentTarget.open)}>
         <summary>
+          <Icone nom="suite" taille={16} className="av-chevron" />
           <span className="kicker">Système · du plus grave au moins grave</span>
           <span className="av-section-titre">Fix</span>
           <span className="av-section-compte">{fix.length}{fix.some((t) => t.severite === "critique") ? ` · ${fix.filter((t) => t.severite === "critique").length} critique(s)` : ""}</span>
@@ -435,19 +499,38 @@ export function AVenir({ integre = false, sourceCalendrier, revisionExterne = 0,
       </details>}
 
       {!!lots.length && <>
+        <div className="av-lots-barre">
+          <span>{lots.length} lot{lots.length > 1 ? "s" : ""} · {etapesVisibles.size} étape{etapesVisibles.size > 1 ? "s" : ""} affichée{etapesVisibles.size > 1 ? "s" : ""}</span>
+          <button type="button" className="av-lien-action" onClick={() => basculerTous(!tousOuverts)}>{tousOuverts ? "Tout replier" : "Tout déplier"}</button>
+        </div>
         <ol className="av-lots">
           {lots.map((lot) => {
+            const cle = `lot:${lot.id}`;
             const faits = lot.etapes.filter((e) => e.statut === "fait").length;
-            return <li key={lot.id} id={`av-lot-${lot.id}`}><details className="av-lot av-section" open={deplier("fonctionnalite") || lot.etapes.some((e) => ancre === `#av-etape-${e.id}`)}>
+            const enCours = lot.etapes.filter((e) => e.statut === "en-cours").length;
+            const aFaire = lot.etapes.length - faits - enCours;
+            const etat = [enCours ? `${enCours} en cours` : "", aFaire ? `${aFaire} à faire` : ""].filter(Boolean).join(" · ") || "terminé";
+            const masquees = lot.etapes.filter((e) => !etapesVisibles.has(e.id) && horsStatut.has(e.id));
+            const autres = autresEtapes.has(cle);
+            const montrees = lot.etapes.filter((e) => etapesVisibles.has(e.id) || (autres && horsStatut.has(e.id)));
+            return <li key={lot.id} id={`av-lot-${lot.id}`}><details className="av-lot av-section" open={estOuverte(cle)} onToggle={(e) => basculer(cle, e.currentTarget.open)}>
               <summary>
-                <span className="kicker">Fonctionnalité système · lot {lot.id}{lot.prerequis ? ` · après ${lot.prerequis}` : ""}</span>
+                <Icone nom="suite" taille={16} className="av-chevron" />
+                <span className="kicker">Lot {lot.id}{lot.prerequis ? ` · après ${lot.prerequis}` : ""}</span>
                 <span className="av-section-titre">{lot.titre}</span>
                 <span className="av-section-compte" aria-label={`${faits} étapes faites sur ${lot.etapes.length}`}>{faits}/{lot.etapes.length}</span>
+                <span className="av-progression" aria-hidden="true"><span style={{ width: `${Math.round((faits / Math.max(lot.etapes.length, 1)) * 100)}%` }} /></span>
+                <span className="av-section-etat">{etat}</span>
                 <span className="av-section-but">{lot.but}</span>
               </summary>
               <ul>
-                {lot.etapes.filter((e) => etapesVisibles.has(e.id)).map((e) => <EtapeLigne key={e.id} e={e} onPlanifier={onPlanifier} reservations={reservations(e.id)} suivis={(objectifs ?? []).filter(o => o.taskBoard?.id === e.id)} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
+                {montrees.map((e) => <EtapeLigne key={e.id} e={e} onPlanifier={onPlanifier} reservations={reservations(e.id)} suivis={(objectifs ?? []).filter(o => o.taskBoard?.id === e.id)} attribution={parObjectif.get(e.id)} onRefresh={rafraichir}
                   projetNom={topo?.projets.find((p) => p.id === parObjectif.get(e.id)?.projetId)?.nom ?? parObjectif.get(e.id)?.projetId ?? ""} />)}
+                {!!masquees.length && <li className="av-lot-autres">
+                  <button type="button" className="av-lien-action" aria-expanded={autres} onClick={() => setAutresEtapes((s) => avecOuSans(s, cle, !autres))}>
+                    {autres ? `Masquer ${masquees.length > 1 ? `les ${masquees.length} étapes ${motAutres[1]}` : `l'étape ${motAutres[0]}`}` : `Voir ${masquees.length > 1 ? `les ${masquees.length} étapes ${motAutres[1]}` : `l'étape ${motAutres[0]}`}`}
+                  </button>
+                </li>}
               </ul>
             </details></li>;
           })}

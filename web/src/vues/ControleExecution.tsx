@@ -188,19 +188,25 @@ export function ControleDemarrages({ controle }: { controle: ControleFile }) {
  * Arrêter un run : une action sans retour, donc en deux temps. « Arrêter » plutôt
  * qu'« Annuler », qui nomme déjà le bouton qui referme la question.
  */
-export function ControleRun({ run }: { run: Pick<RunDetaille, "id" | "statut" | "annulation"> }) {
+export function ControleRun({ run, autorise: autoriseParent }: {
+  run: Pick<RunDetaille, "id" | "statut" | "annulation">;
+  /** Le droit d'arrêt déjà lu par le parent : le tiroir lit la file une fois pour tous ses runs. */
+  autorise?: boolean;
+}) {
   const { source } = useSource();
   const toasts = useToasts();
-  const [autorise, setAutorise] = useState(false);
+  const [autoriseLu, setAutoriseLu] = useState(false);
   const [droitsIllisibles, setDroitsIllisibles] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(null);
   const suivi = useSuiviCommande(id);
   const commande = suivi.commande;
+  const lireDroits = autoriseParent === undefined;
   useEffect(() => {
+    if (!lireDroits) return;
     let actif = true;
     source.etatExecution?.().then(
       (e) => {
-        if (actif) setAutorise(e.autorise);
+        if (actif) setAutoriseLu(e.autorise);
       },
       (err: unknown) => {
         if (actif) setDroitsIllisibles(lireErreur(err).message);
@@ -209,7 +215,8 @@ export function ControleRun({ run }: { run: Pick<RunDetaille, "id" | "statut" | 
     return () => {
       actif = false;
     };
-  }, [source]);
+  }, [source, lireDroits]);
+  const autorise = autoriseParent ?? autoriseLu;
   const raison = commande?.statut === "refused" ? commande.resultat?.raison : run.annulation?.statut === "refused" ? run.annulation.raison : null;
   const termine = ["succeeded", "failed", "cancelled"].includes(run.statut);
   const pending = Boolean(id && (!commande || ["pending", "taken"].includes(commande.statut))) || ["pending", "taken"].includes(run.annulation?.statut || "");
