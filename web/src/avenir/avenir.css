@@ -114,16 +114,43 @@ details.av-ordre > .av-suggestions { padding: 0 16px 12px; }
   .av-filtre-titre { width: 100%; }
 }
 
-/* Sections repliables : le résumé porte le titre et le compte. */
-details.av-section > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 16px; cursor: pointer; list-style: none; }
+/* Sections repliables : tout le résumé est la cible (chevron, titre, avancement, but). C'est un
+   contrôle : pas de sélection de texte au toucher long, pas de flash gris, retour sur :active. */
+details.av-section > summary {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-areas: ". kicker compte" "chevron titre titre" ". barre etat" ". but but";
+  align-items: center; gap: 4px 10px; min-height: 44px; padding: 12px 16px;
+  cursor: pointer; list-style: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; transition: background-color .12s ease-out;
+}
 details.av-section > summary::-webkit-details-marker { display: none; }
-details.av-section > summary .kicker { grid-column: 1 / -1; }
+details.av-section > summary:active { background: var(--color-carte); }
+@media (hover: hover) and (pointer: fine) { details.av-section > summary:hover { background: var(--color-carte); } }
+/* .av-lot coupe ce qui dépasse : le contour de focus reste à l'intérieur. */
+details.av-section > summary:focus-visible { outline-offset: -2px; }
+details.av-section > summary .kicker { grid-area: kicker; }
 details.av-section[open] > summary { border-bottom: 1px solid var(--color-trait); }
-.av-section-titre { font: 600 16px/1.25 var(--font-sans); color: var(--color-encre); }
-.av-section-titre::before { content: "▸ "; color: var(--color-douce); }
-details[open] > summary .av-section-titre::before { content: "▾ "; }
-.av-section-compte { font: 600 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--color-douce); }
-.av-section-but { grid-column: 1 / -1; color: var(--color-douce); font-size: 14px; }
+.av-chevron { grid-area: chevron; color: var(--color-douce); transition: transform .16s ease-out; }
+details.av-section[open] > summary .av-chevron { transform: rotate(90deg); }
+.av-section-titre { grid-area: titre; font: 600 16px/1.25 var(--font-sans); color: var(--color-encre); }
+.av-section-compte { grid-area: compte; justify-self: end; font: 600 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--color-douce); }
+.av-progression { grid-area: barre; display: block; height: 4px; overflow: hidden; border-radius: 999px; background: var(--color-trait); }
+.av-progression > span { display: block; height: 100%; border-radius: inherit; background: var(--color-ok); }
+.av-section-etat { grid-area: etat; justify-self: end; color: var(--color-douce); font: 500 12px/1.2 var(--font-sans); white-space: nowrap; }
+.av-section-but { grid-area: but; color: var(--color-douce); font-size: 14px; }
+details.av-section:not([open]) .av-section-but { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .av-chevron, details.av-section > summary { transition: none; } }
+
+/* La barre au-dessus des lots, et les liens d'action (tout déplier, lire la suite, étapes faites). */
+.av-lots-barre { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; color: var(--color-douce); font-size: 12.5px; }
+.av-lien-action {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 0 2px; border: 0; background: none;
+  color: var(--color-accent); font: 500 13px/1.2 var(--font-sans); cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+}
+.av-lien-action:active { opacity: .7; }
+@media (hover: hover) and (pointer: fine) { .av-lien-action:hover { text-decoration: underline; text-underline-offset: 2px; } }
+details.av-section > ul > li.av-lot-autres { padding-block: 2px; }
 details.av-section > ul { margin: 0; padding: 0; list-style: none; }
 details.av-section > ul > li { padding: 10px 16px; border-top: 1px solid var(--color-trait); }
 details.av-section > ul > li:first-child { border-top: 0; }

@@ -479,7 +479,8 @@ async function traiter(req, res) {
     chemin === "/marketing" || chemin.startsWith("/marketing/") ||
     chemin === "/systeme" || chemin === "/systeme/" ||
     chemin === "/systeme/fonctionnement" || chemin === "/systeme/fonctionnement/" ||
-    chemin === "/taskboard" || chemin === "/taskboard/" ||
+    // Le Planning et ses onglets : recharger /taskboard/taches doit rester sur l'onglet Tâches.
+    /^\/taskboard(?:\/(?:calendrier|taches|activite))?\/?$/.test(chemin) ||
     chemin === "/a-venir" || chemin === "/a-venir/" ||
     chemin === "/calendrier" || chemin === "/calendrier/" ||
     chemin === "/decisions" || chemin === "/decisions/" ||

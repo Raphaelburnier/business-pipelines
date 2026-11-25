@@ -786,6 +786,7 @@ for (const [nom, modifier] of [
   ["log de base illisible", (c) => { delete c.baseLog; }],
   ["autre diagnostic dans la même étape", (c) => { c.baseLog = "not ok 1 - other test\n"; }],
   ["même test mais valeurs différentes", (c) => { c.log += "  actual: 3\n"; c.baseLog += "  actual: 2\n"; }],
+  ["même test mais code d'erreur différent", (c) => { c.log += "  code: 'ERR_ASSERTION'\n"; c.baseLog += "  code: 'ERR_TEST_FAILURE'\n"; }],
   ["même diagnostic sans signature reconnaissable", (c) => { c.log = c.baseLog = "exit code 1\n"; }],
   ["PR ajoute une autre étape rouge", (c) => { c.jobs.jobs[0].steps.push({ name: "Build web application", conclusion: "failure" }); }],
   ["autre job homonyme", (c) => { c.baseJobs.jobs[0].name = "other"; }],
@@ -800,13 +801,86 @@ for (const [nom, modifier] of [
   });
 }
 
-test("base rouge : normalisation limitée aux horodatages, ANSI et durées TAP", () => {
+test("base rouge : horodatages, ANSI et durées TAP n'empêchent pas la correspondance", () => {
   const r = trierAvec({ modifier: (c) => {
     baseRouge(c);
     c.log = "test\tRun server tests\t2026-10-26T11:00:00Z \u001b[31mnot ok 1 - route\u001b[0m\n  duration_ms: 12.34\n";
     c.baseLog = "test\tRun server tests\t2026-10-25T09:00:00Z not ok 1 - route\n  duration_ms: 56.78\n";
   } });
   assert.equal(r.sorties.decision, "base-rouge", r.resume);
+});
+
+// Cas réel du 20 novembre (#285) : même échec, mais chaque run a son en-tête de runner,
+// ses PID, ses dossiers temporaires et ses UUID. Seuls les champs stables doivent compter.
+function logReel(worker, tmp, pid, uuid) {
+  const l = (x) => `test (3)\tRun server tests\t2026-11-20T13:48:22.1611792Z ${x}`;
+  return [
+    `test (3)\tSet up job\t\uFEFF2026-11-20T12:53:00.3555419Z Current runner version: '2.338.2'`,
+    l(`Worker ID: {${worker}}`), l("Region: westus"),
+    l("not ok 1 - quota connu, redémarrage"), l("  ---"), l("  duration_ms: 15100.931418"),
+    l("  location: '/home/runner/work/p/p/test/reprises-runs.test.js:109:1'"),
+    l("  failureType: 'testCodeFailure'"), l("  error: |-"),
+    l(`    Attente expirée : Runner de commandes sur /tmp/reprises-run-${tmp}/events.sqlite`),
+    l(`    (node:${pid}) ExperimentalWarning: SQLite is an experimental feature`),
+    l(`    [step:failed] {"stepId":"${uuid}","error":"codex exec a échoué (code 1)"}`),
+    l("  code: 'ERR_TEST_FAILURE'"), l("  stack: |-"), l(`    jusqua (/tmp/reprises-run-${tmp}/x.js:19:9)`), l("  ..."),
+    l("# fail 1"), "",
+  ].join("\n");
+}
+
+test("base rouge : en-tête du runner, PID, dossiers temporaires et UUID ignorés (cas #285)", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.log = logReel("1a570e87", "jBvypr", 21321, "e1aaead1-ea1a-4db2-a918-3d385b19241a");
+    c.baseLog = logReel("c2e875ff", "Xk3pQz", 20977, "0b7d1c55-4f0e-4b39-9d61-8a2f6c3e7a10");
+  } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+});
+
+test("base non prouvée : même test et même emplacement, autre erreur levée", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.log = logReel("1a570e87", "jBvypr", 21321, "e1aaead1-ea1a-4db2-a918-3d385b19241a");
+    c.baseLog = c.log.replace("codex exec a échoué (code 1)", "TypeError: lire is not a function");
+  } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
+test("base rouge ou non selon le message d'erreur écrit sur une seule ligne", () => {
+  const tap = (message, pid) => [
+    "test\tRun server tests\t2026-11-20T13:48:22Z not ok 1 - route", "test\tRun server tests\t2026-11-20T13:48:22Z   ---",
+    "test\tRun server tests\t2026-11-20T13:48:22Z   location: '/w/test/a.test.js:3:1'",
+    "test\tRun server tests\t2026-11-20T13:48:22Z   failureType: 'testCodeFailure'",
+    `test\tRun server tests\t2026-11-20T13:48:22Z   error: '${message} (pid ${pid})'`,
+    "test\tRun server tests\t2026-11-20T13:48:22Z   code: 'ERR_TEST_FAILURE'", "test\tRun server tests\t2026-11-20T13:48:22Z   ...", "",
+  ].join("\n");
+  let r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap("quota inconnu", 4242); c.baseLog = tap("quota inconnu", 17); } });
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+  r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap("lire is not a function", 4242); c.baseLog = tap("quota inconnu", 17); } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
+test("base rouge ou non selon les valeurs multilignes expected/actual", () => {
+  const tap = (a) => [
+    "not ok 1 - objet", "  ---", "  location: '/w/test/a.test.js:3:1'", "  failureType: 'testCodeFailure'",
+    "  error: |-", "    Expected values to be strictly deep-equal:", "    + actual - expected",
+    "  code: 'ERR_ASSERTION'", "  name: 'AssertionError'", "  expected:", "    a: 2", "    b: 'x'",
+    "  actual:", `    a: ${a}`, "    b: 'x'", "  operator: 'deepStrictEqual'", "  ...", "",
+  ].map((l) => l && `test\tRun server tests\t2026-11-20T13:48:22Z ${l}`).join("\n");
+  let r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap(3); c.baseLog = tap(3); } });
+  assert.equal(r.sorties.decision, "base-rouge", r.resume);
+  r = trierAvec({ modifier: (c) => { baseRouge(c); c.log = tap(3); c.baseLog = tap(4); } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
+});
+
+test("base non prouvée : même test TAP, autre emplacement d'échec", () => {
+  const r = trierAvec({ modifier: (c) => {
+    baseRouge(c);
+    c.log = logReel("1a570e87", "jBvypr", 21321, "e1aaead1-ea1a-4db2-a918-3d385b19241a");
+    c.baseLog = c.log.replace("reprises-runs.test.js:109:1", "reprises-runs.test.js:142:1");
+  } });
+  assert.equal(r.sorties.decision, "claude", r.resume);
 });
 
 test("base rouge : le signalement est dédupliqué sans marqueur de transmission", () => {
