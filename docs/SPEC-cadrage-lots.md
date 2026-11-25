@@ -5,8 +5,9 @@ transmettre tous les critères à la mission et refuser un départ dont les dép
 ne sont pas terminées. Distinguer développement, fusion et recette sans confondre la
 réussite d'un run avec la clôture du lot. Schéma et migration **approuvés par Raphaël le 20 novembre 2026**.
 Correctif fusionné par la PR #290 ; consignes persistantes fusionnées par registre #48.
-La production contrôlée le 23 novembre ne les contient pas encore. Prochaine étape :
-attendre leur livraison demandée par Raphaël, puis vérifier la version servie avant recette.
+La version servie contrôlée le 24 novembre les contient. Les contrôles fonctionnels
+passent, mais la santé et les lectures API restent intermittentes après livraison :
+O7 reste ouvert. Résultats et suite : [recette du 24 novembre](RECETTE-cadrage-2026-11-24.md).
 
 ## Objectif et constats
 
@@ -246,10 +247,11 @@ les suites versionnées ; cette recette vérifie l'affichage et les gestes réel
 
 ## Recette après livraison humaine
 
-Résumé : les fusions sont terminées, mais O7 reste `en-cours`, phase
-`recette-attendue`. Le contrôle du 23 novembre constate une production saine qui
-ne contient pas encore #290 ni registre #48. La livraison déjà en construction
-cible des versions antérieures ; elle ne constitue pas une recette de ce correctif.
+Résumé : les fusions et la livraison sont terminées, mais O7 reste `en-cours`.
+La recette du 24 novembre vérifie les critères fonctionnels et relève une santé
+instable ; le suivi passe à `bloque` jusqu'à une recette complète. Le défaut O8
+des liens directs de Planning est suivi séparément. La procédure ci-dessous
+reste applicable à la prochaine vérification.
 
 Avant une nouvelle demande de livraison, attendre la fin de celle en cours puis
 contrôler la proposition dans le cockpit : les versions proposées doivent contenir
