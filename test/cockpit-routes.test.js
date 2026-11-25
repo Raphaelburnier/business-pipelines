@@ -299,9 +299,10 @@ test("les routes de lecture servent les runs, les machines et le front", async (
     assert.strictEqual((await requete(PORT, "/run-incorrect")).code, 404);
     assert.strictEqual((await requete(PORT, "/run/run-2026-10-20/inconnue")).code, 404);
     assert.strictEqual((await poster(PORT, "/run", {})).code, 404);
-    for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi", "/ai-studio", "/ai-studio/profiles/luna", "/ai-studio/generations/gen_20260928_000000_aabbcc", "/systeme", "/systeme/", "/a-venir", "/a-venir/", "/calendrier", "/calendrier/"]) {
+    for (const route of ["/demander", "/demander/un-fil", "/demander?question=pourquoi", "/ai-studio", "/ai-studio/profiles/luna", "/ai-studio/generations/gen_20260928_000000_aabbcc", "/systeme", "/systeme/", "/a-venir", "/a-venir/", "/calendrier", "/calendrier/", "/taskboard", "/taskboard/calendrier", "/taskboard/taches", "/taskboard/activite/"]) {
       assert.strictEqual((await requete(PORT, route)).code, attendu, `${route} doit servir le front`);
     }
+    assert.strictEqual((await requete(PORT, "/taskboard/inconnu")).code, 404);
 
     // Le front : construit, il est servi à la racine et sur les pages de détail. L'ancien
     // /app redirige sans garder deux architectures concurrentes.
