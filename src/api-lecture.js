@@ -40,7 +40,14 @@ function ligneRun(store, run) {
     // Exécution terminée n'est pas fusion : la livraison dit ce que GitHub a fait du run.
     livraison: vueLivraison(store.livraison(run.id)),
     attente: store.attentes.vue(run.id),
+    // La liste la porte aussi : un arrêt en file reste affiché quand le tiroir est rouvert.
+    ...annulation(store, run.id),
   };
+}
+
+function annulation(store, runId) {
+  const derniere = store.controle?.annulation(runId);
+  return derniere ? { annulation: derniere } : {};
 }
 
 /**
@@ -122,7 +129,6 @@ function run(store, runId) {
   const escalades = escaladesDuRun(derniers, brut.status);
   return {
     ...ligneRun(store, brut),
-    ...(store.controle?.annulation(runId) ? { annulation: store.controle.annulation(runId) } : {}),
     ...(mission ? { mission } : {}),
     // Critères du plan reliés aux étapes qui les réalisent et les jugent (src/planificateur.js).
     ...(mission?.plan ? { criteres: require("./planificateur").resultatCriteres(mission.plan, etapes, derniers, arbreCourant(store, runId, derniers)) } : {}),
