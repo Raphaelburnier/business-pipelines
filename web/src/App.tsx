@@ -143,7 +143,17 @@ function Coquille() {
           <div className="ao-sys">
             {source.nom === "maquette" && <span className="ao-maquette">Maquette</span>}
             <Sante evaluation={sante} aller={naviguer} />
-            <BoutonActivite total={activite.total} aValider={activite.aValider} ouvert={activiteOuverte} onOuvrir={() => setActiviteOuverte(true)} />
+            <BoutonActivite
+              total={activite.total}
+              aValider={activite.aValider}
+              ouvert={activiteOuverte}
+              onOuvrir={() => {
+                // Déposer une commande n'émet aucun événement : sans relecture, un arrêt encore en
+                // file n'apparaîtrait qu'au prochain événement du flux.
+                activite.recharger();
+                setActiviteOuverte(true);
+              }}
+            />
           </div>
         </header>
         <BandeauPause controle={file} />
