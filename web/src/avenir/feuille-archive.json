@@ -1,10 +1,10 @@
 {
 "lots": [
-  {
-    "id": "0",
-    "titre": "Sécurité : fermer les failles critiques",
-    "but": "Retirer à un agent détourné tout chemin vers une fusion ou une livraison au nom de Raphaël, avant d'ajouter de l'autonomie.",
-    "etapes": [
+{
+"id": "0",
+"titre": "Sécurité : fermer les failles critiques",
+"but": "Retirer à un agent détourné tout chemin vers une fusion ou une livraison au nom de Raphaël, avant d'ajouter de l'autonomie.",
+"etapes": [
         {"id":"0.1","titre":"Sortir le runner du réseau hôte (F1)","detail":"Livré et vérifié : runner sur un réseau dédié, maître sans agents séparé, cockpit sans port publié et identité acceptée par socket uniquement. Relais local en lecture seule ; contrôles réseau et identité de production validés.","fichiers":["BP docker-compose.yaml","BP bin/maitre-permanent.js","BP deploy/nas/cockpit-relais.js","BP src/acces.js"],"statut":"fait"},
         {"id":"0.2","titre":"Signer les commandes d'autorité (F2)","detail":"HMAC et nonce sur fusion, livraison et actions de chat ; vérification par le publieur et le livreur.","fichiers":["BP src/signature-commandes.js","BP bin/publieur.js","BP bin/livreur.js","AO packages/schemas/commandes.js"],"statut":"fait"},
         {"id":"0.3","titre":"Élargir la liste des fichiers sensibles (F4)","detail":"Code d'authentification, runner, chat, worker, .claude/, .mcp.json, package.json et lockfiles.","fichiers":["agent-gated-merge.yml:228","BP src/pull-requests.js:30-43"],"statut":"fait"},
@@ -13,62 +13,62 @@
         {"id":"0.6","titre":"Isoler les agents de production (F7, F12, F14)","detail":"Agents sous un utilisateur dédié, environnement par liste blanche et jeton Claude conservé par un relais côté maître.","fichiers":["AO src/agent-runner.js","AO src/claude-auth-relay.js","REG agents/passage-extractor"],"statut":"fait"},
         {"id":"0.7","titre":"Réduire le jeton de fusion et la chaîne de livraison (F3, F8)","detail":"Jeton limité aux dépôts fusionnables ; deploy.sh figé côté livreur.","fichiers":["BP specs/publieur.env.example","BP src/livreur.js:167-176"],"statut":"fait"},
         {"id":"0.8","titre":"Durcir les workflows Claude (F11, F13)","detail":"Actions épinglées par SHA, déclencheur issues retiré, outils restreints.","fichiers":["BP .github/workflows/claude.yml","BP .github/workflows/claude-code-review.yml"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "4",
-    "titre": "Garde-fous d'exploitation",
-    "but": "Pouvoir arrêter, surveiller et restaurer la plateforme avant de la laisser décider seule.",
-    "prerequis": "À livrer avant le lot 5",
-    "etapes": [
+]
+},
+{
+"id": "4",
+"titre": "Garde-fous d'exploitation",
+"but": "Pouvoir arrêter, surveiller et restaurer la plateforme avant de la laisser décider seule.",
+"prerequis": "À livrer avant le lot 5",
+"etapes": [
         {"id":"4.1","titre":"Arrêt d'urgence","detail":"Pause durable des démarrages, annulation définitive d'un run, confirmation de l'arrêt et conservation des fichiers. Livré et vérifié le 28 octobre 2026.","fichiers":["AO packages/schemas/commandes.js","BP bin/commande-runner.js"],"statut":"fait"},
         {"id":"4.2","titre":"Alertes hors du cockpit","detail":"Alertes e-mail installées sur le NAS, envois repris après une panne ; réception et restauration du journal vérifiées.","fichiers":["BP src/alerteur.js","BP bin/alerteur.js","BP docker-compose.yaml"],"statut":"fait"},
         {"id":"4.3","titre":"Santé de la plateforme","detail":"API de santé avec contrôle d’accès, huit services surveillés et journaux bornés. Livré et vérifié en production le 1er novembre 2026.","fichiers":["BP bin/cockpit.js:590-592"],"statut":"fait"},
         {"id":"4.4","titre":"Budgets","detail":"Abandonné le 24 octobre 2026 : le coût d'un run n'est plus pris en compte et n'ouvre plus d'approbation, les agents tournant sur abonnement. Seuls les tours bornent un run (moteur 97). Pas de plafond quotidien ni mensuel à construire.","fichiers":["BP bin/cockpit.js:633-698"],"statut":"fait"},
         {"id":"4.5","titre":"Sauvegardes","detail":"Sauvegarde quotidienne chiffrée sur le PC : SQLite cohérent avec WAL, specs/ dont workers.json, approbations et projets. Rétention de 14 archives. Premier passage automatique et restauration de deux bases et 42 fichiers vérifiés le 28 octobre 2026.","fichiers":["BP bin/sauvegarder-etat.js","BP deploy/backup/exporter-etat.js"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "8",
-    "titre": "Finance",
-    "but": "Une page Finance sans élément parasite.",
-    "etapes": [
+]
+},
+{
+"id": "8",
+"titre": "Finance",
+"but": "Une page Finance sans élément parasite.",
+"etapes": [
         {"id":"8.1","titre":"Remettre « En cours » dans sa colonne","detail":"Finance réserve la colonne de droite aux runs vivants, comme l'Accueil, avec défilement indépendant du contenu financier.","fichiers":["BP web/src/App.tsx","BP web/src/style.css"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "11",
-    "titre": "TaskBoard : attribution des tâches",
-    "but": "Attribuer un objectif en choisissant qui, quand et avec quelle urgence.",
-    "etapes": [
+]
+},
+{
+"id": "11",
+"titre": "TaskBoard : attribution des tâches",
+"but": "Attribuer un objectif en choisissant qui, quand et avec quelle urgence.",
+"etapes": [
         {"id":"11.2","titre":"Choisir l'agent dans Attribuer","detail":"Chaque rôle du plan permet le choix automatique ou un membre compatible. Un choix explicite est vérifié, puis le plan doit être recalculé et relu avant le départ immédiat ou planifié.","fichiers":["BP web/src/avenir/AVenir.tsx","BP src/planificateur.js","AO packages/schemas/plan.js"],"statut":"fait"},
         {"id":"11.3","titre":"Interrupteur Prioritaire","detail":"Un interrupteur Run prioritaire remplace les trois niveaux dans À venir et le Calendrier ; la file existante applique haute ou normale, après les reprises admissibles.","fichiers":["BP web/src/InterrupteurPrioritaire.tsx","BP web/src/avenir/AVenir.tsx","BP web/src/calendrier/Calendrier.tsx"],"statut":"fait"},
         {"id":"11.4","titre":"Label Sensible décidé par l'orchestrateur","detail":"Le serveur impose la sensibilité des fichiers annoncés et du risque de cadrage. Raphaël peut ajouter une revue de sécurité ; les critères renforcés et la revue indépendante sont figés dans le contrat, y compris pour un départ planifié.","fichiers":["BP web/src/avenir/AVenir.tsx","BP src/objectifs-avenirs.js","BP src/missions.js"],"statut":"fait"},
         {"id":"11.5","titre":"Planifier une tâche","detail":"Placer l'objectif dans le calendrier (lot 12) au lieu de le lancer tout de suite.","fichiers":["BP web/src/avenir/AVenir.tsx"],"statut":"fait","raisonSensibilite":"Planifier une tâche autorise un lancement différé."},
         {"id":"11.6","titre":"Raccorder les projets système au TaskBoard","detail":"Raccordement livré et parcours complet vérifié : validation, deux revues indépendantes, publication et fusion du README seul, sans modification de version ni de permission. Documentation des copies de travail et du registre NAS en lecture seule intégrée.","fichiers":["BP projects/agent-registry/project.json","BP projects/agent-secrets/project.json","BP docker-compose.yaml","BP Dockerfile","BP test/project-verification.test.js"],"statut":"fait","raisonSensibilite":"Le runner accède à deux dépôts de travail supplémentaires ; les miroirs de confiance restent isolés."}
-    ]
-  },
-  {
-    "id": "12",
-    "titre": "Calendrier",
-    "but": "Voir et préparer les runs prévus.",
-    "etapes": [
+]
+},
+{
+"id": "12",
+"titre": "Calendrier",
+"but": "Voir et préparer les runs prévus.",
+"etapes": [
         {"id":"12.1","titre":"Page Calendrier","detail":"Les runs prévus par jour de la semaine ; déclenchement par le moteur à l'heure dite.","fichiers":["BP web/src/calendrier/Calendrier.tsx","BP src/atelier.js","BP bin/commande-runner.js","BP bin/cockpit.js","AO src/event-store.js"],"statut":"fait"},
         {"id":"12.2","titre":"Unifier À venir et le calendrier","detail":"Réunir la liste À venir et le calendrier sur une page, avec le calendrier comme vue principale, les filtres existants, les vues semaine et mois, et le glisser-déposer des tâches À venir sur une date. Déposer une tâche crée un run agent programmé pour cette journée, sans demander d'heure : il devient éligible dès que quota et worker sont disponibles, puis reprend automatiquement dès le retour du quota, sans plafond de tentatives propre au calendrier. Aucun arrêt à minuit : les runs actifs continuent tant que le quota le permet et les runs inachevés reprennent aussi les jours suivants. En déplaçant un run déjà programmé, conserver son heure ; les tâches récurrentes gardent leur récurrence. Les tâches système sont planifiables comme les objectifs projet ; pour une tâche multi-dépôts, l'orchestrateur propose un plan qui doit être validé avant lancement. Mettre immédiatement en file tous les runs prêts et les exécuter en parallèle dans les limites de capacité des workers et des quotas disponibles, sans sérialiser les objectifs. Quand le quota restant le plus bas d'une fenêtre Claude Code ou Codex passe strictement sous 25 %, ordonner les reprises, puis les runs prioritaires, puis les autres en FIFO, sans interrompre les runs actifs ; à 25 % ou plus, revenir à l'ordre normal. Si le quota est inconnu, conserver l'ordre normal et signaler l'état inconnu. Exclure le run 2.6 de ce lot.","fichiers":["BP web/src/TaskBoard.tsx","BP web/src/avenir/AVenir.tsx","BP web/src/calendrier/Calendrier.tsx","BP src/taskboard.js","BP src/atelier.js","BP bin/commande-runner.js","AO src/run-waits.js","AO src/worker.js"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "13",
-    "titre": "Accueil : un graphe lisible",
-    "but": "Partir d'une vue simple et déplier le détail à la demande.",
-    "etapes": [
+]
+},
+{
+"id": "13",
+"titre": "Accueil : un graphe lisible",
+"but": "Partir d'une vue simple et déplier le détail à la demande.",
+"etapes": [
         {"id":"13.1","titre":"Flux depuis le milieu des cellules","detail":"Les liens des projets partent du milieu de leur bord inférieur, avec des ancrages cohérents pendant les rafraîchissements et les déplacements.","fichiers":["BP web/src/topologie/Topologie.tsx:118"],"statut":"fait"},
         {"id":"13.2","titre":"Cellules déplaçables, disposition retenue","detail":"Les cellules se déplacent à la souris ou au doigt. Les positions restent dans le navigateur entre les visites, séparément sur téléphone et bureau ; « Disposition initiale » les efface.","fichiers":["BP web/src/topologie/Topologie.tsx:195,289","BP web/src/donnees/brouillons.ts"],"statut":"fait"},
         {"id":"13.3","titre":"Graphe simple au départ","detail":"La première visite montre uniquement le maître, les machines et les projets. Les étapes sont chargées à la demande quand le projet est déplié.","fichiers":["BP web/src/topologie/disposition.ts:111"],"statut":"fait"},
         {"id":"13.4","titre":"Déplier une cellule","detail":"Un clic déplie ou replie les machines et projets ; les étapes clés du dernier run ouvrent leur détail dans l’inspecteur. Le clavier fonctionne aussi.","fichiers":["BP web/src/topologie/disposition.ts","BP web/src/topologie/Topologie.tsx"],"statut":"fait"},
         {"id":"13.5","titre":"Renommer « Orchestrateur » en « Maître (répartiteur) »","detail":"La cellule de pilotage s’appelle « Maître (répartiteur) » ; le projet du moteur reste « Moteur (agent-orchestrator) ».","fichiers":["BP web/src/topologie/Topologie.tsx:88"],"statut":"fait"}
-    ]
-  }
+]
+}
 ],
 "defauts": [
     {"id":"F1","severite":"critique","titre":"Identité Tailscale du cockpit forgeable par un agent du runner","fichiers":"BP docker-compose.yaml ; src/acces.js ; deploy/nas/cockpit-relais.js","correctif":"Lot 0.1","statut":"fait"},

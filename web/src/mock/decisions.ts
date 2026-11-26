@@ -5,20 +5,11 @@ import type {
   DemandeDecision,
   DemandeDecisionRun,
   DossierApprobation,
-  EtatConseiller,
-  FilConseil,
   ReponseApprobations,
   ReponseDecision,
 } from "../donnees/decisions";
 
 const maintenant = "2026-09-29T18:00:00.000Z";
-
-const conseillerMaquette: EtatConseiller = {
-  disponible: false,
-  vuLe: "2026-09-29T17:58:20.000Z",
-  modele: "qwen3:8b",
-  vault: { fichiers: 482, synchroLe: "2026-09-29T17:42:01.000Z" },
-};
 
 function clone<T>(valeur: T): T {
   return structuredClone(valeur);
@@ -49,16 +40,6 @@ function dossiersInitiaux(): DossierApprobation[] {
           sources: ["brief-septembre.md", "budget-marketing.json"],
           decision: null,
           note: null,
-          conseil: {
-            classement: "probleme",
-            texte: "Le brief ne donne ni lien de validation de la vitrine ni date de disponibilité. La publication peut renvoyer vers une page incomplète.",
-            sources: [
-              { id: "V1", genre: "vault", titre: "Brief septembre", chemin: "notes/marketing/brief-septembre.md" },
-              { id: "R1", genre: "run", titre: "Vérification de la vitrine", run: "run-vitrine-20260929" },
-            ],
-            modele: "qwen3:8b",
-            le: "2026-09-29T17:42:10.000Z",
-          },
         },
         {
           id: "allouer-budget",
@@ -69,13 +50,6 @@ function dossiersInitiaux(): DossierApprobation[] {
           rapport: "Prévision : 35 à 60 visites qualifiées.",
           decision: null,
           note: null,
-          conseil: {
-            classement: "suggestion",
-            texte: "Ajouter un seuil d'arrêt mesurable, par exemple le coût par visite maximal, avant de lancer la campagne.",
-            sources: [{ id: "V1", genre: "vault", titre: "Budget marketing", chemin: "notes/marketing/budget.md" }],
-            modele: "qwen3:8b",
-            le: "2026-09-29T17:42:10.000Z",
-          },
         },
       ],
       tranche: false,
@@ -142,43 +116,6 @@ function dossiersInitiaux(): DossierApprobation[] {
   ];
 }
 
-function filsInitiaux(): Map<string, FilConseil> {
-  return new Map([
-    [
-      "marketing-vitrine-septembre",
-      {
-        dossier: "marketing-vitrine-septembre",
-        conseiller: conseillerMaquette,
-        messages: [
-          {
-            id: 1,
-            auteur: "raphael",
-            par: "Raphaël",
-            texte: "Qu'est-ce qui manque avant de publier ?",
-            sources: [],
-            statut: "fait",
-            modele: null,
-            creeLe: "2026-09-29T17:40:05.000Z",
-          },
-          {
-            id: 2,
-            auteur: "conseiller",
-            par: null,
-            texte: "Le lien de la vitrine et sa date de disponibilité ne figurent pas dans le brief. Je ne peux pas vérifier que la campagne mènera vers une page prête.",
-            sources: [
-              { id: "V1", genre: "vault", titre: "Brief septembre", chemin: "notes/marketing/brief-septembre.md" },
-              { id: "R1", genre: "run", titre: "Vérification de la vitrine", run: "run-vitrine-20260929" },
-            ],
-            statut: "fait",
-            modele: "qwen3:8b",
-            creeLe: "2026-09-29T17:42:10.000Z",
-          },
-        ],
-      },
-    ],
-  ]);
-}
-
 // Une approbation de run du moteur (phase 5) : une rallonge de budget, tranchée par commande.
 function dossiersRuns(): DossierApprobation[] {
   return [
@@ -214,7 +151,6 @@ function dossiersRuns(): DossierApprobation[] {
 
 export function approbationsMaquette() {
   const dossiers = [...dossiersInitiaux(), ...dossiersRuns()];
-  const fils = filsInitiaux();
 
   async function lecture(): Promise<ReponseApprobations> {
     return {
@@ -223,7 +159,6 @@ export function approbationsMaquette() {
         dossiers: clone(dossiers),
         decidables: dossiers.filter((dossier) => !dossier.plan_absent && !dossier.tranche).length,
       },
-      conseiller: clone(conseillerMaquette),
       modules: {
         apps: [
           {
@@ -244,36 +179,6 @@ export function approbationsMaquette() {
         erreur: null,
       },
     };
-  }
-
-  async function filConseil(dossier: string): Promise<FilConseil> {
-    return clone(
-      fils.get(dossier) ?? {
-        dossier,
-        conseiller: conseillerMaquette,
-        messages: [],
-      }
-    );
-  }
-
-  async function poserConseil(dossier: string, texte: string): Promise<FilConseil> {
-    if (!conseillerMaquette.disponible) throw new Error("Le conseiller est indisponible : PC endormi.");
-    const contenu = texte.trim();
-    if (!contenu) throw new Error("La question du conseiller est vide.");
-    const precedent = fils.get(dossier);
-    const fil: FilConseil = precedent ?? { dossier, conseiller: conseillerMaquette, messages: [] };
-    fil.messages.push({
-      id: fil.messages.length + 1,
-      auteur: "raphael",
-      par: "Raphaël",
-      texte: contenu,
-      sources: [],
-      statut: "fait",
-      modele: null,
-      creeLe: maintenant,
-    });
-    fils.set(dossier, fil);
-    return clone(fil);
   }
 
   async function decider(demande: DemandeDecision): Promise<ReponseDecision> {
@@ -318,5 +223,5 @@ export function approbationsMaquette() {
     return { id: "commande-maquette", statut: "pending" };
   }
 
-  return { lecture, filConseil, poserConseil, decider, deciderRun };
+  return { lecture, decider, deciderRun };
 }

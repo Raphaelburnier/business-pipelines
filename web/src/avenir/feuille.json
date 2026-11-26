@@ -1,23 +1,23 @@
 {
 "lots": [
-  {
-    "id": "1",
-    "titre": "Contrat moteur/cockpit et CI croisée",
-    "but": "Qu'une PR du moteur ne puisse plus casser la compilation du cockpit (cas TS2322 de #58 sans #118).",
-    "prerequis": "Lot 0",
-    "etapes": [
+{
+"id": "1",
+"titre": "Contrat moteur/cockpit et CI croisée",
+"but": "Qu'une PR du moteur ne puisse plus casser la compilation du cockpit (cas TS2322 de #58 sans #118).",
+"prerequis": "Lot 0",
+"etapes": [
         {"id":"1.1","titre":"La CI du moteur construit le front du cockpit","detail":"Actif depuis le 4 novembre 2026 : chaque CI moteur vérifie le front courant du cockpit avec le moteur testé, puis lance typecheck, tests et build. Les deux versions sont consignées ; une incompatibilité bloque la CI.","fichiers":["AO .github/workflows/ci.yml"],"statut":"fait"},
         {"id":"1.2","titre":"Aligner les gates de fusion","detail":"Actif dans GitHub : Steam #23, tcg #10 et Saas #9 fusionnées après CI verte. Les gates vérifient le triplet merge/tête/base et ses parents, acceptent agent/ sous les mêmes contrôles et bloquent les demandes de changements actives. Quarante scénarios par dépôt, dont une base déplacée pendant la dernière relecture, sont intégrés aux CI.","fichiers":["agent-gated-merge.yml:203-214"],"statut":"fait"},
         {"id":"1.3","titre":"Détecter une base déjà rouge","detail":"Fusionné par #195. Recette réelle échouée (#285, 20 novembre) : l'empreinte hache tout le journal, en-tête du runner compris ; une base rouge n'est jamais reconnue.","fichiers":["ci-autofix.yml:36-50,155-161"],"statut":"en-cours"},
         {"id":"1.4","titre":"Mettre agent-secrets à la norme","detail":"Actif dans GitHub : dépôt privé agent-secrets, installation Python verrouillée, 25 tests isolés et 44 recettes du gate. Types, paquet et CI vérifiés ; fusion automatique limitée aux PR admissibles sur le merge réellement testé, chemins privilégiés soumis à approbation.","fichiers":["AS .github/workflows/ci.yml","AS .github/workflows/agent-gated-merge.yml"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "2",
-    "titre": "Fiabilité du moteur pour des runs non surveillés",
-    "but": "Qu'aucun run ne reste bloqué sans fin et que chaque arrêt soit reprenable.",
-    "prerequis": "Lot 0",
-    "etapes": [
+]
+},
+{
+"id": "2",
+"titre": "Fiabilité du moteur pour des runs non surveillés",
+"but": "Qu'aucun run ne reste bloqué sans fin et que chaque arrêt soit reprenable.",
+"prerequis": "Lot 0",
+"etapes": [
         {"id":"2.1","titre":"Borner MaitreDistant.executer","detail":"Délai maximal et sortie sur abort.","fichiers":["AO src/maitre-distant.js:62-81"],"statut":"fait"},
         {"id":"2.2","titre":"Classer les arrêts machine","detail":"MachineIndisponible et EtapePerdue dans ARRETS.","fichiers":["AO src/graphe.js:353"],"statut":"fait"},
         {"id":"2.3","titre":"Cycle épuisé reprenable","detail":"Une approbation au lieu d'une Error générique.","fichiers":["AO src/graphe.js:523-530"],"statut":"fait"},
@@ -29,14 +29,14 @@
         {"id":"2.9","titre":"Réserve de quota Claude pour l'usage interactif","detail":"Livré et recetté : réserve désactivée et aucun seuil au départ ; choix opérateur de 1 à 100 % depuis la barre de quota. Les étapes Claude en cours terminent. Si la réserve est active, les nouveaux appels attendent lorsque le seuil est atteint ou la mesure inconnue ou périmée. Même run et compteurs de quota réel conservés ; autres runtimes indépendants.","fichiers":["BP src/quota.js","BP bin/commande-runner.js","BP bin/cockpit.js","BP web/src/vues/Kpis.tsx","AO src/run-waits.js"],"statut":"fait"},
         {"id":"2.10","titre":"Le planificateur évite un abonnement épuisé","detail":"Le planificateur lit les relevés de quota : un abonnement dont une fenêtre passe sous 10 % restants, réinitialisée dans plus de 20 min, n'est plus proposé. Quand seul ce fournisseur incarne l'agent d'une étape, le même agent tourne chez l'autre abonnement (remplaçant de la page Agents, sinon modèle le plus courant de l'équipe) et le plan est dégradé. Chaque étape lancée reçoit aussi ce relais, que le moteur prend si le quota tombe en cours d'étape. Livré le 4 novembre (release cockpit-20261104-231841) ; vérifié en production avec la fenêtre de 5 h de Codex à 0 % : le plan proposé place l'étape implement sur claude:sonnet, marquée en repli, et le plan est dégradé.","fichiers":["BP src/api-plans-missions.js","BP src/planificateur.js","BP src/missions.js","BP src/equipe.js"],"statut":"fait"},
         {"id":"2.11","titre":"Réserve de quota Codex pour l’usage interactif","detail":"Réserve Codex indépendante, désactivée par défaut : appels retenus au seuil ou sans mesure fraîche, même run conservé. Fusionné par #248, livré. Recette de production du 24 novembre : appels retenus, Codex écarté du plan, état initial restauré. Reste : un appel retenu en plein run.","fichiers":["BP docs/SPEC-reserve-quota-codex.md","AO src/quota-reserve.js","AO src/run-waits.js","BP src/reserve-quota.js","BP web/src/vues/ReserveQuota.tsx"],"statut":"en-cours"}
-    ]
-  },
-  {
-    "id": "3",
-    "titre": "Branches métier pluggables",
-    "but": "Ajouter une branche par des données (nature, pipeline, agents) sans toucher au moteur ni au cockpit.",
-    "prerequis": "Lot 1",
-    "etapes": [
+]
+},
+{
+"id": "3",
+"titre": "Branches métier pluggables",
+"but": "Ajouter une branche par des données (nature, pipeline, agents) sans toucher au moteur ni au cockpit.",
+"prerequis": "Lot 1",
+"etapes": [
         {"id":"3.1","titre":"Registre des natures en données","detail":"agent-registry/natures/<id>.json au lieu de l'enum developpement | marketing | finance.","fichiers":["AO packages/schemas/plan.js:60,75","AO packages/schemas/mission.js:23","BP src/natures.js","REG natures/"],"statut":"fait"},
         {"id":"3.2","titre":"Une seule détection de nature","detail":"Tag inconnu signalé au lieu d'un null silencieux.","fichiers":["BP src/natures.js","BP src/planificateur.js","BP src/missions.js"],"statut":"fait"},
         {"id":"3.3","titre":"Règles par nature déclarées","detail":"Remplacer les if par nature.","fichiers":["BP src/natures.js","BP src/planificateur.js"],"statut":"fait"},
@@ -45,73 +45,73 @@
         {"id":"3.6","titre":"Créer un projet depuis le cockpit","detail":"PR automation/ avec gabarits CI et gate.","fichiers":["BP src/rattachements.js"],"statut":"a-faire"},
         {"id":"3.7","titre":"Handlers en plugins, dépôts sans Docker","detail":"Dossier de handlers par convention, montage générique.","fichiers":["BP src/stage-handlers.js","BP Dockerfile:25-27"],"statut":"a-faire"},
         {"id":"3.8","titre":"Exécuter les plans approuvés","detail":"Nœud générique pour les branches sans PR.","fichiers":["AO src/graphe.js"],"statut":"a-faire"}
-    ]
-  },
-  {
-    "id": "5",
-    "titre": "Superviseur de boucle et déclencheurs",
-    "but": "Des runs lancés et relancés sans clic, sous des bornes globales.",
-    "prerequis": "Lots 0, 2 et 4 en service",
-    "etapes": [
+]
+},
+{
+"id": "5",
+"titre": "Superviseur de boucle et déclencheurs",
+"but": "Des runs lancés et relancés sans clic, sous des bornes globales.",
+"prerequis": "Lots 0, 2 et 4 en service",
+"etapes": [
         {"id":"5.1","titre":"Déclencheurs durables","detail":"Planification dans l'event store et webhooks, identité de service signée.","fichiers":["AO src/event-store.js"],"statut":"a-faire"},
         {"id":"5.2","titre":"Superviseur côté cockpit","detail":"Missions de correction bornées après run échoué, CI rouge persistante ou findings P2/P3.","fichiers":["BP src/missions.js","AO src/mission.js:18-90"],"statut":"a-faire"},
         {"id":"5.3","titre":"Correcteur des échecs de main","detail":"Fusionné par #195. Recette réelle du 20 novembre : main rouge, réservation unique, diagnostic juste (régression du moteur), sans PR à créer. Reste à voir une PR créée.","fichiers":["ci-autofix.yml:39"],"statut":"en-cours"},
         {"id":"5.4","titre":"Escalade par changement de modèle","detail":"Politique écrite et validée le 7 novembre 2026 (moteur docs/ESCALADE.md) : une étape arrêtée par sa limite de tours, sans fichier modifié ou dont le cycle atteint sa limite est reprise une fois par un modèle plus fort, choisi au lancement et annoncé dans le plan. Une escalade par étape, deux par run, jamais sur quota ou panne. Moteur #114 et #115, cockpit #241 livrés. Recette en production : cycle de correction à sa limite repris sur Codex high puis approbation qui le signale (run 6db03ca6, 11 novembre) ; plan arrêté à 35 tours sur Opus et terminé sur Codex high (run e50e1cdc, 12 novembre). Le typecheck du cockpit exige un worker aligné sur le moteur du NAS : verify vert sur 9cf0a11b après la mise à jour du worker.","fichiers":["AO src/escalade.js","BP src/missions.js","BP src/equipe.js"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "6",
-    "titre": "Réviseur GitHub relié au correcteur",
-    "but": "Une revue qui rend un verdict sur le SHA exact et déclenche une correction bornée.",
-    "prerequis": "Lot 0.8",
-    "etapes": [
+]
+},
+{
+"id": "6",
+"titre": "Réviseur GitHub relié au correcteur",
+"but": "Une revue qui rend un verdict sur le SHA exact et déclenche une correction bornée.",
+"prerequis": "Lot 0.8",
+"etapes": [
         {"id":"6.1","titre":"Revue avec verdict","detail":"Verdict structuré sur la tête et la base exactes ; erreurs et revue incomplète explicites. Recette GitHub validée : bug détecté puis nouveau commit approuvé (PR204).","fichiers":["BP .github/workflows/claude-code-review.yml"],"statut":"fait"},
         {"id":"6.2","titre":"Gate qui exige ce verdict","detail":"En cours : Claude relit puis Codex prend le relais sur quota ou panne, avec le même instantané et la même validation ; le gate exige un artefact approuvé sur la tête exacte. Moteur #125 et cockpit #260 fusionnés le 14 novembre. Registre #39 fusionnée le 19 novembre en 7c8c01a après accord explicite de Raphaël ; CI et verdict de revue verts sur 15e18edf (runs 44549378872 et 44549370731). Les trois fils restants ont été résolus le 19 novembre après contrôle des runs réels : les métadonnées Actions portent bien la tête et la branche de la PR, distinctes du contexte GITHUB_SHA. Contrôle du 20 novembre : OPENAI_API_KEY absente des secrets des trois dépôts ; le relais reste non configuré et sa recette réelle attend cette configuration.","fichiers":["agent-gated-merge.yml","BP .github/workflows/claude-code-review.yml","BP .github/scripts/review-verdict.cjs"],"statut":"en-cours"},
         {"id":"6.3","titre":"Correcteur déclenché par la revue","detail":"Actif dans business-pipelines : revue sur SHA exact, correctif du bot puis nouvelle revue validés en PR210. Budget commun de trois appels avec la CI et correcteur isolé.","fichiers":["ci-autofix.yml"],"statut":"fait"},
         {"id":"6.4","titre":"Relance bornée après arrêt","detail":"Une tentative de plus si l'échec porte sur une autre étape (cas #120).","fichiers":["ci-autofix.yml"],"statut":"en-cours"},
         {"id":"6.5","titre":"Hook Stop local nettoyé","detail":"Fait le 12 novembre. Le log renvoyé à l'agent est assaini : séquences de terminal et caractères invisibles retirés, secrets reconnus masqués, 80 lignes de 400 caractères et 12 000 caractères au plus, encadré comme donnée et jamais comme consigne. Une revue Claude qui n'a pas tourné ne bloque plus : le hook lit le verdict structuré du run (artefact github-review-verdict du même run, de la même tentative et du même commit) et laisse conclure sur quota ou provider_error, en donnant la commande de relance. Le workflow range un quota épuisé sous provider_error, parce que le CLI masque son message. Les autres indisponibilités (PR trop grosse, diff binaire) bloquent avec leur motif, sans log brut. 41 cas rejoués conformes, verdicts réels relus sur GitHub, hook complet lancé sur une PR ouverte dont la CI échoue.","fichiers":["~/.claude/hooks/ci-pr/stop_ci.py"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "7",
-    "titre": "Basculement machine et versions",
-    "but": "Ne plus dépendre d'un seul PC et éviter la dérive entre NAS et worker.",
-    "etapes": [
+]
+},
+{
+"id": "7",
+"titre": "Basculement machine et versions",
+"but": "Ne plus dépendre d'un seul PC et éviter la dérive entre NAS et worker.",
+"etapes": [
         {"id":"7.1","titre":"Machine de remplacement par nœud","detail":"Wake-on-LAN réactivé si le PC reste seul.","fichiers":["BP docker-compose.yaml:117-119"],"statut":"a-faire"},
         {"id":"7.2","titre":"Contrôle de dérive worker/NAS","detail":"Livré et recetté : unité sur la copie figée, diagnostic installé comparant les SHA réellement annoncés. Un écart est signalé sans arrêter les runs ; une machine absente ou une release inconnue ne passe pas pour alignée. Les fichiers du worker et son protocole sont vérifiés avant de conclure à une mise à jour nécessaire.","fichiers":["AO deploy/systemd/orch-worker.service","AO bin/controler-worker.js","AO docs/WORKER-RELEASE.md"],"statut":"fait"},
         {"id":"7.3","titre":"deploy.sh qui respecte les runs vivants","detail":"Livré et vérifié : le livreur prend un verrou de maintenance avant la construction, refuse si un travail est actif, revérifie avant le premier arrêt et libère le verrou après la santé. Modèle de déploiement approuvé par empreinte, première livraison avec contrôles réussie le 6 novembre.","fichiers":["BP deploy/nas/deploy.sh.modele","BP Dockerfile","BP docs/SPEC-livraison-runs-vivants.md","AO src/controle-execution.js"],"statut":"fait"}
-    ]
-  },
-  {
-    "id": "9",
-    "titre": "Pipelines : le catalogue",
-    "but": "Une page qui ne montre que les pipelines enregistrés, prêts à l'emploi, et permet d'en créer ou d'en modifier.",
-    "etapes": [
+]
+},
+{
+"id": "9",
+"titre": "Pipelines : le catalogue",
+"but": "Une page qui ne montre que les pipelines enregistrés, prêts à l'emploi, et permet d'en créer ou d'en modifier.",
+"etapes": [
         {"id":"9.1","titre":"N'afficher que les pipelines enregistrés","detail":"Catalogue des pipelines enregistrés du registre, avec versions, projets, renommage et rattachement ; la vue par run attend la page Run (10.1).","fichiers":["BP web/src/vues/Pipelines.tsx","BP web/src/donnees/pipelines.ts"],"statut":"fait"},
         {"id":"9.2","titre":"Servir /pipelines au rechargement","detail":"Livré et vérifié le 29 octobre 2026 : le catalogue et ses fiches /pipelines/<id> s’ouvrent par lien direct et au rechargement, avec paramètres ou slash final. HTML 200 sans cache, derrière les contrôles d’identité et d’hôte existants.","fichiers":["BP bin/cockpit.js:442"],"statut":"fait"},
         {"id":"9.3","titre":"Créer un pipeline","detail":"Nouveau pipeline depuis la page, publié en v1 dans le registre.","fichiers":["BP web/src/vues/Pipelines.tsx","REG pipelines/"],"statut":"a-faire","raisonSensibilite":"Publier un pipeline modifie les actions que le moteur peut exécuter."},
         {"id":"9.4","titre":"Modifier un pipeline par glisser-déposer","detail":"Éditeur de graphe : ajouter, retirer, réordonner les étapes. Enregistrer publie la version suivante ; une version publiée ne change jamais et les projets restent épinglés.","fichiers":["BP web/src/vues/Pipelines.tsx","REG pipelines/<nom>/v<n>/pipeline.json"],"statut":"a-faire","raisonSensibilite":"Modifier le graphe change les étapes exécutables et leurs contrôles."},
         {"id":"9.5","titre":"Agents de secours par étape","detail":"Une liste ordonnée d'agents de secours dans la définition ; le moteur passe au suivant tout seul quand le principal n'a plus de quota.","fichiers":["REG schemas/","AO src/graphe.js","BP web/src/vues/Pipelines.tsx"],"statut":"a-faire","raisonSensibilite":"Changer les secours modifie les agents autorisés à exécuter une étape."}
-    ]
-  },
-  {
-    "id": "10",
-    "titre": "Run : les pipelines en cours",
-    "but": "Suivre et piloter les pipelines qui tournent dans les projets.",
-    "etapes": [
+]
+},
+{
+"id": "10",
+"titre": "Run : les pipelines en cours",
+"but": "Suivre et piloter les pipelines qui tournent dans les projets.",
+"etapes": [
         {"id":"10.1","titre":"Page Run","detail":"Page Run sur /run et /run/<runId> : liste des runs à gauche, graphe au centre, inspecteur à droite. Livré le 4 novembre (release cockpit-20261104-231841) ; vérifié en production : /run et /run/<runId> servent la page, /run/x/y reste en 404, et le front servi contient la route.","fichiers":["BP web/src/vues/RunPipeline.tsx","BP web/src/App.tsx","BP bin/cockpit.js:442"],"statut":"fait"},
         {"id":"10.2","titre":"Changer l'agent d'une étape","detail":"Remplacer un agent sans quota ou occupé sur un run en cours.","fichiers":["AO src/maitre.js","BP bin/cockpit.js"],"statut":"a-faire"},
         {"id":"10.3","titre":"Agents de secours sur un run","detail":"Ajouter ou réordonner les secours d'un run en cours ; reprise automatique sur le suivant quand le principal n'a plus de quota.","fichiers":["AO src/maitre.js","BP web/src/vues/EnCours.tsx"],"statut":"a-faire"},
-        {"id":"10.4","titre":"Interrompre un run","detail":"Arrêter sur chaque run vivant du tiroir Activité (#308), près de la pause globale ; pause d'un seul run hors lot. Runs 6db03ca6 et 9cf0a11b perdus avant.","fichiers":["BP web/src/vues/EnCours.tsx"],"statut":"en-cours","cadrage":{"revision":1,"criteres":["Sur le cockpit livré, Arrêter un run vivant depuis le tiroir Activité le passe à « Annulé »."],"directives":[],"exclusions":[],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"recette-attendue","attente":null,"preuves":[{"type":"verification","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/308","revision":1,"commit":"5c4739c263d62028e2f295cd04f0d7209e0c771f"},{"type":"fusion","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/308","revision":1,"commit":"b6ce43b26f25d8860a5cbf6d9f652ca10831c9bb"}]}},
+        {"id":"10.4","titre":"Interrompre un run","detail":"Arrêter sur chaque run vivant du tiroir Activité (#308), près de la pause globale ; pause d'un seul run hors lot. Runs 6db03ca6 et 9cf0a11b perdus avant.","fichiers":["BP web/src/vues/EnCours.tsx"],"statut":"en-cours","cadrage":{"revision":1,"criteres":["Sur le cockpit livré, Arrêter un run vivant depuis le tiroir Activité le passe à « Annulé »."],"directives":[],"exclusions":[],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"recette-attendue","attente":null,"preuves":[{"type":"verification","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/312","revision":1,"commit":"41b8f519f94b6c8e952c93ab78f6213456299678"},{"type":"fusion","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/312","revision":1,"commit":"eb3c13f26683fcf12ec39a0296b0710bdb5d16da"}]}},
         {"id":"10.5","titre":"Discuter avec l'équipe ou un agent","detail":"Fil de l'équipe du run, ou d'un agent précis.","fichiers":["BP src/discussions-equipe.js","BP web/src/vues/ActionsChat.tsx"],"statut":"a-faire"},
-        {"id":"10.6","titre":"Le conseiller discute avec l'équipe","detail":"Même accès pour le conseiller du PC.","fichiers":["BP src/conseiller.js","BP src/api-conseiller.js"],"statut":"a-faire"}
-    ]
-  },
-  {
-    "id": "14",
-    "titre": "Setup agentique : règles communes, garde-fous et providers",
-    "but": "Chaque règle vit dans un seul fichier lu par Claude Code et Codex, et chaque invariant critique est doublé par un garde-fou qui ne dépend pas du modèle.",
-    "etapes": [
+        {"id":"10.6","titre":"Retirer le conseiller des approbations","detail":"Retrait et dossier : docs/RETRAIT-conseiller.md.","fichiers":["BP src/conseiller.js","BP src/api-conseiller.js","REG agents/plan-synthesist"],"statut":"en-cours","cadrage":{"revision":1,"criteres":["Avis et discussion retirés ; aucun calcul de modèle.","Quota, Demander et pont vault préservés.","Arbitrages neutres ; couverture des quatre questions."],"directives":[],"exclusions":[],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"fusion-attendue","attente":null,"preuves":[{"type":"verification","reference":"docs/RETRAIT-conseiller.md","revision":1,"commit":"3426afde466f9636cc050c43bcf94f87091e54b7"}]}}
+]
+},
+{
+"id": "14",
+"titre": "Setup agentique : règles communes, garde-fous et providers",
+"but": "Chaque règle vit dans un seul fichier lu par Claude Code et Codex, et chaque invariant critique est doublé par un garde-fou qui ne dépend pas du modèle.",
+"etapes": [
         {"id":"14.1","titre":"AGENTS.md commun dans le registre","detail":"Créer shared/AGENTS.md (communication, approbations, invariants de sécurité, contenu externe traité comme une donnée), l'importer par une ligne @ dans ~/.claude/CLAUDE.md et en faire le lien ~/.codex/AGENTS.md depuis WSL. Vérifier avec /context côté Claude Code et en demandant ses règles d'approbation à Codex. Une ligne n'y entre que si, sans elle, un agent ferait une erreur. Fait le 4 novembre (registre #27) : import en tête de ~/.claude/CLAUDE.md et lien ~/.codex/AGENTS.md vers un worktree du registre sur main ; Claude Code et Codex citent la règle d'accord du fichier commun.","fichiers":["REG shared/AGENTS.md","~/.claude/CLAUDE.md","~/.codex/AGENTS.md"],"statut":"fait"},
         {"id":"14.2","titre":"Skill agentic-os versionné dans le registre","detail":"Le skill existe, synchronisé depuis claude.ai. Le placer dans skills/agentic-os/SKILL.md du registre, le lier pour Claude Code et Codex, vérifier avec /skills. Compléter ses points ouverts : sens des labels des tâches planifiées, règles de correction du registre. Tout changement d'architecture met à jour le skill dans le même commit. Fait le 7 novembre (registre #29 et #32) : skill lié pour Claude Code et Codex depuis une copie de main, lu par les deux ; labels = statut de la tâche dans le TaskBoard ; règles de correction reprises du README du registre. Reste hors dépôt : retirer la copie synchronisée claude.ai.","fichiers":["REG skills/agentic-os/SKILL.md","~/.claude/skills/agentic-os/","~/.codex/skills/agentic-os/"],"statut":"fait"},
         {"id":"14.3","titre":"Liste sensible protégée par elle-même","detail":"deploy/fichiers-sensibles.json est couvert par le motif deploy/ de la liste et du workflow de fusion : le modifier impose une fusion explicite. La règle locale qui en interdit l'édition est suivie en 14.16.","fichiers":["BP deploy/fichiers-sensibles.json","BP .github/workflows/agent-gated-merge.yml"],"statut":"fait"},
@@ -130,14 +130,14 @@
         {"id":"14.16","titre":"Règles permissions.deny","detail":"Interdire l'édition de deploy/fichiers-sensibles.json et la lecture des fichiers de secrets. Valider la syntaxe des chemins avec /permissions, puis tester chaque règle par une action volontairement interdite.","fichiers":["~/.claude/settings.json","BP deploy/fichiers-sensibles.json"],"statut":"a-faire"},
         {"id":"14.17","titre":"/sandbox pour les runs","detail":"Deuxième niveau d'isolation, après le worktree : système de fichiers et réseau limités par l'OS. Vérifier sa disponibilité sous WSL ; au début, un accès bloqué fait échouer une étape.","fichiers":["AO src/agent-runner.js"],"statut":"a-faire"},
         {"id":"14.18","titre":"Un conteneur Docker par run","detail":"Troisième niveau d'isolation : le run ne voit que le dépôt concerné. Image avec les dépendances déjà installées, environ une seconde au démarrage.","fichiers":["AO src/worker.js"],"statut":"a-faire"}
-    ]
-  },
-  {
-    "id": "15",
-    "titre": "Setup agentique : idées à déclencher",
-    "but": "Garder visibles les idées du document « Setup agentique » qui attendent un déclencheur, pour les lancer au bon moment sans les perdre.",
-    "prerequis": "Le fichier commun (14.1) et le skill versionné (14.2) passent avant ces idées.",
-    "etapes": [
+]
+},
+{
+"id": "15",
+"titre": "Setup agentique : idées à déclencher",
+"but": "Garder visibles les idées du document « Setup agentique » qui attendent un déclencheur, pour les lancer au bon moment sans les perdre.",
+"prerequis": "Le fichier commun (14.1) et le skill versionné (14.2) passent avant ces idées.",
+"etapes": [
         {"id":"15.1","titre":"Préférence d'apprentissage dans le CLAUDE.md global","detail":"Sous l'import du fichier commun, une ligne pour les dossiers d'apprentissage comme Transformer from scratch : expliquer avant de coder et proposer des indices plutôt que la solution complète. Claude Code n'écrit alors pas tout sur un projet dont le but est d'apprendre.","fichiers":["~/.claude/CLAUDE.md"],"statut":"a-faire"},
         {"id":"15.2","titre":"Habitudes de contexte","detail":"La règle /compact est dans ~/.claude/CLAUDE.md depuis le 30 octobre : le résumé garde le plan validé et les fichiers modifiés, et /compact est proposé après un plan validé ou entre deux étapes, jamais en plein travail. Restent : /clear entre deux tâches sans rapport, /clear et un meilleur prompt après deux corrections ratées sur le même point, un sous-agent pour une exploration lourde.","fichiers":["~/.claude/CLAUDE.md"],"statut":"en-cours"},
         {"id":"15.3","titre":"Conventions /model en session","detail":"/model <nom OmniRoute> change de provider ; pour une seule session, /model sans argument puis s sur la ligne choisie. Les alias sonnet, opus et haiku restent Claude : les lanceurs OmniRoute du PC les redéfinissent encore et sont à corriger. Pas d'availableModels restrictif dans les settings (absent aujourd'hui), sinon /model refuse de changer. /model ne vérifie pas la liste blanche : pas de provider non autorisé pour des données internes ou sensibles, même en session.","fichiers":["~/.claude/settings.json","~/.local/bin/claude-omni","~/.zshrc"],"statut":"a-faire"},
@@ -151,14 +151,14 @@
         {"id":"15.11","titre":"Versionner la config locale de Claude Code","detail":"~/.claude/settings.json, les scripts de hooks et ~/.claude/CLAUDE.md dans le registre, avec un petit script d'installation qui crée les liens. Les garde-fous survivent à une panne du PC, et c'est la base du plugin (15.12).","fichiers":["REG config locale et script d'installation","~/.claude/settings.json","~/.claude/CLAUDE.md"],"statut":"a-faire"},
         {"id":"15.12","titre":"Plugin du setup","detail":"Quand le setup est stable : AGENTS.md, skills et hooks emballés dans un plugin versionné dans le registre, réinstallable en une commande, par exemple sur le futur homelab.","fichiers":["REG plugin du setup"],"statut":"a-faire"},
         {"id":"15.13","titre":"Règles communes pour un modèle local","detail":"Un modèle local peut recevoir AGENTS.md et le skill par le prompt système que l'orchestrateur lui passe. Il n'est jamais le seul garde-fou : les règles critiques restent appliquées par le code.","fichiers":["AO src/agent-runner.js"],"statut":"a-faire"}
-    ]
-  },
-  {
-    "id": "16",
-    "titre": "Agents et playbooks : le savoir-faire dans des skills",
-    "but": "Le savoir-faire d'un métier vit dans des skills versionnés, lus par les agents des pipelines comme en session interactive. Un agent séparé n'existe que s'il change les droits, l'indépendance, le modèle ou la machine.",
-    "prerequis": "L'AGENTS.md commun (14.1) et le skill agentic-os versionné (14.2) sont faits. Ce lot garde la revue indépendante, les outils par agent, les nœuds script et les versions épinglées.",
-    "etapes": [
+]
+},
+{
+"id": "16",
+"titre": "Agents et playbooks : le savoir-faire dans des skills",
+"but": "Le savoir-faire d'un métier vit dans des skills versionnés, lus par les agents des pipelines comme en session interactive. Un agent séparé n'existe que s'il change les droits, l'indépendance, le modèle ou la machine.",
+"prerequis": "L'AGENTS.md commun (14.1) et le skill agentic-os versionné (14.2) sont faits. Ce lot garde la revue indépendante, les outils par agent, les nœuds script et les versions épinglées.",
+"etapes": [
         {"id":"16.1","titre":"Règle des quatre frontières","detail":"Écrire dans le README du registre et le skill agentic-os : deux agents ne se séparent que pour des droits différents (lecture externe contre écriture, 14.11), l'indépendance d'une revue, un modèle qui change vraiment le quota, ou une autre machine. Sinon l'étape est un seul agent qui charge les skills utiles. L'éditeur de pipelines (9.3, 9.4) la rappelle. Écrite dans le README et le skill agentic-os (registre #34, fusionné le 10 novembre), lue en session depuis la copie main du registre ; le rappel dans l'éditeur se fera avec 9.3 et 9.4.","fichiers":["REG README.md","REG skills/agentic-os/SKILL.md"],"statut":"fait"},
         {"id":"16.2","titre":"Retirer les agents fantômes de l'équipe","detail":"Fait : #242 (9 novembre) retire de equipe/agents.json marketing-plan-writer, channel-strategy-analyst et market-opportunity-analyst, absents du registre. Ils ne produisaient que des clés de lancement que le moteur ignore ; les discussions marketing gardent leurs membres par brand-analyst et economy-analyst. Livré avec le cockpit (livraison confirmée avec 17.5) ; plus aucune référence hors de la feuille.","fichiers":["BP equipe/agents.json"],"statut":"fait"},
         {"id":"16.3","titre":"Retirer les définitions livrées avec le moteur","detail":"Fait : moteur #116 (9 novembre) retire agents/ (12 fichiers) et pipelines/ (debug, refactor, research, writing), qui doublaient le registre et pouvaient masquer la définition partagée (audit A6). Seul orch run les lisait ; en service sur le worker PC (4d1a038 puis 691e877).","fichiers":["AO agents/","AO pipelines/","AO src/resolve.js","AO README.md"],"statut":"fait"},
@@ -172,14 +172,14 @@
         {"id":"16.11","titre":"Trois cas d'évaluation par skill","detail":"Tirés de runs réels : entrée, sortie attendue, critères. Les 27 dossiers evals/ du registre ne contiennent qu'un .gitkeep. Une nouvelle version de skill passe ses cas avant publication, et 14.10 réutilise les mêmes cas pour comparer les providers.","fichiers":["REG skills/","REG agents/"],"statut":"a-faire"},
         {"id":"16.12","titre":"Corriger le playbook après un échec répété","detail":"Quand un finding P1 du même type revient deux fois ou qu'un cycle s'épuise, le superviseur (5.2) ouvre une PR : version suivante du skill et cas d'évaluation qui reproduit le défaut. Fusion humaine ; les projets restent sur l'ancienne version jusqu'à leur montée.","fichiers":["BP src/missions.js","REG skills/"],"statut":"a-faire"},
         {"id":"16.13","titre":"Premier métier par entretien","detail":"Pour le prochain domaine métier : Claude Code pose des questions jusqu'à pouvoir faire le travail et rédige le skill (but, étapes, règles, Fini quand), puis 3 à 5 runs à la main avec ce skill. Le pipeline n'arrive qu'une fois le résultat stable, découpé selon 16.1. Aucun agent ni membre d'équipe créé d'avance.","fichiers":["REG skills/","REG pipelines/"],"statut":"a-faire"}
-    ]
-  },
-  {
-    "id": "17",
-    "titre": "Refonte UX du cockpit",
-    "but": "Comprendre l'état du système en moins de trois secondes, sur PC comme sur téléphone, sans perdre une action ni un branchement API.",
-    "prerequis": "Chaque étape garde les adresses, les appels API et les tests existants ; la livraison reste demandée par Raphaël depuis le cockpit.",
-    "etapes": [
+]
+},
+{
+"id": "17",
+"titre": "Refonte UX du cockpit",
+"but": "Comprendre l'état du système en moins de trois secondes, sur PC comme sur téléphone, sans perdre une action ni un branchement API.",
+"prerequis": "Chaque étape garde les adresses, les appels API et les tests existants ; la livraison reste demandée par Raphaël depuis le cockpit.",
+"etapes": [
         {"id":"17.1","titre":"Fondations du design system","detail":"Palette sobre posée sur les jetons existants, deux thèmes dont les textes tiennent 4,5:1. Polices Inter et JetBrains Mono embarquées dans le bundle ; fin de la police Cyberpunk, des angles coupés et de l'effet glitch. Composants partagés : bouton avec état d'envoi, confirmation, statut, carte, squelette, vide, erreur avec relance, toast, tiroir, onglets, tableau. useCharge expose chargement et recharger(). Fusionné par #262, livré avec 17.5 et recetté.","fichiers":["BP web/src/style.css","BP web/src/composants/","BP web/src/donnees/contexte.tsx","BP web/src/ui.tsx"],"statut":"fait"},
         {"id":"17.2","titre":"Coquille et navigation","detail":"Barre latérale groupée (Vue d'ensemble, Décisions, Pilotage, Configuration, Métiers), barre haute avec fil d'Ariane et pastille de santé, tiroir Activité à la place de la colonne « En cours », bandeau de pause des démarrages, onglets du bas sur téléphone. Les anciennes adresses restent valides. Fusionné par #264, livré avec 17.5 et recetté.","fichiers":["BP web/src/App.tsx","BP web/src/vues/EnCours.tsx","BP web/src/vues/ControleExecution.tsx"],"statut":"fait"},
         {"id":"17.3","titre":"Vue d'ensemble en page d'accueil","detail":"Décisions en attente, runs actifs, échecs sur 24 h et quota en tête ; décisions priorisées, santé des machines et du flux, runs en cours. Le graphe devient l'onglet Topologie de Système et /graph y mène. Fusionné par #266, livré avec 17.5 et recetté.","fichiers":["BP web/src/App.tsx","BP web/src/topologie/Topologie.tsx","BP web/src/systeme/Systeme.tsx"],"statut":"fait"},
@@ -187,14 +187,14 @@
         {"id":"17.5","titre":"Runs et Planning","detail":"Runs en tableau filtrable, détail en panneau, graphe conservé ; TaskBoard en onglets Calendrier, Tâches et Activité. Une seule page par run (/runs/:id y redirige) ; arrêt d'un run et décision d'étape en deux temps. Fusionné par #272, livré et recetté.","fichiers":["BP web/src/vues/RunPipeline.tsx","BP web/src/TaskBoard.tsx"],"statut":"fait"},
         {"id":"17.6","titre":"Missions, Pipelines et Agents","detail":"Branches devient un onglet de Missions ; formulaires et fiches reprennent les composants partagés. Fusionné par #287 malgré le gel (exception de Raphaël) ; livré et recetté.","fichiers":["BP web/src/vues/Missions.tsx","BP web/src/vues/Pipelines.tsx","BP web/src/vues/Agents.tsx"],"statut":"fait","suivi":{"phase":"clos","attente":null,"preuves":[{"type":"verification","reference":"https://github.com/Raphaelburnier/business-pipelines/actions/runs/45291446523","revision":2,"commit":"e84a0ca82f83f69be167773417dabd20e67b596a"},{"type":"fusion","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/287","revision":2,"commit":"e84a0ca82f83f69be167773417dabd20e67b596a"},{"type":"recette","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/306","revision":2,"commit":"e84a0ca82f83f69be167773417dabd20e67b596a"}]},"cadrage":{"revision":2,"criteres":["Recette réussie sur le cockpit livré."],"directives":[],"exclusions":[],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}}},
         {"id":"17.7","titre":"Finance, Marketing, Demander, AI Studio et Système","detail":"Mêmes composants et mêmes états d'attente, de vide et d'erreur. Les appels directs de Finance, du calendrier et d'AI Studio passent par la gestion d'erreur commune.","fichiers":["BP web/src/finance/api.ts","BP web/src/calendrier/api.ts","BP web/src/ai-studio/api.ts"],"statut":"en-cours","cadrage":{"revision":1,"criteres":["Erreurs des appels directs gérées en commun."],"directives":[],"exclusions":[],"dependances":[]},"suivi":{"phase":"developpement","attente":null,"preuves":[]}}
-    ]
-  },
-  {
-    "id": "18",
-    "titre": "Revue du 16 novembre : confinement, cadence et ménage",
-    "but": "Confiner les agents du PC comme ceux du NAS, réduire le travail en cours et retirer ce que les runs laissent derrière eux.",
-    "prerequis": "Viennent juste après : modèles épinglés (14.8, 14.9), pipeline de test des garde-fous (14.13) et cas d'évaluation des skills (16.11).",
-    "etapes": [
+]
+},
+{
+"id": "18",
+"titre": "Revue du 16 novembre : confinement, cadence et ménage",
+"but": "Confiner les agents du PC comme ceux du NAS, réduire le travail en cours et retirer ce que les runs laissent derrière eux.",
+"prerequis": "Viennent juste après : modèles épinglés (14.8, 14.9), pipeline de test des garde-fous (14.13) et cas d'évaluation des skills (16.11).",
+"etapes": [
         {"id":"18.1","titre":"Droits des sauvegardes de configuration du worker","detail":"Trois copies de backends.json contenant des clés étaient lisibles par tous les comptes du PC. Droits ramenés au seul propriétaire le 16 novembre.","fichiers":["PC config agent-orchestrator"],"statut":"fait"},
         {"id":"18.2","titre":"Jetons d'une étape en échec","detail":"Une étape en échec ne comptait pas les jetons écrits en cache, une étape réussie si. Un seul calcul pour les deux : moteur #126, livré au NAS, et worker PC aligné en 6704525 le 19 novembre par le script de 18.6.","fichiers":["AO src/stage-executor.js"],"statut":"fait"},
         {"id":"18.3","titre":"Nettoyage du poste","detail":"Fait le 16 novembre avec l'outil du moteur #127 : 109 worktrees fusionnés et propres et 22 anciennes copies du worker retirés, 18 Go libérés. Régression trouvée le 23 novembre : un worktree retiré était cité par modeles-cockpit.service (MOTEUR), le catalogue des modèles n'était plus publié depuis. Réparé sur le poste (MOTEUR vers la copie figée du worker) ; l'outil garde désormais les worktrees cités par une configuration du poste (moteur #137).","fichiers":["AO scripts/pc/nettoyer-poste.mjs"],"statut":"fait"},
@@ -222,32 +222,32 @@
         {"id":"18.25","titre":"Ranger la documentation","detail":"Fait le 19 novembre : six rapports de lots clos que rien ne cite rangés dans docs/archives avec un index. AUDIT.md et plan-agentique-2026-09-11.html restent dans docs/, d'autres documents les citent.","fichiers":["BP docs/"],"statut":"fait"},
         {"id":"18.26","titre":"Sortie garantie avant le plafond","detail":"Spécification validée par Raphaël le 22 novembre. Le 21 novembre (run ccced5e7), le planificateur a fait 36 tours et 32 commandes Bash sans écrire de plan, pour 2,7 $ en équivalent API, comme le 12 novembre. Moteur #136, fusionné par Raphaël : aux deux tiers du plafond, une sortie déclarée encore absente devient la seule action permise, puis les outils reviennent. Recette avec le vrai CLI : refus au tour 4 sur 6, plan écrit au tour 5. Actif sur le worker PC depuis le 23 novembre et sur le NAS depuis la livraison du 25 novembre (691e877). Reste à le voir agir sur un vrai run. Codex non couvert.","fichiers":["AO src/agent-runner.js","AO packages/schemas/index.js"],"statut":"en-cours"},
         {"id":"18.27","titre":"Archiver les lots faits de la feuille","detail":"Validé par Raphaël le 26 novembre. La feuille atteignait 99 977 octets sur les 100 000 que lit la revue : aucun cadrage ne passait plus, celui de 10.5 compris. Le formateur range les lots entièrement faits et les défauts faits dans feuille-archive.json ; front, serveur et validateur assemblent les deux fichiers.","fichiers":["BP web/src/avenir/feuille-archive.json","BP src/cadrage-lots.mjs","BP bin/formater-feuille.js","BP bin/valider-feuille.js"],"statut":"en-cours","cadrage":{"revision":1,"criteres":["La feuille principale repasse sous 100 000 octets sans perte : l'assemblage des deux fichiers est identique à la feuille d'origine.","TaskBoard, À venir, Calendrier et le contrôle de lancement du serveur lisent les deux fichiers ; une dépendance vers une étape archivée reste résolue.","Le validateur refuse une étape ou un défaut non fait dans l'archive."],"directives":[],"exclusions":["Aucune limite du workflow de revue n'est relevée."],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"developpement","attente":null,"preuves":[]}}
-    ]
-  },
-  {
-    "id": "19",
-    "titre": "Erreurs récurrentes : des contrôles exécutables",
-    "but": "Empêcher la répétition des erreurs observées par des tests, des règles d'import et des API claires ; conserver les consignes écrites pour les décisions qui demandent du jugement.",
-    "prerequis": "Respecter le plafond de travail actif de 18.11 avant toute prise en charge. Préparer 19.1 puis 19.2 ; chaque étape reste hors catalogue jusqu'à vérification de ses propres prérequis. Réutiliser 16.10, 16.11 et 18.7, sans refaire leurs travaux. Aucun changement de protocole entre composants sans schéma validé.",
-    "etapes": [
+]
+},
+{
+"id": "19",
+"titre": "Erreurs récurrentes : des contrôles exécutables",
+"but": "Empêcher la répétition des erreurs observées par des tests, des règles d'import et des API claires ; conserver les consignes écrites pour les décisions qui demandent du jugement.",
+"prerequis": "Respecter le plafond de travail actif de 18.11 avant toute prise en charge. Préparer 19.1 puis 19.2 ; chaque étape reste hors catalogue jusqu'à vérification de ses propres prérequis. Réutiliser 16.10, 16.11 et 18.7, sans refaire leurs travaux. Aucun changement de protocole entre composants sans schéma validé.",
+"etapes": [
         {"id":"19.1","titre":"Choisir trois erreurs à empêcher dans le cockpit","detail":"Préparation, dépôt BP uniquement ; attendre une place selon 18.11. À partir des incidents et revues existants, retenir trois erreurs du cockpit avec leur cause, un exemple fautif et un exemple correct, les contrôles déjà présents et la commande de vérification prévue. Choisir test, règle d'import ou simplification d'API selon la cause ; ne pas ajouter une interdiction générale de useEffect ou des commentaires. Fini quand chaque cas a un résultat attendu observable et un périmètre validable pour 19.2. Les cas de skills restent en 16.11 ; aucun run modèle ni changement du moteur ou du registre. Livrable : cadrage versionné et PR fusionnée, sans livraison requise pour ce document.","fichiers":["BP docs/","BP test/","BP web/src/","BP web/package.json"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Trois incidents du cockpit sont reliés chacun à une cause, un exemple fautif et un exemple correct.","Pour chaque incident, le contrôle existant et la commande prévue sont indiqués, sans recréer les travaux de 16.11."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11"],"cloture":{"fusionRequise":true,"recetteRequise":false,"motifDispenseRecette":"Document ou outillage de test ; toute modification du comportement en production impose une recette avant clôture."}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"19.2","titre":"Faire refuser les trois régressions par les outils","detail":"Dépôt BP uniquement ; après 19.1 validé et une place selon 18.11. Implémenter les trois protections retenues : tests de comportement, frontières d'import ou API commune, sans migration générale du dépôt. Pour chaque contrôle, reproduire l'exemple fautif dans une copie temporaire : la commande doit échouer ; le cas correct et les tests existants doivent passer. Exécuter les mêmes commandes en local et en CI, avec un message qui indique le problème à corriger. Fini quand les trois refus et trois cas corrects sont prouvés sur la révision relue, la CI est verte et la PR fusionnée ; si une API de production change, attendre la livraison humaine et sa recette avant clôture. Ne pas modifier les règles de fusion.","fichiers":["BP web/src/","BP test/","BP web/package.json","BP .github/workflows/ci.yml"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Les trois exemples fautifs retenus en 19.1 font échouer leur commande de contrôle.","Les trois exemples corrects et les suites existantes passent, avec les mêmes commandes en local et en CI."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","19.1"],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}}
-    ]
-  },
-  {
-    "id": "20",
-    "titre": "Cockpit : parcours navigateur et preuves de fonctionnement",
-    "but": "Vérifier les gestes utilisateur et le raccordement au serveur, puis faire réutiliser ces vérifications par les agents. Une capture seule ne démontre pas qu'une action fonctionne.",
-    "prerequis": "Respecter 18.11 avant tout départ ; ordre 20.1 → 20.2 → 20.3 → 20.4 → 20.5, puis bilan 20.6. Garder les étapes hors catalogue jusqu'à leurs prérequis vérifiés. Les tests utilisent des données synthétiques et des services temporaires : aucune commande de production, aucun fournisseur payant. Les contrats existants restent applicables ; tout nouveau format de preuve exige un schéma validé avant implémentation.",
-    "etapes": [
+]
+},
+{
+"id": "20",
+"titre": "Cockpit : parcours navigateur et preuves de fonctionnement",
+"but": "Vérifier les gestes utilisateur et le raccordement au serveur, puis faire réutiliser ces vérifications par les agents. Une capture seule ne démontre pas qu'une action fonctionne.",
+"prerequis": "Respecter 18.11 avant tout départ ; ordre 20.1 → 20.2 → 20.3 → 20.4 → 20.5, puis bilan 20.6. Garder les étapes hors catalogue jusqu'à leurs prérequis vérifiés. Les tests utilisent des données synthétiques et des services temporaires : aucune commande de production, aucun fournisseur payant. Les contrats existants restent applicables ; tout nouveau format de preuve exige un schéma validé avant implémentation.",
+"etapes": [
         {"id":"20.1","titre":"Tester trois parcours dans un vrai navigateur","detail":"Dépôt BP uniquement ; attendre une place selon 18.11. Ajouter Playwright sur la maquette existante : ouverture directe d'une page puis navigation, erreur de chargement puis relance réussie, formulaire dont le double clic ne soumet qu'une action. Tester le format bureau et mobile avec données synthétiques, horloge maîtrisée et assertions sur le résultat utilisateur ; éviter les attentes arbitraires. Fini quand les trois parcours passent en local et qu'une régression volontaire de navigation ou de soumission fait échouer le test avant correction. Conserver une trace d'échec ; la maquette ne prouve pas le branchement au serveur. PR fusionnée ; aucune livraison requise pour l'outillage seul.","fichiers":["BP web/package.json","BP web/package-lock.json","BP web/playwright.config.ts","BP web/e2e/","BP web/src/mock/"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Les parcours navigation, erreur puis relance et double clic passent dans un navigateur en bureau et mobile.","Une régression volontaire fait échouer un parcours ; la trace permet de retrouver le geste et le résultat attendu."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11"],"cloture":{"fusionRequise":true,"recetteRequise":false,"motifDispenseRecette":"Document ou outillage de test ; toute modification du comportement en production impose une recette avant clôture."}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"20.2","titre":"Exercer une commande du navigateur à la base temporaire","detail":"Dépôt BP uniquement ; après 20.1 fusionné. Démarrer le vrai serveur avec une base et des répertoires temporaires, sans worker ni fournisseur de modèle. Choisir une commande existante de planification et vérifier : geste navigateur, réponse API, une seule commande persistée malgré le double clic, résultat affiché et relu après rechargement. Vérifier aussi le refus sans identité autorisée et l'erreur serveur suivie d'une relance, sans affaiblir l'authentification de production. Fini quand le parcours passe et qu'une rupture volontaire du raccordement échoue ; fournir assertions API et base avec la trace. PR fusionnée ; recette après livraison humaine seulement si le comportement de production est modifié.","fichiers":["BP web/e2e/","BP test/","BP bin/cockpit.js","BP src/taskboard.js"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Le geste navigateur atteint le vrai serveur et persiste une seule commande dans une base temporaire malgré le double clic.","Le résultat reste visible après rechargement ; une identité non autorisée est refusée.","Une rupture volontaire du raccordement fait échouer le parcours sans appeler de modèle."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","20.1"],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"20.3","titre":"Faire passer les parcours navigateur en CI","detail":"Dépôt BP uniquement ; après 20.1 et 20.2 fusionnés. Ajouter aux contrôles CI les mêmes commandes navigateur qu'en local, avec installation reproductible du navigateur et durée bornée. Conserver rapport et trace au moins sur échec ; toute relance doit rester visible, sans transformer un test instable en succès silencieux. Le dépôt est public : seuls scénarios synthétiques et journaux expurgés peuvent devenir des artefacts. Fini quand une régression volontaire rend le job rouge, sa trace est exploitable, puis la correction rend la CI verte sur la révision relue. PR fusionnée ; les gates existants restent intacts.","fichiers":["BP .github/workflows/ci.yml","BP web/playwright.config.ts","BP web/package.json"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Les mêmes commandes navigateur passent en local et en CI, avec installation reproductible et durée bornée.","Une régression volontaire rend le job rouge et fournit une trace exploitable ne contenant que des données synthétiques."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","20.1","20.2"],"cloture":{"fusionRequise":true,"recetteRequise":false,"motifDispenseRecette":"Document ou outillage de test ; toute modification du comportement en production impose une recette avant clôture."}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"20.4","titre":"Brancher ces vérifications dans les runs du cockpit","detail":"Dépôt BP uniquement ; après 20.3 fusionné. Réutiliser les checks et commandes du profil verification existant pour exécuter les parcours dans l'instantané vérifié, avec préparation du navigateur et délais explicites. Prouver que le bac à sable autorise le navigateur sans élargir les droits de production ; si une adaptation du moteur est nécessaire, arrêter ce périmètre et cadrer une étape AO distincte. Fini quand verify-project réel réussit sur un cas sain et refuse une régression, puis qu'une recette opérateur confirme le parcours du pipeline sur la version effectivement installée. Réutiliser les rapports et identifiants existants ; aucune livraison ni lancement modèle par cette préparation.","fichiers":["BP projects/business-pipelines/project.json","BP test/project-verification.test.js","BP web/package.json","BP web/e2e/"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["verify-project réel accepte un cas sain et refuse une régression dans le bac à sable existant.","Une recette opérateur confirme le parcours sur la version installée, sans nouveau contrat ni élargissement des droits."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","20.3"],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"20.5","titre":"Donner aux agents une carte des parcours à vérifier","detail":"Dépôt REG uniquement ; après 20.4 recetté. Publier un skill versionné qui relie chaque parcours cockpit à sa route, ses données de test, sa commande, ses assertions et l'emplacement des preuves existantes ; le charger dans une nouvelle version du pipeline concerné, sans modifier les versions publiées. Réutiliser les critères de fin de 16.10 et les cas d'évaluation de 16.11. Fini quand les cas parcours correct, parcours cassé et preuve d'une autre tentative sont respectivement acceptés, refusés et refusés par les contrôles existants. CI du registre et PR fusionnée, puis chargement de la version et recette opérateur vérifiés. Si le format existant ne suffit pas, proposer un schéma avant de coder son extension.","fichiers":["REG skills/","REG agents/","REG pipelines/","REG scripts/valider.mjs"],"statut":"a-faire","raisonSensibilite":"Une nouvelle version du skill et du pipeline change les vérifications demandées aux agents ; les versions publiées et les contrôles indépendants doivent être conservés.","cadrage":{"revision":1,"criteres":["Le skill versionné relie routes, données de test, commandes, assertions et preuves, et son chargement est vérifié.","Les cas correct, cassé et preuve d’une autre tentative sont respectivement acceptés, refusés et refusés."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","20.4","16.10","16.11"],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}},
         {"id":"20.6","titre":"Mesurer les régressions évitées avant d'étendre","detail":"Dépôt BP uniquement ; après 19.2 et 20.5 recettés. Utiliser les résultats par version de pipeline déjà livrés en 18.16 et les preuves des prochains runs autorisés, sans recréer un tableau de bord ni lancer des runs pour remplir une statistique. Comparer réussite, cycles de correction, durée et coût équivalent en séparant défaut de code, quota, infrastructure et revue ; indiquer taille et limites de l'échantillon. Fini quand un bilan versionné relie les défauts détectés aux contrôles, chiffre leur coût et recommande le prochain contrôle ou le maintien du périmètre. Tests de propriétés ciblés seulement si un défaut le justifie ; TLA+ et Lean restent une étude séparée. PR du bilan fusionnée.","fichiers":["BP docs/","BP src/api-lecture.js","BP web/src/vues/Pipelines.tsx"],"statut":"a-faire","cadrage":{"revision":1,"criteres":["Le bilan utilise les résultats existants de 18.16, distingue code, quota, infrastructure et revue, et précise la taille de l’échantillon.","Chaque défaut détecté est relié à son contrôle et à son coût ; aucun nouveau tableau de bord ni run statistique n’est créé."],"directives":["Suivre le périmètre et les critères détaillés de cette étape."],"exclusions":["Aucun lancement de fournisseur payant ni commande de production pendant la préparation."],"dependances":["18.11","19.2","20.5","18.16"],"cloture":{"fusionRequise":true,"recetteRequise":false,"motifDispenseRecette":"Document ou outillage de test ; toute modification du comportement en production impose une recette avant clôture."}},"suivi":{"phase":"a-faire","attente":null,"preuves":[]}}
-    ]
-  }
+]
+}
 ],
 "defauts": [
     {"id":"O7","severite":"moyenne","titre":"Les missions ne reprennent pas tout le cadrage de leur lot","fichiers":"BP web/src/avenir/AVenir.tsx ; web/src/TaskBoard.tsx ; src/objectifs-avenirs.js","correctif":"Spécification approuvée le 20 novembre dans docs/SPEC-cadrage-lots.md. Implémentation en cours : source commune, critères canoniques, dépendances contrôlées au départ et phases de clôture avec preuves. Fusion et recette restent nécessaires avant clôture.","statut":"en-cours","cadrage":{"revision":1,"criteres":["Attribuer et Calendrier transmettent les mêmes critères complets, le but et les dépendances.","Le serveur refuse un départ sans cadrage ou dépendance terminée, y compris après planification.","Les phases et preuves distinguent développement, fusion et recette sans réécrire les runs actifs."],"directives":["Appliquer docs/SPEC-cadrage-lots.md approuvée par Raphaël."],"exclusions":["Aucune livraison NAS ni modification du contrat moteur."],"dependances":[],"cloture":{"fusionRequise":true,"recetteRequise":true}},"suivi":{"phase":"bloque","attente":"Recette fonctionnelle validée sur f01fd46. Clôture suspendue : santé instable après livraison (HTTP 200 puis 503, sondes cockpit/relais) et lectures API parfois en 502. Voir docs/RECETTE-cadrage-2026-11-24.md.","preuves":[{"type":"verification","reference":"docs/RECETTE-cadrage-2026-11-24.md#verification-isolee","revision":1,"commit":"f01fd46f6212b5875ac0bcb131658c5adf8130e1"},{"type":"fusion","reference":"https://github.com/Raphaelburnier/business-pipelines/pull/290","revision":1,"commit":"7c6c7445e9439ebccfc067535b716d5038733c1a"},{"type":"fusion","reference":"https://github.com/Raphaelburnier/agent-registry/pull/48","revision":1,"commit":"bbc19fed7eb6d1743f18e4e45c5c1648c42c472e"}]}},
