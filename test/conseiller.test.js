@@ -7,8 +7,9 @@ const path = require("path");
 
 const conseiller = require("../src/conseiller");
 const vault = require("../src/vault-index");
-const { noteValide, appelAvec, ollamaAvec } = require("../bin/conseiller-pc");
+const { noteValide, appelAvec } = require("../bin/conseiller-pc");
 const { configuration } = require("../src/operations-bornees");
+const { DatabaseSync } = require("node:sqlite");
 
 const tests = [];
 function test(name, fn) {
@@ -79,7 +80,9 @@ test("un résultat avec un bail expiré ne modifie pas le travail repris", () =>
   const { dir, base } = temporaire("bail");
   try {
     const maintenant = Date.parse("2026-09-30T17:00:00.000Z");
-    const premier = conseiller.prendre(base, { etat: etat(), maintenant });
+    const dossier = etat().dossiers[0];
+    conseiller.noter(base, { ...dossier, tranche: true }, maintenant);
+    const premier = conseiller.prendre(base, { maintenant });
     assert.ok(premier && premier.bail);
     const second = conseiller.prendre(base, { etat: etat(), maintenant: maintenant + 5 * 60_000 + 1 });
     assert.ok(second && second.bail);
@@ -217,59 +220,29 @@ test("l'appel du conseiller au cockpit est borné en-têtes et corps", async () 
   }
 });
 
-test("le repli Ollama partage l'échéance du premier appel", async () => {
-  const serveur = await serveurLent((_requete, reponse, requetes) => {
-    if (requetes === 1) {
-      reponse.writeHead(400, { "Content-Type": "text/plain" });
-      reponse.end("think non pris en charge");
-    }
-  });
-  try {
-    const debut = Date.now();
-    await assert.rejects(
-      ollamaAvec({ fetchImpl: fetch, url: serveur.url, delaiMs: 120 })({ messages: [], format: {} }),
-      (err) => err.name === "LimiteExecution" && err.operation === "ollama" && err.delaiMs === 120
-    );
-    assert.strictEqual(serveur.requetes, 2);
-    assert.ok(Date.now() - debut < 220, "le repli ne doit pas recevoir un second budget complet");
-  } finally {
-    await serveur.fermer();
-  }
-});
-
 test("un délai de conseiller hors bornes est refusé avant lancement", () => {
   const precedentHttp = process.env.CONSEILLER_HTTP_TIMEOUT_MS;
-  const precedentOllama = process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
   try {
     process.env.CONSEILLER_HTTP_TIMEOUT_MS = "0";
     assert.throws(() => configuration("http:conseiller"), /CONSEILLER_HTTP_TIMEOUT_MS.*120000/);
     delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
-    process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = "999999";
-    assert.throws(() => configuration("ollama"), /CONSEILLER_OLLAMA_TIMEOUT_MS.*600000/);
   } finally {
     if (precedentHttp === undefined) delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
     else process.env.CONSEILLER_HTTP_TIMEOUT_MS = precedentHttp;
-    if (precedentOllama === undefined) delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
-    else process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = precedentOllama;
   }
 });
 
 test("sans variable, les défauts du conseiller sont inchangés", () => {
   const precedentHttp = process.env.CONSEILLER_HTTP_TIMEOUT_MS;
-  const precedentOllama = process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
   try {
     delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
-    delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
     assert.strictEqual(configuration("http:conseiller"), 30_000);
-    assert.strictEqual(configuration("ollama"), 120_000);
     // Le lot du vault avait son propre délai avant le lot 2.6 : il ne tombe pas sur les 30 s.
     const source = fs.readFileSync(path.join(__dirname, "../bin/conseiller-pc.js"), "utf8");
     assert.match(source, /appelAvec\(\{ delaiMs: 120_000 \}\)\("vault\/lot"/);
   } finally {
     if (precedentHttp === undefined) delete process.env.CONSEILLER_HTTP_TIMEOUT_MS;
     else process.env.CONSEILLER_HTTP_TIMEOUT_MS = precedentHttp;
-    if (precedentOllama === undefined) delete process.env.CONSEILLER_OLLAMA_TIMEOUT_MS;
-    else process.env.CONSEILLER_OLLAMA_TIMEOUT_MS = precedentOllama;
   }
 });
 
@@ -331,6 +304,31 @@ test("le chat lit le vault dans le périmètre du conseiller, par dossier et par
   } finally {
     nettoyer(dir);
   }
+});
+
+test("les anciens avis ne sont plus distribués ni acceptés, les notes restent archivables", () => {
+  const { dir, base } = temporaire("retrait");
+  try {
+    const dossier = { ...etat().dossiers[0], tranche: true };
+    conseiller.noter(base, dossier);
+    const db = new DatabaseSync(base);
+    db.exec("INSERT INTO travaux (cle, genre, dossier, empreinte, cree_le) VALUES ('ancien-avis', 'avis', 'prix_test', 'abc', '2026-01-01')");
+    db.exec("INSERT INTO travaux (cle, genre, dossier, empreinte, cree_le, statut, bail) VALUES ('ancienne-reponse', 'reponse', 'prix_test', 'abc', '2026-01-01', 'en_cours', 'ancien-bail')");
+    const ancien = db.prepare("SELECT id FROM travaux WHERE cle = 'ancienne-reponse'").get();
+    db.close();
+    const travail = conseiller.prendre(base);
+    assert.strictEqual(travail.genre, 'note');
+    assert.ok(noteValide(travail.note));
+    assert.deepStrictEqual(conseiller.rendre(base, ancien.id, { bail: 'ancien-bail', texte: 'avis' }), { ignore: 'conseiller retiré' });
+    assert.deepStrictEqual(conseiller.rendre(base, travail.id, { bail: travail.bail }), { statut: 'fait' });
+    assert.strictEqual(conseiller.prendre(base), null);
+    const lecture = new DatabaseSync(base);
+    assert.strictEqual(lecture.prepare("SELECT COUNT(*) AS n FROM travaux WHERE genre != 'note' AND statut = 'abandonne'").get().n, 2);
+    lecture.close();
+    const vue = conseiller.etatNotes(base, { dossiers: [{ ...dossier, actions: [{ id: 'x', conseil: { texte: 'ancien avis' } }] }] });
+    assert.ok(!('conseil' in vue.dossiers[0].actions[0]));
+    assert.strictEqual(vue.dossiers[0].note_vault, 'fait');
+  } finally { nettoyer(dir); }
 });
 
 let failed = 0;

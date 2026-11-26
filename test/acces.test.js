@@ -232,14 +232,13 @@ async function protocoleAgentSansOrigin() {
 protocoleAgentSansOrigin.forme = {};
 test("le bearer de l’agent sans Origin est accepté, mais une Origin étrangère est refusée", protocoleAgentSansOrigin);
 
-test("un conseiller sans empreinte reste indisponible sans bloquer les approbations", async () => {
+test("un pont vault sans empreinte ne bloque pas les approbations sans conseiller", async () => {
   demonter();
   await monter({ CONSEILLER_JETON_SHA256: "invalide" });
   const lecture = await demander({ chemin: "/api/approbations" });
   assert.strictEqual(lecture.code, 200, lecture.corps);
   const reponse = JSON.parse(lecture.corps);
-  assert.strictEqual(reponse.conseiller.disponible, false);
-  assert.match(reponse.conseiller.erreur, /CONSEILLER_JETON_SHA256/);
+  assert.ok(!("conseiller" in reponse));
   const agent = await demander({
     methode: "POST",
     chemin: "/api/conseiller/battement",
@@ -247,6 +246,14 @@ test("un conseiller sans empreinte reste indisponible sans bloquer les approbati
     corps: JSON.stringify({ modele: "test" }),
   });
   assert.strictEqual(agent.code, 503, agent.corps);
+});
+
+test("les anciennes discussions du conseiller sont retirées, sans mettre de réponse en file", async () => {
+  for (const methode of ['GET', 'POST']) {
+    const reponse = await demander({ methode, chemin: '/api/conseiller/dossiers/test/messages',
+      entetes: { 'Content-Type': 'application/json', Origin: `https://${TAILNET}` }, corps: methode === 'POST' ? JSON.stringify({ texte: 'question' }) : null });
+    assert.strictEqual(reponse.code, 410, reponse.corps);
+  }
 });
 
 test("une écriture venue d'un autre site est refusée", async () => {

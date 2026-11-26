@@ -1,6 +1,6 @@
 # Lot 2.6 — Délais des opérations qui occupent les files
 
-Statut : les délais HTTP du conseiller couvrent désormais le cockpit et Ollama, repli compris. Restent ouverts deploy.sh après bascule et l'unification avec publieur.apiAvec.
+Statut : le conseiller est retiré depuis le 26 novembre ; les délais HTTP de son pont vault sont conservés. Les références à Ollama ci-dessous décrivent le périmètre historique. Restent ouverts deploy.sh après bascule et l'unification avec publieur.apiAvec.
 Date : 23 octobre 2026.
 Bases examinées : cockpit `b74e0f7`, moteur `92c60a9`.
 
