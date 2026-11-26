@@ -31,6 +31,23 @@ export function validerCadrage(etape) {
   return c;
 }
 
+// La revue lit 100 000 octets par fichier : les lots entièrement faits et les défauts
+// faits vivent dans une archive pour que seule la feuille du travail ouvert grossisse.
+// Les lecteurs voient une seule feuille, lots triés par numéro comme dans le fichier
+// d'origine. Une entrée rouverte retourne dans la feuille principale.
+/** @param {any} principale @param {any} archive */
+export function assemblerFeuille(principale, archive) {
+  for (const [nom, f] of [['Feuille', principale], ['Archive', archive]]) {
+    if (!Array.isArray(f?.lots) || !Array.isArray(f?.defauts)) throw new Error(`${nom} de route invalide`);
+  }
+  for (const lot of archive.lots) {
+    if (!Array.isArray(lot.etapes) || !lot.etapes.length || lot.etapes.some(e => e.statut !== 'fait')) throw new Error(`Lot ${lot.id} archivé avec une étape non faite : le remettre dans la feuille principale`);
+  }
+  for (const d of archive.defauts) if (d.statut !== 'fait') throw new Error(`Défaut ${d.id} archivé sans être fait : le remettre dans la feuille principale`);
+  const lots = [...principale.lots, ...archive.lots].sort((a, b) => String(a.id).localeCompare(String(b.id), 'fr', { numeric: true }));
+  return { lots, defauts: [...principale.defauts, ...archive.defauts] };
+}
+
 /** @param {any} feuille */
 export function indexerFeuille(feuille) {
   if (!Array.isArray(feuille?.lots) || !Array.isArray(feuille?.defauts)) throw new Error('Feuille de route invalide');

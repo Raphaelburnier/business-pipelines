@@ -3,8 +3,9 @@
 // système où le travail se fait sont listés ici. TaskBoard peut aussi préparer un groupe
 // pour les dépôts annoncés dans les fichiers ; l'attribution historique reste mono-dépôt.
 const objectifs = require("../web/src/avenir/objectifs.json");
-const { creerCadreur } = require("./cadrage-lots.mjs");
-const cadreur = creerCadreur(require("../web/src/avenir/feuille.json"), objectifs);
+const { assemblerFeuille, creerCadreur } = require("./cadrage-lots.mjs");
+// L'archive garde les lots faits : une dépendance vers l'un d'eux doit rester résolue.
+const cadreur = creerCadreur(assemblerFeuille(require("../web/src/avenir/feuille.json"), require("../web/src/avenir/feuille-archive.json")), objectifs);
 const parId = new Map(objectifs.map((objectif) => [objectif.id, objectif]));
 const motifs = require("../deploy/fichiers-sensibles.json").motifs.map((m) => new RegExp(m, "i"));
 const CRITERE_SECURITE = "Les contrôles d'accès, les entrées invalides et la non-régression du changement sont vérifiés et documentés par des preuves ; la revue de sécurité indépendante est favorable.";

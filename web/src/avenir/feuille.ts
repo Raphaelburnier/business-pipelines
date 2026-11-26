@@ -1,10 +1,14 @@
 // Feuille de route et défauts issus de l'audit du 17 octobre 2026 (rapport « Boucle agentique
 // business pipelines »). Préfixes : AO = agent-orchestrator, BP = business-pipelines,
 // REG = agent-registry, AS = agent-secrets. Les données et statuts sont dans feuille.json ;
-// ce module garde les types et la présentation. Mettre le suivi à jour avec ses preuves.
+// les lots et défauts faits passent dans feuille-archive.json au formatage. Ce module garde
+// les types et la présentation. Mettre le suivi à jour avec ses preuves.
 import objectifsAttribuables from "./objectifs.json";
-import donnees from "./feuille.json";
-import { creerCadreur, construireCadrage, LIBELLES_PHASE } from "../../../src/cadrage-lots.mjs";
+import principale from "./feuille.json";
+import archive from "./feuille-archive.json";
+import { assemblerFeuille, creerCadreur, construireCadrage, LIBELLES_PHASE } from "../../../src/cadrage-lots.mjs";
+
+const donnees: { lots: Lot[]; defauts: Defaut[] } = assemblerFeuille(principale, archive);
 
 export type Statut = "a-faire" | "en-cours" | "fait";
 export type Severite = "critique" | "haute" | "moyenne" | "basse";
