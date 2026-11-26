@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { creerCadreur, indexerFeuille, construireCadrage, validerEvolution } = require("../src/cadrage-lots.mjs");
+const { assemblerFeuille, creerCadreur, indexerFeuille, construireCadrage, validerEvolution } = require("../src/cadrage-lots.mjs");
 
 function exemple() {
   const etape = { id: "1.2", titre: "Commande unique", detail: "x".repeat(1100),
@@ -103,7 +103,7 @@ test("la migration laisse les tâches anciennes visibles mais interdit leur dép
   const objectifs = require("../src/objectifs-avenirs");
   assert.throws(() => objectifs.cadrerMission({ projectId: "business-pipelines", criteres: [],
     contexte: { _roadmapObjective: { id: "3.6", revision: 1 } } }), /cadrage manquant/);
-  assert.doesNotThrow(() => indexerFeuille(require("../web/src/avenir/feuille.json")));
+  assert.doesNotThrow(() => indexerFeuille(assemblerFeuille(require("../web/src/avenir/feuille.json"), require("../web/src/avenir/feuille-archive.json"))));
 });
 
 test("un départ différé refuse un socle supprimé ou une nouvelle révision", () => {
