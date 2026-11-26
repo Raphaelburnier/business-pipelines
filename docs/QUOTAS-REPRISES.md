@@ -49,7 +49,7 @@ Les commandes de conversations et d'approbations restent compatibles. Les nouvea
 modules/pages de conversation, la préparation de missions, les handlers et les
 pipelines marketing restent au chantier marketing. Lors de son intégration, conserver
 ces cinq branchements et l'ajout de `test/reprises-runs.test.js` à la commande `npm test`.
-Qwen conserve son rôle de conseiller et aucun outil d'action ne lui est ajouté.
+Le conseiller des approbations est retiré ; le pont vault et le quota restent indépendants.
 
 Le moteur compagnon décrit les échéances et les bornes dans `docs/QUOTAS-REPRISES.md` :
 trois reprises par run, 24 heures d'attente automatique, trois reprises par compte/runtime

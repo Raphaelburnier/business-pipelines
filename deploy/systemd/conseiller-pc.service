@@ -1,6 +1,6 @@
 [Unit]
-Description=Conseiller local des approbations du cockpit
-After=network-online.target ollama.service
+Description=Synchronisation du vault et archivage des décisions du cockpit
+After=network-online.target
 Wants=network-online.target
 
 [Service]

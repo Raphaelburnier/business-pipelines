@@ -1,7 +1,7 @@
 # Intégration des agents Codex et Claude
 
 Le choix de backend d'un rôle de développement ou marketing est transmis au moteur
-avec `llm { via, model }`. Le conseiller Qwen garde sa configuration indépendante.
+avec `llm { via, model }`. Le conseiller des approbations a été retiré ; le pont vault reste indépendant.
 
 Le cockpit refuse Codex si aucun worker joignable ne l'annonce dans
 `meta.capacites.backends`. La configuration `pc:claude,omniroute,codex` seule ne

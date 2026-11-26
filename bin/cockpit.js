@@ -164,9 +164,8 @@ const CHAT_AGENTS = [
   { id: "claude", nom: "Claude", modele: ENV.COCKPIT_CHAT_CLAUDE_MODELE || "opus" },
   { id: "codex", nom: "Codex", modele: ENV.COCKPIT_CHAT_CODEX_MODELE || "gpt-5.6-terra:high" },
 ];
-// Le conseiller des approbations (src/conseiller.js) : sa base à côté de l'event store, hors
-// de celle des approbations, et l'empreinte du jeton de l'agent du PC. Sans empreinte, les
-// routes de l'agent répondent 503 et l'écran dit « PC endormi ».
+// Pont vault : conserver les anciens réglages, la base et son authentification pour
+// garder l’index de Demander et les notes de décisions sans calculer d’avis.
 const CONSEILLER_BASE =
   ENV.CONSEILLER_BASE ||
   path.join(ENV.ORCH_EVENT_STORE ? path.dirname(ENV.ORCH_EVENT_STORE) : path.join(RACINE, "etat"), "conseiller.sqlite");
@@ -176,7 +175,7 @@ const ERREUR_CONFIGURATION_CONSEILLER = conseiller.erreurConfiguration({
   approvalsDir: APPROVALS,
   jetonSha256: CONSEILLER_JETON_SHA256,
 });
-if (ERREUR_CONFIGURATION_CONSEILLER) console.error(`conseiller désactivé : ${ERREUR_CONFIGURATION_CONSEILLER}`);
+if (ERREUR_CONFIGURATION_CONSEILLER) console.error(`pont vault désactivé : ${ERREUR_CONFIGURATION_CONSEILLER}`);
 // Le quota Claude poussé par le PC (mod quota-barre de Claude Code). Le PC n'a qu'une identité :
 // par défaut la même empreinte que l'agent conseiller, un jeton dédié reste possible.
 const QUOTA_JETON_SHA256 = (ENV.QUOTA_JETON_SHA256 || "").trim() || CONSEILLER_JETON_SHA256;
@@ -377,32 +376,18 @@ const traiterConseiller = creerRouteurConseiller({
   base: CONSEILLER_BASE,
   jetonSha256: CONSEILLER_JETON_SHA256,
   json,
-  corpsJson,
   corpsAgent,
   erreurConfiguration: ERREUR_CONFIGURATION_CONSEILLER,
-  etatApprobations,
-  // Les derniers runs, contexte des avis. Sans event store, le conseiller travaille sans.
-  runs: () => {
-    const s = store();
-    return s ? api.runs(s, { limite: 8 }) : [];
-  },
 });
 
-// L'état des approbations avec ce que le conseiller en dit. Une base du conseiller illisible
-// ne doit jamais empêcher de décider : l'écran perd les avis, pas les boutons.
-function approbationsAvecConseil() {
+// Une panne de l'index du vault ne doit pas empêcher une décision humaine.
+function approbationsAvecNotes() {
   const etat = etatApprobations();
-  if (ERREUR_CONFIGURATION_CONSEILLER) {
-    return {
-      etat,
-      conseiller: { disponible: false, vuLe: null, modele: null, vault: null, erreur: ERREUR_CONFIGURATION_CONSEILLER },
-    };
-  }
-  try {
-    return conseiller.enrichir(CONSEILLER_BASE, etat);
-  } catch (err) {
-    console.error(`conseiller illisible : ${err.message}`);
-    return { etat, conseiller: { disponible: false, vuLe: null, modele: null, vault: null, erreur: err.message } };
+  if (ERREUR_CONFIGURATION_CONSEILLER) return etat;
+  try { return conseiller.etatNotes(CONSEILLER_BASE, etat); }
+  catch (err) {
+    console.error(`état des notes du vault illisible : ${err.message}`);
+    return etat;
   }
 }
 
@@ -515,11 +500,10 @@ async function traiter(req, res) {
   // boîte, et les modules. Un registre de modules fautif se nomme sans empêcher de décider :
   // le panneau est un confort, décider est la raison d'être de la page.
   if (req.method === "GET" && chemin === "/api/approbations") {
-    const { etat, conseiller: agent } = approbationsAvecConseil();
+    const etat = approbationsAvecNotes();
     return json(res, 200, {
       qui: { par: qui.par, nom: qui.nom ?? null, canal: qui.canal },
       etat,
-      conseiller: agent,
       modules: registreApps(),
     });
   }
@@ -549,7 +533,7 @@ async function traiter(req, res) {
     }
   }
 
-  // Le conseiller : l'agent du PC (jeton) et le fil de chaque dossier (identité tailnet).
+  // Pont vault : routes historiques de l’agent PC ; les anciens fils répondent 410.
   if (chemin.startsWith("/api/conseiller/")) {
     if (await traiterConseiller(req, res, chemin, qui)) return undefined;
   }

@@ -10,7 +10,6 @@ const CONFIGURATIONS = {
   http: { variable: "ORCH_HTTP_TIMEOUT_MS", defautMs: 30_000, maximumMs: 120_000 },
   script: { variable: "ORCH_SCRIPT_TIMEOUT_MS", defautMs: 15 * 60_000, maximumMs: 6 * 60 * 60_000 },
   "http:conseiller": { variable: "CONSEILLER_HTTP_TIMEOUT_MS", defautMs: 30_000, maximumMs: 120_000 },
-  ollama: { variable: "CONSEILLER_OLLAMA_TIMEOUT_MS", defautMs: 120_000, maximumMs: 10 * 60_000 },
 };
 
 function configuration(operation) {

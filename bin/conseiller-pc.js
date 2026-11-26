@@ -1,23 +1,7 @@
 #!/usr/bin/env node
-// L'agent du conseiller sur le PC : il calcule, le NAS décide de tout le reste.
-//
-// Toutes les 20 s, il dit au cockpit qu'il est là, envoie les notes du vault qui ont changé,
-// puis prend les travaux en file un par un :
-// - un avis ou une réponse : le prompt arrive tout prêt du NAS, l'agent le passe à Ollama
-//   sur le GPU et renvoie le JSON produit, sans rien y ajouter ;
-// - une note de décision : l'agent l'écrit dans le vault local et la commite, seule.
-//
-// Il ne sort que vers le cockpit (tailnet) et vers Ollama (boucle locale). Aucun port
-// ouvert : si le PC dort, l'agent aussi, et le cockpit affiche « PC endormi ».
-//
-// Réglages dans `.env` à la racine du dépôt (voir .env.example) :
-//   CONSEILLER_JETON        le jeton dont le NAS garde l'empreinte (obligatoire)
-//   CONSEILLER_COCKPIT_URL  URL HTTPS Tailnet du cockpit (obligatoire)
-//   CONSEILLER_MODELE       qwen3:8b par défaut
-//   CONSEILLER_OLLAMA_URL   http://127.0.0.1:11434 par défaut
-//   CONSEILLER_VAULT        dossier du vault Git (obligatoire)
-//   CONSEILLER_HTTP_TIMEOUT_MS    30000 ms par défaut
-//   CONSEILLER_OLLAMA_TIMEOUT_MS  120000 ms par défaut
+// Pont PC du vault : synchroniser l'index et archiver les décisions humaines.
+// Les noms de fichier et réglages CONSEILLER_* restent compatibles avec le service
+// installé. Aucun modèle n'est appelé, y compris face à un NAS plus ancien.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -39,8 +23,6 @@ function lireEnv(fichier) {
 const ENV = { ...lireEnv(path.join(RACINE, ".env")), ...process.env };
 const COCKPIT = (ENV.CONSEILLER_COCKPIT_URL || "").replace(/\/$/, "");
 const JETON = (ENV.CONSEILLER_JETON || "").trim();
-const MODELE = ENV.CONSEILLER_MODELE || "qwen3:8b";
-const OLLAMA = (ENV.CONSEILLER_OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
 const VAULT = ENV.CONSEILLER_VAULT || "";
 const PERIODE_MS = Number(ENV.CONSEILLER_PERIODE_S || 20) * 1000;
 const SYNCHRO_MS = Number(ENV.CONSEILLER_SYNCHRO_S || 300) * 1000;
@@ -174,43 +156,6 @@ async function synchroniser() {
 
 // ---------- les travaux ----------
 
-function ollamaAvec({ fetchImpl = fetch, url = OLLAMA, modele = MODELE, delaiMs = null } = {}) {
-  return (travail) => sousDelaiHttp({
-    operation: "ollama", delaiMs: delaiMs ?? delaiConfigure("ollama"),
-  }, async (signal) => {
-    const corps = {
-      model: modele,
-      messages: travail.messages,
-      format: travail.format,
-      stream: false,
-      // qwen3 pense à voix haute par défaut : ici on veut le JSON, pas le raisonnement.
-      think: false,
-      options: { temperature: 0.2, num_ctx: 8192 },
-    };
-    let reponse = await fetchImpl(`${url}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal });
-    if (reponse.status === 400) {
-      const texte = await reponse.text();
-      if (/think/i.test(texte)) {
-        // Un modèle sans mode « réflexion » refuse l'option au lieu de l'ignorer.
-        delete corps.think;
-        reponse = await fetchImpl(`${url}/api/chat`, { method: "POST", body: JSON.stringify(corps), signal });
-      } else {
-        throw new Error(`Ollama : HTTP 400 ${texte.slice(0, 200)}`);
-      }
-    }
-    if (!reponse.ok) throw new Error(`Ollama : HTTP ${reponse.status} ${(await reponse.text()).slice(0, 200)}`);
-    const donnees = await reponse.json();
-    const texte = donnees && donnees.message ? donnees.message.content : "";
-    try {
-      return JSON.parse(texte);
-    } catch {
-      throw new Error(`Ollama a rendu autre chose que du JSON : ${String(texte).slice(0, 120)}`);
-    }
-  });
-}
-
-const ollama = (travail) => ollamaAvec()(travail);
-
 // L'entrée est remplacée si le fichier la porte déjà (une note ajoutée après coup), ajoutée
 // en fin de fichier sinon. Seul ce fichier est commité, même si d'autres attendent.
 function noteValide(note) {
@@ -306,10 +251,7 @@ async function traiter(travail) {
       journal(`note du vault commitée et synchronisée : ${travail.note.chemin} (${commit.slice(0, 7)})`);
       return await appel("resultat", { id: travail.id, bail: travail.bail, commit });
     }
-    const debut = Date.now();
-    const sortie = await ollama(travail);
-    journal(`${travail.genre} ${travail.id} calculé en ${Math.round((Date.now() - debut) / 1000)} s`);
-    return await appel("resultat", { ...sortie, id: travail.id, bail: travail.bail, modele: MODELE });
+    return await appel("resultat", { id: travail.id, bail: travail.bail, erreur: "conseiller retiré : seuls les travaux de note sont acceptés" });
   } catch (err) {
     journal(`travail ${travail.id} en échec : ${err.message}`);
     return appel("resultat", { id: travail.id, bail: travail.bail, erreur: err.message }).catch(() => undefined);
@@ -324,7 +266,7 @@ let derniereSynchro = 0;
 // Le NAS sait alors que l'agent calcule encore, sans ouvrir de port sur le PC.
 async function avecBattement(travail) {
   const battre = () =>
-    appel("battement", { modele: MODELE, version: VERSION }).catch((err) => {
+    appel("battement", { version: VERSION }).catch((err) => {
       journal(`battement en échec : ${err.message}`);
     });
   const minuterie = setInterval(battre, PERIODE_MS);
@@ -336,7 +278,7 @@ async function avecBattement(travail) {
 }
 
 async function tour() {
-  const b = await appel("battement", { modele: MODELE, version: VERSION });
+  const b = await appel("battement", { version: VERSION });
   if (Date.now() - derniereSynchro > SYNCHRO_MS || !b.vault.head) {
     await avecBattement(synchroniser);
     derniereSynchro = Date.now();
@@ -345,7 +287,7 @@ async function tour() {
     const travail = await appel("travail");
     if (!travail) break;
     await avecBattement(() => traiter(travail));
-    await appel("battement", { modele: MODELE, version: VERSION });
+    await appel("battement", { version: VERSION });
   }
 }
 
@@ -356,7 +298,6 @@ function verifierConfiguration() {
   if (!fs.existsSync(path.join(VAULT, ".git"))) return "CONSEILLER_VAULT doit désigner un dépôt Git";
   try {
     delaiConfigure("http:conseiller");
-    delaiConfigure("ollama");
   } catch (err) {
     return err.message;
   }
@@ -366,10 +307,10 @@ function verifierConfiguration() {
 async function main() {
   const erreur = verifierConfiguration();
   if (erreur) {
-    console.error(`conseiller PC arrêté : ${erreur}`);
+    console.error(`pont vault PC arrêté : ${erreur}`);
     process.exit(1);
   }
-  journal(`conseiller PC : ${COCKPIT}, modèle ${MODELE}, vault ${VAULT}`);
+  journal(`pont vault PC : ${COCKPIT}, vault ${VAULT}`);
   for (;;) {
     try {
       await tour();
@@ -382,4 +323,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { lireEnv, noteValide, verifierConfiguration, appelAvec, ollamaAvec };
+module.exports = { lireEnv, noteValide, verifierConfiguration, appelAvec };
