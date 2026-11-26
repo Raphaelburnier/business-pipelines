@@ -9,7 +9,7 @@ import type { AgentTache } from "./agents-taches";
 // l'arrivée d'un événement. Reconstruire l'état à partir des événements finirait par
 // diverger de la base le jour où un événement manque.
 import type { AgentChat, Evenement, FilDetaille, ListeFils, Llm, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, StatutRun, Topologie, Usage, VersionsLivraison } from "../types";
-import type { DemandeDecision, DemandeDecisionRun, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { DemandeDecision, DemandeDecisionRun, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ChangementProfil, ReponseEquipe } from "./equipe";
 import type { ReponsePipelines } from "./pipelines";
 import type { DemandeFusion, DemandeRelanceCI, EtatPullRequests } from "./pullRequests";
@@ -110,6 +110,9 @@ export interface Source {
   decider(demande: DemandeDecision): Promise<ReponseDecision>;
   /** Tranche l'approbation d'un run : le runner écrit la décision puis reprend le run. */
   deciderRun(approbationId: string, demande: DemandeDecisionRun): Promise<{ id: string; statut: string }>;
+  /** Le fil du conseiller sur un dossier, et y poser une question (refusée si le PC dort). */
+  filConseil(dossier: string): Promise<FilConseil>;
+  poserConseil(dossier: string, texte: string): Promise<FilConseil>;
   /** L'équipe d'agents : qui est libre, sur quel projet, et le budget du mois qui reste. */
   planifierGroupe(demande: import("./missions").GroupePlan): Promise<{ objectifs: import("../calendrier/api").Objectif[] }>;
   deplacerPlan(demande: { commandeId: string; prevuLe: string; date: string }): Promise<void>;

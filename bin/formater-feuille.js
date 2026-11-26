@@ -12,10 +12,9 @@ const lots = donnees.lots.map(({ etapes, ...lot }) => {
   return `    {\n${champs.join(',\n')}\n    }`;
 });
 // Compacter les lignes de structure économise la marge des nouveaux suivis.
-// Les longues entrées restent identiques : seule leur enveloppe perd des espaces.
 // Garder l'indentation des longues entrées évite de réécrire tout leur diff :
 // GitHub peut sinon omettre le patch, même quand chaque fichier reste sous 100 Ko.
-const sortie = `{\n  "lots": [\n${lots.join(',\n')}\n  ],\n  "defauts": [\n${donnees.defauts.map(d => `    ${JSON.stringify(d)}`).join(',\n')}\n  ]\n}\n`.replace(/^(?! *\{"id":) +/gm, "");
+const sortie = `{\n  "lots": [\n${lots.join(',\n')}\n  ],\n  "defauts": [\n${donnees.defauts.map(d => `    ${JSON.stringify(d)}`).join(',\n')}\n  ]\n}\n`.replace(/^  (?! *\{"id":)/gm, "");
 assert.deepEqual(JSON.parse(sortie), donnees, "Le formatage ne doit modifier aucune donnée.");
 fs.writeFileSync(fichier, sortie);
 console.log(`Feuille formatée sans changement de données : ${Buffer.byteLength(sortie)} octets.`);

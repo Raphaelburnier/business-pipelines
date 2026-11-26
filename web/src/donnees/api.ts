@@ -1,6 +1,6 @@
 // La source réelle : l'API REST du cockpit et son flux SSE (§10).
 import type { Evenement, FilDetaille, ListeFils, ReponseLivraison, ReponseModeles, Run, RunDetailleAvecOutils, Topologie, Usage } from "../types";
-import type { DemandeDecision, ReponseApprobations, ReponseDecision } from "./decisions";
+import type { DemandeDecision, FilConseil, ReponseApprobations, ReponseDecision } from "./decisions";
 import type { ReponseEquipe } from "./equipe";
 import type { ReponsePipelines } from "./pipelines";
 import type { AttributionAvenir, Commande, FiltreRuns, Source } from "./source";
@@ -156,6 +156,8 @@ export function sourceApi(): Source {
       const reponse = await ecrire<{ commande: { id: string; statut: string } }>(`/api/approbations-runs/${encodeURIComponent(approbationId)}`, demande);
       return reponse.commande;
     },
+    filConseil: (dossier) => lire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}`),
+    poserConseil: (dossier, texte) => ecrire<FilConseil>(`/api/conseiller/dossiers/${encodeURIComponent(dossier)}/messages`, { texte }),
     equipe: () => lire<ReponseEquipe>("/api/equipe"),
     async affecter(agents, projet) {
       await ecrire<{ ok: true }>("/api/equipe/affectations", { agents, projet });

@@ -17,13 +17,13 @@ import { Sensible, Statut } from "../composants/Statut";
 import { useToasts } from "../composants/Toasts";
 import { NOM_GENRE, type ADecider, type ElementDecision } from "../donnees/aDecider";
 import { useHorloge, useSource } from "../donnees/contexte";
-import { attente, type DossierApprobation } from "../donnees/decisions";
+import { attente, type DossierApprobation, type EtatConseiller } from "../donnees/decisions";
 import { confirmationLivraisonCourante } from "../donnees/livraison";
 import { nomCourt, prsDeLaLivraison, type PrLivree, type PullRequestOuverte } from "../donnees/pullRequests";
 import { depuis } from "../format";
 import { Icone } from "../icones";
 import type { CommitLivraison, EtapeLivraison, Livraison, ReponseLivraison, VersionsLivraison } from "../types";
-import { CorpsDossier, Modules } from "./Approbations";
+import { CorpsDossier, EtatConseillerBadge, Modules } from "./Approbations";
 
 type Aller = (href: string) => void;
 
@@ -523,6 +523,7 @@ function File({ aDecider, element, aller }: { aDecider: ADecider; element: strin
   const toasts = useToasts();
   const maintenant = useHorloge(30_000);
   const { elements, chargement, erreurs } = aDecider;
+  const conseiller: EtatConseiller = aDecider.approbations.donnees?.conseiller ?? { disponible: false, vuLe: null, modele: null, vault: null };
   // Tant que Raphaël n'a rien ouvert ni fermé, l'élément demandé par l'adresse est ouvert,
   // sinon le plus urgent : la première décision est à un geste.
   const [choix, setChoix] = useState<ReadonlySet<string> | null>(null);
@@ -567,6 +568,7 @@ function File({ aDecider, element, aller }: { aDecider: ADecider; element: strin
           <CorpsDossier
             key={`${objet.dossier.dossier}:${objet.dossier.empreinte}`}
             dossier={objet.dossier}
+            conseiller={conseiller}
             apres={(message, fini) => {
               toasts.succes(message);
               if (fini) regle(e, "approbations");
@@ -618,6 +620,7 @@ function File({ aDecider, element, aller }: { aDecider: ADecider; element: strin
         </div>
         {aDecider.approbations.donnees && (
           <div className="ao-file-identite">
+            <EtatConseillerBadge conseiller={conseiller} />
             {qui && <span className="font-mono text-[11px] text-douce">{qui.nom ?? qui.par} · {qui.canal}</span>}
           </div>
         )}

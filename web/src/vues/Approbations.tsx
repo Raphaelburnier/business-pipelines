@@ -2,9 +2,9 @@
 // sont pas celles des runs : elles tranchent un plan gelé et le serveur vérifie toujours son
 // empreinte avant d'écrire la trace signée.
 import { useEffect, useMemo, useState } from "react";
-import { useSource } from "../donnees/contexte";
-import { lireAction } from "../donnees/decisions";
-import type { Decision, DemandeDecisionRun, DossierApprobation, RapportApprobationRun, ReponseApprobations } from "../donnees/decisions";
+import { useCharge, useSource } from "../donnees/contexte";
+import { lireAction, nomModele } from "../donnees/decisions";
+import type { ConseilAction, Decision, DemandeDecisionRun, DossierApprobation, EtatConseiller, FilConseil, RapportApprobationRun, ReponseApprobations, SourceConseil } from "../donnees/decisions";
 import { ActionConfirmee } from "../composants/ActionConfirmee";
 import { Erreur, Vide } from "../ui";
 
@@ -35,6 +35,36 @@ function Fraicheur({ dossier }: { dossier: DossierApprobation }) {
     <span className={`ao-liv-pastille ${classe}`} title={fraicheur.reference ?? undefined}>
       {libelle}{age ? `, ${age}` : ""}{fraicheur.max_heures === null ? "" : ` sur ${fraicheur.max_heures} h`}
     </span>
+  );
+}
+
+function SourcesConseil({ sources }: { sources: SourceConseil[] }) {
+  if (!sources.length) return null;
+  return (
+    <ul className="ao-conseil-sources" aria-label="Sources du conseiller">
+      {sources.map((source) => (
+        <li key={source.id}>
+          <span>{source.id}</span>
+          {source.titre}
+          {source.chemin ? `, ${source.chemin}` : source.run ? `, ${source.run}` : ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Conseil({ conseil }: { conseil: ConseilAction }) {
+  const probleme = conseil.classement === "probleme";
+  return (
+    <aside className={`ao-conseil ${probleme ? "probleme" : "suggestion"}`} aria-label={probleme ? "Problème détecté par le conseiller" : "Suggestion du conseiller"}>
+      <header>
+        <span className="ao-auteur ia">{nomModele(conseil.modele)}</span>
+        <strong>{probleme ? "Problème détecté" : "Suggestion"}</strong>
+        {dateLisible(conseil.le) && <time dateTime={conseil.le}>{dateLisible(conseil.le)}</time>}
+      </header>
+      <p>{conseil.texte}</p>
+      <SourcesConseil sources={conseil.sources} />
+    </aside>
   );
 }
 
@@ -76,6 +106,7 @@ function ActionPlan({ action, brouillon, modifier, verrouille }: { action: Dossi
           )}
       {lecture.forme === "question" && action.justification && <p className="text-douce">{action.justification}</p>}
       {action.sources && action.sources.length > 0 && <p className="font-mono text-[11px] text-douce">Sources : {action.sources.join(" · ")}</p>}
+      {action.conseil && <Conseil conseil={action.conseil} />}
       {!verrouille && (
         <fieldset className="ao-approbation-choix">
           <legend>Décision pour cette action</legend>
@@ -131,6 +162,77 @@ function RapportRun({ rapport }: { rapport: RapportApprobationRun }) {
   );
 }
 
+export function EtatConseillerBadge({ conseiller }: { conseiller: EtatConseiller }) {
+  if (conseiller.disponible) return <span className="ao-auteur ia">{nomModele(conseiller.modele)} connecté</span>;
+  const vu = dateLisible(conseiller.vuLe);
+  return <span className="ao-auteur indisponible" title={vu ?? undefined}>PC endormi{vu ? `, vu ${vu}` : ""}</span>;
+}
+
+function DiscussionConseiller({ dossier, conseiller }: { dossier: string; conseiller: EtatConseiller }) {
+  const { source } = useSource();
+  const [ouverte, setOuverte] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [texte, setTexte] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const { donnees, erreur: erreurLecture } = useCharge(
+    (source) => (ouverte ? source.filConseil(dossier) : Promise.resolve<FilConseil | null>(null)),
+    [dossier, ouverte, revision]
+  );
+  const fil = donnees;
+  const etat = fil?.conseiller ?? conseiller;
+
+  async function envoyer(): Promise<void> {
+    const question = texte.trim();
+    if (!question || !etat.disponible) return;
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await source.poserConseil(dossier, question);
+      setTexte("");
+      setRevision((courant) => courant + 1);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <details className="ao-discussion" open={ouverte} onToggle={(event) => setOuverte(event.currentTarget.open)}>
+      <summary>Poser une question au conseiller, sans trancher <EtatConseillerBadge conseiller={etat} /></summary>
+      {ouverte && (
+        <div className="ao-discussion-contenu">
+          {erreurLecture && <Erreur>{erreurLecture}</Erreur>}
+          {!fil && !erreurLecture && <p className="text-douce">Lecture du fil…</p>}
+          {fil?.messages.length === 0 && <p className="text-douce">Aucun échange pour ce dossier.</p>}
+          {fil?.messages.map((message) => (
+            <article key={message.id} className={`ao-message ${message.auteur}`}>
+              <header>
+                <span className={`ao-auteur ${message.auteur === "conseiller" ? "ia" : "humain"}`}>
+                  {message.auteur === "conseiller" ? nomModele(message.modele) : `Humain · ${message.par ?? "identité inconnue"}`}
+                </span>
+                <time dateTime={message.creeLe}>{dateLisible(message.creeLe)}</time>
+              </header>
+              <p>{message.texte}</p>
+              <SourcesConseil sources={message.sources} />
+            </article>
+          ))}
+          {!etat.disponible && <p className="ao-discussion-indisponible">Le PC est endormi. La question ne sera pas mise en attente.</p>}
+          <label className="ao-discussion-saisie">
+            Question au conseiller
+            <textarea value={texte} rows={3} maxLength={2000} disabled={!etat.disponible || envoi} placeholder={etat.disponible ? "Demander une vérification liée à ce dossier." : "PC endormi"} onChange={(event) => setTexte(event.target.value)} />
+          </label>
+          {erreur && <Erreur>{erreur}</Erreur>}
+          <div className="ao-actions">
+            <button type="button" className="ao-btn" disabled={!etat.disponible || !texte.trim() || envoi} onClick={envoyer}>{envoi ? "Envoi…" : "Envoyer la question"}</button>
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
 // Le brouillon d'un dossier survit à un rafraîchissement : il est gardé dans ce navigateur,
 // par dossier ET par empreinte (un plan replanifié repart à zéro), et effacé après l'envoi.
 // Le stockage peut être indisponible (navigation privée) : la page marche alors sans.
@@ -160,7 +262,7 @@ function ecrireBrouillon(cle: string, valeur: BrouillonSauve | null): void {
 }
 
 /** Le corps d'un dossier dans la file des décisions : le titre et l'attente sont sur sa ligne. */
-export function CorpsDossier({ dossier, apres }: { dossier: DossierApprobation; apres: (message: string, regle: boolean) => void }) {
+export function CorpsDossier({ dossier, conseiller, apres }: { dossier: DossierApprobation; conseiller: EtatConseiller; apres: (message: string, regle: boolean) => void }) {
   const { source } = useSource();
   const cle = cleBrouillon(dossier);
   const sauve = useMemo(() => lireBrouillon(cle), [cle]);
@@ -335,6 +437,7 @@ export function CorpsDossier({ dossier, apres }: { dossier: DossierApprobation; 
         </div>
       )}
 
+      <DiscussionConseiller dossier={dossier.dossier} conseiller={conseiller} />
     </div>
   );
 }
