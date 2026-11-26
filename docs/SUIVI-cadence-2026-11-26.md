@@ -1,9 +1,10 @@
 # Inventaire des étapes ouvertes — 26 novembre 2026
 
-Résumé : 16 étapes restent `en-cours`. Trois phases sont périmées : 17.7 et
-18.27 sont fusionnées et installées, 10.6 est fusionnée mais attend encore
-l'installation de sa partie serveur. Elles passent en `recette-attendue`, sans
-clôture. Après correction, quatre étapes ont une phase de recette et douze
+Résumé : 16 étapes restent `en-cours`. Les phases de 17.7 et
+10.6 sont périmées : 17.7 est fusionnée et installée ; 10.6 est fusionnée mais
+attend encore l’installation de sa partie serveur. Elles passent en
+`recette-attendue`, sans clôture. La PR #320 a déjà corrigé 18.27 pendant
+cet inventaire ; son suivi est conservé intégralement. Après correction, quatre étapes ont une phase de recette et douze
 restent sans phase formalisée. Le plafond 18.11 demeure ouvert : leur développement
 actif ne peut pas être déduit du seul statut historique.
 
@@ -11,7 +12,10 @@ actif ne peut pas être déduit du seul statut historique.
 
 La feuille et l'archive ont été lues sur `main` en
 `90cf1d211d4813ea445b3838f4562c5efb1e1a5e`. Les trois dépôts système n'avaient
-aucune PR ouverte au contrôle. Les attributions consultées ne réservent pas
+aucune PR ouverte au premier contrôle. Pendant l’inventaire,
+[#320](https://github.com/Raphaelburnier/business-pipelines/pull/320) a été
+fusionnée en `b5488b98f0d2aaf9b32fd76e0e554bdd302e3efb` : son cadrage de 10.5 et
+son suivi de 18.27 sont conservés dans cette branche. Les attributions consultées ne réservent pas
 18.11. Aucun run n'est renvoyé par les filtres `running`, `queued`,
 `waiting_machine`, `waiting_quota` et `waiting_approval` au moment du relevé.
 Ces observations ne recensent pas les sessions interactives ; elles ne prouvent
@@ -55,8 +59,10 @@ de lancement ; leur cadrage doit être confirmé avant une nouvelle attribution.
 
 ## Conséquence pour 18.11
 
-Les phases formalisées passent de deux développements, une fusion attendue et une
-recette attendue à quatre recettes attendues. Les seize statuts restent
+Par rapport à la base initiale de l’inventaire, les phases formalisées passent
+de deux développements, une fusion attendue et une recette attendue à quatre
+recettes attendues. La correction de 18.27 appartient à #320, intégrée sans
+modification de son cadrage de 10.5 ni de ses preuves et de son attente de recette. Les seize statuts restent
 `en-cours`. Ce changement corrige le suivi ; il ne démontre pas encore une
 réduction du développement actif à trois.
 
