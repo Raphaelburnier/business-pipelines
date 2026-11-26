@@ -215,6 +215,18 @@ validateur le vérifie avant la CI. Pourquoi : au-delà, GitHub peut omettre le 
 la revue refuse un diff tronqué avant même d'appeler un modèle. Le formateur ne retire
 jamais de contenu et aucune limite du workflow n'est augmentée.
 
+Archive (validée par Raphaël le 26 novembre 2026). Le 26 novembre, la feuille atteignait
+99 977 octets : aucun cadrage ne passait plus, celui de 10.5 compris. Le formateur déplace
+désormais les lots dont toutes les étapes sont faites, et les défauts faits, dans
+`web/src/avenir/feuille-archive.json`, au même schéma. Le front, le serveur, le validateur
+et les tests lisent les deux fichiers par `assemblerFeuille` (`src/cadrage-lots.mjs`) :
+lots triés par numéro, défauts archivés après les autres, ce qui ne change que leur
+position parmi les défauts de même sévérité. Une dépendance vers une étape archivée reste
+résolue. L'archive refuse une entrée non faite : rouvrir un lot ou un défaut, c'est le
+remettre dans la feuille principale. Un déplacement entre les deux fichiers ne change pas
+le cadrage et n'exige pas de nouvelle révision. Chaque fichier reste sous 100 000 octets ;
+quand l'archive approchera la limite, cadrer une seconde archive.
+
 Les anciens lots faits ne demandent pas de preuve rétroactive. Les anciennes tâches
 à faire sans cadrage restent affichées avec « cadrage manquant » et sans départ.
 Les lots 19 et 20 possèdent un cadrage mais restent hors catalogue et soumis à 18.11.
