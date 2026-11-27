@@ -1,0 +1,324 @@
+{
+  "statut": "cadrages approuves le 2026-11-27 et appliques ; reference historique, sans role de source active",
+  "base": "a3fcf2cbadfa0c34e73079e215212767f52ddec6",
+  "etapes": [
+    {
+      "id": "1.3",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Sur un échec hérité réel, les diagnostics stables identiques classent la PR en base rouge sans consommer son budget de correction.",
+          "Un diagnostic différent ou une preuve de base absente conserve le parcours de correction de la PR."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "recette-attendue",
+        "attente": "Recette du correctif #307 encore manquante.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "2.11",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Dans un run réel, la réserve Codex retient un nouvel appel au seuil ou sans mesure fraîche, puis reprend le même run quand ses conditions sont rétablies.",
+          "La réserve Claude et les compteurs de vrai quota restent indépendants."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "recette-attendue",
+        "attente": "Appel retenu en plein run restant à observer ; ne pas relancer un modèle pour ce suivi.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "5.3",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Un échec corrigeable de main produit une seule réservation par commit puis une PR de correction soumise aux contrôles ordinaires.",
+          "Aucun push direct sur main ni nouvelle correction pour une réservation déjà occupée."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "recette-attendue",
+        "attente": "Création effective de la PR de correction encore à prouver.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "6.2",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Une revue Claude indisponible est relayée vers Codex ; un verdict approuvé sur la tête exacte est exigé avant fusion automatique.",
+          "Une revue absente, refusée ou périmée ne permet aucune fusion automatique."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "Configuration protégée manquante : métadonnée OPENAI_API_KEY absente des trois dépôts au contrôle du 27 novembre.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "6.4",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Après une correction, un échec sur une autre étape peut être retransmis sans dépasser le budget global actuel de trois démarrages par PR.",
+          "Un doublon ou un budget épuisé ne déclenche pas de démarrage supplémentaire."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "recette-attendue",
+        "attente": "La PR #120 prouve deux corrections et une CI verte après relance humaine ; la preuve complète du comportement courant reste à rattacher.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "15.2",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Les consignes de contexte couvrent le changement de tâche, deux corrections ratées, le résumé de compaction et le recours à une exploration déléguée quand il est autorisé.",
+          "Leur présence et leur application sont vérifiées sur une session ; la clôture ne repose pas sur leur seule rédaction."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [
+          "18.11"
+        ],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "Gel du lot 15 conservé jusqu’à la levée prévue par 18.11.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "16.4",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Les agents visés ne sont retirés intégralement que lorsqu’aucune version de pipeline ni aucune nature ne les référence.",
+          "Les versions figées et les membres de l’équipe restant utiles sont conservés ; la validation du registre passe."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [
+          "16.8"
+        ],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "content-planner et content-writer sont encore cités par la nature marketing ; retrait conditionné à 16.8.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "16.7",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Après choix explicite de version, Finance utilise finance-research@4 et charge finance-snapshot-analysis@2.",
+          "Un run métier autorisé termine avec un rapport validé ; les runs historiques conservent leur contrat."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "Finance est encore épinglée sur finance-research@2 ; migration et recette métier restent à décider et exécuter.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "16.9",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Les projets de code retenus utilisent une version du pipeline qui charge revue-code@1 ; les épinglages plus récents sont conservés.",
+          "Une revue réelle atteste le chargement du skill et son résultat ; les anciens runs ne sont pas réécrits."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture.",
+          "Périmètre validé : agent-orchestrator, agent-registry, agent-secrets, business-pipelines et steam-tierlist. Ne pas rétrograder les versions déjà plus récentes."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "Périmètre des cinq projets confirmé ; deux projets restent sur improve-app@8. Leur montée de version et la recette finale restent des actions distinctes.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "18.4",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "L’activation sur le worker réellement utilisé est attestée pour les agents Claude et Codex dans le bac à sable prévu.",
+          "La recette confirme que les accès privés restent refusés et que le jeton de communication n’est pas transmis aux shells des agents."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "bloque",
+        "attente": "Activation et recette de la configuration installée non attestées ; toute manipulation protégée reste réservée aux outils dédiés et à son autorisation.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "18.11",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Chaque étape ouverte a une phase justifiée ; une étape inconnue ou sans phase est comptée par prudence comme du développement actif.",
+          "Le relevé courant établit au plus trois développements actifs, avec confirmation des reprises interactives ; aucune nouvelle étape n’est engagée au plafond.",
+          "Le gel du lot 15 et les recettes manquantes restent explicites ; aucune étape n’est close pour réduire artificiellement le compte."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "developpement",
+        "attente": "Cadrages appliqués ; confirmation du travail réellement actif et recette sur la version livrée encore nécessaires avant clôture.",
+        "preuves": []
+      }
+    },
+    {
+      "id": "18.26",
+      "cadrage": {
+        "revision": 1,
+        "criteres": [
+          "Sur un vrai run Claude soumis au plafond, une sortie déclarée manquante déclenche la restriction aux deux tiers des tours et est écrite avant le plafond.",
+          "Les outils redeviennent disponibles après écriture ; aucune couverture Codex n’est revendiquée."
+        ],
+        "directives": [
+          "Conserver le périmètre et les preuves historiques ; confronter les références aux résultats réels avant clôture."
+        ],
+        "exclusions": [
+          "Aucune livraison, activation protégée, migration de projet ou nouveau run par cette qualification."
+        ],
+        "dependances": [],
+        "cloture": {
+          "fusionRequise": true,
+          "recetteRequise": true
+        }
+      },
+      "suivi": {
+        "phase": "recette-attendue",
+        "attente": "La recette CLI existe ; activation du mécanisme sur un run réel encore à observer.",
+        "preuves": []
+      }
+    }
+  ]
+}
