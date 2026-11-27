@@ -104,6 +104,7 @@
     {"id":"F13","severite":"basse","titre":"Actions GitHub épinglées par tag","fichiers":"ci.yml ; ci-autofix.yml","correctif":"Lot 0.8","statut":"fait"},
     {"id":"F14","severite":"basse","titre":"Jetons Codex et Claude lisibles par les agents du runner","fichiers":"BP docker-compose.yaml:110,133","correctif":"Lot 0.6 : jeton Codex protégé dans le home root ; jeton Claude conservé côté maître par un relais local éphémère, environnement du CLI filtré avant le lancement","statut":"fait"},
     {"id":"F15","severite":"basse","titre":"runId joint au chemin sans validation","fichiers":"AO src/worker-exec.js:59-60","correctif":"Lot 0.5","statut":"fait"},
-    {"id":"B8","severite":"basse","titre":"Unité systemd du worker sur le checkout périmé","fichiers":"AO deploy/systemd/orch-worker.service:8,11","correctif":"Lot 7.2 livré : unité installée sur la copie figée, provenance et dérive contrôlées","statut":"fait"}
+    {"id":"B8","severite":"basse","titre":"Unité systemd du worker sur le checkout périmé","fichiers":"AO deploy/systemd/orch-worker.service:8,11","correctif":"Lot 7.2 livré : unité installée sur la copie figée, provenance et dérive contrôlées","statut":"fait"},
+    {"id":"O8","severite":"moyenne","titre":"Liens directs des sous-onglets Planning refusés","fichiers":"BP bin/cockpit.js ; BP test/cockpit-routes.test.js","correctif":"Corrigé par #311 (5a840ef), livré dans a3fcf2c. Recette du 27 novembre : liens directs et rechargement Tâches/Activité, trois routes connues en HTTP 200 et segment inconnu en 404 ; 6 tests du serveur réel réussis. Preuves : docs/RECETTE-cadrage-2026-11-27.md. Aucun objectif O8 au catalogue.","statut":"fait"}
 ]
 }
