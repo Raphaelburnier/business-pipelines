@@ -171,8 +171,10 @@ Périmètre proposé : `web/src/avenir/AVenir.test.ts`, `test/cockpit-routes.tes
 de contre-exemples ne sont jamais poussées dans une branche de production.
 Ne modifier ni les seuils de revue, ni les règles de fusion, ni le contrat moteur.
 
-Les cas d'évaluation de skills restent à 16.11 ; les cartes de parcours à 16.10
-et 20.5 ; les règles d'import à 18.7. Aucun outil de navigateur supplémentaire,
+Les critères de fin des skills restent à 16.10, leurs cas d'évaluation à 16.11,
+la parité des fichiers du gate à 18.7 et les cartes de parcours à 20.5.
+Le cas 3 réutilise le préparateur de revue sans modifier ses copies partagées.
+Aucun outil de navigateur supplémentaire,
 interdiction générale de `useEffect`, pipeline, protocole ou format d'échange
 n'est créé. 19.2 attend toujours ses dépendances et une place selon 18.11.
 
